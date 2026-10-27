@@ -4058,6 +4058,372 @@ theorem persist_prefix {H : Forest} (hL : Scan.InL H) {rs : RoleSets}
     rw [(stage_succ hL hrs hG₀ hG).1]
     exact (ih hG₀).trans (List.prefix_append _ _)
 
+/-- L8.6f (helper): the role sets of an ordinary input, read off its branch data. -/
+theorem rs_spec_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) :
+    rs.T = .ord sd.col ∧ rs.R = .ord rd.col ∧ rs.N = .slot (Scan.closingSlot sd) ∧
+      rs.P = rolesBefore H (.ord sd.col) ∧
+      rs.D = rolesBefore H (.ord rd.col) ++ [.ord rd.col] ++ rs.K ∧
+      rs.Q = ((H.roles.dropWhile (· != .ord sd.col)).drop 1).takeWhile
+        (· != .slot (Scan.closingSlot sd)) ∧
+      (∀ x ∈ rs.K, x ∈ rs.P) := by
+  simp only [roleSets, hsd, hrd, Option.bind_eq_bind, Option.bind_some] at hrs
+  cases hrs
+  refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, fun x hx => ?_⟩
+  have := (List.mem_filter.1 hx).1
+  exact List.dropWhile_subset _ (List.mem_of_mem_drop this)
+
+/-- L8.6f (helper): `D ⊆ P`. -/
+theorem D_sub_P_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) : ∀ x ∈ rs.D, x ∈ rs.P := by
+  obtain ⟨-, -, -, hP, hD, -, hK⟩ := rs_spec_E4 hsd hrd hrs
+  intro x hx
+  rw [hD] at hx
+  rcases List.mem_append.1 hx with hx | hx
+  · rcases List.mem_append.1 hx with hx | hx
+    · rw [hP]; exact mem_rolesBefore_trans_D4 hx (root_before_stop_D4 hsd hrd)
+    · rw [List.mem_singleton.1 hx, hP]; exact root_before_stop_D4 hsd hrd
+  · exact hK x hx
+
+/-- L8.6f (helper): every retained map is the identity before `R`. -/
+theorem fMap_preRoot_E4 {H : Forest} (hL : Scan.InL H) {rs : RoleSets}
+    (hrs : roleSets H = some rs) : ∀ (m : Nat), ∀ x ∈ rolesBefore H rs.R, fMap H m m x = x
+  | 0, _, _ => rfl
+  | m + 1, x, hx => by
+    obtain ⟨G₀, hG₀⟩ := Option.isSome_iff_exists.1
+      (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 m)
+    obtain ⟨G₁, hG₁⟩ := Option.isSome_iff_exists.1
+      (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 (m + 1))
+    exact (stage_succ hL hrs hG₀ hG₁).2.2.2.1 x hx
+
+/-- L8.6f (helper): the latest retained copy of `D` lies in `H[m]`. -/
+theorem fMap_D_mem_E4 {H : Forest} (hL : Scan.InL H) {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) {m : Nat} {G : Forest} (hG : expand H m = some G) :
+    ∀ x ∈ rs.D, fMap H m m x ∈ G.roles := by
+  obtain ⟨-, hR, -, -, hD, -, -⟩ := rs_spec_E4 hsd hrd hrs
+  intro x hx
+  cases m with
+  | zero =>
+    rw [(stage_zero hL hrs hG).1]
+    exact D_sub_P_E4 hsd hrd hrs x hx
+  | succ m =>
+    obtain ⟨G₀, hG₀⟩ := Option.isSome_iff_exists.1
+      (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 m)
+    obtain ⟨hroles, -, -, hpre, -⟩ := stage_succ hL hrs hG₀ hG
+    rw [hroles]
+    rw [hD] at hx
+    rcases List.mem_append.1 hx with hx | hx
+    · rcases List.mem_append.1 hx with hx | hx
+      · rw [← hR] at hx
+        rw [hpre x hx]
+        refine List.mem_append_left _ ((persist_prefix hL hrs hG₀).subset ?_)
+        exact D_sub_P_E4 hsd hrd hrs x (by rw [hD]; simp [hR ▸ hx])
+      · rw [List.mem_singleton.1 hx, ← hR]; simp
+    · exact List.mem_append_right _ (List.mem_cons_of_mem _
+        (List.mem_append_right _ (List.mem_map_of_mem hx)))
+
+/-- L8.6f (helper): a scan setup on given branch data, used only to read its role lists. -/
+def dummySetup_E4 (E : Forest) (cap : Option (Closure.AdmCap E)) (sd : Scan.StopData)
+    (rd : Scan.RootData) : ScanSetup.{0} where
+  E := E
+  cap := cap
+  sd := sd
+  rd := rd
+  ePre := fun _ => .aux 0
+  stopNm := .aux 0
+  qNm := fun _ => .aux 0
+  bankNm := fun _ => .aux 0
+  aux := []
+  asg := fun _ => 0
+
+/-- L8.6f (helper): `refVar` is either fresh or the latest copy of a role of `D` with origin `y`. -/
+theorem refVar_cases_E4 {V : Type} (E : Forest) (cap : Option (Closure.AdmCap E)) (H : Forest)
+    (rs : RoleSets) (m : Nat) (y : Role) :
+    refVar (V := V) E cap H rs m y = .ref y ∨
+      ∃ x ∈ rs.D, Closure.anchorOrigin E cap x = some y ∧
+        refVar (V := V) E cap H rs m y = .main (fMap H m m x) := by
+  unfold refVar
+  cases hf : rs.D.find? (fun x => Closure.anchorOrigin E cap x == some y) with
+  | none => exact Or.inl rfl
+  | some x =>
+    refine Or.inr ⟨x, List.mem_of_find?_eq_some hf, ?_, rfl⟩
+    simpa using List.find?_some hf
+
+/-- L8.6f (helper): on an origin of a role of `D`, `refVar` is the latest copy of that role
+(`χ` is injective). -/
+theorem refVar_origin_E4 {V : Type} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {sd : Scan.StopData} (hL : Scan.InL (Closure.anchor E cap))
+    (hsd : Scan.stopData (Closure.anchor E cap) = some sd) (rs : RoleSets) (m : Nat) {x y : Role}
+    (hx : x ∈ rs.D) (hy : Closure.anchorOrigin E cap x = some y) :
+    refVar (V := V) E cap (Closure.anchor E cap) rs m y =
+      .main (fMap (Closure.anchor E cap) m m x) := by
+  obtain ⟨-, -, hinj, -⟩ := Closure.anchorOrigin_prefix hL hsd
+  rcases refVar_cases_E4 (V := V) E cap (Closure.anchor E cap) rs m y with h | ⟨x', -, hy', h⟩
+  · exfalso
+    unfold refVar at h
+    cases hf : rs.D.find? (fun x => Closure.anchorOrigin E cap x == some y) with
+    | none =>
+      rw [List.find?_eq_none] at hf
+      exact hf x hx (by simpa using hy)
+    | some x' => rw [hf] at h; cases h
+  · rw [h, hinj x' x y hy' hy]
+
+/-- L8.6f (helper): pre-stop roles read the `E`-prefix through `refVar`. -/
+theorem qryVar_P_E4 {V : Type} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {sd : Scan.StopData} {rd : Scan.RootData} (hL : Scan.InL (Closure.anchor E cap))
+    (hsd : Scan.stopData (Closure.anchor E cap) = some sd)
+    (hrd : Scan.rootData (Closure.anchor E cap) = some rd) {rs : RoleSets}
+    (hrs : roleSets (Closure.anchor E cap) = some rs) (m : Nat) {x : Role} (hx : x ∈ rs.P) :
+    ∃ y, Closure.anchorOrigin E cap x = some y ∧ y ∈ ePrefix E cap sd ∧
+      qryVar (V := V) E cap (Closure.anchor E cap) rs m x =
+        refVar E cap (Closure.anchor E cap) rs m y := by
+  obtain ⟨hT, -, -, hP, -, hQ, -⟩ := rs_spec_E4 hsd hrd hrs
+  obtain ⟨T', hT', -, horig⟩ := Closure.anchorOrigin_prefix hL hsd
+  rw [hP] at hx
+  obtain ⟨y, hy, hyE, -⟩ := horig x hx
+  have hxT : x ≠ rs.T := by rw [hT]; exact ne_of_mem_rolesBefore_D4 hx
+  have hxQ : x ∉ rs.Q := by
+    have := not_query_D4 (S := dummySetup_E4 E cap sd rd)
+      hsd (x := x) (Or.inl hx)
+    rw [hQ]; exact this
+  refine ⟨y, hy, by simp [ePrefix, hT', hyE], ?_⟩
+  simp only [qryVar, hxT, hxQ, if_false, hy]
+
+/-- L8.6f (helper): a diagram over an append holds iff both parts hold. -/
+theorem holds_append_E4 {V : Type} (P : Prims.{u}) (a : V → Ordinal.{u}) (D₁ D₂ : Diagram V) :
+    (D₁ ++ D₂).Holds P a ↔ D₁.Holds P a ∧ D₂.Holds P a := by
+  simp only [Diagram.Holds, List.mem_append, or_imp, forall_and]
+
+/-- L8.6f (helper): a renamed diagram holds iff the original holds at the composite. -/
+theorem holds_map_E4 {V W : Type} (P : Prims.{u}) (f : V → W) (a : W → Ordinal.{u})
+    (D : Diagram V) : (Diagram.map f D).Holds P a ↔ D.Holds P (a ∘ f) := by
+  simp only [Diagram.Holds, Diagram.map, List.mem_map, forall_exists_index, and_imp,
+    forall_apply_eq_imp_iff₂]
+  refine forall₂_congr fun A _ => ?_
+  cases A with
+  | base b => exact baseAtom_holds_map' P f a b
+  | noReal D fr u L =>
+    simp only [Atom.map, Atom.Holds, Option.map_map, Function.comp_def]
+
+/-- L8.6f (helper): variables of a renamed diagram. -/
+theorem vars_map_E4 {V W : Type} (f : V → W) (D : Diagram V) :
+    (Diagram.map f D).vars = D.vars.map f := by
+  simp only [Diagram.vars, Diagram.map, List.flatMap_map, List.map_flatMap]
+  congr 1
+  funext A
+  cases A with
+  | base b => exact baseAtom_vars_map f b
+  | noReal D fr u L =>
+    simp only [Atom.map, Atom.vars, List.map_cons, List.map_filterMap]
+
+/-- L8.6f (helper): variables of an append. -/
+theorem vars_append_E4 {V : Type} (D₁ D₂ : Diagram V) : (D₁ ++ D₂).vars = D₁.vars ++ D₂.vars :=
+  List.flatMap_append
+
+/-- L8.6f (helper): the eight blocks of the stage problem. -/
+theorem stageDiagram_holds_E4 {V : Type} (P : Prims.{u}) (E : Forest)
+    (cap : Option (Closure.AdmCap E)) (sd : Scan.StopData) (rs : RoleSets) (Λ : Diagram V)
+    (ν : Role → V) (m : Nat) (G : Forest) (a : SVar V → Ordinal.{u}) :
+    (stageDiagram E cap sd rs Λ ν m G).Holds P a ↔
+      IsConfig P G (a ∘ SVar.main) ∧ Λ.Holds P (a ∘ SVar.lab) ∧
+      BaseHolds P (restrictTo (graph E) (ePrefix E cap sd))
+        (a ∘ refVar E cap (Closure.anchor E cap) rs m) ∧
+      BaseHolds P (queryAtoms (Closure.anchor E cap) rs)
+        (a ∘ qryVar E cap (Closure.anchor E cap) rs m) ∧
+      (∀ x ∈ rs.P, a (.lab (ν x)) = a (.main x)) ∧
+      (∀ x ∈ G.roles, a (.main x) < a .top) ∧
+      (∀ v ∈ Λ.vars, a (.lab v) < a .top) ∧
+      (∀ y ∈ ePrefix E cap sd, a (refVar E cap (Closure.anchor E cap) rs m y) < a .top) := by
+  simp only [stageDiagram, holds_append_E4, holds_ofBase, holds_map_E4, baseHolds_map', IsConfig,
+    and_assoc]
+  simp [BaseHolds, BaseAtom.Holds]
+
+/-- L8.6f (helper): the variables of the stage problem. -/
+theorem stageDiagram_vars_E4 {V : Type} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {sd : Scan.StopData} {rs : RoleSets} {Λ : Diagram V} {ν : Role → V} {m : Nat} {G : Forest}
+    {z : SVar V} (hz : z ∈ (stageDiagram E cap sd rs Λ ν m G).vars) :
+    (∃ x ∈ G.roles, z = .main x) ∨ (∃ v ∈ Λ.vars, z = .lab v) ∨
+      (∃ y ∈ ePrefix E cap sd, z = refVar E cap (Closure.anchor E cap) rs m y) ∨
+      (∃ x ∈ rs.P ++ [rs.T] ++ rs.Q, z = qryVar E cap (Closure.anchor E cap) rs m x) ∨
+      (∃ x ∈ rs.P, z = .lab (ν x)) ∨ (∃ x ∈ rs.P, z = .main x) ∨ z = .top := by
+  simp only [stageDiagram, vars_append_E4, ofBase_vars, vars_map_E4, baseVars_map, List.mem_append,
+    List.mem_map] at hz
+  rcases hz with ((((((⟨x, hx, rfl⟩ | ⟨v, hv, rfl⟩) | ⟨y, hy, rfl⟩) | ⟨x, hx, rfl⟩) | hz) | hz) | hz) | hz
+  · exact Or.inl ⟨x, (List.mem_flatMap.1 hx).elim fun a ⟨ha, hxa⟩ => graph_vars_roles_D4 ha x hxa, rfl⟩
+  · exact Or.inr (Or.inl ⟨v, hv, rfl⟩)
+  · obtain ⟨a, ha, hya⟩ := List.mem_flatMap.1 hy
+    exact Or.inr (Or.inr (Or.inl ⟨y, mem_of_restrictTo_D4 ha hya, rfl⟩))
+  · obtain ⟨a, ha, hxa⟩ := List.mem_flatMap.1 hx
+    exact Or.inr (Or.inr (Or.inr (Or.inl ⟨x, mem_of_restrictTo_D4 (List.mem_filter.1 ha).1 hxa,
+      rfl⟩)))
+  · simp only [baseVars, List.flatMap_map, List.mem_flatMap, BaseAtom.vars, List.mem_cons,
+      List.mem_nil_iff, or_false] at hz
+    obtain ⟨x, hx, rfl | rfl⟩ := hz
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨x, hx, rfl⟩))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨x, hx, rfl⟩)))))
+  · simp only [baseVars, List.flatMap_map, List.mem_flatMap, BaseAtom.vars, List.mem_cons,
+      List.mem_nil_iff, or_false] at hz
+    obtain ⟨x, hx, rfl | rfl⟩ := hz
+    · exact Or.inl ⟨x, hx, rfl⟩
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl)))))
+  · simp only [baseVars, List.flatMap_map, List.mem_flatMap, BaseAtom.vars, List.mem_cons,
+      List.mem_nil_iff, or_false] at hz
+    obtain ⟨v, hv, rfl | rfl⟩ := hz
+    · exact Or.inr (Or.inl ⟨v, hv, rfl⟩)
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl)))))
+  · simp only [baseVars, List.flatMap_map, List.mem_flatMap, BaseAtom.vars, List.mem_cons,
+      List.mem_nil_iff, or_false] at hz
+    obtain ⟨y, hy, rfl | rfl⟩ := hz
+    · exact Or.inr (Or.inr (Or.inl ⟨y, hy, rfl⟩))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl)))))
+
+/-- L8.6f (helper): the query lies between `T` and `N`. -/
+theorem Q_spec_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) :
+    H.roles = rs.P ++ rs.T :: (rs.Q ++ rs.N :: (H.roles.dropWhile (· != rs.N)).drop 1) ∧
+      (∀ x ∈ rs.Q, x ∈ rolesBefore H rs.N) ∧ rs.T ∉ rs.Q ∧ (∀ x ∈ rs.P, x ∉ rs.Q) := by
+  obtain ⟨hT, -, hN, hP, -, hQ, -⟩ := rs_spec_E4 hsd hrd hrs
+  let S0 : ScanSetup.{0} := dummySetup_E4 H none sd rd
+  have hsd0 : Scan.stopData S0.H = some S0.sd := hsd
+  obtain ⟨post, hr, -⟩ := stop_roles_D4 hsd0
+  have hQ0 : rs.Q = S0.queryRoles := hQ
+  have hr' : H.roles = rs.P ++ rs.T :: (rs.Q ++ rs.N :: post) := by
+    rw [hT, hN, hP, hQ0]; exact hr
+  have hnd := Tree.roles_nodup H
+  rw [hr'] at hnd
+  have hNnot : rs.N ∉ rs.P ++ rs.T :: rs.Q := by
+    intro h
+    have hnd' := hnd
+    rw [show rs.P ++ rs.T :: (rs.Q ++ rs.N :: post) = (rs.P ++ rs.T :: rs.Q) ++ rs.N :: post by
+      simp] at hnd'
+    exact (List.nodup_append.1 hnd').2.2 _ h _ List.mem_cons_self rfl
+  have hpost : (H.roles.dropWhile (· != rs.N)).drop 1 = post := by
+    rw [hr', show rs.P ++ rs.T :: (rs.Q ++ rs.N :: post) = (rs.P ++ rs.T :: rs.Q) ++ rs.N :: post by
+      simp, dropWhile_ne_D4 hNnot]
+    rfl
+  refine ⟨by rw [hpost]; exact hr', fun x hx => ?_, ?_, ?_⟩
+  · have hrb : rolesBefore H rs.N = rs.P ++ rs.T :: rs.Q := by
+      refine rolesBefore_of_decomp_D4 (rest := post) ?_
+      rw [hr']; simp
+    rw [hrb]; simp [hx]
+  · exact fun h => (List.nodup_cons.1 (List.nodup_append.1 hnd).2.1).1 (List.mem_append_left _ h)
+  · intro x hx hq
+    exact (List.nodup_append.1 hnd).2.2 x hx x
+      (List.mem_cons_of_mem _ (List.mem_append_left _ hq)) rfl
+
+/-- L8.6f (helper): `eν` of an `E`-prefix role is a label variable (the `lim` atom). -/
+theorem enu_mem_vars_E4 {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {α : Role → Ordinal.{u}} {sd : Scan.StopData} {rd : Scan.RootData} {V : Type}
+    {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
+    (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) :
+    ∀ y ∈ ePrefix E cap sd, eν y ∈ Λ.vars := by
+  intro y hy
+  obtain ⟨T', hT', -⟩ := Closure.anchorOrigin_prefix hyp.inL hyp.stop
+  simp only [ePrefix, hT'] at hy
+  have hyE : y ∈ E.roles := List.takeWhile_subset _ hy
+  have hlim : BaseAtom.lim y ∈ restrictTo (graph E) (rolesBefore E T') := by
+    refine List.mem_filter.2 ⟨?_, by simpa [BaseAtom.vars] using hy⟩
+    simp only [graph, List.mem_append]
+    exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hyE)))
+  exact List.mem_flatMap.2 ⟨_, hyp.pre T' _ hT' hlim, by simp [Atom.vars, BaseAtom.map,
+    BaseAtom.vars]⟩
+
+/-- L8.6f (helper): the `E`-prefix graph holds at the label values `b ∘ eν`. -/
+theorem ePrefix_holds_E4 {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {α : Role → Ordinal.{u}} {sd : Scan.StopData} {rd : Scan.RootData} {V : Type}
+    {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
+    (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) :
+    BaseHolds P (restrictTo (graph E) (ePrefix E cap sd)) (b ∘ eν) := by
+  intro a ha
+  obtain ⟨T', hT', -⟩ := Closure.anchorOrigin_prefix hyp.inL hyp.stop
+  simp only [ePrefix, hT'] at ha
+  have := hyp.holds _ (hyp.pre T' a hT' ha)
+  exact (baseAtom_holds_map' P eν b a).1 this
+
+/-- L8.6f (helper): a variable of the query block is never a label variable. -/
+theorem qryVar_ne_lab_E4 {V : Type} (E : Forest) (cap : Option (Closure.AdmCap E)) (H : Forest)
+    (rs : RoleSets) (m : Nat) (x : Role) (v : V) : qryVar E cap H rs m x ≠ .lab v := by
+  unfold qryVar
+  split_ifs
+  · simp
+  · simp
+  · cases Closure.anchorOrigin E cap x with
+    | none => simp
+    | some y =>
+      rcases refVar_cases_E4 (V := V) E cap H rs m y with h | ⟨_, _, _, h⟩ <;> simp [h]
+
+/-- L8.6f (helper): label variables of the stage problem are variables of `Λ`. -/
+theorem lab_vars_E4 {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {α : Role → Ordinal.{u}} {sd : Scan.StopData} {rd : Scan.RootData} {V : Type}
+    {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
+    (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) {rs : RoleSets}
+    (hrs : roleSets (Closure.anchor E cap) = some rs) {m : Nat} {G : Forest} {v : V}
+    (hv : SVar.lab v ∈ (stageDiagram E cap sd rs Λ ν m G).vars) : v ∈ Λ.vars := by
+  obtain ⟨-, -, -, hP, -, -, -⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  rcases stageDiagram_vars_E4 hv with ⟨x, -, h⟩ | ⟨v', hv', h⟩ | ⟨y, -, h⟩ | ⟨x, -, h⟩ |
+    ⟨x, hx, h⟩ | ⟨x, -, h⟩ | h
+  · cases h
+  · cases h; exact hv'
+  · rcases refVar_cases_E4 (V := V) E cap (Closure.anchor E cap) rs m y with h' | ⟨_, _, _, h'⟩ <;>
+      rw [h'] at h <;> cases h
+  · exact absurd h.symm (qryVar_ne_lab_E4 _ _ _ _ _ _ _)
+  · cases h; rw [hP] at hx; exact nu_mem_vars hyp x hx
+  · cases h
+  · cases h
+
+/-- L8.6f (helper): under the stage invariant the reference chart reads the label values. -/
+theorem refVar_val_E4 {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {α : Role → Ordinal.{u}} {sd : Scan.StopData} {rd : Scan.RootData} {V : Type}
+    {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
+    (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) {rs : RoleSets}
+    (hrs : roleSets (Closure.anchor E cap) = some rs) {m : Nat} {G : Forest}
+    {g : Role → Ordinal.{u}} {b' : V → Ordinal.{u}}
+    (hinv : StageInv P (Closure.anchor E cap) rs α Λ ν b Fix m G g b') (t : Ordinal.{u})
+    (y : Role) :
+    stageSigma α g b' (b ∘ eν) t (refVar E cap (Closure.anchor E cap) rs m y) = b (eν y) := by
+  obtain ⟨-, hR, -, hP, hD, -, hK⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨-, -, -, hgR, hgK, hgpre, -⟩ := hinv
+  rcases refVar_cases_E4 (V := V) E cap (Closure.anchor E cap) rs m y with h | ⟨x, hx, hy, h⟩
+  · rw [h]; rfl
+  · rw [h]
+    show g _ = _
+    have hxP := D_sub_P_E4 hyp.stop hyp.root hrs x hx
+    rw [hP] at hxP
+    rw [hyp.origin x hxP y hy, hyp.bind x hxP]
+    rw [hD] at hx
+    rcases List.mem_append.1 hx with hx | hx
+    · rcases List.mem_append.1 hx with hx | hx
+      · rw [← hR] at hx
+        rw [fMap_preRoot_E4 hyp.inL hrs m x hx]; exact hgpre x hx
+      · rw [List.mem_singleton.1 hx, ← hR]; exact hgR
+    · exact hgK x hx
+
+/-- L8.6f (helper): the query block reads the original values `α` at head value `α T`. -/
+theorem qryVar_val_E4 {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {α : Role → Ordinal.{u}} {sd : Scan.StopData} {rd : Scan.RootData} {V : Type}
+    {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
+    (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) {rs : RoleSets}
+    (hrs : roleSets (Closure.anchor E cap) = some rs) {m : Nat} {G : Forest}
+    {g : Role → Ordinal.{u}} {b' : V → Ordinal.{u}}
+    (hinv : StageInv P (Closure.anchor E cap) rs α Λ ν b Fix m G g b') {x : Role}
+    (hx : x ∈ rs.P ++ [rs.T] ++ rs.Q) :
+    stageSigma α g b' (b ∘ eν) (α rs.T) (qryVar E cap (Closure.anchor E cap) rs m x) = α x := by
+  obtain ⟨-, -, -, hP, -, -, -⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨-, -, hTQ, hPQ⟩ := Q_spec_E4 hyp.stop hyp.root hrs
+  simp only [List.mem_append, List.mem_singleton] at hx
+  rcases hx with (hx | rfl) | hx
+  · obtain ⟨y, hy, -, hq⟩ := qryVar_P_E4 (V := V) hyp.inL hyp.stop hyp.root hrs m hx
+    rw [hq, refVar_val_E4 hyp hrs hinv]
+    rw [hP] at hx
+    rw [hyp.origin x hx y hy, hyp.bind x hx]
+  · simp [qryVar, stageSigma]
+  · have hxT : x ≠ rs.T := fun h => hTQ (h ▸ hx)
+    simp [qryVar, hxT, hx, stageSigma]
+
 /-- L8.6f: control transport of the whole stage problem from `t = W` to `t = p`, captured into
 `J_W` (txt:1281-1287). -/
 theorem stage_transport (I : Interface.{u}) {n : Nat} {E : Forest}
@@ -4070,7 +4436,82 @@ theorem stage_transport (I : Interface.{u}) {n : Nat} {E : Forest}
     (stageDiagram E cap sd rs Λ ν m G).RealizableBelow I.toPrims
       (fun z => stageFixed (Closure.anchor E cap) rs Fix z ∨ z = SVar.top)
       (stageSigma α g b' (b ∘ eν) (α rs.R)) (α rs.T) := by
-  sorry
+  classical
+  obtain ⟨hT, hR, hN, hP, -, -, -⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨-, hQN, -, -⟩ := Q_spec_E4 hyp.stop hyp.root hrs
+  have hinv' := hinv
+  obtain ⟨hG, hcfg, hgT, -, -, hgpre, hbfix, hbP, hΛ, hbT, -⟩ := hinv'
+  obtain ⟨hedge, hRT, hTN⟩ := control_edge I hyp.inL.1 hyp.stop hyp.root hyp.config
+  rw [← hT, ← hR, ← hN] at hedge
+  rw [← hT, ← hR] at hRT
+  rw [← hT, ← hN] at hTN
+  have hRmem : rs.R ∈ (Closure.anchor E cap).roles := by
+    rw [hR]; exact List.takeWhile_subset _ (root_before_stop_D4 hyp.stop hyp.root)
+  have hTmem : rs.T ∈ (Closure.anchor E cap).roles := by
+    rw [hT]; exact Scan.stopData_col_mem hyp.stop
+  have hNmem : rs.N ∈ (Closure.anchor E cap).roles := by
+    rw [hN]; exact slot_mem_roles (Scan.rootData_col hyp.stop hyp.root).2.2.1
+  set σ := stageSigma α g b' (b ∘ eν) (α rs.T) with hσ
+  have hupd : Function.update σ .top (α rs.T) = σ := Function.update_eq_self _ _
+  have hupd' : Function.update σ .top (α rs.R) = stageSigma α g b' (b ∘ eν) (α rs.R) := by
+    funext z
+    cases z <;> simp [Function.update, hσ, stageSigma]
+  -- all values of the current realization are below `α N`
+  have hval : ∀ z ∈ (stageDiagram E cap sd rs Λ ν m G).vars, σ z < α rs.N := by
+    intro z hz
+    rcases stageDiagram_vars_E4 hz with ⟨x, hx, rfl⟩ | ⟨v, hv, rfl⟩ | ⟨y, hy, rfl⟩ |
+      ⟨x, hx, rfl⟩ | ⟨x, hx, rfl⟩ | ⟨x, hx, rfl⟩ | rfl
+    · exact (hgT x hx).trans hTN
+    · exact (hbT v hv).trans hTN
+    · rw [hσ, refVar_val_E4 hyp hrs hinv]
+      exact (hyp.below _ (enu_mem_vars_E4 hyp y hy)).trans (hT ▸ hTN)
+    · rw [hσ, qryVar_val_E4 hyp hrs hinv hx]
+      simp only [List.mem_append, List.mem_singleton] at hx
+      rcases hx with (hx | rfl) | hx
+      · exact (config_lt_of_before hyp.config hTmem (by rw [hT, ← hP]; exact hx)).trans hTN
+      · exact hTN
+      · exact config_lt_of_before hyp.config hNmem (hQN x hx)
+    · show b' (ν x) < _
+      rw [hP] at hx
+      exact (hbT _ (nu_mem_vars hyp x hx)).trans hTN
+    · show g x < _
+      exact (hgT x ((persist_prefix hyp.inL hrs hG).subset hx)).trans hTN
+    · exact hTN
+  have hhold : (stageDiagram E cap sd rs Λ ν m G).Holds I.toPrims σ := by
+    rw [stageDiagram_holds_E4]
+    refine ⟨hcfg, hΛ, ?_, ?_, fun x hx => hbP x hx, hgT, hbT, fun y hy => ?_⟩
+    · refine (baseHolds_congr _ _ _ _ fun y _ => ?_).2 (ePrefix_holds_E4 hyp)
+      exact refVar_val_E4 hyp hrs hinv _ y
+    · refine (baseHolds_congr _ _ _ _ fun x hx => ?_).2
+        (fun a ha => hyp.config a (List.mem_filter.1 (List.mem_filter.1 ha).1).1)
+      obtain ⟨a, ha, hxa⟩ := List.mem_flatMap.1 hx
+      exact qryVar_val_E4 hyp hrs hinv (mem_of_restrictTo_D4 (List.mem_filter.1 ha).1 hxa)
+    · show σ _ < α rs.T
+      rw [hσ, refVar_val_E4 hyp hrs hinv, hT]
+      exact hyp.below _ (enu_mem_vars_E4 hyp y hy)
+  have hfix : ∀ z ∈ (stageDiagram E cap sd rs Λ ν m G).vars,
+      stageFixed (Closure.anchor E cap) rs Fix z → σ z < α rs.R := by
+    intro z hz hF
+    cases z with
+    | main x =>
+      show g x < _
+      rw [hgpre x hF]
+      exact config_lt_of_before hyp.config hRmem hF
+    | lab v =>
+      show b' v < _
+      rw [hbfix v hF, hR]
+      exact hyp.fixBelow v (lab_vars_E4 hyp hrs hz) hF
+    | ref y => exact absurd hF id
+    | qry x => exact absurd hF id
+    | top => exact absurd hF id
+  have key : (stageDiagram E cap sd rs Λ ν m G).RealizableBelow I.toPrims
+      (fun z => stageFixed (Closure.anchor E cap) rs Fix z ∨ z = SVar.top)
+      (Function.update σ .top (α rs.T)) (α rs.N) := by
+    rw [hupd]
+    exact ⟨σ, fun _ _ => rfl, hval, hhold⟩
+  have := I.transport (stageDiagram E cap sd rs Λ ν m G) (stageFixed (Closure.anchor E cap) rs Fix)
+    σ .top hedge (fun h => h) hfix key
+  rwa [hupd'] at this
 
 /-- L8.6g: the scan setup of the closed-root-owner case of stage `m + 1`, built from a
 transported realization `a` (txt:1295-1304): transported chart `role 0`, query `role 1`, bank
