@@ -5840,6 +5840,46 @@ theorem hosts_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : In
       rw [Nat.zero_mul, Nat.add_zero, shift_zero] at this
       exact this
 
+/-- Entry-level classification of an ordinary output `B = A[n]` (reusable form of T3.2i at the
+level of entries): every entry of `B` is an unchanged context entry, a context route container
+whose height is filled with the layers, or (in the hole) a phase-`ψ` copy of a template entry of
+`A` (`Orig_E3`: parent and number shifted by `ψ d`, height shifted, or filled for route
+containers). -/
+theorem ord_entry_origin_E3 {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hB : expand A n = some B) {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) {e' : EntryAddr} {y : Nat × Forest} (hy : B.entryAt e' = some y) :
+    (¬ InHole_E3 sd.depth A e'.col ∧ ¬ e'.heightPath <+: sd.col.path ∧ A.entryAt e' = some y) ∨
+    (e'.heightPath <+: sd.col.path ∧ ∃ x, A.entryAt e' = some x ∧
+      y = (x.1, replaceAt 0 0 (zs_E3 A sd rd n 0) (sd.depth - e'.col.path.length - 1) x.2)) ∨
+    (InHole_E3 sd.depth A e'.col ∧ ∃ e ψ, ψ ≤ n ∧ Tmpl_E3 A sd rd e ∧
+      Orig_E3 A sd rd n ψ e y (e'.col.num 0)) := by
+  obtain ⟨sd', rd', hsd', hrd', hBeq, -⟩ := ord_output_D3 hL hk hB
+  rw [hsd] at hsd'; cases hsd'
+  rw [hrd] at hrd'; cases hrd'
+  rw [ordZ_eq_zs_E3] at hBeq
+  subst hBeq
+  obtain ⟨hrpA, -⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, hNA⟩ := stop_route_top_D3 hsd
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n 0) sd.depth A hRA e'
+  by_cases hh : InHole_E3 sd.depth A e'.col
+  · right; right
+    obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hy
+    have hE := zs_E1_E3 (n := n) hL hsd hrd n le_rfl
+    rw [Nat.sub_self] at hE
+    obtain ⟨e, ψ, -, hψ2, -, ht, ho⟩ := hE _ _ hy
+    refine ⟨hh, e, ψ, hψ2, ht, ?_⟩
+    rw [h2 0, Nat.zero_add, hNA]
+    simpa using ho
+  · by_cases hr : IsRoute_E3 sd.depth A e'
+    · right; left
+      rw [hPu.2.1 hh hr] at hy
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+      exact ⟨by rw [IsRoute_E3, hrpA] at hr; exact hr, x, hx, rfl⟩
+    · left
+      rw [hPu.2.2 hh hr] at hy
+      exact ⟨hh, by rw [IsRoute_E3, hrpA] at hr; exact hr, hy⟩
+
 -- T3.2m (txt:350-362): every owner return of an ordinary output has an old origin; the key
 -- words of both heights are the phase images of the old ones, changed only by decreases whose
 -- first changes respect the containment offset (or the lower height is unchanged and ends
