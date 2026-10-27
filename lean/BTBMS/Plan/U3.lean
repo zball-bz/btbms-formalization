@@ -9514,11 +9514,83 @@ theorem scan_frame_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j 
     | owner => cases hw
     | inner r => cases hw
 
+/-- L7.6a step 3 helper: `χ` carries the slot of query entry `j` to entry `j` of `cE`. -/
+theorem scan_origin_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : Nat}
+    (hj : j < S.sd.Q.length) :
+    Closure.anchorOrigin S.E S.cap (.slot ⟨S.sd.col, j⟩) = some (.slot ⟨S.cE, j⟩) := by
+  obtain ⟨⟨hstd, -, -, hsd, -, -, -⟩, -⟩ := hS
+  simp only [ScanSetup.cE, ScanSetup.TE, ScanSetup.chi]
+  simp only [ScanSetup.H] at hsd
+  revert hsd
+  generalize S.cap = cap
+  intro hsd
+  cases cap with
+  | none => simp [anchorD, Closure.anchorOrigin]
+  | some w =>
+    obtain ⟨-, -, hlen, hT, hq⟩ := Closure.admCap_query (Closure.std_inL hstd) w hsd
+    obtain ⟨ho, -⟩ := hq j (hlen ▸ hj)
+    have hTd : anchorD S.E (some w) (.ord S.sd.col) = .ord w.col := by
+      simp [anchorD, Closure.anchorOrigin, hT]
+    simp only [hTd, Closure.anchorOrigin, ho]
+
 /-- L7.6a steps 2–3: the scan record at a reached state is admitted. -/
 theorem scanPacket_admitted_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j) :
     (S.scanRecord i j).Admitted := by
-  sorry
+  have hS' := hS
+  obtain ⟨⟨hstd, hInL, hstep, hsd, hrd, hcurlt, hclosed⟩, -⟩ := hS'
+  obtain ⟨hi, hj⟩ := reach_idx_E8 hij
+  obtain ⟨hb, -, hnum, hentE, -⟩ := scan_target_E8 S hS (i := i) hj
+  have horig := scan_origin_E8 S hS hj
+  obtain ⟨-, -, -, -, -, hmem, hcur, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨-, hrnum, -, -, -, -, hlast⟩ := Scan.rootData_path hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  have hiR : i < colR.length := by simpa [rootLenOf, hcolR] using hi
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  have hRi : colR[i]? = some colR[i] := List.getElem?_eq_getElem hiR
+  have hentH : S.H.entryAt ⟨S.rd.col, i⟩ = some colR[i] := by
+    simp [Tree.entryAt, hcolR, hRi]
+  have haH : (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs :=
+    (Tree.mem_entryAddrs_iff _ _).2 (by rw [hentH]; rfl)
+  obtain ⟨htt, haF, hhF, -, -, -⟩ := Tree.truncAfter_spec S.H _ haH
+  obtain ⟨k, hk⟩ := Scan.truncAfter_safePrefix (E := S.H) haH
+  have hic : i ≤ S.rd.cursor := by
+    rw [hcur]; exact Scan.trace_fst_le_cursor _ _ hij.1
+  refine ⟨hstd, ?_, haF, ?_, htt, ?_, ?_⟩
+  · show (S.scanRecord i j).b ∈ S.E.entryAddrs
+    rw [hb, Tree.mem_entryAddrs_iff, hentE]; rfl
+  · show Scan.InL (S.H.truncAfter ⟨S.rd.col, i⟩)
+    rw [hk]; exact Closure.inL_safePrefix hInL k
+  · -- the strict source: `y_j < x_i`
+    obtain ⟨-, x, y, hx, hy, hxy⟩ := hij
+    have hy' : (S.scanRecord i j).tgtKey = y := by
+      have h1 := scanRecord_tgtHeight S hS (i := i) hj
+      show relKey ((S.scanRecord i j).b.col.num 0) (S.scanRecord i j).tgtHeight = y
+      rw [h1, hb, hnum, ← (Scan.stopData_spec hsd).2.2.1]
+      simp only [Scan.queryKeys, List.getElem?_map, hQj, Option.map_some,
+        Option.some.injEq] at hy
+      simp [hQj, hy]
+    have hx' : (S.scanRecord i j).srcKey = x := by
+      show relKey (S.rd.col.num 0) (((S.H.truncAfter ⟨S.rd.col, i⟩).heightAt ⟨S.rd.col, i⟩).getD
+        Tree.empty) = x
+      rw [hhF]
+      simp only [Scan.rootKeys, hcolR, Option.getD_some, List.getElem?_map, hRi, Option.map_some,
+        Option.some.injEq] at hx
+      simp [Tree.heightAt, hentH, hx]
+    rw [hy', hx']; exact hxy
+  · show SrcRecord.AnchorAt S.E S.cap i j (S.scanRecord i j).b ∧
+      SrcRecord.anchorSrc S.E S.cap i = some ⟨S.rd.col, i⟩ ∧
+      S.H.truncAfter ⟨S.rd.col, i⟩ = (Closure.anchor S.E S.cap).truncAfter ⟨S.rd.col, i⟩
+    refine ⟨⟨S.sd, S.rd, hstep, hsd, hrd, by rw [hb]; exact horig, hij, ?_⟩, ?_, rfl⟩
+    · intro hc
+      have h1 := hlast _ hc
+      simp only [rootLenOf] at h1 hi hcurlt
+      have : i = S.rd.cursor := by
+        simp only [ScanSetup.rootLen, rootLenOf] at hcurlt
+        omega
+      exact hclosed (this ▸ hc)
+    · show (Scan.rootData S.H).map (fun rd => (⟨rd.col, i⟩ : EntryAddr)) = _
+      rw [hrd]; rfl
 
 /-- L7.6a steps 4–10: the scan packet is valid. -/
 theorem scanPacket_valid_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
@@ -9554,7 +9626,7 @@ theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i 
   have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
   have hkey : pk.rk.tgtKey = ((Scan.queryKeys S.sd)[j]?).getD Tree.empty := by
     have h1 := scanRecord_tgtHeight S hS (i := i) hj
-    show relKey (S.scanRecord i j).b.col.num 0 (S.scanRecord i j).tgtHeight = _
+    show relKey ((S.scanRecord i j).b.col.num 0) (S.scanRecord i j).tgtHeight = _
     rw [h1, hb, hnum, ← (Scan.stopData_spec hS.1.2.2.2.1).2.2.1]
     simp [Scan.queryKeys, List.getElem?_map, hQj]
   have hsel : pk.rk.tgtSel = ((S.sd.Q[j]?).map Prod.fst).getD 0 := by
