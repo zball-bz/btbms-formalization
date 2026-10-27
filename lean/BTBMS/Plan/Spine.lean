@@ -976,11 +976,8 @@ theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAd
 -- `Plan/U1.lean` (section `Words`), after the ν and cursor lemmas their proofs need (brief rule 5;
 -- names and statements unchanged; nothing in between uses them).
 
--- provides: U1, L2.2 (path nesting)
-theorem path_nesting {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks) (c : ColAddr)
-    {W Z : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x)
-    (hZ : Z.Pairwise fun x y => y ≤ x) (hWZ : W ≤ Z) {x p : Nat} (h : Edge E ks c Z x p) :
-    Path E ks c W x p := by sorry
+-- `path_nesting` (provides: U1, L2.2) moved to `Plan/U1.lean` after `Scan.nestPred_all`, whose
+-- statement its proof needs (brief rule 5; statement unchanged).
 
 end Scan
 
