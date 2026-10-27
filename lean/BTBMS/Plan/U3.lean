@@ -1934,6 +1934,129 @@ theorem cap_legal {E : Forest} (hE : IsStd E) {c : ColAddr} {k p : Nat} (hc : c 
   exact ⟨hKV, hKI, Closure.upward_condS hV hI hH hP hup hKV hKI, litCap_decA_D8 hL hc hup hpath,
     Closure.litCap_ordinary hI hup hKV hKI⟩
 
+section FirstDiffCap_D8
+open Scan
+
+/-- L4.2 helper: equal cuts before entry `k` of column `j` give equal first `k` entries. -/
+theorem cutBefore_col_D8 {α : Type} (j k : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (X Y : Tree α) (cx cy : List (α × Tree α)),
+    cutBefore ρ j (some k) X = cutBefore ρ j (some k) Y → X.colAt ⟨ρ, j⟩ = some cx →
+    Y.colAt ⟨ρ, j⟩ = some cy → cx.take k = cy.take k
+  | [], .node xs, .node ys, cx, cy, hcut, hx, hy => by
+    simp only [cutBefore, Tree.node.injEq] at hcut
+    simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at hx hy
+    have := congrArg List.getLast? hcut
+    simp only [List.getLast?_append, List.getLast?_singleton, Option.some_or, hx, hy,
+      Option.getD_some, Option.some.injEq] at this
+    exact this
+  | (ci, ii) :: rest, .node xs, .node ys, cx, cy, hcut, hx, hy => by
+    rw [Tree.colAt_cons] at hx hy
+    simp only [Tree.cols] at hx hy
+    cases hxc : xs[ci]? with
+    | none => rw [hxc] at hx; simp at hx
+    | some colx =>
+      cases hyc : ys[ci]? with
+      | none => rw [hyc] at hy; simp at hy
+      | some coly =>
+        rw [hxc, Option.bind_some] at hx
+        rw [hyc, Option.bind_some] at hy
+        cases hxe : colx[ii]? with
+        | none => rw [hxe] at hx; simp at hx
+        | some ex =>
+          cases hye : coly[ii]? with
+          | none => rw [hye] at hy; simp at hy
+          | some ey =>
+            obtain ⟨lx, hX⟩ := ex
+            obtain ⟨ly, hY⟩ := ey
+            rw [hxe, Option.bind_some] at hx
+            rw [hye, Option.bind_some] at hy
+            simp only [cutBefore, hxc, hyc, hxe, hye, Tree.node.injEq] at hcut
+            have := congrArg List.getLast? hcut
+            simp only [List.getLast?_append, List.getLast?_singleton, Option.some_or,
+              Option.some.injEq] at this
+            have := congrArg List.getLast? this
+            simp only [List.getLast?_append, List.getLast?_singleton, Option.some_or,
+              Option.some.injEq, Prod.mk.injEq] at this
+            exact cutBefore_col_D8 j k rest hX hY cx cy this.2 hx hy
+
+/-- L4.2 helper: `labelAbs t` turns a source label above a target label into a larger parent. -/
+theorem label_lt_D8 {r t q q' : Nat}
+    (h : keyLabelCmp (relLabel t q) (relLabel r q') = .lt) :
+    q < labelAbs t (relLabel r q') := by
+  unfold relLabel at h ⊢
+  by_cases hq : q < t <;> by_cases hq' : q' < r <;>
+    simp only [hq, hq', if_true, if_false, keyLabelCmp, labelAbs] at h ⊢
+  · rw [show compare false false = Ordering.eq from rfl, Ordering.eq_then] at h
+    exact Nat.compare_eq_lt.1 h
+  · omega
+  · rw [show compare true false = Ordering.gt from rfl] at h
+    exact absurd h (by simp [Ordering.then])
+  · rw [show compare true true = Ordering.eq from rfl, Ordering.eq_then] at h
+    have := Nat.compare_eq_lt.1 h; omega
+
+/-- L4.2 helper: the cap of a first difference is upward. -/
+theorem capAt_upward_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) : Closure.IsUpward rk.E c k p := by
+  obtain ⟨-, -, hcap⟩ := firstDiff_spec h
+  obtain ⟨ρ, hρ, hcut, hcol, halt⟩ := hcap c k p hfd
+  have hb : rk.E.heightAt rk.b = some rk.tgtHeight := by
+    have hb := h.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at hb
+    obtain ⟨x, hx⟩ := hb
+    simp [SrcRecord.tgtHeight, Tree.heightAt, hx]
+  have hcE : rk.E.colAt c = rk.tgtHeight.colAt ⟨ρ, c.col⟩ := by
+    have : c = ⟨rk.b.heightPath ++ ρ, c.col⟩ := by cases c; simp_all
+    rw [this, colAt_heightPath_D8 hb]
+  have htk : rk.tgtKey.colAt ⟨ρ, c.col⟩ =
+      (rk.tgtHeight.colAt ⟨ρ, c.col⟩).map (Tree.mapCol (relLabel (rk.b.col.num 0))) := by
+    rw [SrcRecord.tgtKey, relKey_eq_map, colAt_map_D8]
+  have hsk : ∀ d, rk.srcKey.entryAt d = (rk.srcHeight.entryAt d).map
+      fun x => (relLabel (rk.a.col.num 0) x.1, x.2.map (relLabel (rk.a.col.num 0))) := by
+    intro d; rw [SrcRecord.srcKey, relKey_eq_map, entryAt_map_D8]
+  have htke : ∀ d, rk.tgtKey.entryAt d = (rk.tgtHeight.entryAt d).map
+      fun x => (relLabel (rk.b.col.num 0) x.1, x.2.map (relLabel (rk.b.col.num 0))) := by
+    intro d; rw [SrcRecord.tgtKey, relKey_eq_map, entryAt_map_D8]
+  obtain ⟨colB, hcolB⟩ : ∃ col, rk.tgtHeight.colAt ⟨ρ, c.col⟩ = some col := by
+    rw [htk] at hcol
+    simpa [Option.isSome_iff_exists] using hcol
+  unfold Closure.IsUpward
+  rw [hcE, hcolB]
+  simp only
+  rcases halt with ⟨hnone, l, hs, hsome, hp⟩ | ⟨l₁, h₁, l₂, h₂, h1, h2, hlt, hp⟩
+  · -- the target column ends at `k`
+    rw [htke] at hnone
+    have hBk : colB[k]? = none := by
+      simpa [Tree.entryAt, hcolB] using hnone
+    rw [hBk]
+    simp only
+    rw [hsk] at hsome
+    obtain ⟨⟨q', H'⟩, hA, -⟩ := Option.map_eq_some_iff.1 hsome
+    obtain ⟨colA, hcolA, hAk⟩ := Tree.colAt_of_entryAt hA
+    have hcolA' : rk.srcKey.colAt ⟨ρ, c.col⟩ = some (Tree.mapCol (relLabel (rk.a.col.num 0)) colA) := by
+      rw [SrcRecord.srcKey, relKey_eq_map, colAt_map_D8, hcolA]; rfl
+    have htk' : rk.tgtKey.colAt ⟨ρ, c.col⟩ = some (Tree.mapCol (relLabel (rk.b.col.num 0)) colB) := by
+      rw [htk, hcolB]; rfl
+    have htake := cutBefore_col_D8 c.col k ρ _ _ _ _ hcut htk' hcolA'
+    have hl1 := congrArg List.length htake
+    rw [Scan.treeMapCol_eq_map, Scan.treeMapCol_eq_map, List.length_take, List.length_take,
+      List.length_map, List.length_map] at hl1
+    have hAl : k < colA.length := (List.getElem?_eq_some_iff.1 hAk).1
+    have hBl : colB.length ≤ k := List.getElem?_eq_none_iff.1 hBk
+    omega
+  · rw [htke] at h1
+    rw [hsk] at h2
+    obtain ⟨⟨q, H⟩, hB, hBl⟩ := Option.map_eq_some_iff.1 h1
+    obtain ⟨⟨q', H'⟩, hA, hAl⟩ := Option.map_eq_some_iff.1 h2
+    simp only [Prod.mk.injEq] at hBl hAl
+    have hBk : colB[k]? = some (q, H) := by simpa [Tree.entryAt, hcolB] using hB
+    rw [hBk]
+    simp only
+    rw [hp, ← hAl.1]
+    rw [← hBl.1, ← hAl.1] at hlt
+    exact label_lt_D8 hlt
+
+end FirstDiffCap_D8
+
 -- provides: U3, L4.2 (the spine's `firstDiff_cap`†; consumer: U5 L8.8 Case 3)
 theorem firstDiff_cap {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
     (hfd : rk.firstDiff = .capAt c k p) :
@@ -1943,7 +2066,16 @@ theorem firstDiff_cap {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Na
     Scan.CondAK K (Scan.capKeys K (Scan.routeCols K)) ∧
     Scan.stepKind K = some .ordinary ∧
     Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k)
-      (Scan.cutStart rk.E c k) p := by sorry
+      (Scan.cutStart rk.E c k) p := by
+  intro K
+  obtain ⟨hbc, hc⟩ := capAt_col_D8 h hfd
+  have hup := capAt_upward_D8 h hfd
+  have hpath := firstDiff_path h hfd
+  have hdepth : c.path ≠ [] := by
+    obtain ⟨tl, htl⟩ := hbc
+    rw [← htl, EntryAddr.heightPath]; simp
+  obtain ⟨h1, h2, h3, h4, h5⟩ := cap_legal h.1 hc hdepth hup hpath
+  exact ⟨hbc, hc, hup, h1, h2, h3, h4, h5, hpath⟩
 
 /-! ## L4.3  Source reduction -/
 
