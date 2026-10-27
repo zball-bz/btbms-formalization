@@ -22,52 +22,81 @@ namespace BTBMS
 
 /-! ## D1.1a, D1.4a — lawful comparators, the order on forests and keys -/
 
+-- D1.1a items 1–5 (`Tree.cmp_eq_swap`, `Tree.cmp_self`, `Tree.eq_of_cmp_eq`,
+-- `Tree.cmp_isLE_trans` and the four `Tree.inst…Cmp` instances) and D1.4a item 2
+-- (`keyLabelCmp_transCmp`, `keyLabelCmp_lawfulEqCmp`) moved to `Plan/Spine.lean`, before
+-- `Forest.instLinearOrder`, whose proof fields need them (brief rule 5; statements unchanged).
+
 namespace Tree
 
 variable {α β : Type}
 
-/-- D1.1a: `Tree.cmp c` is oriented when `c` is (proved by mutual structural induction through
-`cmp`/`cmpCols`/`cmpCol`). -/
-theorem cmp_eq_swap (c : α → α → Ordering) [Std.OrientedCmp c] (s t : Tree α) :
-    cmp c s t = (cmp c t s).swap := by sorry
-
-/-- D1.1a: `Tree.cmp c` is reflexive when `c` is. -/
-theorem cmp_self (c : α → α → Ordering) [Std.ReflCmp c] (s : Tree α) : cmp c s s = .eq := by
-  sorry
-
-/-- D1.1a: `Tree.cmp c` decides equality when `c` does. -/
-theorem eq_of_cmp_eq (c : α → α → Ordering) [Std.LawfulEqCmp c] {s t : Tree α}
-    (h : cmp c s t = .eq) : s = t := by sorry
-
--- U1-verify: changed
-/-- D1.1a: `Tree.cmp c` is transitive when `c` is. Proved together with the two strict variants
-(`lt` then `isLE` gives `lt`; `isLE` then `lt` gives `lt`) in one mutual structural induction on
-`s`; transitivity of `isLE` alone is not inductive (U1 doc, D1.1a item 4). -/
-theorem cmp_isLE_trans (c : α → α → Ordering) [Std.TransCmp c] {s t w : Tree α}
-    (h₁ : (cmp c s t).isLE = true) (h₂ : (cmp c t w).isLE = true) : (cmp c s w).isLE = true := by
-  sorry
-
-instance instOrientedCmp (c : α → α → Ordering) [Std.OrientedCmp c] :
-    Std.OrientedCmp (cmp c) := ⟨fun {a b} => cmp_eq_swap c a b⟩
-
-instance instTransCmp (c : α → α → Ordering) [Std.TransCmp c] : Std.TransCmp (cmp c) :=
-  { isLE_trans := fun h₁ h₂ => cmp_isLE_trans c h₁ h₂ }
-
-instance instReflCmp (c : α → α → Ordering) [Std.ReflCmp c] : Std.ReflCmp (cmp c) :=
-  ⟨fun {a} => cmp_self c a⟩
-
-instance instLawfulEqCmp (c : α → α → Ordering) [Std.LawfulEqCmp c] :
-    Std.LawfulEqCmp (cmp c) := { eq_of_compare := fun h => eq_of_cmp_eq c h }
-
+mutual
 /-- D1.4a: relabelling by a comparison-preserving map preserves the comparison. This is the tree
 form of trace fact (1) and gives `relKey_lt_iff`. -/
 theorem cmp_map {c : α → α → Ordering} {c' : β → β → Ordering} {f : α → β}
     (hf : ∀ x y, c' (f x) (f y) = c x y) (s t : Tree α) :
-    cmp c' (map f s) (map f t) = cmp c s t := by sorry
+    cmp c' (map f s) (map f t) = cmp c s t :=
+  match s, t with
+  | .node a, .node b => by rw [map, map, cmp, cmp]; exact cmpCols_map hf a b
+
+/-- D1.4a helper: `cmp_map` for column lists. -/
+theorem cmpCols_map {c : α → α → Ordering} {c' : β → β → Ordering} {f : α → β}
+    (hf : ∀ x y, c' (f x) (f y) = c x y) (a b : List (List (α × Tree α))) :
+    cmpCols c' (mapCols f a) (mapCols f b) = cmpCols c a b :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | x :: xs, y :: ys => by
+    rw [mapCols, mapCols, cmpCols, cmpCols, cmpCol_map hf x y, cmpCols_map hf xs ys]
+
+/-- D1.4a helper: `cmp_map` for columns. -/
+theorem cmpCol_map {c : α → α → Ordering} {c' : β → β → Ordering} {f : α → β}
+    (hf : ∀ x y, c' (f x) (f y) = c x y) (a b : List (α × Tree α)) :
+    cmpCol c' (mapCol f a) (mapCol f b) = cmpCol c a b :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | (p, h) :: es, (q, k) :: fs => by
+    rw [mapCol, mapCol, cmpCol, cmpCol, hf, cmp_map hf h k, cmpCol_map hf es fs]
+end
+
+mutual
+/-- D1.4a helper: `Tree.map f` is injective, pointwise form. -/
+theorem map_inj {f : α → β} (hf : Function.Injective f) (s t : Tree α)
+    (h : map f s = map f t) : s = t :=
+  match s, t, h with
+  | .node a, .node b, h => by
+    rw [map, map] at h
+    rw [mapCols_inj hf a b (Tree.node.inj h)]
+
+/-- D1.4a helper: `map_inj` for column lists. -/
+theorem mapCols_inj {f : α → β} (hf : Function.Injective f) (a b : List (List (α × Tree α)))
+    (h : mapCols f a = mapCols f b) : a = b :=
+  match a, b, h with
+  | [], [], _ => rfl
+  | x :: xs, y :: ys, h => by
+    rw [mapCols, mapCols] at h
+    obtain ⟨h1, h2⟩ := List.cons.inj h
+    rw [mapCol_inj hf x y h1, mapCols_inj hf xs ys h2]
+
+/-- D1.4a helper: `map_inj` for columns. -/
+theorem mapCol_inj {f : α → β} (hf : Function.Injective f) (a b : List (α × Tree α))
+    (h : mapCol f a = mapCol f b) : a = b :=
+  match a, b, h with
+  | [], [], _ => rfl
+  | (p, h') :: es, (q, k) :: fs, h => by
+    rw [mapCol, mapCol] at h
+    obtain ⟨h1, h2⟩ := List.cons.inj h
+    obtain ⟨h3, h4⟩ := Prod.mk.inj h1
+    rw [hf h3, map_inj hf h' k h4, mapCol_inj hf es fs h2]
+end
 
 /-- D1.4a: relabelling by an injective map is injective. -/
 theorem map_injective {f : α → β} (hf : Function.Injective f) :
-    Function.Injective (map f : Tree α → Tree β) := by sorry
+    Function.Injective (map f : Tree α → Tree β) := fun s t h => map_inj hf s t h
 
 end Tree
 
@@ -83,13 +112,11 @@ theorem Forest.le_iff_cmp (a b : Forest) : a ≤ b ↔ Tree.cmp compare a b ≠ 
 -- U1-verify: changed (new declaration)
 /-- D1.1: the `compare` of the spine's linear order (its default `compareOfLessAndEq`) is the
 locked comparison `Tree.cmp compare`. -/
-theorem Forest.compare_eq_cmp (a b : Forest) : compare a b = Tree.cmp compare a b := by sorry
+theorem Forest.compare_eq_cmp (a b : Forest) : compare a b = Tree.cmp compare a b :=
+  LawfulCmp.compare_eq (Tree.cmp compare) (fun _ _ => Iff.rfl) a b
 
 /-- D1.4: the spine's `<` on keys (definitional). -/
 theorem Key.lt_iff_keyCmp (x y : Key) : x < y ↔ keyCmp x y = .lt := Iff.rfl
-
-instance keyLabelCmp_transCmp : Std.TransCmp keyLabelCmp := by sorry
-instance keyLabelCmp_lawfulEqCmp : Std.LawfulEqCmp keyLabelCmp := by sorry
 
 /-- D1.4: the label map of `h_a` (txt:82-83). -/
 def relLabel (a p : Nat) : Bool × Nat := if p < a then (false, p) else (true, p - a)
@@ -100,20 +127,43 @@ theorem relKey_eq_map (a : Nat) (H : Forest) : relKey a H = H.map (relLabel a) :
 /-- D1.4: `relLabel a` is strictly increasing: it turns `compare` into `keyLabelCmp`
 (txt:84-85). -/
 theorem keyLabelCmp_relLabel (a p q : Nat) :
-    keyLabelCmp (relLabel a p) (relLabel a q) = compare p q := by sorry
+    keyLabelCmp (relLabel a p) (relLabel a q) = compare p q := by
+  unfold relLabel keyLabelCmp
+  by_cases hp : p < a <;> by_cases hq : q < a <;> simp only [hp, hq, if_true, if_false]
+  · simp
+  · have : compare p q = .lt := Nat.compare_eq_lt.2 (by omega)
+    rw [this]; rfl
+  · have : compare p q = .gt := Nat.compare_eq_gt.2 (by omega)
+    rw [this]; rfl
+  · show (compare true true).then (compare (p - a) (q - a)) = compare p q
+    rw [show compare true true = .eq from rfl, Ordering.eq_then]
+    rcases Nat.lt_trichotomy p q with h | h | h
+    · rw [Nat.compare_eq_lt.2 h, Nat.compare_eq_lt.2 (by omega)]
+    · subst h; rw [Nat.compare_eq_eq.2 rfl, Nat.compare_eq_eq.2 rfl]
+    · rw [Nat.compare_eq_gt.2 h, Nat.compare_eq_gt.2 (by omega)]
 
 /-- D1.4: `h_a` preserves and reflects the comparison. -/
 theorem keyCmp_relKey (a : Nat) (H H' : Forest) :
-    keyCmp (relKey a H) (relKey a H') = Tree.cmp compare H H' := by sorry
+    keyCmp (relKey a H) (relKey a H') = Tree.cmp compare H H' := by
+  rw [relKey_eq_map, relKey_eq_map]
+  exact Tree.cmp_map (keyLabelCmp_relLabel a) H H'
+
+-- provides: U1, D1.4 (h_a preserves and reflects order, txt:84-85). Moved here from
+-- `Plan/Spine.lean` (brief rule 5): its proof needs `keyCmp_relKey`; nothing in between uses it.
+theorem relKey_lt_iff (a : Nat) (H H' : Forest) : relKey a H < relKey a H' ↔ H < H' := by
+  rw [Key.lt_iff_keyCmp, keyCmp_relKey]; rfl
 
 /-- D1.4: `h_a` is injective. -/
-theorem relKey_injective (a : Nat) : Function.Injective (relKey a) := by sorry
+theorem relKey_injective (a : Nat) : Function.Injective (relKey a) := fun H H' h =>
+  Tree.eq_of_cmp_eq compare <| by
+    rw [← keyCmp_relKey a, h]; exact Tree.cmp_self keyLabelCmp _
 
 -- U1-verify: changed (new declaration)
 /-- D1.4: the `compare` of the spine's linear order on keys (its default `compareOfLessAndEq`)
 is the locked `keyCmp`. Needed to feed `sign_of_agreement` (stated with `keyCmp`) into
 `trace_agree` (stated with `compare`). -/
-theorem Key.compare_eq_keyCmp (x y : Key) : compare x y = keyCmp x y := by sorry
+theorem Key.compare_eq_keyCmp (x y : Key) : compare x y = keyCmp x y :=
+  LawfulCmp.compare_eq (Tree.cmp keyLabelCmp) (fun _ _ => Iff.rfl) x y
 
 /-! ## D1.2b — occurrences: stacks, containment, accessors, roles -/
 
