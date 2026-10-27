@@ -937,9 +937,7 @@ def paperOp (E : Forest) (n : Nat) : Option Forest := paperOpBody E n -- body: U
 -- provides: U1, D1.6a (the empty self-loop of the reference)
 theorem expand_empty (n : Nat) : expand Tree.empty n = some Tree.empty := rfl
 
--- provides: U1, L2.4 (every operation is defined under V, I, A, S)
-theorem expand_isSome {E : Forest} (hV : CondV E) (hI : CondI E) (hA : CondA E) (hS : CondS E)
-    (n : Nat) : (expand E n).isSome := by sorry
+-- (moved to `Plan/U1.lean`, L2.4c, whose lemmas its proof uses: `Scan.expand_isSome`)
 
 -- (moved to `Plan/U1.lean`, after D1.6c, whose lemmas its proof uses: `Scan.stepKind_isSome`)
 
