@@ -787,6 +787,878 @@ theorem firstDiff_path {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : N
     Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k)
       (Scan.cutStart rk.E c k) p := by sorry
 
+section CapLegal_D8
+open Scan
+
+/-- L4.2d helper: the cut index of an upward cap is at most the column length. -/
+theorem upward_cut_le_D8 {E : Forest} {c : ColAddr} {k p : Nat} (hup : Closure.IsUpward E c k p) :
+    k ≤ (parents E c).length := by
+  unfold Closure.IsUpward at hup
+  cases hcol : E.colAt c with
+  | none => rw [hcol] at hup; exact hup.elim
+  | some col =>
+    simp only [hcol] at hup
+    simp only [parents, hcol, Option.getD_some, List.length_map]
+    cases hk : col[k]? with
+    | none => rw [hk] at hup; omega
+    | some x => exact (List.getElem?_eq_some_iff.1 hk).1.le
+
+/-- L4.2d helper (step 3): V for the literal cap. Retained entries keep their labels (R11); the
+closing parent `p` is reached from the cut start, so it lies below `c`'s number. -/
+theorem litCap_condV_D8 {E : Forest} (hV : CondV E) {c : ColAddr} {k p : Nat}
+    (hc : c ∈ E.colAddrs) (hdepth : c.path ≠ []) (hup : Closure.IsUpward E c k p)
+    (hpath : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) p) :
+    CondV (Closure.litCap E c k p) := by
+  have hk := upward_cut_le_D8 hup
+  obtain ⟨-, hlab, -, hcl, -⟩ := Closure.litCap_spec (p := p) hc hk
+  intro e he q h hqh
+  by_cases hec : e = ⟨c, k⟩
+  · subst hec
+    rw [hcl] at hqh
+    cases hqh
+    have hpos : 0 < c.num 0 := by
+      obtain ⟨s, rest, hs⟩ := List.exists_cons_of_ne_nil hdepth
+      simp [ColAddr.num, hs]
+    have h1 := cutStart_lt hV hc hk hpos
+    have h2 := path_le hV hpath
+    rw [ColAddr.resolve_isSome_iff]
+    exact ⟨Nat.zero_le _, show p < c.num 0 by omega⟩
+  · have := hlab e he hec
+    rw [hqh] at this
+    obtain ⟨⟨q', h'⟩, hE, hq⟩ := Option.map_eq_some_iff.1 this.symm
+    simp only at hq
+    subst hq
+    exact hV e ((Tree.mem_entryAddrs_iff E e).2 (by rw [hE]; rfl)) q' h' hE
+
+/-- L4.2d helper: one containing step of `litCapAux` (cut column `ci` after entry `ei` and
+put `x` there). -/
+theorem capStep_getElem_D8 {β : Type} (cols : List (List β)) (ci ei : Nat) (x : β)
+    (hci : ci < cols.length) (hei : ei ≤ (cols.getD ci []).length) :
+    let cols' := cols.take ci ++ [(cols.getD ci []).take ei ++ [x]]
+    cols'.length = ci + 1 ∧ (∀ c' < ci, cols'[c']? = cols[c']?) ∧
+      cols'[ci]? = some ((cols.getD ci []).take ei ++ [x]) ∧
+      (∀ y < ei, ((cols.getD ci []).take ei ++ [x])[y]? = (cols.getD ci [])[y]?) ∧
+      ((cols.getD ci []).take ei ++ [x])[ei]? = some x ∧
+      ((cols.getD ci []).take ei ++ [x]).length = ei + 1 := by
+  intro cols'
+  have hl : (cols.take ci).length = ci := by rw [List.length_take]; omega
+  have hl2 : ((cols.getD ci []).take ei).length = ei := by rw [List.length_take]; omega
+  refine ⟨by simp only [cols', List.length_append, hl, List.length_singleton], fun c' hc' => ?_, ?_,
+    fun y hy => ?_, ?_, by rw [List.length_append, hl2, List.length_singleton]⟩
+  · simp only [cols']
+    rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt hc']
+  · simp only [cols']
+    rw [List.getElem?_append_right (by omega), hl]; simp
+  · rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt hy]
+  · rw [List.getElem?_append_right (by omega), hl2]; simp
+
+/-- L4.2d helper: the forests of the literal cap along the cap path are literal caps of the
+forests of `X` there. -/
+theorem forestAt_litCapAux_D8 (k p j : Nat) : ∀ (ρ : List (Nat × Nat)) (X : Forest) (n : Nat),
+    (X.forestAt ρ).isSome → n ≤ ρ.length →
+    (Closure.litCapAux k p ρ j X).forestAt (ρ.take n) =
+      (X.forestAt (ρ.take n)).map (Closure.litCapAux k p (ρ.drop n) j)
+  | [], X, n, _, hn => by
+    have : n = 0 := by simpa using hn
+    subst this; rfl
+  | (ci, ei) :: rest, .node cols, n, hv, hn => by
+    rw [Tree.forestAt_cons] at hv
+    obtain ⟨⟨q, h⟩, hqh, hv'⟩ : ∃ x, (cols[ci]?).bind (·[ei]?) = some x ∧
+        (x.2.forestAt rest).isSome := by
+      cases hx : (cols[ci]?).bind (·[ei]?) with
+      | none => simp [Tree.cols, hx] at hv
+      | some x => simp only [Tree.cols, hx, Option.bind_some] at hv; exact ⟨x, rfl, hv⟩
+    obtain ⟨col, hcol, hei⟩ := Option.bind_eq_some_iff.1 hqh
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hgd : cols.getD ci [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hei' : ei < col.length := (List.getElem?_eq_some_iff.1 hei).1
+    cases n with
+    | zero => rfl
+    | succ n =>
+      have hlit : Closure.litCapAux k p ((ci, ei) :: rest) j (.node cols) =
+          .node (cols.take ci ++ [(cols.getD ci []).take ei ++ [(q, Closure.litCapAux k p rest j h)]]) := by
+        simp only [Closure.litCapAux, hgd, hei]
+      obtain ⟨-, -, h2, -, h3, -⟩ := capStep_getElem_D8 cols ci ei (q, Closure.litCapAux k p rest j h)
+        hci (by rw [hgd]; omega)
+      rw [hlit, List.take_succ_cons, List.drop_succ_cons, Tree.forestAt_cons, Tree.forestAt_cons]
+      simp only [Tree.cols, h2, Option.bind_some, h3, hqh]
+      exact forestAt_litCapAux_D8 k p j rest h n hv' (by simp at hn; omega)
+
+/-- L4.2d helper: the cut column of the literal cap. -/
+theorem colAt_litCapAux_self_D8 (k p j : Nat) (ρ : List (Nat × Nat)) (X : Forest)
+    (hv : (X.colAt ⟨ρ, j⟩).isSome) :
+    (Closure.litCapAux k p ρ j X).colAt ⟨ρ, j⟩ =
+      some (((X.colAt ⟨ρ, j⟩).getD []).take k ++ [(p, Tree.empty)]) := by
+  have hf : (X.forestAt ρ).isSome := by
+    unfold Tree.colAt at hv
+    cases h : X.forestAt ρ with
+    | none => rw [h] at hv; simp at hv
+    | some _ => rfl
+  have h1 := forestAt_litCapAux_D8 k p j ρ X ρ.length hf le_rfl
+  rw [List.take_length, List.drop_length] at h1
+  obtain ⟨Y, hY⟩ := Option.isSome_iff_exists.1 hf
+  obtain ⟨cols⟩ := Y
+  have hj : j < cols.length := by
+    simp only [Tree.colAt, hY, Option.bind_some, Tree.cols] at hv
+    simpa using hv
+  simp only [Tree.colAt, h1, hY, Option.map_some, Option.bind_some, Closure.litCapAux, Tree.cols]
+  rw [List.getElem?_append_right (by rw [List.length_take]; omega)]
+  simp [List.length_take, Nat.min_eq_left hj.le, List.getD_eq_getElem?_getD]
+
+/-- L4.2d helper: a containing column of the cut column in the literal cap: cut after the
+containing entry, whose height is capped. -/
+theorem colAt_litCapAux_container_D8 (k p j : Nat) (ρ : List (Nat × Nat)) (X : Forest)
+    (hv : (X.forestAt ρ).isSome) {d : ColAddr} {i : Nat}
+    (hd : (⟨d, i⟩ : EntryAddr).heightPath <+: ρ) :
+    ∃ colX q h, X.colAt d = some colX ∧ colX[i]? = some (q, h) ∧
+      (Closure.litCapAux k p ρ j X).colAt d =
+        some (colX.take i ++ [(q, Closure.litCapAux k p (ρ.drop (d.path.length + 1)) j h)]) := by
+  obtain ⟨tl, htl⟩ := hd
+  have hρ : ρ = d.path ++ (d.col, i) :: tl := by
+    rw [← htl, EntryAddr.heightPath]; simp
+  have hn : ρ.take d.path.length = d.path := by rw [hρ]; simp
+  have hdrop : ρ.drop d.path.length = (d.col, i) :: tl := by rw [hρ]; simp
+  have hdrop' : ρ.drop (d.path.length + 1) = tl := by rw [hρ]; simp
+  have h1 := forestAt_litCapAux_D8 k p j ρ X d.path.length hv (by rw [hρ]; simp)
+  rw [hn, hdrop] at h1
+  have hv' := hv
+  rw [hρ, Tree.forestAt_append] at hv'
+  obtain ⟨Y, hY⟩ : ∃ Y, X.forestAt d.path = some Y := by
+    cases h : X.forestAt d.path with
+    | none => rw [h] at hv'; simp at hv'
+    | some Y => exact ⟨Y, rfl⟩
+  rw [hY, Option.bind_some, Tree.forestAt_cons] at hv'
+  obtain ⟨cols⟩ := Y
+  obtain ⟨⟨q, h⟩, hqh⟩ : ∃ x, (cols[d.col]?).bind (·[i]?) = some x := by
+    cases hx : (cols[d.col]?).bind (·[i]?) with
+    | none => simp [Tree.cols, hx] at hv'
+    | some x => exact ⟨x, rfl⟩
+  obtain ⟨col, hcol, hei⟩ := Option.bind_eq_some_iff.1 hqh
+  have hci : d.col < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+  have hgd : cols.getD d.col [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+  have hei' : i < col.length := (List.getElem?_eq_some_iff.1 hei).1
+  refine ⟨col, q, h, by simp [Tree.colAt, hY, Tree.cols, hcol], hei, ?_⟩
+  obtain ⟨-, -, h2, -, -, -⟩ := capStep_getElem_D8 cols d.col i (q, Closure.litCapAux k p tl j h)
+    hci (by rw [hgd]; omega)
+  rw [hdrop']
+  simp only [Tree.colAt, h1, hY, Option.map_some, Option.bind_some, Closure.litCapAux, hgd, hei,
+    Tree.cols]
+  rw [hgd] at h2
+  exact h2
+
+/-- L4.2d helper: indexing a list cut after index `ci` with one new element there. -/
+theorem getElem?_cutPut_D8 {β : Type} (l : List β) (ci : Nat) (x : β) (hci : ci ≤ l.length)
+    (y : Nat) : (l.take ci ++ [x])[y]? =
+      if y < ci then l[y]? else if y = ci then some x else none := by
+  have hl : (l.take ci).length = ci := by rw [List.length_take]; omega
+  split_ifs with h1 h2
+  · rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt h1]
+  · subst h2; rw [List.getElem?_append_right (by omega), hl]; simp
+  · rw [List.getElem?_eq_none]; simp [hl]; omega
+
+/-- L4.2d helper: a column of the literal cap that is neither the cut column nor one of its
+containers is a column of `X`, unchanged. -/
+theorem colAt_litCapAux_retained_D8 (k p j : Nat) : ∀ (ρ : List (Nat × Nat)) (X : Forest)
+    (d : ColAddr), (X.colAt ⟨ρ, j⟩).isSome → k ≤ ((X.colAt ⟨ρ, j⟩).getD []).length →
+    ((Closure.litCapAux k p ρ j X).colAt d).isSome → d ≠ ⟨ρ, j⟩ →
+    (∀ i, ¬ (⟨d, i⟩ : EntryAddr).heightPath <+: ρ) →
+    (Closure.litCapAux k p ρ j X).colAt d = X.colAt d
+  | [], .node cols, d, hv, hk, hs, hne, _ => by
+    have hj : j < cols.length := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hv
+    obtain ⟨col, hcol⟩ : ∃ col, cols[j]? = some col := ⟨cols[j], by simp [hj]⟩
+    have hgd : cols.getD j [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hk' : k ≤ col.length := by
+      simpa [Tree.colAt, Tree.forestAt, Tree.cols, hcol] using hk
+    have hlit : Closure.litCapAux k p [] j (.node cols) =
+        .node (cols.take j ++ [col.take k ++ [(p, Tree.empty)]]) := by
+      simp [Closure.litCapAux, hcol]
+    rw [hlit] at hs ⊢
+    obtain ⟨P, dc⟩ := d
+    cases P with
+    | nil =>
+      simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols,
+        getElem?_cutPut_D8 cols j _ hj.le] at hs ⊢
+      split_ifs at hs ⊢ with h1 h2
+      · rfl
+      · exact absurd (by rw [h2]) hne
+      · simp at hs
+    | cons ab P =>
+      obtain ⟨a, b⟩ := ab
+      simp only [Tree.colAt_cons, Tree.cols, getElem?_cutPut_D8 cols j _ hj.le] at hs ⊢
+      split_ifs at hs ⊢ with h1 h2
+      · rfl
+      · subst h2
+        rw [hcol]
+        simp only [Option.bind_some, getElem?_cutPut_D8 col k _ hk'] at hs ⊢
+        split_ifs at hs ⊢ with h3 h4
+        · rfl
+        · exfalso
+          simp only [Option.bind_some] at hs
+          cases P <;> simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hs
+        · simp at hs
+      · simp at hs
+  | (c0, e0) :: rest, .node cols, d, hv, hk, hs, hne, hnc => by
+    rw [Tree.colAt_cons] at hv hk
+    obtain ⟨⟨q, h⟩, hqh, hv'⟩ : ∃ x, (cols[c0]?).bind (·[e0]?) = some x ∧
+        (x.2.colAt ⟨rest, j⟩).isSome := by
+      cases hx : (cols[c0]?).bind (·[e0]?) with
+      | none => simp [Tree.cols, hx] at hv
+      | some x => simp only [Tree.cols, hx, Option.bind_some] at hv; exact ⟨x, rfl, hv⟩
+    simp only [Tree.cols, hqh, Option.bind_some] at hk
+    obtain ⟨col, hcol, hei⟩ := Option.bind_eq_some_iff.1 hqh
+    have hci : c0 < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hgd : cols.getD c0 [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hei' : e0 < col.length := (List.getElem?_eq_some_iff.1 hei).1
+    have hlit : Closure.litCapAux k p ((c0, e0) :: rest) j (.node cols) =
+        .node (cols.take c0 ++ [col.take e0 ++ [(q, Closure.litCapAux k p rest j h)]]) := by
+      simp only [Closure.litCapAux, hgd, hei]
+    rw [hlit] at hs ⊢
+    obtain ⟨P, dc⟩ := d
+    cases P with
+    | nil =>
+      simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols,
+        getElem?_cutPut_D8 cols c0 _ hci.le] at hs ⊢
+      split_ifs at hs ⊢ with h1 h2
+      · rfl
+      · exfalso; subst h2
+        exact hnc e0 ⟨rest, by simp [EntryAddr.heightPath]⟩
+      · simp at hs
+    | cons ab P =>
+      obtain ⟨a, b⟩ := ab
+      simp only [Tree.colAt_cons, Tree.cols, getElem?_cutPut_D8 cols c0 _ hci.le] at hs ⊢
+      split_ifs at hs ⊢ with h1 h2
+      · rfl
+      · subst h2
+        rw [hcol]
+        simp only [Option.bind_some, getElem?_cutPut_D8 col e0 _ hei'.le] at hs ⊢
+        split_ifs at hs ⊢ with h3 h4
+        · rfl
+        · subst h4
+          rw [hei]
+          simp only [Option.bind_some] at hs ⊢
+          refine colAt_litCapAux_retained_D8 k p j rest h ⟨P, dc⟩ hv' hk hs ?_ ?_
+          · intro he; apply hne; simp only [ColAddr.mk.injEq] at he ⊢
+            exact ⟨by rw [he.1], he.2⟩
+          · intro i hi
+            apply hnc i
+            obtain ⟨tl, htl⟩ := hi
+            exact ⟨tl, by simp [EntryAddr.heightPath] at htl ⊢; exact htl⟩
+        · simp at hs
+      · simp at hs
+
+/-- L4.2d helper: the forests of the literal cap along the cap path: the route step at each
+level is the cap path's step, and the last level ends with the closing entry `(p, ∅)`. -/
+theorem litCapAux_level_D8 (k p j : Nat) (ρ : List (Nat × Nat)) (X : Forest)
+    (hv : (X.colAt ⟨ρ, j⟩).isSome) (hk : k ≤ ((X.colAt ⟨ρ, j⟩).getD []).length) (n : Nat)
+    (hn : n ≤ ρ.length) :
+    ∃ F, (Closure.litCapAux k p ρ j X).forestAt (ρ.take n) = some F ∧
+      (∀ s, ρ[n]? = some s → F.cols.length = s.1 + 1 ∧ F.lastStep? = some s) ∧
+      (n = ρ.length → F.cols.length = j + 1 ∧ F.lastStep? = some (j, k) ∧
+        F.forestAt [(j, k)] = some Tree.empty) := by
+  have hf : (X.forestAt ρ).isSome := by
+    unfold Tree.colAt at hv
+    cases h : X.forestAt ρ with
+    | none => rw [h] at hv; simp at hv
+    | some _ => rfl
+  have h1 := forestAt_litCapAux_D8 k p j ρ X n hf hn
+  have hρ : ρ = ρ.take n ++ ρ.drop n := (List.take_append_drop n ρ).symm
+  obtain ⟨Y, hY⟩ : ∃ Y, X.forestAt (ρ.take n) = some Y := by
+    have := hf; rw [hρ, Tree.forestAt_append] at this
+    cases h : X.forestAt (ρ.take n) with
+    | none => rw [h] at this; simp at this
+    | some Y => exact ⟨Y, rfl⟩
+  rw [hY, Option.map_some] at h1
+  refine ⟨_, h1, ?_, ?_⟩
+  · intro s hs
+    have hd : ρ.drop n = s :: ρ.drop (n + 1) := by
+      rw [List.drop_eq_getElem_cons (List.getElem?_eq_some_iff.1 hs).1]
+      congr; exact (List.getElem?_eq_some_iff.1 hs).2
+    obtain ⟨ci, ei⟩ := s
+    have hv2 := hv
+    rw [Tree.colAt, hρ, Tree.forestAt_append, hY, Option.bind_some, hd, Tree.forestAt_cons] at hv2
+    obtain ⟨cols⟩ := Y
+    obtain ⟨⟨q, h⟩, hqh⟩ : ∃ x, (cols[ci]?).bind (·[ei]?) = some x := by
+      cases hx : (cols[ci]?).bind (·[ei]?) with
+      | none => simp [Tree.cols, hx] at hv2
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨col, hcol, hei⟩ := Option.bind_eq_some_iff.1 hqh
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hgd : cols.getD ci [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hei' : ei < col.length := (List.getElem?_eq_some_iff.1 hei).1
+    rw [hd]
+    simp only [Closure.litCapAux, hgd, hei]
+    have hl : (cols.take ci).length = ci := by rw [List.length_take]; omega
+    have hl2 : (col.take ei).length = ei := by rw [List.length_take]; omega
+    refine ⟨by simp only [Tree.cols, List.length_append, hl, List.length_singleton], ?_⟩
+    simp [Tree.lastStep?, Tree.cols, hl, hl2]
+  · intro hnl
+    subst hnl
+    rw [List.drop_length]
+    have hv2 := hv
+    rw [List.take_length] at hY
+    unfold Tree.colAt at hv2 hk
+    rw [hY, Option.bind_some] at hv2 hk
+    obtain ⟨cols⟩ := Y
+    obtain ⟨col, hcol⟩ : ∃ col, cols[j]? = some col := Option.isSome_iff_exists.1 hv2
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    simp only [Tree.cols, hcol, Option.getD_some] at hk
+    have hl : (cols.take j).length = j := by rw [List.length_take]; omega
+    have hl2 : (col.take k).length = k := by rw [List.length_take]; omega
+    have hlit : Closure.litCapAux k p [] j (.node cols) =
+        .node (cols.take j ++ [col.take k ++ [(p, Tree.empty)]]) := by
+      simp [Closure.litCapAux, hcol]
+    rw [hlit]
+    refine ⟨by simp only [Tree.cols, List.length_append, hl, List.length_singleton], ?_, ?_⟩
+    · simp [Tree.lastStep?, Tree.cols, hl, hl2]
+    · rw [Tree.forestAt_cons]
+      simp only [Tree.cols, getElem?_cutPut_D8 cols j _ hj.le, lt_irrefl, if_false, if_true,
+        Option.bind_some, getElem?_cutPut_D8 col k _ hk]
+      rfl
+
+/-- L4.2d helper: the literal cap at a column of `E` is `litCapAux` along its path. -/
+theorem litCap_eq_D8 {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs) (k p : Nat) :
+    Closure.litCap E c k p = Closure.litCapAux k p c.path c.col E := by
+  show Closure.litCapBody E c k p = _
+  rw [Closure.litCapBody, if_pos ((Tree.mem_colAddrs_iff E c).1 hc)]
+
+/-- L4.2d helper: `parents` length is the column length. -/
+theorem parents_length_D8 (E : Forest) (c : ColAddr) :
+    (parents E c).length = ((E.colAt c).getD []).length := by simp [parents]
+
+/-- L4.2d helper (R11 shape): the route columns of the literal cap are the cut column and its
+containing columns. -/
+theorem routeCols_litCap_D8 {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
+    (hk : k ≤ (parents E c).length) (d : ColAddr) :
+    d ∈ routeCols (Closure.litCap E c k p) ↔
+      d = c ∨ ∃ i, (⟨d, i⟩ : EntryAddr).heightPath <+: c.path := by
+  have hv : (E.colAt ⟨c.path, c.col⟩).isSome := (Tree.mem_colAddrs_iff E c).1 hc
+  have hk' : k ≤ ((E.colAt ⟨c.path, c.col⟩).getD []).length := by
+    rwa [parents_length_D8] at hk
+  have hlev := litCapAux_level_D8 k p c.col c.path E hv hk'
+  rw [litCap_eq_D8 hc, Scan.mem_routeCols_iff]
+  constructor
+  · rintro ⟨hr, F, hF, hFl⟩
+    -- the route path of the cap is a prefix of the cap path
+    have key : ∀ m, m ≤ d.path.length → d.path.take m = c.path.take m ∧ m ≤ c.path.length := by
+      intro m
+      induction m with
+      | zero => intro _; simp
+      | succ m ih =>
+        intro hm
+        obtain ⟨h1, h2⟩ := ih (by omega)
+        obtain ⟨G, hG, hGl⟩ := hr m (by omega)
+        obtain ⟨F', hF', hs, hlast⟩ := hlev m h2
+        rw [h1, hF'] at hG
+        cases hG
+        rcases Nat.lt_or_ge m c.path.length with hmc | hmc
+        · obtain ⟨s, hs'⟩ : ∃ s, c.path[m]? = some s := ⟨c.path[m], by simp [hmc]⟩
+          have := (hs s hs').2
+          rw [this] at hGl
+          refine ⟨?_, by omega⟩
+          rw [List.take_add_one, List.take_add_one, h1, hs', ← hGl]
+        · exfalso
+          have hmc' : m = c.path.length := by omega
+          obtain ⟨-, hl2, hl3⟩ := hlast hmc'
+          rw [hl2] at hGl
+          have hdm : d.path[m]? = some (c.col, k) := hGl.symm
+          have htk : d.path.take (m + 1) = c.path ++ [(c.col, k)] := by
+            rw [List.take_add_one, h1, hdm, hmc', List.take_length]; rfl
+          have hE : (Closure.litCapAux k p c.path c.col E).forestAt (d.path.take (m + 1)) =
+              some Tree.empty := by
+            rw [htk, Tree.forestAt_append]
+            rw [hmc', List.take_length] at hF'
+            rw [hF', Option.bind_some, hl3]
+          rcases Nat.lt_or_ge (m + 1) d.path.length with hm1 | hm1
+          · obtain ⟨G, hG, hGl⟩ := hr (m + 1) hm1
+            rw [hE] at hG; cases hG
+            have : d.path[m + 1]? ≠ none := by simp; omega
+            rw [← hGl] at this
+            exact this (by simp [Tree.lastStep?, Tree.empty, Tree.cols])
+          · have hdp : d.path.take (m + 1) = d.path := List.take_of_length_le hm1
+            rw [hdp, hF] at hE; cases hE
+            simp [Tree.empty, Tree.cols] at hFl
+    obtain ⟨h1, h2⟩ := key d.path.length le_rfl
+    rw [List.take_length] at h1
+    obtain ⟨F', hF', hs, hlast⟩ := hlev d.path.length h2
+    rw [← h1, hF] at hF'
+    cases hF'
+    rcases Nat.lt_or_ge d.path.length c.path.length with hlt | hge
+    · obtain ⟨s, hs'⟩ : ∃ s, c.path[d.path.length]? = some s := ⟨_, List.getElem?_eq_getElem hlt⟩
+      have hcol := (hs s hs').1
+      right
+      refine ⟨s.2, c.path.drop (d.path.length + 1), ?_⟩
+      have hdc : d.col = s.1 := by omega
+      rw [EntryAddr.heightPath, h1, hdc, List.append_assoc, List.singleton_append]
+      conv_rhs => rw [← List.take_append_drop d.path.length c.path]
+      rw [List.drop_eq_getElem_cons hlt, (List.getElem?_eq_some_iff.1 hs').2]
+      simp [List.length_take, Nat.min_eq_left h2]
+    · have hdl : d.path.length = c.path.length := by omega
+      obtain ⟨hcol, -⟩ := hlast hdl
+      left
+      have hp : d.path = c.path := by rw [h1, hdl, List.take_length]
+      cases d; cases c
+      simp only at hp hcol hFl ⊢
+      subst hp
+      simp only [ColAddr.mk.injEq, true_and]
+      omega
+  · intro hd
+    -- the levels below the column's own level are route steps
+    have hroute : ∀ n, n ≤ c.path.length →
+        Scan.IsRoutePath (Closure.litCapAux k p c.path c.col E) (c.path.take n) := by
+      intro n hn m hm
+      rw [List.length_take] at hm
+      obtain ⟨F', hF', hs, -⟩ := hlev m (by omega)
+      refine ⟨F', by rw [List.take_take, Nat.min_eq_left (by omega)]; exact hF', ?_⟩
+      have hmc : m < c.path.length := by omega
+      rw [(hs _ (List.getElem?_eq_getElem hmc)).2, List.getElem?_take_of_lt (by omega),
+        List.getElem?_eq_getElem hmc]
+    rcases hd with rfl | ⟨i, tl, htl⟩
+    · obtain ⟨F', hF', -, hlast⟩ := hlev d.path.length le_rfl
+      rw [List.take_length] at hF'
+      exact ⟨by have := hroute d.path.length le_rfl; rwa [List.take_length] at this, F', hF',
+        (hlast rfl).1⟩
+    · have hρ : c.path = d.path ++ (d.col, i) :: tl := by
+        rw [← htl, EntryAddr.heightPath]; simp
+      have hn : c.path.take d.path.length = d.path := by rw [hρ]; simp
+      have hnl : d.path.length < c.path.length := by rw [hρ]; simp
+      obtain ⟨F', hF', hs, -⟩ := hlev d.path.length hnl.le
+      have hs' : c.path[d.path.length]? = some (d.col, i) := by rw [hρ]; simp
+      rw [hn] at hF'
+      refine ⟨by have := hroute d.path.length hnl.le; rwa [hn] at this, F', hF', (hs _ hs').1⟩
+
+/-- L4.2d helper: the first entries of the columns of a literal cap: the same first labels as
+in `X`, except a cut column cut at `0`, whose first label is `p`. -/
+theorem litCapAux_firstLabels_D8 (k p j a : Nat) (ρ : List (Nat × Nat)) (X : Forest)
+    (hv : (X.colAt ⟨ρ, j⟩).isSome)
+    (hX : ∀ col ∈ X.cols, ∃ q H rest, col = (q, H) :: rest ∧ a ≤ q)
+    (hp : ρ = [] → k = 0 → a ≤ p) :
+    ∀ col ∈ (Closure.litCapAux k p ρ j X).cols, ∃ q H rest, col = (q, H) :: rest ∧ a ≤ q := by
+  obtain ⟨cols⟩ := X
+  cases ρ with
+  | nil =>
+    obtain ⟨col, hcol⟩ : ∃ col, cols[j]? = some col := by
+      simpa [Tree.colAt, Tree.forestAt, Tree.cols, Option.isSome_iff_exists] using hv
+    have hlit : Closure.litCapAux k p [] j (.node cols) =
+        .node (cols.take j ++ [col.take k ++ [(p, Tree.empty)]]) := by
+      simp [Closure.litCapAux, hcol]
+    rw [hlit]
+    intro col' hcol'
+    simp only [Tree.cols, List.mem_append, List.mem_singleton] at hcol' hX
+    rcases hcol' with h1 | rfl
+    · exact hX col' (List.mem_of_mem_take h1)
+    · cases k with
+      | zero => exact ⟨p, Tree.empty, [], by simp, hp rfl rfl⟩
+      | succ k =>
+        obtain ⟨q, H, rest, rfl, hq⟩ := hX col (List.mem_of_getElem? hcol)
+        exact ⟨q, H, rest.take k ++ [(p, Tree.empty)], by simp, hq⟩
+  | cons s rest =>
+    obtain ⟨ci, ei⟩ := s
+    rw [Tree.colAt_cons] at hv
+    obtain ⟨⟨q, h⟩, hqh⟩ : ∃ x, (cols[ci]?).bind (·[ei]?) = some x := by
+      cases hx : (cols[ci]?).bind (·[ei]?) with
+      | none => simp [Tree.cols, hx] at hv
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨col, hcol, hei⟩ := Option.bind_eq_some_iff.1 hqh
+    have hgd : cols.getD ci [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hlit : Closure.litCapAux k p ((ci, ei) :: rest) j (.node cols) =
+        .node (cols.take ci ++ [col.take ei ++ [(q, Closure.litCapAux k p rest j h)]]) := by
+      simp only [Closure.litCapAux, hgd, hei]
+    rw [hlit]
+    intro col' hcol'
+    simp only [Tree.cols, List.mem_append, List.mem_singleton] at hcol' hX
+    rcases hcol' with h1 | rfl
+    · exact hX col' (List.mem_of_mem_take h1)
+    · obtain ⟨q0, H0, rest0, hc0, hq0⟩ := hX col (List.mem_of_getElem? hcol)
+      subst hc0
+      cases ei with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hei
+        obtain ⟨rfl, -⟩ := hei
+        exact ⟨q0, Closure.litCapAux k p rest j h, [], by simp, hq0⟩
+      | succ ei => exact ⟨q0, H0, rest0.take ei ++ [(q, Closure.litCapAux k p rest j h)], by simp, hq0⟩
+
+/-- L4.2d helper (step 4): I for the literal cap. -/
+theorem litCap_condI_D8 {E : Forest} (hI : CondI E) {c : ColAddr} {k p : Nat}
+    (hc : c ∈ E.colAddrs) (hup : Closure.IsUpward E c k p) :
+    CondI (Closure.litCap E c k p) := by
+  have hk := upward_cut_le_D8 hup
+  obtain ⟨-, -, hsame, hcl, -⟩ := Closure.litCap_spec (p := p) hc hk
+  intro e he q h hqh hne col hcol
+  by_cases hec : e = ⟨c, k⟩
+  · subst hec; rw [hcl] at hqh; cases hqh; exact absurd rfl hne
+  by_cases hcont : e.heightPath <+: c.path
+  · have hv : (E.forestAt c.path).isSome := by
+      have := (Tree.mem_colAddrs_iff E c).1 hc
+      unfold Tree.colAt at this
+      cases h : E.forestAt c.path with
+      | none => rw [h] at this; simp at this
+      | some _ => rfl
+    obtain ⟨colX, q', h0, hX, hq', hK⟩ :=
+      colAt_litCapAux_container_D8 k p c.col c.path E hv (d := e.col) (i := e.idx) hcont
+    rw [← litCap_eq_D8 hc] at hK
+    have hent : (Closure.litCap E c k p).entryAt e = some (q', Closure.litCapAux k p
+        (c.path.drop (e.col.path.length + 1)) c.col h0) := by
+      have hl : (colX.take e.idx).length = e.idx := by
+        rw [List.length_take]; have := (List.getElem?_eq_some_iff.1 hq').1; omega
+      simp only [Tree.entryAt, hK, Option.bind_some]
+      rw [List.getElem?_append_right (by omega), hl]; simp
+    rw [hent] at hqh
+    simp only [Option.some.injEq, Prod.mk.injEq] at hqh
+    obtain ⟨rfl, rfl⟩ := hqh
+    clear hne
+    have hEe : E.entryAt e = some (q', h0) := by simp [Tree.entryAt, hX, hq']
+    have heE : e ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff E e).2 (by rw [hEe]; rfl)
+    obtain ⟨tl, htl⟩ := hcont
+    have hρ : c.path = e.heightPath ++ tl := htl.symm
+    have hdrop : c.path.drop (e.col.path.length + 1) = tl := by
+      rw [hρ, EntryAddr.heightPath]; simp
+    rw [hdrop] at hcol
+    have hcolE : (E.colAt c).isSome := (Tree.mem_colAddrs_iff E c).1 hc
+    have hv' : (h0.colAt ⟨tl, c.col⟩).isSome := by
+      have : E.colAt c = h0.colAt ⟨tl, c.col⟩ := by
+        rw [Tree.colAt, hρ, Tree.forestAt_append, Tree.forestAt_heightPath, Tree.heightAt, hEe]
+        rfl
+      rwa [← this]
+    have hh0 : h0 ≠ Tree.empty := by
+      intro h0e; subst h0e
+      cases tl <;> simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hv'
+    refine litCapAux_firstLabels_D8 k p c.col _ tl h0 hv' (hI e heE q' h0 hEe hh0) ?_ col hcol
+    intro htl0 hk0
+    subst htl0 hk0
+    -- `c` is a column of `h0`: its first parent is at least the host and below `p`
+    obtain ⟨colc, hcolc⟩ := Option.isSome_iff_exists.1 hv'
+    have hmem : colc ∈ h0.cols := by
+      simp only [Tree.colAt, Tree.forestAt, Option.bind_some] at hcolc
+      exact List.mem_of_getElem? hcolc
+    obtain ⟨q0, H0, rest0, rfl, hq0⟩ := hI e heE q' h0 hEe hh0 colc hmem
+    have hEc : E.colAt c = some ((q0, H0) :: rest0) := by
+      rw [Tree.colAt, hρ, Tree.forestAt_append, Tree.forestAt_heightPath, Tree.heightAt, hEe]
+      simpa [Tree.colAt] using hcolc
+    unfold Closure.IsUpward at hup
+    simp only [hEc, List.getElem?_cons_zero] at hup
+    omega
+  · rw [hsame e he hec hcont] at hqh
+    exact hI e ((Tree.mem_entryAddrs_iff E e).2 (by rw [hqh]; rfl)) q h hqh hne col hcol
+
+/-- L4.2d helper: the columns on the visible stack of a column of a tree are columns of it. -/
+theorem mem_colAddrs_of_onStack_D8 {α : Type} {T : Tree α} {o o' : ColAddr}
+    (ho : o ∈ T.colAddrs) (hs : o.OnStack o') : o' ∈ T.colAddrs := by
+  rw [Tree.mem_colAddrs_iff] at ho ⊢
+  unfold Tree.colAt at ho ⊢
+  rcases hs with ⟨n, ck, ik, hn, hp, hle⟩ | ⟨hp, hlt⟩
+  · have hsplit : o.path = o.path.take n ++ (ck, ik) :: o.path.drop (n + 1) := by
+      obtain ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.1 hn
+      rw [← heq, ← List.drop_eq_getElem_cons hlt, List.take_append_drop]
+    rw [hsplit, Tree.forestAt_append] at ho
+    rw [hp]
+    cases hF : T.forestAt (o.path.take n) with
+    | none => rw [hF] at ho; simp at ho
+    | some F =>
+      rw [hF, Option.bind_some, Tree.forestAt_cons] at ho
+      simp only [Option.bind_some]
+      have : ck < F.cols.length := by
+        cases h : F.cols[ck]? with
+        | none => rw [h] at ho; simp at ho
+        | some _ => exact (List.getElem?_eq_some_iff.1 h).1
+      simpa using (show o'.col < F.cols.length by omega)
+  · rw [hp]
+    cases hF : T.forestAt o.path with
+    | none => rw [hF] at ho; simp at ho
+    | some F =>
+      rw [hF, Option.bind_some] at ho
+      simp only [Option.bind_some]
+      have : o.col < F.cols.length := by simpa using ho
+      simpa using (show o'.col < F.cols.length by omega)
+
+section LitCapCols
+variable {E : Forest} {c : ColAddr} {k p : Nat}
+
+/-- L4.2d helper (R11 shape): the cut column of the literal cap. -/
+theorem litCap_colAt_self_D8 (hc : c ∈ E.colAddrs) :
+    (Closure.litCap E c k p).colAt c = some (((E.colAt c).getD []).take k ++ [(p, Tree.empty)]) := by
+  rw [litCap_eq_D8 hc]
+  exact colAt_litCapAux_self_D8 k p c.col c.path E ((Tree.mem_colAddrs_iff E c).1 hc)
+
+theorem forestAt_isSome_of_col_D8 {α : Type} {T : Tree α} {c : ColAddr} (hc : c ∈ T.colAddrs) :
+    (T.forestAt c.path).isSome := by
+  have := (Tree.mem_colAddrs_iff T c).1 hc
+  unfold Tree.colAt at this
+  cases h : T.forestAt c.path with
+  | none => rw [h] at this; simp at this
+  | some _ => rfl
+
+/-- L4.2d helper (R11 shape): a containing column of the cut column. -/
+theorem litCap_colAt_container_D8 (hc : c ∈ E.colAddrs) {d : ColAddr} {i : Nat}
+    (hd : (⟨d, i⟩ : EntryAddr).heightPath <+: c.path) :
+    ∃ colX q h h', E.colAt d = some colX ∧ colX[i]? = some (q, h) ∧
+      (Closure.litCap E c k p).colAt d = some (colX.take i ++ [(q, h')]) := by
+  obtain ⟨colX, q, h, h1, h2, h3⟩ :=
+    colAt_litCapAux_container_D8 k p c.col c.path E (forestAt_isSome_of_col_D8 hc) hd
+  exact ⟨colX, q, h, _, h1, h2, by rw [litCap_eq_D8 hc]; exact h3⟩
+
+/-- L4.2d helper (R11 shape): the other columns of the literal cap are columns of `E`. -/
+theorem litCap_colAt_retained_D8 (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    {d : ColAddr} (hs : ((Closure.litCap E c k p).colAt d).isSome) (hne : d ≠ c)
+    (hnc : ∀ i, ¬ (⟨d, i⟩ : EntryAddr).heightPath <+: c.path) :
+    (Closure.litCap E c k p).colAt d = E.colAt d := by
+  rw [litCap_eq_D8 hc] at hs ⊢
+  exact colAt_litCapAux_retained_D8 k p c.col c.path E d ((Tree.mem_colAddrs_iff E c).1 hc)
+    (by rwa [parents_length_D8] at hk) hs hne hnc
+
+/-- L4.2d helper: nothing lies inside the closing entry `(p, ∅)`. -/
+theorem litCap_not_inside_closing_D8 (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    {d : ColAddr} (hs : ((Closure.litCap E c k p).colAt d).isSome) :
+    ¬ (⟨c, k⟩ : EntryAddr).heightPath <+: d.path := by
+  rintro ⟨tl, htl⟩
+  obtain ⟨F, hF, -, hlast⟩ := litCapAux_level_D8 k p c.col c.path E
+    ((Tree.mem_colAddrs_iff E c).1 hc) (by rwa [parents_length_D8] at hk) c.path.length le_rfl
+  obtain ⟨-, -, h3⟩ := hlast rfl
+  rw [List.take_length] at hF
+  rw [litCap_eq_D8 hc] at hs
+  unfold Tree.colAt at hs
+  rw [← htl, EntryAddr.heightPath, List.append_assoc, Tree.forestAt_append, hF, Option.bind_some,
+    Tree.forestAt_append, h3, Option.bind_some] at hs
+  cases tl with
+  | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at hs
+  | cons s tl =>
+    obtain ⟨a, b⟩ := s
+    simp [Tree.forestAt_cons, Tree.empty, Tree.cols] at hs
+
+/-- L4.2d helper: every column of the literal cap is a column of `E`. -/
+theorem litCap_colAddrs_sub_D8 (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    {d : ColAddr} (hs : d ∈ (Closure.litCap E c k p).colAddrs) : d ∈ E.colAddrs := by
+  rw [Tree.mem_colAddrs_iff] at hs
+  by_cases hdc : d = c
+  · subst hdc; exact hc
+  by_cases hcont : ∃ i, (⟨d, i⟩ : EntryAddr).heightPath <+: c.path
+  · obtain ⟨i, hi⟩ := hcont
+    obtain ⟨colX, -, -, -, h1, -, -⟩ := litCap_colAt_container_D8 (k := k) (p := p) hc hi
+    rw [Tree.mem_colAddrs_iff, h1]; rfl
+  · simp only [not_exists] at hcont
+    rw [Tree.mem_colAddrs_iff, ← litCap_colAt_retained_D8 hc hk hs hdc hcont]
+    exact hs
+
+end LitCapCols
+
+/-- L4.2d helper (R7 with a truncated capped column): a column cut after entry `u` and capped
+there answers like the uncut column, under the barrier at an entry `v ≤ u`. -/
+theorem resp_trunc_D8 {E K : Forest} {sel : List ColAddr} {o : ColAddr} {colE : Column}
+    {u v : Nat} {x : Nat × Forest} (hsel : o ∈ sel) (hE : E.colAt o = some colE)
+    (hK : K.colAt o = some (colE.take u ++ [x])) (hu : u ≤ colE.length) (hvu : v ≤ u)
+    (hv : v < colE.length) (hlab : v = u → (colE[u]?).map Prod.fst = some x.1)
+    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤)
+    (hbar : W < cutQuery (actualKeys E o) (v + 1)) :
+    resp K (capKeys K sel) o W = resp E (actualKeys E) o W := by
+  set f : Nat × Forest → WithTop Key := fun y => ((relKey (o.num 0) y.2 : Key) : WithTop Key)
+  have hksE : actualKeys E o = colE.map f := by simp [actualKeys, hE, f]
+  have hksK : capKeys K sel o = (actualKeys E o).take u ++ [⊤] := by
+    simp only [capKeys, hsel, if_true, actualKeys, hK, Option.getD_some, List.map_append,
+      List.map_cons, List.map_nil, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+      Option.toList_some, hE, List.map_take]
+  have hlen : v < (actualKeys E o).length := by rw [hksE, List.length_map]; exact hv
+  obtain ⟨hc1, hc2⟩ := cursor_cappedAt (actualKeys E o) W v hlen hW hT hbar
+  have hcur : cursor (capKeys K sel o) W = cursor (actualKeys E o) W := by
+    rw [hksK]
+    rcases Nat.lt_or_ge v u with hvu' | hvu'
+    · have hlt : cursor ((actualKeys E o).take u) W < ((actualKeys E o).take u).length := by
+        rw [cursor_take, List.length_take]
+        have : u ≤ (actualKeys E o).length := by rw [hksE, List.length_map]; exact hu
+        omega
+      rw [cursor_append_of_lt _ hlt, cursor_take]
+      omega
+    · have : v = u := by omega
+      subst this
+      exact hc2.symm
+  simp only [resp, hcur, hK, hE, Option.getD_some]
+  rcases Nat.lt_or_ge (cursor (actualKeys E o) W) u with hlt | hge
+  · rw [List.getElem?_append_left (by rw [List.length_take]; omega), List.getElem?_take_of_lt hlt]
+  · have hcu : cursor (actualKeys E o) W = u := by omega
+    have hvu' : v = u := by omega
+    rw [hcu, List.getElem?_append_right (by rw [List.length_take]; omega)]
+    simp only [List.length_take, Nat.min_eq_left hu, Nat.sub_self, List.getElem?_cons_zero,
+      Option.map_some]
+    exact (hlab hvu').symm
+
+/-- L4.2d helper: actual cut queries contain no `⊤`. -/
+theorem cutQuery_actualKeys_ne_top_D8 (E : Forest) (o : ColAddr) (e : Nat) :
+    ∀ y ∈ cutQuery (actualKeys E o) e, y ≠ ⊤ := by
+  intro y hy
+  have h1 := (nu_sublist _).subset hy
+  have h2 := List.mem_of_mem_take h1
+  simp only [actualKeys, List.mem_map] at h2
+  obtain ⟨_, -, rfl⟩ := h2
+  exact WithTop.coe_ne_top
+
+/-- L4.2d helper: the decorated keys of a truncated route column. -/
+theorem capKeys_trunc_D8 {E K : Forest} {sel : List ColAddr} {o : ColAddr} {colE : Column}
+    {u : Nat} {x : Nat × Forest} (hsel : o ∈ sel) (hE : E.colAt o = some colE)
+    (hK : K.colAt o = some (colE.take u ++ [x])) :
+    capKeys K sel o = (actualKeys E o).take u ++ [⊤] := by
+  simp only [capKeys, hsel, if_true, actualKeys, hK, Option.getD_some, List.map_append,
+    List.map_cons, List.map_nil, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+    Option.toList_some, hE, List.map_take]
+
+/-- L4.2d helper: the A-test data of a truncated route column agree with those of `E` up to its
+last entry. -/
+theorem trunc_test_D8 {E K : Forest} {sel : List ColAddr} {o : ColAddr} {colE : Column}
+    {u : Nat} {x : Nat × Forest} (hsel : o ∈ sel) (hE : E.colAt o = some colE)
+    (hK : K.colAt o = some (colE.take u ++ [x])) (hu : u ≤ colE.length) {i q : Nat}
+    (hq : (parents K o)[i]? = some q) :
+    i ≤ u ∧ cutQuery (capKeys K sel o) i = cutQuery (actualKeys E o) i ∧
+      cutStart K o i = cutStart E o i ∧ (i < u → (parents E o)[i]? = some q) ∧
+      (i = u → q = x.1) := by
+  have hpK : parents K o = (colE.take u).map Prod.fst ++ [x.1] := by
+    simp [parents, hK]
+  have hpE : parents E o = colE.map Prod.fst := by simp [parents, hE]
+  have hlt : (colE.take u).length = u := by rw [List.length_take]; omega
+  have hi : i ≤ u := by
+    have := (List.getElem?_eq_some_iff.1 hq).1
+    rw [hpK] at this; simp at this; omega
+  have hpre : ∀ i' < u, (parents K o)[i']? = (parents E o)[i']? := by
+    intro i' hi'
+    rw [hpK, hpE, List.getElem?_append_left (by simp; omega), List.getElem?_map,
+      List.getElem?_map, List.getElem?_take_of_lt hi']
+  refine ⟨hi, ?_, ?_, fun h => by rw [← hpre i h]; exact hq, fun h => ?_⟩
+  · rw [capKeys_trunc_D8 hsel hE hK, cutQuery, cutQuery,
+      List.take_append_of_le_length (by rw [List.length_take, actualKeys, hE]; simp; omega),
+      List.take_take, Nat.min_eq_left hi]
+  · show (if i = 0 then o.num 0 - 1 else ((parents K o)[i - 1]?).getD 0) =
+      (if i = 0 then o.num 0 - 1 else ((parents E o)[i - 1]?).getD 0)
+    split_ifs with h0
+    · rfl
+    · rw [hpre (i - 1) (by omega)]
+  · subst h
+    rw [hpK, List.getElem?_append_right (by simp only [List.length_map, hlt]; omega), List.length_map, hlt,
+      Nat.sub_self] at hq
+    simpa using hq.symm
+
+section LitCapA
+variable {E : Forest} {c : ColAddr} {k p : Nat}
+
+/-- L4.2d helper (step 7, the edge step): along an actual cut chain of a column of the literal
+cap, its decorated responses are the actual responses of `E` (R7, R8, R11). -/
+theorem litCap_resp_eq_D8 (hE : InL E) (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    {o : ColAddr} (ho : o ∈ (Closure.litCap E c k p).colAddrs) {e : Nat}
+    (he : e ≤ (parents E o).length) {y : Nat}
+    (hy : Path E (actualKeys E) o (cutQuery (actualKeys E o) e) (cutStart E o e) y)
+    {o' : ColAddr} (ho' : o.resolve 0 y = some o') :
+    resp (Closure.litCap E c k p)
+        (capKeys (Closure.litCap E c k p) (routeCols (Closure.litCap E c k p))) o'
+        (cutQuery (actualKeys E o) e) =
+      resp E (actualKeys E) o' (cutQuery (actualKeys E o) e) := by
+  set K := Closure.litCap E c k p
+  have hoE : o ∈ E.colAddrs := litCap_colAddrs_sub_D8 hc hk ho
+  have ho'K : o' ∈ K.colAddrs :=
+    mem_colAddrs_of_onStack_D8 ho ((ColAddr.resolve_spec 0 o o' y).1 ho').1
+  have hW := cutQuery_noninc (actualKeys E o) e
+  have hT := cutQuery_actualKeys_ne_top_D8 E o e
+  by_cases hr : o' ∈ routeCols K
+  · obtain ⟨v, hvK, hvc⟩ := routeCols_visible ho hr ho'
+    have hcont : o'.container o = some ⟨o', v⟩ := (ColAddr.container_spec o' o _).2 ⟨rfl, hvc⟩
+    have hbar : cutQuery (actualKeys E o) e < cutQuery (actualKeys E o') (v + 1) :=
+      cut_barrier_read hE hoE he hy ho' hcont
+    have hvl : v < ((K.colAt o').getD []).length := idx_lt_of_mem_entryAddrs hvK
+    rcases (routeCols_litCap_D8 hc hk o').1 hr with rfl | ⟨i, hi⟩
+    · have hKc := litCap_colAt_self_D8 (k := k) (p := p) hc
+      obtain ⟨colE, hcolE⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E _).1 hc)
+      rw [hcolE, Option.getD_some] at hKc
+      have hkl : k ≤ colE.length := by rw [parents_length_D8, hcolE] at hk; simpa using hk
+      rw [hKc, Option.getD_some, List.length_append, List.length_take, Nat.min_eq_left hkl,
+        List.length_singleton] at hvl
+      have hvk : v ≠ k := by
+        rintro rfl
+        exact litCap_not_inside_closing_D8 hc hk ((Tree.mem_colAddrs_iff _ _).1 ho) hvc
+      exact resp_trunc_D8 hr hcolE hKc hkl (by omega) (by omega) (fun h => absurd h hvk) hW hT
+        hbar
+    · obtain ⟨colX, q, h, h', hX, hq, hK⟩ := litCap_colAt_container_D8 (k := k) (p := p) hc hi
+      have hil : i < colX.length := (List.getElem?_eq_some_iff.1 hq).1
+      rw [hK, Option.getD_some, List.length_append, List.length_take, Nat.min_eq_left hil.le,
+        List.length_singleton] at hvl
+      exact resp_trunc_D8 hr hX hK hil.le (by omega) (by omega)
+        (fun h0 => by subst h0; rw [hq]; rfl) hW hT hbar
+  · have hne : o' ≠ c := fun h => hr ((routeCols_litCap_D8 hc hk o').2 (Or.inl h))
+    have hnc : ∀ i, ¬ (⟨o', i⟩ : EntryAddr).heightPath <+: c.path :=
+      fun i h => hr ((routeCols_litCap_D8 hc hk o').2 (Or.inr ⟨i, h⟩))
+    have hret : K.colAt o' = E.colAt o' :=
+      litCap_colAt_retained_D8 hc hk ((Tree.mem_colAddrs_iff _ _).1 ho'K) hne hnc
+    simp only [resp, capKeys_of_not_mem hr, actualKeys, hret]
+
+/-- L4.2d helper (step 7): actual cut chains of columns of the literal cap are decorated chains
+of the cap. -/
+theorem litCap_path_D8 (hE : InL E) (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    {o : ColAddr} (ho : o ∈ (Closure.litCap E c k p).colAddrs) {e : Nat}
+    (he : e ≤ (parents E o).length) {y : Nat}
+    (hy : Path E (actualKeys E) o (cutQuery (actualKeys E o) e) (cutStart E o e) y) :
+    Path (Closure.litCap E c k p)
+      (capKeys (Closure.litCap E c k p) (routeCols (Closure.litCap E c k p))) o
+      (cutQuery (actualKeys E o) e) (cutStart E o e) y := by
+  induction hy with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail hxz hzy ih =>
+    obtain ⟨o', ho', hr⟩ := hzy
+    exact ih.tail ⟨o', ho', (litCap_resp_eq_D8 hE hc hk ho he hxz ho').trans hr⟩
+
+/-- L4.2d helper (step 7): decorated A for the literal cap: every test of the cap is a test of
+`E` (or the hypothesised cut test at the closing entry), transferred by `litCap_path_D8`. -/
+theorem litCap_decA_D8 (hE : InL E) (hc : c ∈ E.colAddrs) (hup : Closure.IsUpward E c k p)
+    (hpath : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) p) :
+    CondAK (Closure.litCap E c k p)
+      (capKeys (Closure.litCap E c k p) (routeCols (Closure.litCap E c k p))) := by
+  set K := Closure.litCap E c k p
+  have hk := upward_cut_le_D8 hup
+  have hA : CondAK E (actualKeys E) := hE.2.2.2.1
+  intro o ho i q hq
+  change Path K (capKeys K (routeCols K)) o (cutQuery (capKeys K (routeCols K) o) i)
+    (cutStart K o i) q
+  have hoE : o ∈ E.colAddrs := litCap_colAddrs_sub_D8 hc hk ho
+  have hlen : ∀ {i q}, (parents E o)[i]? = some q → i ≤ (parents E o).length :=
+    fun h => (List.getElem?_eq_some_iff.1 h).1.le
+  by_cases hr : o ∈ routeCols K
+  · rcases (routeCols_litCap_D8 hc hk o).1 hr with rfl | ⟨j, hj⟩
+    · have hKc : K.colAt o = some (((E.colAt o).getD []).take k ++ [(p, Tree.empty)]) :=
+        litCap_colAt_self_D8 hc
+      obtain ⟨colE, hcolE⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E _).1 hc)
+      rw [hcolE, Option.getD_some] at hKc
+      have hkl : k ≤ colE.length := by rw [parents_length_D8, hcolE] at hk; simpa using hk
+      obtain ⟨hi, hQ, hS, hlt, heq⟩ := trunc_test_D8 hr hcolE hKc hkl hq
+      rw [hQ, hS]
+      rcases Nat.lt_or_ge i k with hik | hik
+      · have hpq := hlt hik
+        exact litCap_path_D8 hE hc hk ho (hlen hpq) (hA o hoE i q hpq)
+      · have hik' : i = k := by omega
+        subst hik'
+        have hqp : q = p := heq rfl
+        subst hqp
+        exact litCap_path_D8 hE hc hk ho hk hpath
+    · obtain ⟨colX, q', h, h', hX, hq', hK⟩ := litCap_colAt_container_D8 (k := k) (p := p) hc hj
+      have hjl : j < colX.length := (List.getElem?_eq_some_iff.1 hq').1
+      obtain ⟨hi, hQ, hS, hlt, heq⟩ := trunc_test_D8 hr hX hK hjl.le hq
+      rw [hQ, hS]
+      have hpq : (parents E o)[i]? = some q := by
+        rcases Nat.lt_or_ge i j with hij | hij
+        · exact hlt hij
+        · have : i = j := by omega
+          subst this
+          rw [heq rfl]
+          simp [parents, hX, hq']
+      exact litCap_path_D8 hE hc hk ho (hlen hpq) (hA o hoE i q hpq)
+  · have hne : o ≠ c := fun h => hr ((routeCols_litCap_D8 hc hk o).2 (Or.inl h))
+    have hnc : ∀ i, ¬ (⟨o, i⟩ : EntryAddr).heightPath <+: c.path :=
+      fun i h => hr ((routeCols_litCap_D8 hc hk o).2 (Or.inr ⟨i, h⟩))
+    have hret : K.colAt o = E.colAt o :=
+      litCap_colAt_retained_D8 hc hk ((Tree.mem_colAddrs_iff _ _).1 ho) hne hnc
+    have hpar : parents K o = parents E o := by simp only [parents, hret]
+    have hks : capKeys K (routeCols K) o = actualKeys E o := by
+      rw [capKeys_of_not_mem hr]; simp only [actualKeys, hret]
+    have hst : cutStart K o i = cutStart E o i := by simp only [cutStart, hpar]
+    rw [hks, hst]
+    rw [hpar] at hq
+    exact litCap_path_D8 hE hc hk ho (hlen hq) (hA o hoE i q hq)
+
+end LitCapA
+
+end CapLegal_D8
+
 -- provides: U3, L4.2d (an upward literal cap on the actual cut chain is an ordinary V,I,S cap
 -- with decorated A)
 theorem cap_legal {E : Forest} (hE : IsStd E) {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
@@ -796,7 +1668,14 @@ theorem cap_legal {E : Forest} (hE : IsStd E) {c : ColAddr} {k p : Nat} (hc : c 
     let K := Closure.litCap E c k p
     Scan.CondV K ∧ Scan.CondI K ∧ Scan.CondS K ∧
     Scan.CondAK K (Scan.capKeys K (Scan.routeCols K)) ∧ Scan.stepKind K = some .ordinary := by
-  sorry
+  intro K
+  have hL := Closure.std_inL hE
+  have hP := Closure.std_condP hE
+  obtain ⟨hV, hI, hH, -, -⟩ := id hL
+  have hKV : Scan.CondV K := litCap_condV_D8 hV hc hdepth hup hpath
+  have hKI : Scan.CondI K := litCap_condI_D8 hI hc hup
+  exact ⟨hKV, hKI, Closure.upward_condS hV hI hH hP hup hKV hKI, litCap_decA_D8 hL hc hup hpath,
+    Closure.litCap_ordinary hI hup hKV hKI⟩
 
 -- provides: U3, L4.2 (the spine's `firstDiff_cap`†; consumer: U5 L8.8 Case 3)
 theorem firstDiff_cap {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
