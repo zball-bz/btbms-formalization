@@ -9267,6 +9267,268 @@ theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : N
         (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ β' x = βb w := by
   exact ⟨_, fitExtend_E8 S hS hj hfit hL hfr hnew hholds⟩
 
+section ScanPacket_E8
+
+/-- L7.6a step 3 helper: the target of a scan record is query entry `j` read in `E`, at the
+`E`-copy `cE` of the stopping column; `χ̂` carries `T`, the slot of entry `j` and the
+representatives of `T`'s stack to those of `cE`. -/
+theorem scan_target_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) :
+    (S.scanRecord i j).b = ⟨S.cE, j⟩ ∧ S.TE = .ord S.cE ∧ S.cE.num 0 = S.sd.col.num 0 ∧
+    S.E.entryAt ⟨S.cE, j⟩ = some S.sd.Q[j] ∧
+    ∀ q < S.sd.col.num 0,
+      (S.sd.col.rep 0 q).map (fun ov => (S.chi ov.1, S.chi ov.2)) = S.cE.rep 0 q := by
+  obtain ⟨⟨hstd, -, -, hsd, -, -, -⟩, -⟩ := hS
+  have hcolH := (Scan.stopData_spec hsd).1
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  simp only [ScanSetup.cE, ScanSetup.TE, ScanSetup.chi, ScanSetup.scanRecord]
+  simp only [ScanSetup.H] at hsd hcolH
+  revert hsd hcolH
+  generalize S.cap = cap
+  intro hsd hcolH
+  cases cap with
+  | none =>
+    simp only [anchorD, Closure.anchorOrigin, Option.getD_some]
+    refine ⟨by simp, by simp, by simp, ?_, fun q _ => by cases S.sd.col.rep 0 q <;> rfl⟩
+    simp only [Closure.anchor] at hcolH
+    simp [Tree.entryAt, hcolH, List.getElem?_append_left hj, hQj]
+  | some w =>
+    have hE := Closure.std_inL hstd
+    obtain ⟨ht, -, hlen, hT, hq⟩ := Closure.admCap_query hE w hsd
+    obtain ⟨ho, hQ⟩ := hq j (hlen ▸ hj)
+    have hTd : anchorD S.E (some w) (.ord S.sd.col) = .ord w.col := by
+      simp [anchorD, Closure.anchorOrigin, hT]
+    simp only [hTd, Closure.anchorOrigin, ho]
+    refine ⟨by simp, by simp, ?_, ?_, fun q hq' => ?_⟩
+    · rw [← ht, (Scan.stopData_spec hsd).2.2.1]
+    · cases hc : S.E.colAt w.col with
+      | none => rw [hc] at hQ; simp [hQj] at hQ
+      | some col =>
+        rw [hc, Option.getD_some] at hQ
+        simp [Tree.entryAt, hc, ← hQ, hQj]
+    · have h7 := (Closure.origin_spec_full hE w).2.2.2.2.2.2.1 S.sd.col w.col
+        (Scan.stopData_col_mem hsd) hT q hq'
+      exact h7
+
+/-- L7.6a step 2 helper: the indices of a reached state. -/
+theorem reach_idx_E8 {S : ScanSetup.{u}} {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j) :
+    i < rootLenOf S.H S.rd ∧ j < S.sd.Q.length := by
+  obtain ⟨-, x, y, hx, hy, -⟩ := hij
+  constructor
+  · have := (List.getElem?_eq_some_iff.1 hx).1
+    simpa [Scan.rootKeys, rootLenOf] using this
+  · have := (List.getElem?_eq_some_iff.1 hy).1
+    simpa [Scan.queryKeys] using this
+
+/-- D7.2c / L7.6a helper: the fitted tag is fresh, so `pkAsg` keeps the values of used names. -/
+theorem pkAsg_used_E8 (S : ScanSetup.{u}) (β : Role → Ordinal.{u}) {n : Name}
+    (hn : n ∈ S.usedNames) : S.pkAsg β n = S.asg n := by
+  cases n with
+  | role tg x =>
+    simp only [ScanSetup.pkAsg]
+    rw [if_neg]
+    rintro rfl
+    exact freshTag_fresh S.usedNames x hn
+  | aux k => rfl
+
+/-- L7.6a step 11: the owner of the scan packet is the bank owner `u_i`. -/
+theorem scan_owner_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    (β : Role → Ordinal.{u}) :
+    (S.scanPacket i j β).asg (S.scanPacket i j β).owner = S.ownerVal i := by
+  obtain ⟨⟨-, -, -, hsd, hrd, -, -⟩, -⟩ := hS
+  obtain ⟨hi, -⟩ := reach_idx_E8 hij
+  obtain ⟨-, -, -, -, -, hmem, hcur, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  have hiR : i < colR.length := by simpa [rootLenOf, hcolR] using hi
+  obtain ⟨⟨p0, h0⟩, hpi⟩ : ∃ y, colR[i]? = some y := ⟨_, List.getElem?_eq_getElem hiR⟩
+  have hic : i ≤ S.rd.cursor := by
+    rw [hcur]; exact Scan.trace_fst_le_cursor _ _ hij.1
+  have hent : S.H.entryAt ⟨S.rd.col, i⟩ = some (p0, h0) := by simp [Tree.entryAt, hcolR, hpi]
+  have hslotH : Role.slot ⟨S.rd.col, i⟩ ∈ S.H.roles := by
+    rw [Tree.mem_roles_iff]; simp [hent]
+  have hbank : Role.slot ⟨S.rd.col, i⟩ ∈ S.bankRoles := by
+    refine List.mem_filter.2 ⟨hslotH, List.any_eq_true.2 ⟨i, List.mem_range.2 (by omega), ?_⟩⟩
+    simp [Role.inEntry]
+  have hpre : Role.slot ⟨S.rd.col, i⟩ ∉ S.preRoot := by
+    obtain ⟨A, B, hr⟩ := roles_col_decomp hcolR
+    have hR : S.preRoot = A := rolesBefore_of_decomp_E8 hr
+    rw [hR]
+    have hnd := Tree.roles_nodup S.H
+    rw [hr, List.nodup_append] at hnd
+    have hin : Role.slot ⟨S.rd.col, i⟩ ∈ Role.ord S.rd.col ::
+        (Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR ++ B) := by
+      refine List.mem_cons_of_mem _ (List.mem_append_left _ ?_)
+      exact Tree.mem_rolesCol_iff.2 ⟨i, p0, h0, hpi, Or.inl (by simp)⟩
+    exact fun h => hnd.2.2 _ h _ hin rfl
+  have hown : (S.scanPacket i j β).owner = S.bankNm (.slot ⟨S.rd.col, i⟩) := by
+    show S.pkSrcChart (.slot ⟨S.rd.col, i⟩) = _
+    simp only [ScanSetup.pkSrcChart, if_neg hpre]
+    rw [if_neg (by simp [ScanSetup.R])]
+  rw [hown]
+  show S.pkAsg β _ = _
+  rw [pkAsg_used_E8 S β (by
+    simp only [ScanSetup.usedNames, List.mem_append, List.mem_map]
+    exact Or.inl (Or.inr ⟨_, hbank, rfl⟩))]
+  rfl
+
+/-- L7.6a step 7 helper: `T` is followed by the slot of the first entry of the stopping column. -/
+theorem stop_first_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) :
+    (⟨S.sd.col, 0⟩ : EntryAddr) ∈ S.H.entryAddrs ∧
+    prefixRoles S.H ⟨S.sd.col, 0⟩ = S.preStop ++ [Role.ord S.sd.col] := by
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
+  refine ⟨(Tree.mem_entryAddrs_iff _ _).2 ?_, ?_⟩
+  · cases hQc : S.sd.Q with
+    | nil => simp [Tree.entryAt, hcol, hQc]
+    | cons q0 Qt => simp [Tree.entryAt, hcol, hQc]
+  · rcases hQc : S.sd.Q with _ | ⟨q0, Qt⟩
+    · refine rolesBefore_of_decomp_E8 (rest := post) ?_
+      rw [hroles, hQ, hQc]
+      simp [Scan.closingSlot, hQc, Tree.rolesCol]
+    · refine rolesBefore_of_decomp_E8 (rest := Tree.rolesF (S.sd.col.path ++ [(S.sd.col.col, 0)])
+        q0.2 ++ (Tree.rolesCol S.sd.col.path S.sd.col.col 1 Qt ++
+          Role.slot (Scan.closingSlot S.sd) :: post)) ?_
+      rw [hroles, hQ, hQc]
+      simp [Tree.rolesCol]
+
+/-- L7.6a steps 7, 12 helper: the target frame of the scan packet has the shape of the frame of
+query entry `j` in `H`, and its values are the fitted values of the `H`-frame. -/
+theorem scan_frame_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    (∀ w, (frameOf ⟨S.sd.col, j⟩).toFr w = none → (S.scanPacket i j β).tgtFrame.toFr w = none) ∧
+    ∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x →
+      ∃ x', (S.scanPacket i j β).tgtFrame.toFr w = some x' ∧
+        (S.scanPacket i j β).asg x' = S.fitVal β x := by
+  have hS' := hS
+  obtain ⟨⟨-, hInL, -, hsd, -, -, -⟩, -⟩ := hS'
+  obtain ⟨hb, hTE, hnum, -, hrep⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
+  have hnd := Tree.roles_nodup S.H
+  rw [hroles, List.nodup_append, List.nodup_cons] at hnd
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := fun h => hnd.2.1.1 (List.mem_append_left _ h)
+  have hPq : ∀ x ∈ S.preStop, x ∉ S.queryRoles := fun x hx h =>
+    hnd.2.2 _ hx _ (List.mem_cons_of_mem _ (List.mem_append_left _ h)) rfl
+  have hPT : ∀ x ∈ S.preStop, x ≠ Role.ord S.sd.col := fun x hx h =>
+    hnd.2.2 _ hx _ List.mem_cons_self h
+  have htf : (S.scanPacket i j β).tgtFrame = (frameOf ⟨S.cE, j⟩).map S.pkTgtChart := by
+    show (frameOf (S.scanRecord i j).b).map S.pkTgtChart = _
+    rw [hb]
+  obtain ⟨he0, hpre0⟩ := stop_first_E8 hsd
+  have hstopv : S.pkAsg β S.stopNm = S.asg S.stopNm :=
+    pkAsg_used_E8 S β (by simp [ScanSetup.usedNames])
+  have hTEc : S.pkTgtChart (.ord S.cE) = S.stopNm := by
+    have hnot : Role.ord S.cE ∉ S.PE := by
+      intro h
+      have := List.all_eq_true.1 List.all_takeWhile _ h
+      rw [← hTE] at this
+      simp at this
+    rw [← hTE] at hnot ⊢
+    simp only [ScanSetup.pkTgtChart, if_neg hnot, if_true]
+  have hrepv : ∀ q x v, S.sd.col.rep 0 q = some (x, v) →
+      S.pkAsg β (S.pkTgtChart (S.chi x)) = S.fitVal β x ∧
+      S.pkAsg β (S.pkTgtChart (S.chi v)) = S.fitVal β v := by
+    intro q x v h
+    have hq : q < S.sd.col.num 0 := (rep_isSome_iff _ _).1 (by rw [h]; rfl)
+    obtain ⟨hxP, hvP⟩ := rep_mem_prefix he0 h
+    rw [hpre0] at hxP hvP
+    have hne : x ≠ Role.ord S.sd.col ∧ v ≠ Role.ord S.sd.col := by
+      unfold ColAddr.rep at h
+      obtain ⟨o, ho, hov⟩ := Option.map_eq_some_iff.1 h
+      have hon := ColAddr.resolve_num ho
+      have hne : o ≠ S.sd.col := by rintro rfl; omega
+      simp only [Prod.mk.injEq] at hov
+      obtain ⟨rfl, rfl⟩ := hov
+      refine ⟨by simp [hne], ?_⟩
+      split <;> simp [hne]
+    have hP : ∀ y, y ∈ S.preStop ++ [Role.ord S.sd.col] → y ≠ Role.ord S.sd.col →
+        S.pkAsg β (S.pkTgtChart (S.chi y)) = S.fitVal β y := by
+      intro y hy hyT
+      have hyP : y ∈ S.preStop := by
+        rcases List.mem_append.1 hy with h | h
+        · exact h
+        · exact absurd (List.mem_singleton.1 h) hyT
+      obtain ⟨T', hT', -, hpre'⟩ := Closure.anchorOrigin_prefix hInL hsd
+      obtain ⟨y', hy', hyPE, -⟩ := hpre' y hyP
+      have hchi : S.chi y = y' := by simp [ScanSetup.chi, anchorD, hy']
+      have hy'PE : y' ∈ S.PE := by
+        simp only [ScanSetup.PE, ScanSetup.TE, ScanSetup.chi, anchorD, hT', Option.getD_some]
+        exact hyPE
+      rw [hchi]
+      simp only [ScanSetup.pkTgtChart, if_pos hy'PE]
+      rw [pkAsg_used_E8 S β (by
+        simp only [ScanSetup.usedNames, List.mem_append]
+        exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hy'PE))))]
+      simp only [ScanSetup.fitVal, if_neg (hPq y hyP), ScanSetup.baseVal, if_neg hyT, hy',
+        Option.map_some, Option.getD_some]
+    exact ⟨hP x hxP hne.1, hP v hvP hne.2⟩
+  rw [htf]
+  refine ⟨fun w hw => ?_, fun w x hw => ?_⟩
+  · cases w with
+    | host => simp [frameOf, Frame.toFr] at hw
+    | ord q =>
+      have hn : S.sd.col.rep 0 q = none := by simpa [frameOf, Frame.toFr, reps0_getElem?] using hw
+      have hq : ¬ q < S.sd.col.num 0 := fun hq => by
+        have := (rep_isSome_iff S.sd.col q).2 hq; rw [hn] at this; cases this
+      have hn' : S.cE.rep 0 q = none := by
+        cases hc : S.cE.rep 0 q with
+        | none => rfl
+        | some _ => exact absurd (hnum ▸ (rep_isSome_iff S.cE q).1 (by rw [hc]; rfl)) hq
+      simp [Frame.map, frameOf, Frame.toFr, List.getElem?_map, reps0_getElem?, hn']
+    | cur q =>
+      have hn : S.sd.col.rep 0 q = none := by simpa [frameOf, Frame.toFr, reps0_getElem?] using hw
+      have hq : ¬ q < S.sd.col.num 0 := fun hq => by
+        have := (rep_isSome_iff S.sd.col q).2 hq; rw [hn] at this; cases this
+      have hn' : S.cE.rep 0 q = none := by
+        cases hc : S.cE.rep 0 q with
+        | none => rfl
+        | some _ => exact absurd (hnum ▸ (rep_isSome_iff S.cE q).1 (by rw [hc]; rfl)) hq
+      simp [Frame.map, frameOf, Frame.toFr, List.getElem?_map, reps0_getElem?, hn']
+    | owner => rfl
+    | inner r => rfl
+  · cases w with
+    | host =>
+      simp only [frameOf, Frame.toFr, Option.some.injEq] at hw
+      subst hw
+      refine ⟨S.stopNm, by simp [Frame.map, frameOf, Frame.toFr, hTEc], ?_⟩
+      show S.pkAsg β S.stopNm = _
+      rw [hstopv]
+      simp [ScanSetup.fitVal, hTq, ScanSetup.baseVal]
+    | ord q =>
+      simp only [frameOf, Frame.toFr, reps0_getElem?] at hw
+      obtain ⟨⟨x0, v0⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hw
+      have hq : q < S.sd.col.num 0 := (rep_isSome_iff _ _).1 (by rw [hov]; rfl)
+      have hc := hrep q hq
+      rw [hov] at hc
+      refine ⟨S.pkTgtChart (S.chi x0), ?_, (hrepv q x0 v0 hov).1⟩
+      simp [Frame.map, frameOf, Frame.toFr, List.getElem?_map, reps0_getElem?, ← hc]
+    | cur q =>
+      simp only [frameOf, Frame.toFr, reps0_getElem?] at hw
+      obtain ⟨⟨x0, v0⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hw
+      have hq : q < S.sd.col.num 0 := (rep_isSome_iff _ _).1 (by rw [hov]; rfl)
+      have hc := hrep q hq
+      rw [hov] at hc
+      refine ⟨S.pkTgtChart (S.chi v0), ?_, (hrepv q x0 v0 hov).2⟩
+      simp [Frame.map, frameOf, Frame.toFr, List.getElem?_map, reps0_getElem?, ← hc]
+    | owner => cases hw
+    | inner r => cases hw
+
+/-- L7.6a steps 2–3: the scan record at a reached state is admitted. -/
+theorem scanPacket_admitted_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j) :
+    (S.scanRecord i j).Admitted := by
+  sorry
+
+/-- L7.6a steps 4–10: the scan packet is valid. -/
+theorem scanPacket_valid_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
+    (hheads : S.HeadsAt P j i β) : (S.scanPacket i j β).Valid P := by
+  sorry
+
+end ScanPacket_E8
+
 -- provides: U3, L7.6a (explicit form of the spine's `scan_packet`)
 theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
@@ -9282,7 +9544,38 @@ theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i 
       BaseHolds P (posBlock pk.rk.tgtKey pk.rk.tgtSel) γ →
       S.Fitted P (j + 1) (S.extendFit j β γ) ∧ (∀ x ∈ S.fittedRoles j, S.extendFit j β γ x = β x) ∧
       ∀ x ∈ S.entryRoles j, L < S.extendFit j β γ x ∧ S.extendFit j β γ x < S.ownerVal i := by
-  sorry
+  intro pk
+  have hj := (reach_idx_E8 hij).2
+  have hown := scan_owner_E8 S hS hij β
+  refine ⟨rfl, scanPacket_admitted_E8 S hS hij, scanPacket_valid_E8 S hS hij hfit h17a hheads,
+    hown, ?_⟩
+  intro L hL γ g1 g2 g3 g4
+  obtain ⟨hb, -, hnum, hentE, -⟩ := scan_target_E8 S hS (i := i) hj
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  have hkey : pk.rk.tgtKey = ((Scan.queryKeys S.sd)[j]?).getD Tree.empty := by
+    have h1 := scanRecord_tgtHeight S hS (i := i) hj
+    show relKey (S.scanRecord i j).b.col.num 0 (S.scanRecord i j).tgtHeight = _
+    rw [h1, hb, hnum, ← (Scan.stopData_spec hS.1.2.2.2.1).2.2.1]
+    simp [Scan.queryKeys, List.getElem?_map, hQj]
+  have hsel : pk.rk.tgtSel = ((S.sd.Q[j]?).map Prod.fst).getD 0 := by
+    show (((S.scanRecord i j).E.entryAt (S.scanRecord i j).b).map Prod.fst).getD 0 = _
+    rw [hb]
+    simp [ScanSetup.scanRecord, hentE, hQj]
+  rw [hkey, hsel] at g2 g3 g4
+  obtain ⟨hfnone, hfsome⟩ := scan_frame_E8 S hS (i := i) hj β
+  have hfr : ∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → γ w = S.fitVal β x := by
+    intro w x hx
+    obtain ⟨x', hx', hv⟩ := hfsome w x hx
+    rw [g1 w x' hx']
+    exact hv
+  have hnew : ∀ w ∈ baseVars (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
+      (((S.sd.Q[j]?).map Prod.fst).getD 0)), (frameOf ⟨S.sd.col, j⟩).toFr w = none → L < γ w :=
+    fun w hw hn => (g2 w hw (hfnone w hn)).1
+  obtain ⟨h1, h2, h3⟩ := fitExtend_E8 S hS hj hfit hL hfr hnew g4
+  refine ⟨h1, h2, fun x hx => ?_⟩
+  obtain ⟨w, hw, hwn, hwv⟩ := h3 x hx
+  rw [hwv]
+  exact ⟨(g2 w hw (hfnone w hwn)).1, (g3 w hw).trans_eq hown⟩
 
 -- provides: U3, L7.6 (complete packets at a scan, (17))
 -- Moved here from `Plan/Spine.lean` (brief rule 5; name and statement unchanged): the proof uses
