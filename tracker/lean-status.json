@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "57d90cac5e6e7621a12f9d1a772250c7067c549816471563f2abd15686219fd8",
+ "fingerprint": "a2ae6dc9cbee00a7cdcc8660b65910bad5e39662891e8baa8fc47010dc0b8917",
  "decls": [
   {
    "axioms": [
@@ -573,6 +573,18 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.scan_joint_src_E8"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.scan_joint_tgt_E8"
   },
   {
    "axioms": [
@@ -1305,18 +1317,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.rep_stage"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.scan_joint_tgt_E8"
   },
   {
    "axioms": [
@@ -17588,6 +17588,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.chi_slot_G8"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.cmpCol_modify_D8"
   },
   {
@@ -19679,6 +19690,17 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.safePrefix_inside"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.scan_fit_atom_G8"
   },
   {
    "axioms": [
@@ -33681,6 +33703,15 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.atomOwner_mem_vars_G8"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.capKeys_trunc_D8"
   },
   {
@@ -37587,6 +37618,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T17:58:41+00:00",
- "head": "3063b65"
+ "generated": "2026-10-27T18:11:32+00:00",
+ "head": "956ef67"
 }
