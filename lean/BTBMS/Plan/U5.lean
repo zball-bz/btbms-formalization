@@ -3116,12 +3116,76 @@ theorem scan_trace (I : Interface.{u}) {n : Nat} (hSn : ∀ m < n, SStrict I.toP
     (S : ScanSetup.{u}) (hS : S.Valid I.toPrims) (hQ : ∀ J ∈ S.sd.Q, J.2.size < n) :
     ∀ s ∈ Scan.trace (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd),
       ∃ β, ScanInv I.toPrims S s.1 s.2 β := by
-  sorry
+  have hS' := (valid_iff S).1 hS
+  obtain ⟨-, -, -, hsd, hrd, -, -⟩ := hS'.1
+  have hcur : S.rd.cursor = Scan.cursor (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) :=
+    (Scan.rootData_spec hsd hrd).2.2.2.2.2.2.1
+  obtain ⟨hhead, hstep, hbound, -⟩ := Scan.trace_spec (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd)
+  rw [← hcur] at hbound
+  have key : ∀ (k : Nat) (s : Nat × Nat),
+      (Scan.trace (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd))[k]? = some s →
+      ∃ β, ScanInv I.toPrims S s.1 s.2 β := by
+    intro k
+    induction k with
+    | zero =>
+      intro s hs
+      rw [← List.head?_eq_getElem?, hhead, Option.some.injEq] at hs
+      subst hs
+      exact ⟨fun _ => 0, scan_init S hS' _⟩
+    | succ k ih =>
+      intro s' hs'
+      obtain ⟨s, hs⟩ : ∃ s, (Scan.trace (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd))[k]? =
+          some s := by
+        have hlt := (List.getElem?_eq_some_iff.1 hs').1
+        exact ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      obtain ⟨β, hinv⟩ := ih s hs
+      have hmem : s ∈ Scan.trace (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) :=
+        List.mem_of_getElem? hs
+      have hmem' : s' ∈ Scan.trace (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) :=
+        List.mem_of_getElem? hs'
+      obtain ⟨x, y, hx, hy, hcase⟩ := hstep k s s' hs hs'
+      rcases hcase with ⟨hxy, rfl⟩ | ⟨rfl, rfl⟩ | ⟨hxy, rfl⟩
+      · exact ⟨β, scan_lt S hS' hinv (by have := (hbound _ hmem').1; simp at this; omega)⟩
+      · exact scan_eq I S hS hinv hx hy (by have := (hbound _ hmem').1; simp at this; omega)
+      · exact scan_gt I hSn S hS hQ hinv ⟨hmem, x, y, hx, hy, hxy⟩ (hbound _ hmem).1
+  intro s hs
+  obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 hs
+  exact key k s hk
+
+/-- L8.5 (helper): every query role lies in a query entry, so the full fitting is the query. -/
+theorem fittedRoles_all_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) :
+    S.fittedRoles S.sd.Q.length = S.queryRoles := by
+  refine List.filter_eq_self.2 fun x hx => ?_
+  obtain ⟨-, j, hj, hin⟩ := (mem_queryRoles_iff_D4 hsd).1 hx
+  simp only [List.any_eq_true, List.mem_range]
+  exact ⟨j, hj, hin⟩
 
 /-- L8.5, `S_{<n} ⇒ W_{<n}` (txt:1216-1248). -/
 theorem wFit_of_sStrict (I : Interface.{u}) (n : Nat) (h : ∀ m < n, SStrict I.toPrims m) :
     WFit I.toPrims n := by
-  sorry
+  intro S hS hQ
+  have hS' := (valid_iff S).1 hS
+  obtain ⟨-, -, -, hsd, hrd, hlen, -⟩ := hS'.1
+  have hcur : S.rd.cursor = Scan.cursor (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) :=
+    (Scan.rootData_spec hsd hrd).2.2.2.2.2.2.1
+  obtain ⟨-, -, -, jl, hlast, hjl⟩ :=
+    Scan.trace_spec (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd)
+  rw [← hcur] at hlast hjl
+  have hjQ : jl = S.sd.Q.length := by
+    have := hjl (by simpa [Scan.rootKeys] using hlen)
+    simpa [Scan.queryKeys] using this
+  subst hjQ
+  obtain ⟨β, hfit, h17a, -⟩ := scan_trace I h S hS hQ _ (List.mem_of_getLast? hlast)
+  refine ⟨β, ?_, fun x hx => ?_⟩
+  · have hsub : restrictTo S.queryGraph (S.preStop ++ [.ord S.sd.col] ++
+        S.fittedRoles S.sd.Q.length) = S.queryGraph := by
+      rw [fittedRoles_all_D4 hsd]
+      exact List.filter_eq_self.2 fun a ha => (List.mem_filter.1 (List.mem_filter.1 ha).1).2
+    have := hfit
+    rw [ScanSetup.Fitted, hsub] at this
+    exact this
+  · have hx' : x ∈ S.fittedRoles S.sd.Q.length := by rw [fittedRoles_all_D4 hsd]; exact hx
+    exact (le_foldr_max_mem_D4 (List.mem_map_of_mem hx')).trans_lt h17a
 
 /-! ## §8.3: `W_{<n} ⇒ D_{<n}` -/
 
