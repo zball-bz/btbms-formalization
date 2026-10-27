@@ -400,6 +400,33 @@ theorem under_mem_roles {t : Tree α} {e : EntryAddr} {B : Tree α} (hB : t.heig
     show (t.entryAt ⟨⟨e.heightPath ++ e'.col.path, e'.col.col⟩, e'.idx⟩).isSome
     rw [entryAt_under hB]; exact hr
 
+/-! L6.2a helpers on trees: roles do not read labels. -/
+
+mutual
+/-- L6.2a helper: roles never read labels. -/
+theorem rolesF_map (f : α → β) (π : List (Nat × Nat)) :
+    ∀ t : Tree α, rolesF π (t.map f) = rolesF π t
+  | .node cols => by rw [Tree.map, rolesF, rolesF]; exact rolesCols_map f π 0 cols
+theorem rolesCols_map (f : α → β) (π : List (Nat × Nat)) :
+    ∀ (c : Nat) (cols : List (List (α × Tree α))), rolesCols π c (mapCols f cols) = rolesCols π c cols
+  | _, [] => rfl
+  | c, col :: rest => by
+    rw [mapCols, rolesCols, rolesCols, rolesCol_map f π c 0 col, rolesCols_map f π (c + 1) rest]
+theorem rolesCol_map (f : α → β) (π : List (Nat × Nat)) (c : Nat) :
+    ∀ (i : Nat) (col : List (α × Tree α)), rolesCol π c i (mapCol f col) = rolesCol π c i col
+  | _, [] => rfl
+  | i, (p, h) :: rest => by
+    rw [mapCol, rolesCol, rolesCol, rolesF_map f _ h, rolesCol_map f π c (i + 1) rest]
+end
+
+theorem rolesCols_map' (f : α → β) (π : List (Nat × Nat)) (c : Nat) (cols : List (List (α × Tree α))) :
+    rolesCols π c (cols.map (mapCol f)) = rolesCols π c cols := by
+  rw [← Scan.treeMapCols_eq_map, rolesCols_map]
+
+theorem rolesCol_map' (f : α → β) (π : List (Nat × Nat)) (c i : Nat) (col : List (α × Tree α)) :
+    rolesCol π c i (col.map fun x => (f x.1, x.2.map f)) = rolesCol π c i col := by
+  rw [← Scan.treeMapCol_eq_map, rolesCol_map]
+
 end Tree
 
 namespace Packet
@@ -824,21 +851,167 @@ def specialKey (H : Forest) (e : EntryAddr) : Key :=
 /-! ## L6.2a  Stage addresses and the explicit occurrence maps (R-3) -/
 
 -- SCR2 applied at integration: the bridge holds by `rfl`
-theorem qMap_eq_def : qMap = qMapDef := by sorry
+theorem qMap_eq_def : qMap = qMapDef := rfl
 -- SCR2 applied at integration: the bridge holds by `rfl`
-theorem fMap_eq_def : fMap = fMapDef := by sorry
+theorem fMap_eq_def : fMap = fMapDef := rfl
 
 /-- L6.2a: the roles of stage `m` of `H[n]` in reading order: the head, the query copy, the
 retained copy. -/
 def stageRoles (H : Forest) (n : Nat) (rs : RoleSets) (m : Nat) : List Role :=
   qMap H n m rs.T :: (rs.Q.map (qMap H n m) ++ rs.K.map (fMap H n m))
 
+theorem transCols_ord_nil (π : List (Nat × Nat)) (c j : Nat) :
+    transCols [] π 0 c (.ord ⟨[], j⟩) = .ord ⟨π, j + c⟩ := by
+  simp [transCols, relocCols]
+
+theorem transCols_under (π : List (Nat × Nat)) (c k i : Nat) (x : Role) :
+    transCols [] π 0 c (x.under [(k, i)]) = x.under (π ++ [(k + c, i)]) := by
+  cases x with
+  | ord d => simp [transCols, relocCols, Role.under]
+  | slot e => simp [transCols, relocCols, Role.under]
+
+theorem transCols_slot_nil (π : List (Nat × Nat)) (c k i : Nat) :
+    transCols [] π 0 c (.slot ⟨⟨[], k⟩, i⟩) = .slot ⟨⟨π, k + c⟩, i⟩ := by
+  simp [transCols, relocCols]
+
+/-- L6.2a helper: the roles of columns placed at path `π` from column `c + k` are those placed at
+`[]` from column `k`, relocated by `transCols [] π 0 c`. -/
+theorem rolesCol_place (π : List (Nat × Nat)) (c k : Nat) :
+    ∀ (i : Nat) (col : List (Nat × Forest)),
+      Tree.rolesCol π (k + c) i col = (Tree.rolesCol [] k i col).map (transCols [] π 0 c)
+  | _, [] => rfl
+  | i, (p, h) :: rest => by
+    rw [Tree.rolesCol, Tree.rolesCol, rolesCol_place π c k (i + 1) rest, List.map_cons, List.map_append,
+      transCols_slot_nil, Tree.rolesF_eq_map_under, Tree.rolesF_eq_map_under, List.map_map]
+    congr 2
+    apply List.map_congr_left
+    intro x _
+    simp only [Function.comp_apply, List.nil_append, transCols_under]
+
+theorem rolesCols_place (π : List (Nat × Nat)) (c : Nat) :
+    ∀ (k : Nat) (cols : List (List (Nat × Forest))),
+      Tree.rolesCols π (k + c) cols = (Tree.rolesCols [] k cols).map (transCols [] π 0 c)
+  | _, [] => rfl
+  | k, col :: rest => by
+    rw [Tree.rolesCols, Tree.rolesCols, show k + c + 1 = (k + 1) + c by omega,
+      rolesCols_place π c (k + 1) rest, rolesCol_place π c k 0 col, List.map_cons, List.map_append,
+      transCols_ord_nil]
+
+/-- L6.2a helper: route columns of `routeColsAux` are columns of the forest placed under `σ`. -/
+theorem routeColsAux_mem_roles : ∀ (fuel : Nat) (F : Forest) (σ : List (Nat × Nat)) (c : ColAddr),
+    c ∈ Scan.routeColsAux fuel F σ → Role.ord c ∈ Tree.rolesF σ F := by
+  intro fuel F σ c h
+  rw [Scan.mem_routeColsAux_iff] at h
+  obtain ⟨τ, hp, -, -, G, hG, hGl⟩ := h
+  rw [Tree.rolesF_eq_map_under]
+  refine List.mem_map.2 ⟨.ord ⟨τ, c.col⟩, ?_, by obtain ⟨cp, cc⟩ := c; simp_all [Role.under]⟩
+  rw [Tree.mem_roles_iff]
+  show (F.colAt ⟨τ, c.col⟩).isSome
+  unfold Tree.colAt
+  rw [hG]
+  simp only [Option.bind_some]
+  rw [List.getElem?_eq_getElem (by omega)]
+  rfl
+
+theorem takeWhile_append_of_mem {l₁ l₂ : List Role} {x : Role} (hnd : (l₁ ++ l₂).Nodup)
+    (hx : x ∈ l₂) : (l₁ ++ l₂).takeWhile (· != x) = l₁ ++ l₂.takeWhile (· != x) := by
+  rw [List.takeWhile_append_of_pos]
+  intro y hy
+  simp only [bne_iff_ne, ne_eq]
+  rintro rfl
+  exact (List.nodup_append.1 hnd).2.2 _ hy _ hx rfl
+
+theorem roles_replaceAt_aux (r d : Nat) (Z : Forest) :
+    ∀ (ℓ fuel : Nat) (F : Forest) (σ π : List (Nat × Nat)) (c : Nat),
+      (Scan.routeColsAux fuel F σ)[ℓ]? = some ⟨π, c⟩ →
+      Tree.rolesF σ (replaceAt r d Z ℓ F) =
+        (Tree.rolesF σ F).takeWhile (· != .ord ⟨π, c⟩) ++ Z.roles.map (transCols [] π 0 c) := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c h
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_zero, Option.some.injEq, ColAddr.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
+        have hrep : replaceAt r d Z 0 (Tree.node (A ++ [col])) =
+            Tree.node (A.map (Tree.mapCol (shiftVal r d)) ++ Z.cols) := by
+          obtain ⟨y, ys, hys⟩ := List.exists_cons_of_ne_nil (show A ++ [col] ≠ [] by simp)
+          rw [hys]
+          simp only [replaceAt]
+          rw [← hys, List.dropLast_concat]
+        have hlen : (A ++ [col]).length - 1 = 0 + A.length := by simp
+        rw [hrep, Tree.rolesF, Tree.rolesCols_append, Tree.rolesCols_map', List.length_map, hlen,
+          Tree.rolesF, Tree.rolesCols_append, Tree.rolesCols]
+        have hnd := Tree.nodup_rolesF σ (Tree.node (A ++ [col]))
+        rw [Tree.rolesF, Tree.rolesCols_append, Tree.rolesCols] at hnd
+        simp only [Nat.zero_add] at hnd ⊢
+        rw [takeWhile_append_of_mem hnd (List.mem_cons_self ..), List.takeWhile_cons_of_neg (by simp),
+          List.append_nil]
+        congr 1
+        cases Z with
+        | node zc =>
+          have := rolesCols_place σ A.length 0 zc
+          rw [Nat.zero_add] at this
+          exact this
+  | succ k ih =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c h
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_succ] at h
+        cases hl' : col.getLast? with
+        | none => rw [hl'] at h; simp at h
+        | some ph =>
+          obtain ⟨p, hh⟩ := ph
+          rw [hl'] at h
+          simp only at h
+          obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
+          obtain ⟨B, rfl⟩ : ∃ B, col = B ++ [(p, hh)] :=
+            ⟨_, (List.dropLast_append_getLast? _ hl').symm⟩
+          simp only [List.length_append, List.length_singleton, Nat.add_sub_cancel] at h
+          have IH := ih fuel hh _ π c h
+          have hmem := routeColsAux_mem_roles fuel hh _ _ (List.mem_of_getElem? h)
+          have hrep : replaceAt r d Z (k + 1) (Tree.node (A ++ [B ++ [(p, hh)]])) =
+              Tree.node (A.map (Tree.mapCol (shiftVal r d)) ++
+                [B.map (fun x => (shiftVal r d x.1, Tree.map (shiftVal r d) x.2)) ++
+                  [(shiftVal r d p, replaceAt r d Z k hh)]]) := by
+            simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+              Option.map_some, Option.toList_some]
+          have key : ∀ (X : List (List (Nat × Forest))) (Y : List (Nat × Forest)) (q : Nat) (W : Forest),
+              Tree.rolesCols σ 0 X = Tree.rolesCols σ 0 A →
+              Tree.rolesCol σ A.length 0 Y = Tree.rolesCol σ A.length 0 B →
+              X.length = A.length → Y.length = B.length →
+              Tree.rolesF σ (Tree.node (X ++ [Y ++ [(q, W)]])) =
+                (Tree.rolesCols σ 0 A ++ Role.ord ⟨σ, A.length⟩ ::
+                  (Tree.rolesCol σ A.length 0 B ++ [Role.slot ⟨⟨σ, A.length⟩, B.length⟩])) ++
+                      Tree.rolesF (σ ++ [(A.length, B.length)]) W := by
+            intro X Y q W hX hY hXl hYl
+            rw [Tree.rolesF, Tree.rolesCols_append, hX, hXl, Nat.zero_add, Tree.rolesCols,
+              Tree.rolesCol_append, hY, hYl, Nat.zero_add, Tree.rolesCol]
+            simp [Tree.rolesCols, Tree.rolesCol]
+          rw [hrep, key _ _ _ _ (Tree.rolesCols_map' _ _ _ _) (Tree.rolesCol_map' _ _ _ _ _)
+            (by rw [List.length_map]) (by rw [List.length_map]), IH]
+          rw [key _ _ _ _ rfl rfl rfl rfl] at ⊢
+          have hnd := Tree.nodup_rolesF σ (Tree.node (A ++ [B ++ [(p, hh)]]))
+          rw [key _ _ _ _ rfl rfl rfl rfl] at hnd
+          rw [takeWhile_append_of_mem hnd hmem]
+          simp only [List.append_assoc, List.cons_append]
+
 -- provides: U3, L6.2a (roles of `A_{r,d,ℓ,Z}`: the old roles before the replaced route column,
 -- then the roles of `Z` placed at its position)
 theorem roles_replaceAt (r d ℓ : Nat) (Z F : Forest) {π : List (Nat × Nat)} {c : Nat}
     (hroute : (Scan.routeCols F)[ℓ]? = some ⟨π, c⟩) :
     (replaceAt r d Z ℓ F).roles = rolesBefore F (.ord ⟨π, c⟩) ++ Z.roles.map (transCols [] π 0 c) :=
-  by sorry
+  roles_replaceAt_aux r d Z ℓ _ F [] π c hroute
 
 -- provides: U3, L6.2a (stack transport: copied entries keep shifted parents, and the
 -- representatives read on the copied stack are the mapped old representatives)
@@ -2091,11 +2264,136 @@ theorem frameOf_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs
   rw [reps0_getElem?] at hq
   exact rep_mem_prefix he hq
 
+/-- L6.2e helper: a column list obtained by replacing (or deleting) the last entry of the last
+column keeps the labels of the other entries. -/
+theorem labelSub_lastEntry {A : List (List (Nat × Forest))} {B : List (Nat × Forest)} {p : Nat}
+    {h h' : Forest} (hsub : Tree.LabelSub h' h) :
+    Tree.LabelSub (Tree.node (A ++ [B ++ [(p, h')]])) (Tree.node (A ++ [B ++ [(p, h)]])) := by
+  apply Tree.labelSub_node
+  intro a b y hy
+  rw [Option.bind_eq_some_iff] at hy
+  obtain ⟨col', hcol', hy⟩ := hy
+  rw [List.getElem?_append] at hcol'
+  split_ifs at hcol' with ha
+  · exact ⟨y, by rw [List.getElem?_append_left ha, hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
+  · rw [List.getElem?_singleton] at hcol'
+    split_ifs at hcol' with ha'
+    cases hcol'
+    have hidx : a = A.length := by omega
+    subst hidx
+    rw [List.getElem?_append] at hy
+    split_ifs at hy with hb
+    · exact ⟨y, by simp [List.getElem?_append_left hb, hy], rfl, Tree.LabelSub.refl _⟩
+    · rw [List.getElem?_singleton] at hy
+      split_ifs at hy with hb'
+      cases hy
+      have : b = B.length := by omega
+      subst this
+      exact ⟨(p, h), by simp, rfl, hsub⟩
+
+theorem labelSub_dropLast (cols : List (List (Nat × Forest))) :
+    Tree.LabelSub (Tree.node cols.dropLast) (Tree.node cols) := by
+  apply Tree.labelSub_node
+  intro a b y hy
+  rw [Option.bind_eq_some_iff] at hy
+  obtain ⟨col', hcol', hy⟩ := hy
+  rw [List.dropLast_eq_take] at hcol'
+  exact ⟨y, by rw [Tree.getElem?_take_bind hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
+
+/-- L6.2e helper: the unshifted deletion of the route column at depth `ℓ` keeps labels. -/
+theorem labelSub_replaceAt_empty :
+    ∀ (ℓ : Nat) (F : Forest), Tree.LabelSub (replaceAt 0 0 Tree.empty ℓ F) F := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro ⟨cols⟩
+    cases cols with
+    | nil => exact Tree.LabelSub.refl _
+    | cons x xs =>
+      have : replaceAt 0 0 Tree.empty 0 (Tree.node (x :: xs)) = Tree.node (x :: xs).dropLast := by
+        simp only [replaceAt, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun, List.map_id]
+        simp [Tree.empty, Tree.cols]
+      rw [this]
+      exact labelSub_dropLast _
+  | succ k ih =>
+    rintro ⟨cols⟩
+    cases hl : cols.getLast? with
+    | none =>
+      rw [List.getLast?_eq_none_iff] at hl
+      subst hl
+      simp only [replaceAt, mapLast]
+      exact Tree.LabelSub.refl _
+    | some col =>
+      obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
+      cases hl' : col.getLast? with
+      | none =>
+        rw [List.getLast?_eq_none_iff] at hl'
+        subst hl'
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id]
+        exact Tree.LabelSub.refl _
+      | some x =>
+        obtain ⟨B, rfl⟩ : ∃ B, col = B ++ [x] := ⟨_, (List.dropLast_append_getLast? x hl').symm⟩
+        obtain ⟨p, h⟩ := x
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id, Scan.treeMap_id, id_eq]
+        have : (B.map fun x : Nat × Forest => (x.1, x.2)) = B := by
+          conv_rhs => rw [← List.map_id B]
+          rfl
+        rw [this]
+        exact labelSub_lastEntry (ih h)
+
 -- provides: U3, L6.2e (requested by U5 R22, stage zero): `H[0]` is the restriction to `P`, and
 -- `f_0` is the identity on `D`.
 theorem stage_zero {H : Forest} (hL : Scan.InL H) {rs : RoleSets} (hrs : roleSets H = some rs)
     {G : Forest} (hG : expand H 0 = some G) :
-    G.roles = rs.P ∧ (∀ a ∈ graph G, a ∈ graph H) ∧ ∀ x ∈ rs.D, fMap H 0 0 x = x := by sorry
+    G.roles = rs.P ∧ (∀ a ∈ graph G, a ∈ graph H) ∧ ∀ x ∈ rs.D, fMap H 0 0 x = x := by
+  unfold roleSets at hrs
+  cases hsd : Scan.stopData H with
+  | none => rw [hsd] at hrs; simp at hrs
+  | some sd =>
+  cases hrd : Scan.rootData H with
+  | none => rw [hsd, hrd] at hrs; simp at hrs
+  | some rd =>
+  rw [hsd, hrd] at hrs
+  simp only [Option.pure_def, Option.bind_eq_bind, Option.bind_some, Option.some.injEq] at hrs
+  subst hrs
+  have hk : Scan.stepKind H = some .ordinary := by
+    have h1 : Scan.rootDataBody H = some rd := hrd
+    unfold Scan.rootDataBody at h1
+    show Scan.stepKindBody H = _
+    split at h1
+    · assumption
+    · simp at h1
+  have hne : H ≠ Tree.empty := by
+    rintro rfl; simp [Scan.stepKind, Scan.stepKindBody, Tree.empty, Tree.cols] at hk
+  obtain ⟨hV, hI, -⟩ := hL
+  rw [Scan.expand_eq_paperOp hne hV hI, Scan.paperOp_ordinary_zero hk hsd] at hG
+  cases hG
+  obtain ⟨-, -, -, hmem, hlast, hlen⟩ := Scan.stopData_spec hsd
+  have hroute : (Scan.routeCols H)[sd.depth]? = some sd.col := by
+    rw [List.getLast?_eq_getElem?, hlen] at hlast
+    simpa using hlast
+  have hroles : (Scan.Hole.put ⟨H, sd.depth⟩ Tree.empty).roles = rolesBefore H (.ord sd.col) := by
+    show (replaceAt 0 0 Tree.empty sd.depth H).roles = _
+    rw [roles_replaceAt 0 0 sd.depth Tree.empty H (π := sd.col.path) (c := sd.col.col)
+      (by simpa using hroute)]
+    simp [Tree.empty, Tree.roles, Tree.rolesF, Tree.rolesCols]
+  refine ⟨hroles, fun a ha => ?_, fun x _ => rfl⟩
+  have hpre : (Scan.Hole.put ⟨H, sd.depth⟩ Tree.empty).roles <+: H.roles := by
+    rw [hroles]; exact List.takeWhile_prefix _
+  have hlab : ∀ e', Role.slot e' ∈ (Scan.Hole.put ⟨H, sd.depth⟩ Tree.empty).roles →
+      ((Scan.Hole.put ⟨H, sd.depth⟩ Tree.empty).entryAt e').map Prod.fst = (H.entryAt e').map Prod.fst := by
+    intro e' he'
+    rw [Tree.mem_roles_iff] at he'
+    obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 he'
+    obtain ⟨h', hh'⟩ := labelSub_replaceAt_empty sd.depth H e' y hy
+    rw [hy, hh']; rfl
+  have := restrict_graph_of_common (List.prefix_refl _) hpre hlab a ((restrict_graph_self _ a).2 ha)
+  unfold restrictTo at this
+  exact (List.mem_filter.1 this).1
 
 -- provides: U3, L6.2e (requested by U5 R22, one stage): roles and elementarity atoms of `H[m+1]`
 -- from `H[m]`.
