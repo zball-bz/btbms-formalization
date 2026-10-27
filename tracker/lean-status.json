@@ -8,32 +8,8 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "d5a33b167f7192cbed737e5ca30e2fe16c20e1b4a897be9230df7151134d84a2",
+ "fingerprint": "486fe0676c6084c92a7b5b7de26bc11137feeac09e1c309951c43f8d5b5f913b",
  "decls": [
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.interface"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.jInterface"
-  },
   {
    "axioms": [
     "Classical.choice",
@@ -3547,66 +3523,6 @@
    ],
    "direct_sorry": true,
    "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.card_elem"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.club_edge"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_of_reflPoint"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.hullAt_bounded"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.isClub_reflPoints"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.blockAbove_capture"
   },
@@ -6876,6 +6792,17 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.interface"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.lev"
   },
   {
@@ -6976,6 +6903,17 @@
    "kind": "def",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.transFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.jInterface"
   },
   {
    "axioms": [
@@ -8988,6 +8926,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Carrier.mk.congr_simp"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.Carrier.mk.inj"
   },
   {
@@ -9307,7 +9256,40 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.card_elem"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.card_hullAt_lt"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.card_hull_le"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.club_edge"
   },
   {
    "axioms": [
@@ -9417,6 +9399,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_of_reflPoint"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.edge_restrict"
   },
   {
@@ -9494,6 +9487,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.exists_bound_list"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.exists_collapse"
   },
   {
@@ -9517,6 +9521,28 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.hull.congr_simp"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.hullAt_bounded"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.hullAt_gen_mono"
   },
   {
    "axioms": [
@@ -9582,6 +9608,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.isClub_reflPoints"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.isLim_pos"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.isSuccLimit_iff_carrier"
   },
   {
@@ -9605,6 +9653,17 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.lev_eq"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.mk_setOf_val_lt_le"
   },
   {
    "axioms": [
@@ -16894,6 +16953,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T15:13:21+00:00",
- "head": "681be6a"
+ "generated": "2026-10-27T15:14:55+00:00",
+ "head": "c9b8bc5"
 }
