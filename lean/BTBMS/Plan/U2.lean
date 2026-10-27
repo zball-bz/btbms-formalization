@@ -4600,9 +4600,703 @@ theorem condVIH_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A =
       · exact spxAll_dropLast (spxAll_height hH hcolA (p, Fl) (by simp))
 
 
+/-! T3.2t helpers (branch E2): owner-return conditions as column-local conditions. -/
+
+/-- Returns into a height `H` attached to a column with printed number `n`, checked by `ψ`
+(`ψ m J n H` reads the return height `J` in a column with number `m`). -/
+def retIn_E2 (ψ : Nat → Forest → Nat → Forest → Prop) (n : Nat) (H : Forest) : Prop :=
+  spxAll (fun m col' => ∀ y ∈ col', y.1 = n → ψ m y.2 n H) (n + 1) H
+
+/-- The column-local form of an owner-return condition: every height of the column. -/
+def retAll_E2 (ψ : Nat → Forest → Nat → Forest → Prop) (n : Nat) (col : Column) : Prop :=
+  ∀ x ∈ col, retIn_E2 ψ n x.2
+
+theorem num_base_E2 (b : Nat) (c : ColAddr) : c.num b = b + c.num 0 := by
+  simp only [ColAddr.num]; omega
+
+theorem num_heightPath_E2 (e0 : EntryAddr) (ρ : List (Nat × Nat)) (j : Nat) :
+    ColAddr.num 0 ⟨e0.heightPath ++ ρ, j⟩ = ColAddr.num (e0.col.num 0 + 1) ⟨ρ, j⟩ := by
+  simp only [ColAddr.num, EntryAddr.heightPath, List.map_append, List.sum_append, List.map_cons,
+    List.map_nil, List.sum_cons, List.sum_nil]
+  omega
+
+/-- An owner-return condition is the column-local condition `retAll_E2`. -/
+theorem spx_ret_iff_E2 (ψ : Nat → Forest → Nat → Forest → Prop) (E : Forest) :
+    (∀ e0 ∈ E.entryAddrs, ∀ e ∈ E.entryAddrs, IsOwnerReturn E e0 e →
+      ψ (e.col.num 0) ((E.heightAt e).getD Tree.empty) (e0.col.num 0)
+        ((E.heightAt e0).getD Tree.empty)) ↔
+    spxAll (retAll_E2 ψ) 0 E := by
+  constructor
+  · intro h c col hc x hx c' col' hc' y hy hy1
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hx
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 hy
+    have he0 : E.entryAt ⟨c, i⟩ = some x := by rw [Tree.entryAt, hc]; exact hi
+    have hn : c.num 0 = ColAddr.num 0 c := rfl
+    have he : E.entryAt ⟨⟨(⟨c, i⟩ : EntryAddr).heightPath ++ c'.path, c'.col⟩, k⟩ = some y := by
+      rw [spx_entryAt_inside, Tree.heightAt, he0]
+      simp only [Option.map_some, Option.bind_some, Tree.entryAt]
+      rw [hc']; exact hk
+    have hcont : (⟨c, i⟩ : EntryAddr).Contains ⟨(⟨c, i⟩ : EntryAddr).heightPath ++ c'.path, c'.col⟩ :=
+      ⟨c'.path, rfl⟩
+    have hret : IsOwnerReturn E ⟨c, i⟩ ⟨⟨(⟨c, i⟩ : EntryAddr).heightPath ++ c'.path, c'.col⟩, k⟩ := by
+      refine ⟨hcont, y.1, y.2, he, ?_⟩
+      have := EntryAddr.resolve_host hcont
+      simp only [hy1]
+      rw [num_base_E2] at this ⊢
+      simpa using this
+    have := h _ ((Tree.mem_entryAddrs_iff E _).2 (by rw [he0]; rfl)) _
+      ((Tree.mem_entryAddrs_iff E _).2 (by rw [he]; rfl)) hret
+    simp only [Tree.heightAt, he, he0, Option.map_some, Option.getD_some] at this
+    rw [num_heightPath_E2] at this
+    exact this
+  · intro h e0 he0 e he hret
+    obtain ⟨⟨ρ, hρ⟩, q, J, hJ, hres⟩ := hret
+    obtain ⟨⟨P, j⟩, i⟩ := e
+    dsimp only at hρ
+    subst hρ
+    obtain ⟨x0, hx0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ e0).1 he0)
+    obtain ⟨col, hcol, hi⟩ := Tree.colAt_of_entryAt hx0
+    have hR := h e0.col col hcol x0 (List.mem_of_getElem? hi)
+    have hJ' := hJ
+    rw [spx_entryAt_inside, Tree.heightAt, hx0] at hJ'
+    simp only [Option.map_some, Option.bind_some] at hJ'
+    obtain ⟨col', hcol', hk⟩ := Tree.colAt_of_entryAt hJ'
+    have hq : e0.col.num 0 = q := ColAddr.resolve_num hres
+    have := hR ⟨ρ, j⟩ col' hcol' (q, J) (List.mem_of_getElem? hk) hq.symm
+    simp only [Tree.heightAt, hJ, hx0, Option.map_some, Option.getD_some]
+    rw [num_heightPath_E2]
+    exact this
+
+/-- Every entry of a forest, at any depth, has a height satisfying `Q`. -/
+def allEnt_E2 (Q : Forest → Prop) (T : Forest) : Prop :=
+  ∀ c col, T.colAt c = some col → ∀ y ∈ col, Q y.2
+
+/-- An entry correspondence: every entry of `h'` (any depth) has an entry of `h` in a column with
+the same relative number, with the same parent, related by `Rel`. -/
+def entCorr_E2 (Rel : Forest → Forest → Prop) (h' h : Forest) : Prop :=
+  ∀ c' col', h'.colAt c' = some col' → ∀ y' ∈ col', ∃ c col, h.colAt c = some col ∧
+    c.num 0 = c'.num 0 ∧ ∃ y ∈ col, y.1 = y'.1 ∧ Rel y'.2 y.2
+
+theorem retIn_of_entCorr_E2 {ψ : Nat → Forest → Nat → Forest → Prop}
+    {Rel : Forest → Forest → Prop} {h' h : Forest} {n : Nat} (hC : entCorr_E2 Rel h' h)
+    (hψ : ∀ m J' J, Rel J' J → ψ m J n h → ψ m J' n h') (hR : retIn_E2 ψ n h) :
+    retIn_E2 ψ n h' := by
+  intro c' col' hc' y' hy' hy1
+  obtain ⟨c, col, hc, hnum, y, hy, hyy, hrel⟩ := hC c' col' hc' y' hy'
+  have := hR c col hc y hy (hyy.trans hy1)
+  rw [num_base_E2, hnum, ← num_base_E2] at this
+  exact hψ _ _ _ hrel this
+
+theorem retIn_of_allEnt_E2 {ψ : Nat → Forest → Nat → Forest → Prop} {n : Nat} {h : Forest}
+    (hA : allEnt_E2 (fun J => ∀ m, ψ m J n h) h) : retIn_E2 ψ n h := by
+  intro c col hc y hy _
+  exact hA c col hc y hy _
+
+theorem entCorr_mono_E2 {Rel Rel' : Forest → Forest → Prop} {h' h : Forest}
+    (hC : entCorr_E2 Rel h' h) (hm : ∀ J' J, Rel J' J → Rel' J' J) : entCorr_E2 Rel' h' h := by
+  intro c' col' hc' y' hy'
+  obtain ⟨c, col, hc, hnum, y, hy, hyy, hrel⟩ := hC c' col' hc' y' hy'
+  exact ⟨c, col, hc, hnum, y, hy, hyy, hm _ _ hrel⟩
+
+theorem colAt_dropLast_E2 {F : Forest} {c : ColAddr} {col : Column}
+    (h : (Tree.node F.cols.dropLast).colAt c = some col) : F.colAt c = some col := by
+  obtain ⟨P, j⟩ := c
+  rw [spx_eta F]
+  cases P with
+  | nil =>
+    simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h ⊢
+    rw [List.getElem?_dropLast] at h
+    split_ifs at h; exact h
+  | cons s ρ =>
+    obtain ⟨a, b⟩ := s
+    rw [Tree.colAt_cons] at h ⊢
+    simp only [Tree.cols] at h ⊢
+    rw [List.getElem?_dropLast] at h
+    split_ifs at h
+    · exact h
+    · simp at h
+
+/-- A forest made of a prefix of the columns corresponds to the whole forest. -/
+theorem entCorr_dropLast_E2 {Rel : Forest → Forest → Prop} {F : Forest}
+    (hA : allEnt_E2 (fun J => Rel J J) (Tree.node F.cols.dropLast)) :
+    entCorr_E2 Rel (Tree.node F.cols.dropLast) F := by
+  intro c' col' hc' y' hy'
+  exact ⟨c', col', colAt_dropLast_E2 hc', rfl, y', hy', rfl, hA c' col' hc' y' hy'⟩
+
+/-- The entry of `cols` at `(a, b)`. -/
+def getEnt_E2 (cols : List Column) (a b : Nat) : Option (Nat × Forest) :=
+  (cols[a]?).bind (·[b]?)
+
+theorem colAt_cons_E2 (cols : List Column) (a b : Nat) (ρ : List (Nat × Nat)) (j : Nat) :
+    (Tree.node cols).colAt ⟨(a, b) :: ρ, j⟩ =
+      (getEnt_E2 cols a b).bind fun x => x.2.colAt ⟨ρ, j⟩ := by
+  rw [Tree.colAt_cons]; rfl
+
+theorem colAt_nil_E2 (cols : List Column) (j : Nat) :
+    (Tree.node cols).colAt ⟨[], j⟩ = cols[j]? := by
+  simp [Tree.colAt, Tree.forestAt, Tree.cols]
+
+theorem getEnt_snoc_E2 {ys : List Column} {zs : Column} {q : Nat} (X Y : Forest) {a b : Nat}
+    (hab : ¬ (a = ys.length ∧ b = zs.length)) :
+    getEnt_E2 (ys ++ [zs ++ [(q, X)]]) a b = getEnt_E2 (ys ++ [zs ++ [(q, Y)]]) a b := by
+  unfold getEnt_E2
+  rcases Nat.lt_trichotomy a ys.length with ha | rfl | ha
+  · rw [List.getElem?_append_left ha, List.getElem?_append_left ha]
+  · rw [List.getElem?_append_right (le_refl _), List.getElem?_append_right (le_refl _)]
+    simp only [Nat.sub_self, List.getElem?_cons_zero, Option.bind_some]
+    have hb : b ≠ zs.length := fun h => hab ⟨rfl, h⟩
+    rcases Nat.lt_or_gt_of_ne hb with hb | hb
+    · rw [List.getElem?_append_left hb, List.getElem?_append_left hb]
+    · rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega)]
+      simp [show b - zs.length ≠ 0 by omega]
+  · rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega)]
+    simp [show a - ys.length ≠ 0 by omega]
+
+theorem getEnt_snoc_self_E2 (ys : List Column) (zs : Column) (q : Nat) (X : Forest) :
+    getEnt_E2 (ys ++ [zs ++ [(q, X)]]) ys.length zs.length = some (q, X) := by
+  simp [getEnt_E2]
+
+/-- Propagation of an entry correspondence through one level of the route. -/
+theorem entCorr_snoc_E2 {Rel Rel' : Forest → Forest → Prop} {ys : List Column} {zs : Column}
+    {q : Nat} {h h' : Forest} (hC : entCorr_E2 Rel h' h) (hm : ∀ J' J, Rel J' J → Rel' J' J)
+    (hhh : Rel' h' h)
+    (hT : allEnt_E2 (fun J => Rel' J J) (Tree.node (ys ++ [zs ++ [(q, Tree.empty)]]))) :
+    entCorr_E2 Rel' (Tree.node (ys ++ [zs ++ [(q, h')]])) (Tree.node (ys ++ [zs ++ [(q, h)]])) := by
+  intro c' col' hc' y' hy'
+  obtain ⟨P, j⟩ := c'
+  cases P with
+  | nil =>
+    rw [colAt_nil_E2] at hc'
+    rcases Nat.lt_trichotomy j ys.length with hj | rfl | hj
+    · rw [List.getElem?_append_left hj] at hc'
+      refine ⟨⟨[], j⟩, col', by rw [colAt_nil_E2, List.getElem?_append_left hj, hc'], rfl, y', hy',
+        rfl, hT ⟨[], j⟩ col' (by rw [colAt_nil_E2, List.getElem?_append_left hj, hc']) y' hy'⟩
+    · simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+        Option.some.injEq] at hc'
+      subst hc'
+      rcases List.mem_append.1 hy' with hy | hy
+      · refine ⟨⟨[], ys.length⟩, zs ++ [(q, h)], by simp [colAt_nil_E2], rfl, y',
+          List.mem_append_left _ hy, rfl, hT ⟨[], ys.length⟩ (zs ++ [(q, Tree.empty)])
+            (by simp [colAt_nil_E2]) y' (List.mem_append_left _ hy)⟩
+      · simp only [List.mem_singleton] at hy
+        subst hy
+        exact ⟨⟨[], ys.length⟩, zs ++ [(q, h)], by simp [colAt_nil_E2], rfl, (q, h), by simp, rfl,
+          hhh⟩
+    · rw [List.getElem?_append_right (by omega)] at hc'
+      simp [show j - ys.length ≠ 0 by omega] at hc'
+  | cons s ρ =>
+    obtain ⟨a, b⟩ := s
+    rw [colAt_cons_E2, Option.bind_eq_some_iff] at hc'
+    obtain ⟨x', hx', hcx⟩ := hc'
+    by_cases hab : a = ys.length ∧ b = zs.length
+    · obtain ⟨rfl, rfl⟩ := hab
+      rw [getEnt_snoc_self_E2] at hx'
+      cases hx'
+      obtain ⟨c, col, hc, hnum, y, hy, hyy, hrel⟩ := hC ⟨ρ, j⟩ col' hcx y' hy'
+      refine ⟨⟨(ys.length, zs.length) :: c.path, c.col⟩, col, ?_, ?_, y, hy, hyy, hm _ _ hrel⟩
+      · rw [colAt_cons_E2, getEnt_snoc_self_E2]; exact hc
+      · rw [spx_num_cons, spx_num_cons, num_base_E2, num_base_E2 (0 + _ + 1)]
+        exact congrArg _ hnum
+    · have e1 := getEnt_snoc_E2 h' h hab (q := q)
+      have e2 := getEnt_snoc_E2 h' Tree.empty hab (q := q)
+      refine ⟨⟨(a, b) :: ρ, j⟩, col', ?_, rfl, y', hy', rfl, hT ⟨(a, b) :: ρ, j⟩ col' ?_ y' hy'⟩
+      · rw [colAt_cons_E2, ← e1, hx']; exact hcx
+      · rw [colAt_cons_E2, ← e2, hx']; exact hcx
+
+/-- The entry correspondence at the replaced owner column. -/
+theorem entCorr_top_E2 {Rel : Forest → Forest → Prop} {cs : List Column} {P : Column}
+    {p N : Nat} {Fl : Forest}
+    (hT : allEnt_E2 (fun J => Rel J J) (Tree.node (cs ++ [P])))
+    (hCe : N ≠ 0 → allEnt_E2 (fun J => Rel J J) (Tree.node Fl.cols.dropLast))
+    (hCF : N ≠ 0 → Rel (Tree.node Fl.cols.dropLast) Fl) :
+    entCorr_E2 Rel (Tree.node (cs ++ [P ++ List.replicate N (p, Tree.node Fl.cols.dropLast)]))
+      (Tree.node (cs ++ [P ++ [(p, Fl)]])) := by
+  intro c' col' hc' y' hy'
+  obtain ⟨Pa, j⟩ := c'
+  cases Pa with
+  | nil =>
+    rw [colAt_nil_E2] at hc'
+    rcases Nat.lt_trichotomy j cs.length with hj | rfl | hj
+    · rw [List.getElem?_append_left hj] at hc'
+      refine ⟨⟨[], j⟩, col', by rw [colAt_nil_E2, List.getElem?_append_left hj, hc'], rfl, y', hy',
+        rfl, hT ⟨[], j⟩ col' (by rw [colAt_nil_E2, List.getElem?_append_left hj, hc']) y' hy'⟩
+    · simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+        Option.some.injEq] at hc'
+      subst hc'
+      rcases List.mem_append.1 hy' with hy | hy
+      · refine ⟨⟨[], cs.length⟩, P ++ [(p, Fl)], by simp [colAt_nil_E2], rfl, y',
+          List.mem_append_left _ hy, rfl, hT ⟨[], cs.length⟩ P (by simp [colAt_nil_E2]) y' hy⟩
+      · have hN : N ≠ 0 := by rintro rfl; simp at hy
+        rw [List.eq_of_mem_replicate hy]
+        exact ⟨⟨[], cs.length⟩, P ++ [(p, Fl)], by simp [colAt_nil_E2], rfl, (p, Fl), by simp, rfl,
+          hCF hN⟩
+    · rw [List.getElem?_append_right (by omega)] at hc'
+      simp [show j - cs.length ≠ 0 by omega] at hc'
+  | cons s ρ =>
+    obtain ⟨a, b⟩ := s
+    rw [colAt_cons_E2, Option.bind_eq_some_iff] at hc'
+    obtain ⟨x', hx', hcx⟩ := hc'
+    by_cases hab : a = cs.length ∧ P.length ≤ b
+    · obtain ⟨rfl, hb⟩ := hab
+      have hx'' : x' = (p, Tree.node Fl.cols.dropLast) ∧ N ≠ 0 := by
+        simp only [getEnt_E2, List.getElem?_append_right (le_refl _), Nat.sub_self,
+          List.getElem?_cons_zero, Option.bind_some, List.getElem?_append_right hb] at hx'
+        have hm := List.mem_of_getElem? hx'
+        exact ⟨List.eq_of_mem_replicate hm, by rintro rfl; simp at hm⟩
+      obtain ⟨rfl, hN⟩ := hx''
+      refine ⟨⟨(cs.length, P.length) :: ρ, j⟩, col', ?_, ?_, y', hy', rfl,
+        hCe hN ⟨ρ, j⟩ col' hcx y' hy'⟩
+      · rw [colAt_cons_E2]
+        simp only [getEnt_E2, List.getElem?_append_right (le_refl _), Nat.sub_self,
+          List.getElem?_cons_zero, Option.bind_some]
+        exact colAt_dropLast_E2 hcx
+      · rw [spx_num_cons, spx_num_cons]
+    · have e1 : getEnt_E2 (cs ++ [P ++ List.replicate N (p, Tree.node Fl.cols.dropLast)]) a b =
+          getEnt_E2 (cs ++ [P]) a b ∧ getEnt_E2 (cs ++ [P ++ [(p, Fl)]]) a b =
+          getEnt_E2 (cs ++ [P]) a b := by
+        unfold getEnt_E2
+        rcases Nat.lt_trichotomy a cs.length with ha | rfl | ha
+        · constructor <;> simp [List.getElem?_append_left ha]
+        · have hb : b < P.length := by omega
+          constructor <;> simp [List.getElem?_append_left hb]
+        · simp only [List.getElem?_append_right (show cs.length ≤ a by omega)]
+          simp [show a - cs.length ≠ 0 by omega]
+      refine ⟨⟨(a, b) :: ρ, j⟩, col', ?_, rfl, y', hy', rfl, hT ⟨(a, b) :: ρ, j⟩ col' ?_ y' hy'⟩
+      · rw [colAt_cons_E2, e1.2, ← e1.1, hx']; exact hcx
+      · rw [colAt_cons_E2, ← e1.1, hx']; exact hcx
+
+
+/-! T3.2t helpers (branch E2): decreases of words, the S correspondence. -/
+
+/-- `X'` is a decrease of `X` first changing at `a`: they agree before `a`, and at `a` either `X'`
+ends while `X` continues, or the letter of `X'` has a smaller depth `d`. -/
+def decAt_E2 {β : Type} (d : β → Nat) (X X' : List β) (a : Nat) : Prop :=
+  X'.take a = X.take a ∧ a ≤ X'.length ∧
+    ((X'.length = a ∧ a < X.length) ∨ ∃ x x', X[a]? = some x ∧ X'[a]? = some x' ∧ d x' < d x)
+
+theorem lt_of_take_succ_E2 {β : Type} [LinearOrder β] : ∀ {X Y Y' : List β}, X < Y →
+    Y'.take (X.length + 1) = Y.take (X.length + 1) → X < Y'
+  | [], [], _, h, _ => absurd h (List.not_lt_nil _)
+  | [], y :: ys, Y', _, ht => by
+    cases Y' with
+    | nil => simp at ht
+    | cons y' ys' => exact List.nil_lt_cons _ _
+  | x :: xs, [], _, h, _ => absurd h (List.not_lt_nil _)
+  | x :: xs, y :: ys, Y', h, ht => by
+    cases Y' with
+    | nil => simp at ht
+    | cons y' ys' =>
+      simp only [List.length_cons, List.take_succ_cons, List.cons.injEq] at ht
+      obtain ⟨rfl, ht⟩ := ht
+      rcases List.cons_lt_cons_iff.1 h with h1 | ⟨h1, h2⟩
+      · exact List.cons_lt_cons_iff.2 (Or.inl h1)
+      · exact List.cons_lt_cons_iff.2 (Or.inr ⟨h1, lt_of_take_succ_E2 h2 ht⟩)
+
+theorem lt_of_decAt_E2 {β : Type} [LinearOrder β] {d : β → Nat}
+    (hd : ∀ x y, d x < d y → x < y) (a : Nat) :
+    ∀ {X Y X' Y' : List β} {b : Nat}, X < Y → decAt_E2 d X X' a →
+      Y'.take b = Y.take b → b ≤ Y'.length → a < b → X' < Y' := by
+  induction a with
+  | zero =>
+    intro X Y X' Y' b hXY hdec hYb hbl hab
+    obtain ⟨_, _, hc⟩ := hdec
+    obtain ⟨y', ys', rfl⟩ : ∃ y' ys', Y' = y' :: ys' := by
+      cases Y' with
+      | nil => simp at hbl; omega
+      | cons y' ys' => exact ⟨_, _, rfl⟩
+    obtain ⟨y, ys, rfl⟩ : ∃ y ys, Y = y :: ys := by
+      cases Y with
+      | nil => exact absurd hXY (List.not_lt_nil _)
+      | cons y ys => exact ⟨_, _, rfl⟩
+    have hyy : y' = y := by
+      obtain ⟨b', rfl⟩ : ∃ b', b = b' + 1 := ⟨b - 1, by omega⟩
+      simp only [List.take_succ_cons, List.cons.injEq] at hYb; exact hYb.1
+    subst hyy
+    rcases hc with ⟨hl, -⟩ | ⟨x, x', hx, hx', hlt⟩
+    · rw [List.length_eq_zero_iff] at hl; subst hl; exact List.nil_lt_cons _ _
+    · obtain ⟨xs, rfl⟩ : ∃ xs, X = x :: xs := by
+        cases X with
+        | nil => simp at hx
+        | cons z zs => simp at hx; exact ⟨zs, by rw [hx]⟩
+      obtain ⟨xs', rfl⟩ : ∃ xs', X' = x' :: xs' := by
+        cases X' with
+        | nil => simp at hx'
+        | cons z zs => simp at hx'; exact ⟨zs, by rw [hx']⟩
+      have hxy : x ≤ y' := by
+        rcases List.cons_lt_cons_iff.1 hXY with h1 | ⟨h1, -⟩
+        · exact le_of_lt h1
+        · exact le_of_eq h1
+      exact List.cons_lt_cons_iff.2 (Or.inl (lt_of_lt_of_le (hd _ _ hlt) hxy))
+  | succ a ih =>
+    intro X Y X' Y' b hXY hdec hYb hbl hab
+    obtain ⟨ht, hl, hc⟩ := hdec
+    obtain ⟨x', xs', rfl⟩ : ∃ x' xs', X' = x' :: xs' := by
+      cases X' with
+      | nil => simp at hl
+      | cons z zs => exact ⟨_, _, rfl⟩
+    obtain ⟨x, xs, rfl⟩ : ∃ x xs, X = x :: xs := by
+      cases X with
+      | nil =>
+        rcases hc with ⟨-, h⟩ | ⟨x, -, h, -⟩
+        · simp at h
+        · simp at h
+      | cons z zs => exact ⟨_, _, rfl⟩
+    obtain ⟨y, ys, rfl⟩ : ∃ y ys, Y = y :: ys := by
+      cases Y with
+      | nil => exact absurd hXY (List.not_lt_nil _)
+      | cons y ys => exact ⟨_, _, rfl⟩
+    obtain ⟨y', ys', rfl⟩ : ∃ y' ys', Y' = y' :: ys' := by
+      cases Y' with
+      | nil => simp at hbl; omega
+      | cons y' ys' => exact ⟨_, _, rfl⟩
+    obtain ⟨b', rfl⟩ : ∃ b', b = b' + 1 := ⟨b - 1, by omega⟩
+    simp only [List.take_succ_cons, List.cons.injEq] at ht hYb
+    obtain ⟨rfl, ht⟩ := ht
+    obtain ⟨rfl, hYb⟩ := hYb
+    simp only [List.length_cons, Nat.add_le_add_iff_right] at hl hbl
+    have hdec : decAt_E2 d xs xs' a := by
+      refine ⟨ht, hl, ?_⟩
+      rcases hc with ⟨h1, h2⟩ | ⟨z, z', h1, h2, h3⟩
+      · left; simp only [List.length_cons] at h1 h2; omega
+      · right; exact ⟨z, z', by simpa using h1, by simpa using h2, h3⟩
+    rcases List.cons_lt_cons_iff.1 hXY with h1 | ⟨h1, h2⟩
+    · exact List.cons_lt_cons_iff.2 (Or.inl h1)
+    · exact List.cons_lt_cons_iff.2 (Or.inr ⟨h1, ih h2 hdec hYb hbl (by omega)⟩)
+
+theorem decAt_map_E2 {β γ : Type} {d : β → Nat} {d' : γ → Nat} {g : β → γ}
+    (hg : ∀ x y, d x < d y → d' (g x) < d' (g y)) {X X' : List β} {a : Nat}
+    (h : decAt_E2 d X X' a) : decAt_E2 d' (X.map g) (X'.map g) a := by
+  obtain ⟨ht, hl, hc⟩ := h
+  refine ⟨by rw [← List.map_take, ← List.map_take, ht], by simpa using hl, ?_⟩
+  rcases hc with ⟨h1, h2⟩ | ⟨x, x', h1, h2, h3⟩
+  · left; simp only [List.length_map]; exact ⟨h1, h2⟩
+  · right; exact ⟨g x, g x', by simp [h1], by simp [h2], hg _ _ h3⟩
+
+theorem decAt_append_E2 {β : Type} {d : β → Nat} (pre : List β) {X X' : List β} {a : Nat}
+    (h : decAt_E2 d X X' a) : decAt_E2 d (pre ++ X) (pre ++ X') (pre.length + a) := by
+  obtain ⟨ht, hl, hc⟩ := h
+  refine ⟨?_, by simp only [List.length_append]; omega, ?_⟩
+  · rw [List.take_append, List.take_append,
+      List.take_of_length_le (by omega : pre.length ≤ pre.length + a), Nat.add_sub_cancel_left, ht]
+  · rcases hc with ⟨h1, h2⟩ | ⟨x, x', h1, h2, h3⟩
+    · left; simp only [List.length_append]; omega
+    · right
+      refine ⟨x, x', ?_, ?_, h3⟩
+      · rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]; exact h1
+      · rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]; exact h2
+
+/-- The depth coordinate of a word atom. -/
+def wdep_E2 (A : WordAtom) : Nat := (ofLex A).1
+
+/-- A word atom read in the key word at threshold `b`. -/
+def katom_E2 (b : Nat) (A : WordAtom) : GAtom (Lex (Bool × Nat)) := GAtom.map (relLabel b) (toGAtom A)
+
+/-- The depth coordinate of a key-word atom. -/
+def gdep_E2 (A : GAtom (Lex (Bool × Nat))) : Nat := (ofLex A).1
+
+/-- The key word of a relative key is a relabelling of the word, keeping depths. -/
+theorem gword_relKey_E2 (a : Nat) (H : Forest) :
+    @gword (Lex (Bool × Nat)) (relKey a H) = (word H).map (katom_E2 a) := by
+  change (gword (relKey a H) : List (GAtom (Bool × Nat))) = _
+  rw [relKey_eq_map, gword_map, gword_eq_map_word, List.map_map]; rfl
+
+theorem gatom_lt_of_dep_E2 {α : Type} [LinearOrder α] (x y : GAtom α)
+    (h : (ofLex x).1 < (ofLex y).1) : x < y :=
+  Prod.Lex.lt_iff.2 (Or.inl h)
+
+/-- The S relation between a new and an old return height. -/
+def relS_E2 (a : Nat) (J' J : Forest) : Prop :=
+  (J' = J ∧ mu J < a) ∨ ∃ a', a' < a ∧ decAt_E2 wdep_E2 (word J) (word J') a'
+
+/-- The S correspondence between a new and an old height. -/
+def corrS_E2 (h' h : Forest) : Prop :=
+  ∃ a, decAt_E2 wdep_E2 (word h) (word h') a ∧ entCorr_E2 (relS_E2 a) h' h
+
+/-- The key condition of S. -/
+def psiS_E2 (m : Nat) (J : Forest) (n : Nat) (H : Forest) : Prop := relKey m J < relKey n H
+
+theorem condS_iff_ret_E2 (E : Forest) : CondS E ↔ spxAll (retAll_E2 psiS_E2) 0 E :=
+  spx_ret_iff_E2 psiS_E2 E
+
+theorem psiS_transfer_E2 {m n a : Nat} {J J' h h' : Forest} (hR : relS_E2 a J' J)
+    (hd : decAt_E2 wdep_E2 (word h) (word h') a) (hlt : psiS_E2 m J n h) : psiS_E2 m J' n h' := by
+  unfold psiS_E2 at hlt ⊢
+  rw [spx_key_lt_iff, gword_relKey_E2, gword_relKey_E2] at hlt ⊢
+  have hg : ∀ (b : Nat) (x y : WordAtom), wdep_E2 x < wdep_E2 y →
+      gdep_E2 (katom_E2 b x) < gdep_E2 (katom_E2 b y) := fun _ _ _ h => h
+  have hdM := decAt_map_E2 (d := wdep_E2) (d' := gdep_E2) (g := katom_E2 n) (hg n) hd
+  rcases hR with ⟨hJJ, hJa⟩ | ⟨a', ha', hdJ⟩
+  · rw [hJJ]
+    apply lt_of_take_succ_E2 hlt
+    have h1 := congrArg (List.take ((word J).length + 1)) hdM.1
+    simp only [List.length_map]
+    rwa [List.take_take, List.take_take, min_eq_left (by unfold mu at hJa; omega)] at h1
+  · exact lt_of_decAt_E2 (gatom_lt_of_dep_E2) a' hlt
+      (decAt_map_E2 (d := wdep_E2) (d' := gdep_E2) (g := katom_E2 m) (hg m) hdJ) hdM.1 hdM.2.1 ha'
+
+/-! Word lengths. -/
+
+theorem wordAt_length_E2 (e : Nat) (X : Forest) : (wordAt e X).length = mu X := by
+  have := wordAt_add 0 e X
+  rw [Nat.zero_add] at this
+  rw [this, List.length_map]; rfl
+
+theorem wordLater_length_mem_E2 (e : Nat) : ∀ (col : Column) (y : Nat × Forest), y ∈ col →
+    mu y.2 < (wordLater e col).length
+  | [], y, hy => by simp at hy
+  | (p, h) :: rest, y, hy => by
+    simp only [wordLater, List.length_cons, List.length_append, wordAt_length_E2]
+    rcases List.mem_cons.1 hy with rfl | hy
+    · show mu h < _; omega
+    · have := wordLater_length_mem_E2 e rest y hy; omega
+
+theorem wordCol_length_mem_E2 (e : Nat) {col : Column} {y : Nat × Forest} (hy : y ∈ col) :
+    mu y.2 < (wordCol e col).length := by
+  cases col with
+  | nil => simp at hy
+  | cons x rest =>
+    obtain ⟨p, h⟩ := x
+    simp only [wordCol, List.length_cons, List.length_append, wordAt_length_E2]
+    rcases List.mem_cons.1 hy with rfl | hy
+    · show mu h < _; omega
+    · have := wordLater_length_mem_E2 e rest y hy; omega
+
+theorem wordCols_length_mem_E2 (e : Nat) : ∀ {cols : List Column} {col : Column}, col ∈ cols →
+    (wordCol e col).length ≤ (wordCols e cols).length
+  | [], col, h => by simp at h
+  | c :: cs, col, h => by
+    simp only [wordCols, List.length_append]
+    rcases List.mem_cons.1 h with rfl | h
+    · omega
+    · have := wordCols_length_mem_E2 e h; omega
+
+theorem mu_node_E2 (cols : List Column) : mu (Tree.node cols) = (wordCols 0 cols).length := rfl
+
+/-- Containment: an entry at any depth of `T` has a shorter word. -/
+theorem mu_lt_of_colAt_E2 : ∀ (P : List (Nat × Nat)) (T : Forest) (j : Nat) {col : Column}
+    {y : Nat × Forest}, T.colAt ⟨P, j⟩ = some col → y ∈ col → mu y.2 < mu T
+  | [], .node cols, j, col, y, hc, hy => by
+    rw [colAt_nil_E2] at hc
+    rw [mu_node_E2]
+    have := wordCol_length_mem_E2 0 hy
+    have := wordCols_length_mem_E2 0 (List.mem_of_getElem? hc)
+    omega
+  | (a, b) :: ρ, .node cols, j, col, y, hc, hy => by
+    rw [colAt_cons_E2, Option.bind_eq_some_iff] at hc
+    obtain ⟨x, hx, hcx⟩ := hc
+    have h1 := mu_lt_of_colAt_E2 ρ x.2 j hcx hy
+    unfold getEnt_E2 at hx
+    rw [Option.bind_eq_some_iff] at hx
+    obtain ⟨colA, hA, hb⟩ := hx
+    have h2 := mu_lt_of_colAt_E2 [] (Tree.node cols) a (col := colA) (y := x)
+      (by rw [colAt_nil_E2]; exact hA) (List.mem_of_getElem? hb)
+    omega
+
+theorem allEnt_mu_E2 {T : Forest} {a : Nat} (h : mu T ≤ a) :
+    allEnt_E2 (fun J => mu J < a) T := by
+  intro c col hc y hy
+  obtain ⟨P, j⟩ := c
+  have := mu_lt_of_colAt_E2 P T j hc hy
+  omega
+
+theorem allEnt_relS_E2 {T : Forest} {a : Nat} (h : mu T ≤ a) :
+    allEnt_E2 (fun J => relS_E2 a J J) T := by
+  intro c col hc y hy
+  exact Or.inl ⟨rfl, allEnt_mu_E2 h c col hc y hy⟩
+
+/-! Words of the route levels. -/
+
+theorem wordLater_append_E2 (e : Nat) : ∀ (l m : Column),
+    wordLater e (l ++ m) = wordLater e l ++ wordLater e m
+  | [], m => rfl
+  | (p, h) :: l, m => by
+    simp only [List.cons_append, wordLater, wordLater_append_E2 e l m, List.append_assoc]
+
+theorem wordCol_cons_append_E2 (e : Nat) (x : Nat × Forest) (l m : Column) :
+    wordCol e ((x :: l) ++ m) = wordCol e (x :: l) ++ wordLater e m := by
+  obtain ⟨p, h⟩ := x
+  simp only [List.cons_append, wordCol, wordLater_append_E2, List.append_assoc, List.cons_append]
+
+theorem word_snoc_E2 (ys : List Column) (zs : Column) (q : Nat) (X : Forest) :
+    word (Tree.node (ys ++ [zs ++ [(q, X)]])) =
+      word (Tree.node (ys ++ [zs ++ [(q, Tree.empty)]])) ++
+        (word X).map fun A => toLex ((ofLex A).1 + 2 * 1, (ofLex A).2) := by
+  have := wordAt_add 0 1 X
+  rw [Nat.zero_add] at this
+  simp only [word, wordAt, wordCols_append, wordCols, List.append_nil]
+  rw [wordCol_snoc, ← this]
+  simp only [List.append_assoc]
+
+theorem word_dropLast_E2 (e : Nat) {F : Forest} (hF : F.cols ≠ []) :
+    ∃ last, wordAt e F = wordAt e (Tree.node F.cols.dropLast) ++ wordCol e last := by
+  obtain ⟨cols⟩ := F
+  simp only [Tree.cols] at hF ⊢
+  obtain ⟨L, x, rfl⟩ := (List.eq_nil_or_concat cols).resolve_left hF
+  refine ⟨x, ?_⟩
+  simp only [wordAt]
+  rw [List.concat_eq_append, List.dropLast_concat, wordCols_append]
+  simp [wordCols]
+
+theorem wordCol_ne_E2 (e : Nat) (c : Column) : wordCol e c ≠ [] := by
+  cases c with
+  | nil => simp [wordCol]
+  | cons x r => obtain ⟨p, h⟩ := x; simp [wordCol]
+
+theorem wordCol_head_E2 (e : Nat) (c : Column) : ∃ A rest, wordCol e c = A :: rest ∧
+    wdep_E2 A = 2 * e := by
+  cases c with
+  | nil => exact ⟨_, _, rfl, rfl⟩
+  | cons x r => obtain ⟨p, h⟩ := x; exact ⟨_, _, rfl, rfl⟩
+
+theorem decAt_dropLast_E2 {F : Forest} (hF : F.cols ≠ []) :
+    decAt_E2 wdep_E2 (word F) (word (Tree.node F.cols.dropLast)) (mu (Tree.node F.cols.dropLast)) := by
+  obtain ⟨last, hw⟩ := word_dropLast_E2 0 hF
+  change decAt_E2 wdep_E2 (wordAt 0 F) (wordAt 0 (Tree.node F.cols.dropLast)) _
+  rw [hw]
+  have hne := wordCol_ne_E2 0 last
+  refine ⟨?_, le_refl _, Or.inl ⟨rfl, ?_⟩⟩
+  · rw [List.take_append]; simp [mu, word]
+  · simp only [List.length_append]
+    have : (wordCol 0 last).length ≠ 0 := by simpa using hne
+    change (wordAt 0 _).length < _
+    omega
+
+theorem mu_pos_E2 {F : Forest} (hF : F.cols ≠ []) : 0 < mu F := by
+  obtain ⟨last, hw⟩ := word_dropLast_E2 0 hF
+  have hne := wordCol_ne_E2 0 last
+  unfold mu word
+  rw [hw, List.length_append]
+  have : (wordCol 0 last).length ≠ 0 := by simpa using hne
+  omega
+
+/-! The S correspondence: the three closure properties used by `spxAll_replace`. -/
+
+/-- At the copies: `C` against `F`. -/
+theorem corrS_dropLast_E2 {F : Forest} (hF : F.cols ≠ []) :
+    corrS_E2 (Tree.node F.cols.dropLast) F :=
+  ⟨_, decAt_dropLast_E2 hF, entCorr_dropLast_E2 (allEnt_relS_E2 (le_refl _))⟩
+
+theorem retIn_of_corrS_E2 {h' h : Forest} {n : Nat} (hC : corrS_E2 h' h)
+    (hR : retIn_E2 psiS_E2 n h) : retIn_E2 psiS_E2 n h' := by
+  obtain ⟨a, hd, hE⟩ := hC
+  exact retIn_of_entCorr_E2 hE (fun m J' J hr hl => psiS_transfer_E2 hr hd hl) hR
+
+theorem corrS_snoc_E2 (ys : List Column) (zs : Column) (q : Nat) (h h' : Forest)
+    (hC : corrS_E2 h' h) :
+    corrS_E2 (Tree.node (ys ++ [zs ++ [(q, h')]])) (Tree.node (ys ++ [zs ++ [(q, h)]])) := by
+  obtain ⟨a, hd, hE⟩ := hC
+  set T : Forest := Tree.node (ys ++ [zs ++ [(q, Tree.empty)]]) with hT
+  have hTpos : 0 < mu T := mu_pos_E2 (by simp [hT, Tree.cols])
+  refine ⟨mu T + a, ?_, ?_⟩
+  · rw [word_snoc_E2 ys zs q h, word_snoc_E2 ys zs q h']
+    have := decAt_append_E2 (word T)
+      (decAt_map_E2 (d' := wdep_E2) (g := fun A : WordAtom => toLex ((ofLex A).1 + 2 * 1, (ofLex A).2))
+        (fun x y h => by unfold wdep_E2 at h ⊢; simp only [ofLex_toLex]; omega) hd)
+    exact this
+  · refine entCorr_snoc_E2 hE ?_ ?_ (allEnt_relS_E2 (by show mu T ≤ mu T + a; omega))
+    · intro J' J hr
+      rcases hr with ⟨h1, h2⟩ | ⟨a', h1, h2⟩
+      · exact Or.inl ⟨h1, by omega⟩
+      · exact Or.inr ⟨a', by omega, h2⟩
+    · exact Or.inr ⟨a, by omega, hd⟩
+
+theorem corrS_top_E2 (cs : List Column) {P : Column} {p N : Nat} {Fl : Forest}
+    (hFl : Fl.cols ≠ []) (hN : P = [] → 1 ≤ N) :
+    corrS_E2 (Tree.node (cs ++ [P ++ List.replicate N (p, Tree.node Fl.cols.dropLast)]))
+      (Tree.node (cs ++ [P ++ [(p, Fl)]])) := by
+  set C : Forest := Tree.node Fl.cols.dropLast with hC
+  have hw : ∀ c : Column, word (Tree.node (cs ++ [c])) = wordCols 0 cs ++ wordCol 0 c := by
+    intro c; simp [word, wordAt, wordCols_append, wordCols]
+  have hTmu : mu (Tree.node (cs ++ [P])) = (wordCols 0 cs).length + (wordCol 0 P).length := by
+    unfold mu; rw [hw, List.length_append]
+  cases N with
+  | zero =>
+    obtain ⟨x, Pt, rfl⟩ : ∃ x Pt, P = x :: Pt := by
+      cases P with
+      | nil => exact absurd (hN rfl) (by omega)
+      | cons x Pt => exact ⟨x, Pt, rfl⟩
+    refine ⟨(wordCols 0 cs).length + (wordCol 0 (x :: Pt)).length, ?_, ?_⟩
+    · rw [hw, hw, List.replicate_zero, List.append_nil, wordCol_cons_append_E2, ← List.append_assoc]
+      refine ⟨?_, by simp, Or.inl ⟨by simp, ?_⟩⟩
+      · rw [List.take_append, List.take_append, List.take_of_length_le (by simp),
+          List.take_of_length_le (by simp)]
+        simp
+      · simp [wordLater]
+    · refine entCorr_top_E2 (allEnt_relS_E2 (by rw [hTmu])) (fun h => absurd rfl h)
+        (fun h => absurd rfl h)
+  | succ N =>
+    have hrep : P ++ List.replicate (N + 1) (p, C) = (P ++ [(p, C)]) ++ List.replicate N (p, C) := by
+      rw [List.replicate_succ, List.append_assoc]; rfl
+    obtain ⟨last, hwl⟩ := word_dropLast_E2 1 hFl
+    set pre := wordCols 0 cs ++ wordCol 0 (P ++ [(p, Tree.empty)]) ++ wordAt 1 C with hpre
+    have hwB : word (Tree.node (cs ++ [P ++ List.replicate (N + 1) (p, C)])) =
+        pre ++ wordLater 0 (List.replicate N (p, C)) := by
+      rw [hw, hrep]
+      obtain ⟨y, ys, hys⟩ : ∃ y ys, P ++ [(p, C)] = y :: ys := by
+        cases P with
+        | nil => exact ⟨_, _, rfl⟩
+        | cons y ys => exact ⟨_, _, rfl⟩
+      rw [hys, wordCol_cons_append_E2, ← hys, wordCol_snoc, hpre]
+      simp only [List.append_assoc]
+    have hwA : word (Tree.node (cs ++ [P ++ [(p, Fl)]])) = pre ++ wordCol 1 last := by
+      rw [hw, wordCol_snoc, hwl, hpre]
+      simp only [List.append_assoc]; rfl
+    have hCpre : mu C + 1 ≤ pre.length := by
+      have := wordCol_ne_E2 0 (P ++ [(p, Tree.empty)])
+      have : (wordCol 0 (P ++ [(p, Tree.empty)])).length ≠ 0 := by simpa using this
+      simp only [hpre, List.length_append, wordAt_length_E2]
+      omega
+    have hPpre : mu (Tree.node (cs ++ [P])) ≤ pre.length := by
+      rw [hTmu]
+      have : (wordCol 0 P).length ≤ (wordCol 0 (P ++ [(p, Tree.empty)])).length := by
+        cases P with
+        | nil => simp [wordCol, wordLater, Tree.empty, wordAt, wordCols]
+        | cons y ys => rw [wordCol_cons_append_E2]; simp
+      simp only [hpre, List.length_append]
+      omega
+    refine ⟨pre.length, ?_, ?_⟩
+    · rw [hwA, hwB]
+      have h0 : decAt_E2 wdep_E2 (wordCol 1 last) (wordLater 0 (List.replicate N (p, C))) 0 := by
+        obtain ⟨A, rest, hA, hdA⟩ := wordCol_head_E2 1 last
+        refine ⟨by simp, by simp, ?_⟩
+        cases N with
+        | zero => left; simp [wordLater, hA]
+        | succ N =>
+          right
+          refine ⟨A, _, by rw [hA]; rfl, by rw [List.replicate_succ]; rfl, ?_⟩
+          rw [hdA]; simp [wdep_E2]
+      have := decAt_append_E2 pre h0
+      rwa [Nat.add_zero] at this
+    · refine entCorr_top_E2 (allEnt_relS_E2 hPpre) (fun _ => allEnt_relS_E2 (show mu C ≤ _ by omega))
+        (fun _ => Or.inr ⟨mu C, by omega, decAt_dropLast_E2 hFl⟩)
+
+
+theorem retAll_corrS_E2 (n : Nat) (zs : Column) (q : Nat) (h h' : Forest) (hC : corrS_E2 h' h)
+    (hφ : retAll_E2 psiS_E2 n (zs ++ [(q, h)])) : retAll_E2 psiS_E2 n (zs ++ [(q, h')]) := by
+  intro x hx
+  rcases List.mem_append.1 hx with hx | hx
+  · exact hφ x (List.mem_append_left _ hx)
+  · simp only [List.mem_singleton] at hx; subst hx
+    exact retIn_of_corrS_E2 hC (hφ (q, h) (by simp))
+
 -- T3.2t (txt:406-409): special outputs satisfy S, and P when present
 theorem condS_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
-    (hB : expand A n = some B) : CondS B := by sorry
+    (hB : expand A n = some B) : CondS B := by
+  obtain ⟨π, G, cs, P, p, Fl, N, hrp, hG, hGc, hFl, hN, rfl⟩ := spx_special_shape hL hk hB
+  have hS := hL.2.2.2.2
+  have hcolA : A.colAt ⟨π, cs.length⟩ = some (P ++ [(p, Fl)]) := by
+    simp [Tree.colAt, hG, hGc]
+  rw [condS_iff_ret_E2] at hS ⊢
+  refine (spxAll_replace (φ := retAll_E2 psiS_E2) corrS_E2 (fun cs' => corrS_top_E2 cs' hFl hN)
+    corrS_snoc_E2 retAll_corrS_E2 π A G cs 0 hrp hG hGc hS ?_ ?_).1
+  · intro x hx
+    rcases spx_mem_special hx with hx | rfl
+    · exact hS _ _ hcolA x (List.mem_append_left _ hx)
+    · exact retIn_of_corrS_E2 (corrS_dropLast_E2 hFl) (hS _ _ hcolA (p, Fl) (by simp))
+  · intro x hx
+    rcases spx_mem_special hx with hx | rfl
+    · exact spxAll_height hS hcolA x (List.mem_append_left _ hx)
+    · exact spxAll_dropLast (spxAll_height hS hcolA (p, Fl) (by simp))
 theorem condP_special {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
     (hk : stepKind A = some .special) (hB : expand A n = some B) : CondP B := by sorry
 
