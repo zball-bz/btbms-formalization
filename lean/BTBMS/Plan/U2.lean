@@ -23270,13 +23270,121 @@ theorem projection_lt_num_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat
     · rw [if_pos h5]; omega
     · rw [if_neg h5]; unfold OrdStep.s at h4 h5 hρ; omega
 
+-- F7 (helper): a container has a number at most that of the direct host
+theorem num_container_le_host_F7 {o c : ColAddr} {e : EntryAddr} (he : o.container c = some e)
+    {π : List (Nat × Nat)} {ci ei : Nat} (hpc : c.path = π ++ [(ci, ei)]) :
+    o.num 0 ≤ (⟨π, ci⟩ : ColAddr).num 0 := by
+  obtain ⟨he1, t, ht⟩ := (ColAddr.container_spec _ _ _).mp he
+  rw [EntryAddr.heightPath, he1, hpc] at ht
+  rcases t.eq_nil_or_concat with rfl | ⟨t', x, rfl⟩
+  · rw [List.append_nil] at ht
+    have := List.append_inj' ht rfl
+    simp only [List.cons.injEq, Prod.mk.injEq, and_true] at this
+    obtain ⟨h1, h2, -⟩ := this
+    simp [ColAddr.num, h1, h2]
+  · rw [List.concat_eq_append, ← List.append_assoc] at ht
+    have := List.append_inj' ht rfl
+    obtain ⟨h1, -⟩ := this
+    rw [← h1]
+    simp only [ColAddr.num, List.map_append, List.sum_append, List.map_cons, List.sum_cons,
+      List.map_nil, List.sum_nil]
+    omega
+
+-- F7 (helper): in a literal cap at a column start, every container of the cap column has a
+-- number at most the closing parent (I of the cap)
+theorem litCap_host_F7 {B : Forest} {c : ColAddr} {ρ : Nat} (hup : IsUpward B c 0 ρ)
+    (hKI : CondI (litCap B c 0 ρ)) {o : ColAddr} {e : EntryAddr} (he : o.container c = some e) :
+    o.num 0 ≤ ρ := by
+  obtain ⟨-, t, ht⟩ := (ColAddr.container_spec _ _ _).mp he
+  obtain ⟨π, ci, ei, hpc⟩ : ∃ π ci ei, c.path = π ++ [(ci, ei)] := by
+    rcases c.path.eq_nil_or_concat with h0 | ⟨π, x, hx⟩
+    · rw [h0] at ht; simp [EntryAddr.heightPath] at ht
+    · exact ⟨π, x.1, x.2, by rw [hx, List.concat_eq_append]⟩
+  refine (num_container_le_host_F7 he hpc).trans ?_
+  obtain ⟨hcol, -⟩ := litCap_colAt_self hup
+  simp only [List.take_zero, List.nil_append] at hcol
+  set e'' : EntryAddr := ⟨⟨π, ci⟩, ei⟩
+  have hhp : e''.heightPath = c.path := by simp [e'', EntryAddr.heightPath, hpc]
+  have hcol' : (litCap B c 0 ρ).colAt ⟨e''.heightPath, c.col⟩ = some [(ρ, Tree.empty)] := by
+    rw [hhp]; exact hcol
+  obtain ⟨q, H, hent, hH⟩ := entry_of_heightCol_D7 hcol'
+  have hmem : e'' ∈ (litCap B c 0 ρ).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  have hHne : H ≠ Tree.empty := by
+    intro h0; rw [h0] at hH; simp [Tree.empty, Tree.cols] at hH
+  obtain ⟨q', H', rest, hcq, hle⟩ :=
+    hKI e'' hmem q H hent hHne [(ρ, Tree.empty)] (List.mem_of_getElem? hH)
+  simp only [List.cons.injEq, Prod.mk.injEq] at hcq
+  rw [hcq.1.1]
+  exact hle
+
 -- T3.8li step 4 (D7; VERIFY-U2 F7): the host bound of a column-start projection inside a height
 theorem projection_host_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {ρ : Nat}
     (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
     (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c 0 ρ)
-    (hKL : InL (litCap S.B c 0 ρ)) (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ)
+    (hKL : InL (litCap S.B c 0 ρ)) (_hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ)
     {π : List (Nat × Nat)} {ci ei : Nat} (hpa : a.path = π ++ [(ci, ei)]) :
-    (⟨π, ci⟩ : ColAddr).num 0 ≤ S.proj (phaseOff S.sd i a) ρ := by sorry
+    (⟨π, ci⟩ : ColAddr).num 0 ≤ S.proj (phaseOff S.sd i a) ρ := by
+  have hφ := phaseOff_pos_D7 hi.1 hq
+  have hKI : CondI (litCap S.B c 0 ρ) := hKL.2.1
+  have hp : PhasePair_D7 S i a c (phaseOff S.sd i a) := Or.inl ⟨ha, hc, rfl⟩
+  have hcontA : (⟨⟨π, ci⟩, ei⟩ : EntryAddr).Contains a := by
+    show EntryAddr.heightPath _ <+: _
+    simp [EntryAddr.heightPath, hpa]
+  have hha : (⟨π, ci⟩ : ColAddr).container a = some ⟨⟨π, ci⟩, ei⟩ :=
+    (ColAddr.container_spec _ _ _).mpr ⟨rfl, hcontA⟩
+  have hres : a.resolve 0 ((⟨π, ci⟩ : ColAddr).num 0) = some ⟨π, ci⟩ :=
+    EntryAddr.resolve_host hcontA
+  obtain ⟨hRa, -, -, b, hb⟩ := phasePair_root_D7 S hp
+  obtain ⟨hresR, -, -, hpre, -⟩ := rootData_path S.hsd S.hrd
+  have hsφ : S.s (phaseOff S.sd i a) = S.sd.r + phaseOff S.sd i a * S.d := rfl
+  rcases lt_trichotomy ((⟨π, ci⟩ : ColAddr).num 0) S.sd.r with hlt | heq | hgt
+  · -- a host below `r` contains the copy too
+    have hcR := EntryAddr.contains_of_resolve hcontA hRa hlt
+    have hpc : S.rd.col.path <+: c.path := by
+      rw [hb]
+      refine hpre.trans ?_
+      obtain ⟨bp, bc⟩ := b
+      cases bp with
+      | nil => exact List.prefix_refl _
+      | cons y ys => obtain ⟨y1, y2⟩ := y; exact List.prefix_append _ _
+    have hcc : (⟨π, ci⟩ : ColAddr).container c = some ⟨⟨π, ci⟩, ei⟩ :=
+      (ColAddr.container_spec _ _ _).mpr ⟨rfl, hcR.trans hpc⟩
+    have := litCap_host_F7 hup hKI hcc
+    unfold OrdStep.proj
+    split_ifs <;> omega
+  · -- the root: the head `s_φ` contains the copy
+    have hhR : (⟨π, ci⟩ : ColAddr) = S.rd.col := by
+      rw [heq] at hres; rw [hRa] at hres; exact (Option.some.inj hres).symm
+    have hRa' : S.rd.col.container a = some ⟨⟨π, ci⟩, ei⟩ := by rw [← hhR]; exact hha
+    obtain ⟨-, hlt', heq'⟩ := head_stack_F7 S hi hp hφ le_rfl
+    have hcont : ∃ e, (S.headCol (phaseOff S.sd i a)).container c = some e := by
+      rcases Nat.lt_or_ge (phaseOff S.sd i a) i with hφi | hφi
+      · rw [hlt' hφi]
+        have haq : isQMat S.sd a = true := by
+          cases h' : isQMat S.sd a
+          · simp only [phaseOff, h', Bool.false_eq_true, if_false] at hφi; omega
+          · rfl
+        obtain ⟨a₀, ha₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+        have := container_underCol_of_onStack ((ColAddr.resolve_spec 0 _ _ _).mp hresR).1 a₀
+        rw [← qmat_underCol_F7 S haq ha₀, hRa'] at this
+        rw [← this]
+        exact ⟨_, rfl⟩
+      · obtain ⟨-, -, h3⟩ := heq' (by unfold phaseOff at hφi ⊢; split_ifs at hφi ⊢ <;> omega)
+        rw [h3, hRa']
+        exact ⟨_, rfl⟩
+    obtain ⟨e, he⟩ := hcont
+    have := litCap_host_F7 hup hKI he
+    rw [num_headCol_F7 S hφ] at this
+    unfold OrdStep.proj
+    split_ifs <;> omega
+  · -- above `r`: the phase copy of the host contains the copy
+    obtain ⟨o', ho', hcont, -⟩ := phase_stack_F7 S hi hp hgt hres
+    rw [hha] at hcont
+    have := litCap_host_F7 hup hKI hcont
+    rw [ColAddr.resolve_num ho'] at this
+    unfold OrdStep.proj
+    split_ifs <;> omega
 
 -- L-G010.19 (D7; T3.8li step 5, final test): the final test of the projected cap, read in `A`
 theorem projection_finalTest_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
@@ -23377,7 +23485,24 @@ theorem headQuery_host_D7 (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi :
     (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c 0 ρ)
     (hKL : InL (litCap S.B c 0 ρ)) (hρ : S.s (i - 1) < ρ)
     {π : List (Nat × Nat)} {ci ei : Nat} (hpa : S.sd.col.path = π ++ [(ci, ei)]) :
-    (⟨π, ci⟩ : ColAddr).num 0 ≤ ρ - (i - 1) * S.d := by sorry
+    (⟨π, ci⟩ : ColAddr).num 0 ≤ ρ - (i - 1) * S.d := by
+  have hKI : CondI (litCap S.B c 0 ρ) := hKL.2.1
+  have hp : PhasePair_D7 S i S.sd.col c (i - 1) := Or.inr ⟨rfl, hc, rfl⟩
+  have hcontA : (⟨⟨π, ci⟩, ei⟩ : EntryAddr).Contains S.sd.col := by
+    show EntryAddr.heightPath _ <+: _
+    simp [EntryAddr.heightPath, hpa]
+  have hha : (⟨π, ci⟩ : ColAddr).container S.sd.col = some ⟨⟨π, ci⟩, ei⟩ :=
+    (ColAddr.container_spec _ _ _).mpr ⟨rfl, hcontA⟩
+  have hres : S.sd.col.resolve 0 ((⟨π, ci⟩ : ColAddr).num 0) = some ⟨π, ci⟩ :=
+    EntryAddr.resolve_host hcontA
+  have hs : S.s (i - 1) = S.sd.r + (i - 1) * S.d := rfl
+  by_cases hgt : S.sd.r < (⟨π, ci⟩ : ColAddr).num 0
+  · obtain ⟨o', ho', hcont, -⟩ := phase_stack_F7 S ⟨by omega, hi.2⟩ hp hgt hres
+    rw [hha] at hcont
+    have := litCap_host_F7 hup hKI hcont
+    rw [ColAddr.resolve_num ho'] at this
+    omega
+  · omega
 
 -- T3.8lb (txt:607-608, with the method of T3.8li): the old terminal cap of a head-query cut
 -- (moved here from before T3.8lc, brief rule 5: its proof uses the G-010 helpers)
