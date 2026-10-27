@@ -969,8 +969,271 @@ theorem safePrefix_condS {E : Forest} (hV : CondV E) (hS : CondS E) (k : Nat) :
   exact spx_relKey_safePrefix_lt hSE hk
 
 
+/-! T3.2e helpers: complete columns of a safe prefix, and capped cursors. -/
+
+/-- A column walk that leaves budget unused keeps the whole column. -/
+theorem spx_spCol_full_of {k : Nat} (hk : k ≠ 0) {col : Column} (h : (spCol k col).2 ≠ 0) :
+    (spCol k col).1 = col := by
+  have h2 : (spF k (Tree.node [col])).2 ≠ 0 := by simpa [spF, spCols, hk] using h
+  have := spx_spF_full h2
+  simp only [spF, spCols, hk, if_false, Tree.node.injEq] at this
+  simpa using this
+
+/-- In a safe prefix, a column followed by a kept column is complete. -/
+theorem spx_spCols_full : ∀ (k : Nat) (cols : List Column) (j : Nat),
+    ((spCols k cols).1[j + 1]?).isSome → (spCols k cols).1[j]? = cols[j]?
+  | k, [], j, h => by simp [spCols] at h
+  | k, c :: rest, j, h => by
+    by_cases hk : k = 0
+    · simp [spCols, hk] at h
+    · simp only [spCols, hk, if_false] at h ⊢
+      cases j with
+      | zero =>
+        simp only [List.getElem?_cons_zero, List.getElem?_cons_succ] at h ⊢
+        have hne : (spCol k c).2 ≠ 0 := by
+          intro h0; rw [h0] at h
+          cases rest with
+          | nil => simp [spCols] at h
+          | cons y ys => simp [spCols] at h
+        rw [spx_spCol_full_of hk hne]
+      | succ j =>
+        simp only [List.getElem?_cons_succ] at h ⊢
+        exact spx_spCols_full _ rest j h
+
+/-- In a kept column, all entries before a kept entry are complete. -/
+theorem spx_spCol_prefix {k : Nat} {col : Column} {v : Nat} (hv : v < (spCol k col).1.length) :
+    (spCol k col).1.take v = col.take v := by
+  apply List.ext_getElem?
+  intro j
+  rw [List.getElem?_take, List.getElem?_take]
+  split_ifs with hj
+  · exact spx_spCol_full (by rw [List.getElem?_eq_getElem (by omega)]; rfl)
+  · rfl
+
+/-- Kept entries keep their parents. -/
+theorem spx_spCol_fst {k : Nat} (hk : 1 ≤ k) {col : Column} {j : Nat}
+    (hj : j < (spCol k col).1.length) :
+    ((spCol k col).1[j]?).map Prod.fst = (col[j]?).map Prod.fst := by
+  obtain ⟨⟨p, h'⟩, hx⟩ : ∃ x, (spCol k col).1[j]? = some x := ⟨_, List.getElem?_eq_getElem hj⟩
+  obtain ⟨h, -, hh, -, -⟩ := spx_spCol_get hk hx
+  rw [hx, hh]; rfl
+
+/-- Every column of a safe prefix is complete or a route column of the prefix. -/
+theorem spx_complete_or_route : ∀ (P : List (Nat × Nat)) (T : Forest) (k j : Nat),
+    ((spF k T).1.colAt ⟨P, j⟩).isSome →
+      (spF k T).1.colAt ⟨P, j⟩ = T.colAt ⟨P, j⟩ ∨ (⟨P, j⟩ : ColAddr) ∈ routeCols (spF k T).1
+  | [], .node cols, k, j, h => by
+    rw [spF] at h ⊢
+    simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h ⊢
+    by_cases hj : j + 1 < (spCols k cols).1.length
+    · exact Or.inl (spx_spCols_full k cols j (by rw [List.getElem?_eq_getElem hj]; rfl))
+    · right
+      rw [mem_routeCols_iff]
+      refine ⟨fun d hd => absurd hd (Nat.not_lt_zero _), _, rfl, ?_⟩
+      have := (Option.isSome_iff_exists.1 h)
+      obtain ⟨x, hx⟩ := this
+      have := (List.getElem?_eq_some_iff.1 hx).1
+      simp only [Tree.cols]; omega
+  | (a, b) :: P, .node cols, k, j, h => by
+    rw [spF] at h ⊢
+    rw [Tree.colAt_cons] at h
+    simp only [Tree.cols] at h
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 h
+    rw [Option.bind_eq_some_iff] at hx
+    obtain ⟨⟨p, h'⟩, hab, hP⟩ := hx
+    rw [Option.bind_eq_some_iff] at hab
+    obtain ⟨colA', hA', hb'⟩ := hab
+    obtain ⟨colA, k₁, hA, rfl, hk₁, -⟩ := spx_spCols_get k cols a colA' hA'
+    obtain ⟨h₀, k₂, hb, rfl, -⟩ := spx_spCol_get hk₁ hb'
+    have e1 : (Tree.node (spCols k cols).1).colAt ⟨(a, b) :: P, j⟩ =
+        (spF k₂ h₀).1.colAt ⟨P, j⟩ := by
+      rw [Tree.colAt_cons]; simp [Tree.cols, hA', hb']
+    have e2 : (Tree.node cols).colAt ⟨(a, b) :: P, j⟩ = h₀.colAt ⟨P, j⟩ := by
+      rw [Tree.colAt_cons]; simp [Tree.cols, hA, hb]
+    have hfa : (Tree.node (spCols k cols).1).forestAt [(a, b)] = some (spF k₂ h₀).1 := by
+      rw [Tree.forestAt_cons]; simp [Tree.cols, hA', hb', Tree.forestAt]
+    rw [e1, e2]
+    rcases spx_complete_or_route P h₀ k₂ j (by rw [hP]; rfl) with hc | hr
+    · exact Or.inl hc
+    · by_cases hlast : a + 1 = (spCols k cols).1.length ∧ b + 1 = (spCol k₁ colA).1.length
+      · right
+        rw [mem_routeCols_iff] at hr ⊢
+        obtain ⟨hrp, F, hF, hFl⟩ := hr
+        refine ⟨isRoutePath_cons.2 ⟨?_, _, hfa, hrp⟩, F, ?_, hFl⟩
+        · have hne : (spCol k₁ colA).1 ≠ [] := by
+            intro h0; rw [h0] at hlast; simp at hlast
+          simp only [Tree.lastStep?, Tree.cols]
+          rw [List.getLast?_eq_getElem?, show (spCols k cols).1.length - 1 = a by omega, hA',
+            Option.bind_some]
+          simp only [List.isEmpty_eq_false_iff.2 hne, if_false, Bool.false_eq_true]
+          congr 2; omega
+        · rw [Tree.forestAt_cons]; simp [Tree.cols, hA', hb', hF]
+      · left
+        have hfull : (spF k₂ h₀).1 = h₀ := by
+          have haL : a < (spCols k cols).1.length := (List.getElem?_eq_some_iff.1 hA').1
+          have hbL : b < (spCol k₁ colA).1.length := (List.getElem?_eq_some_iff.1 hb').1
+          by_cases ha : a + 1 < (spCols k cols).1.length
+          · have hf := spx_spCols_full k cols a (by rw [List.getElem?_eq_getElem ha]; rfl)
+            rw [hA', hA] at hf
+            have hf' := Option.some.inj hf
+            rw [hf', hb] at hb'
+            exact (Prod.mk.inj (Option.some.inj hb')).2.symm
+          · have hb2 : b + 1 < (spCol k₁ colA).1.length := by omega
+            have hf := spx_spCol_full (k := k₁) (col := colA) (i := b)
+              (by rw [List.getElem?_eq_getElem hb2]; rfl)
+            rw [hb', hb] at hf
+            exact (Prod.mk.inj (Option.some.inj hf)).2
+        rw [hfull]
+
+/-- A reduced `⊤`-free query below the boundary of entry `v` has the same cursor in a source that
+agrees with `ks` through entry `v`, or agrees before `v` and ends at `v` with `⊤`. -/
+theorem spx_cursor_capped {ks ks' W : List (WithTop Key)} {v : Nat} (hv : v < ks.length)
+    (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤) (hlt : W < cutQuery ks (v + 1))
+    (hks : ks' = ks.take v ++ [⊤] ∨ (v < ks'.length ∧ ks'.take (v + 1) = ks.take (v + 1))) :
+    cursor ks' W = cursor ks W := by
+  rcases hks with rfl | ⟨hv', htk⟩
+  · exact ((cursor_cappedAt ks W v hv hW hT hlt).2).symm
+  · have hc := cursor_le_of_lt_cutQuery hW hv hlt
+    have hlt' : W < cutQuery ks' (v + 1) := by
+      unfold cutQuery at hlt ⊢; rw [htk]; exact hlt
+    have hc' := cursor_le_of_lt_cutQuery hW hv' hlt'
+    have e1 := cursor_take ks' W (v + 1)
+    have e2 := cursor_take ks W (v + 1)
+    rw [htk] at e1
+    omega
+
 -- T3.2e (txt:312-313): safe prefixes keep A (barrier + capping)
-theorem safePrefix_condA {E : Forest} (hL : InL E) (k : Nat) : CondA (safePrefix E k) := by sorry
+theorem safePrefix_condA {E : Forest} (hL : InL E) (k : Nat) : CondA (safePrefix E k) := by
+  obtain ⟨hV, -, -, hA, hS⟩ := hL
+  have hV' : CondV (safePrefix E k) := safePrefix_condV hV k
+  have hS' : CondS (safePrefix E k) := safePrefix_condS hV hS k
+  refine capping_reverse hV' hS' (sel := routeCols (safePrefix E k)) (fun a ha => ha) ?_
+  rw [condAK_iff]
+  intro c hc i p hp
+  -- the column of `c` in the prefix
+  obtain ⟨col', hcol'⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 hc)
+  obtain ⟨col, k₁, hcol, rfl, hk₁, -, -⟩ := spx_colAt (k := k) (T := E) hcol'
+  have hcE : c ∈ E.colAddrs := (Tree.mem_colAddrs_iff E c).2 (by rw [hcol]; rfl)
+  have hpar : ∀ j, j < (spCol k₁ col).1.length →
+      (parents (safePrefix E k) c)[j]? = (parents E c)[j]? := by
+    intro j hj
+    simp only [parents, List.getElem?_map]
+    rw [hcol', hcol, Option.getD_some, Option.getD_some]
+    exact spx_spCol_fst hk₁ hj
+  have hiL : i < (spCol k₁ col).1.length := by
+    have := (List.getElem?_eq_some_iff.1 hp).1
+    simp only [parents, hcol', Option.getD_some, List.length_map] at this; exact this
+  have hpE : (parents E c)[i]? = some p := by rw [← hpar i hiL]; exact hp
+  have hiE : i < col.length := by
+    have := (List.getElem?_eq_some_iff.1 hpE).1; simpa [parents, hcol] using this
+  have hstart : cutStart (safePrefix E k) c i = cutStart E c i := by
+    unfold cutStart
+    split_ifs with h0
+    · rfl
+    · rw [hpar (i - 1) (by omega)]
+  -- the query
+  have hgk : ∀ (o : ColAddr) (colo : Column) (k₂ n : Nat), (safePrefix E k).colAt o =
+      some (spCol k₂ colo).1 → E.colAt o = some colo →
+      (spCol k₂ colo).1.take n = colo.take n →
+      (actualKeys (safePrefix E k) o).take n = (actualKeys E o).take n := by
+    intro o colo k₂ n h1 h2 h3
+    simp only [actualKeys, h1, h2, Option.getD_some, ← List.map_take, h3]
+  have hW : cutQuery (capKeys (safePrefix E k) (routeCols (safePrefix E k)) c) i =
+      cutQuery (actualKeys E c) i := by
+    rw [cutQuery_capKeys _ _ c (by rw [hcol']; simpa using hiL)]
+    unfold cutQuery
+    rw [hgk c col k₁ i hcol' hcol (spx_spCol_prefix hiL)]
+  have hAE := (condAK_iff _ _).1 hA c hcE i p hpE
+  rw [hW, hstart]
+  set W := cutQuery (actualKeys E c) i with hWdef
+  have hWn : W.Pairwise fun x y => y ≤ x := cutQuery_noninc _ _
+  have hWT : ∀ y ∈ W, y ≠ ⊤ := by
+    intro y hy
+    have hy' := ((nu_sublist _).trans (List.take_sublist _ _)).subset hy
+    simp only [actualKeys, List.mem_map] at hy'
+    obtain ⟨_, -, rfl⟩ := hy'
+    exact WithTop.coe_ne_top
+  have hent : (⟨c, i⟩ : EntryAddr) ∈ (safePrefix E k).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, Tree.entryAt]
+    rw [hcol', Option.bind_some, List.getElem?_eq_getElem hiL]; rfl
+  -- transfer of the actual path of `E`, edge by edge
+  have key : ∀ y, Path E (actualKeys E) c W (cutStart E c i) y →
+      Path (safePrefix E k) (capKeys (safePrefix E k) (routeCols (safePrefix E k))) c W
+        (cutStart E c i) y := by
+    intro y h
+    induction h with
+    | refl => exact Relation.ReflTransGen.refl
+    | @tail z y' hxz hzy ih =>
+      obtain ⟨o, ho, hr⟩ := hzy
+      refine ih.tail ⟨o, ho, ?_⟩
+      have hoE' : ((safePrefix E k).colAt o).isSome := by
+        have := (Tree.stack_mem_prefix hent).2.1 o ((ColAddr.resolve_spec 0 c o z).1 ho).1
+        exact (Tree.mem_roles_ord o.path _ o.col).1 ((List.takeWhile_sublist _).subset this)
+      by_cases hor : o ∈ routeCols (safePrefix E k)
+      · -- a route column: a container of `c`; the barrier stops the scan at the container
+        obtain ⟨v, hvE', hvc⟩ := routeCols_visible hc hor ho
+        obtain ⟨colo', hcolo'⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ o).1
+          (mem_colAddrs_of_mem_routeCols hor))
+        obtain ⟨colo, k₂, hcolo, rfl, hk₂, -, -⟩ := spx_colAt (k := k) (T := E) hcolo'
+        have hvL : v < (spCol k₂ colo).1.length := by
+          have := (Tree.mem_entryAddrs_iff _ _).1 hvE'
+          rw [Tree.entryAt] at this
+          rw [hcolo', Option.bind_some] at this
+          obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 this
+          exact (List.getElem?_eq_some_iff.1 hx).1
+        obtain ⟨xv, hxv⟩ : ∃ x, (spCol k₂ colo).1[v]? = some x :=
+          ⟨_, List.getElem?_eq_getElem hvL⟩
+        obtain ⟨Hv, -, hHv, -, -⟩ := spx_spCol_get hk₂ hxv
+        have hvo : v < colo.length := (List.getElem?_eq_some_iff.1 hHv).1
+        have hvE : (⟨o, v⟩ : EntryAddr) ∈ E.entryAddrs := by
+          rw [Tree.mem_entryAddrs_iff, Tree.entryAt, hcolo, Option.bind_some, hHv]; rfl
+        have hz : o.num 0 = z := ColAddr.resolve_num ho
+        have hbar := cut_barrier hV hA hS hvE hcE hvc (k := i)
+          (by simp [parents, hcol]; omega) (by rw [hz]; exact hxz)
+        dsimp only at hbar
+        rw [boundary_eq_cutQuery] at hbar
+        set ks := actualKeys E o with hks
+        have hksL : ks.length = colo.length := by simp [hks, actualKeys, hcolo]
+        have hcap : capKeys (safePrefix E k) (routeCols (safePrefix E k)) o =
+            (actualKeys (safePrefix E k) o).dropLast ++ [⊤] := by
+          have hne : actualKeys (safePrefix E k) o ≠ [] := by
+            simp only [actualKeys]
+            rw [hcolo', Option.getD_some]
+            intro h0; rw [List.map_eq_nil_iff] at h0; rw [h0] at hvL; simp at hvL
+          obtain ⟨y, hy⟩ := Option.ne_none_iff_exists'.1 (mt List.getLast?_eq_none_iff.1 hne)
+          simp [capKeys, hor, hy]
+        have hlenA : (actualKeys (safePrefix E k) o).length = (spCol k₂ colo).1.length := by
+          simp only [actualKeys, List.length_map]
+          rw [hcolo', Option.getD_some]
+        have hcur : cursor (capKeys (safePrefix E k) (routeCols (safePrefix E k)) o) W =
+            cursor ks W := by
+          refine spx_cursor_capped (by omega) hWn hWT hbar ?_
+          rw [hcap]
+          by_cases hv1 : v + 1 = (spCol k₂ colo).1.length
+          · left
+            rw [List.dropLast_eq_take, hlenA, show (spCol k₂ colo).1.length - 1 = v by omega,
+              hgk o colo k₂ v hcolo' hcolo (spx_spCol_prefix hvL)]
+          · right
+            refine ⟨by simp; omega, ?_⟩
+            rw [List.take_append_of_le_length (by rw [List.length_dropLast]; omega),
+              List.dropLast_eq_take, List.take_take, Nat.min_eq_left (by omega)]
+            exact hgk o colo k₂ (v + 1) hcolo' hcolo (spx_spCol_prefix (by omega))
+        have hm : cursor ks W ≤ v := cursor_le_of_lt_cutQuery hWn (by omega) hbar
+        unfold resp at hr ⊢
+        rw [hcur]
+        rw [hcolo', Option.getD_some, spx_spCol_fst hk₂ (by omega)]
+        rw [hcolo, Option.getD_some] at hr
+        exact hr
+      · -- a non-route column is complete in the prefix
+        have hcomp := (spx_complete_or_route o.path E k o.col hoE').resolve_right hor
+        have hcomp' : (safePrefix E k).colAt o = E.colAt o := hcomp
+        unfold resp at hr ⊢
+        rw [capKeys_of_not_mem hor]
+        unfold actualKeys at hr ⊢
+        rw [hcomp']
+        exact hr
+  exact key p hAE
+
 
 -- T3.2f (txt:314-318): safe prefixes keep P
 theorem safePrefix_condP {E : Forest} (hL : InL E) (hP : CondP E) (k : Nat) :
