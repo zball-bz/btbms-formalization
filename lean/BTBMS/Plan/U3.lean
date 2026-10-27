@@ -10013,19 +10013,202 @@ theorem preRoot_sub_preStop_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = so
 
 end ScanLow_E8
 
+section ScanInj_E8
+
+/-- L7.6a step 4 helper: the target prefix `P(E, b) = P_E ++ T_E :: fE`, with `fE` moved onto the
+fitted roles of `H` by `toH`. -/
+theorem scan_tgt_prefix_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) :
+    ∃ fE, prefixRoles S.E (S.scanRecord i j).b = S.PE ++ S.TE :: fE ∧
+      fE.map S.toH = Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) := by
+  obtain ⟨hb, hTE, -, -, -⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨colE, hcolE, hagree⟩ := scan_col_E8 S hS
+  have hjE : j < colE.length := (List.getElem?_eq_some_iff.1
+    ((hagree j hj).trans (List.getElem?_eq_getElem hj))).1
+  have hpre := col_prefix_E8 hcolE hjE
+  have hPEd : rolesBefore S.E (.ord S.cE) = S.PE := by simp only [ScanSetup.PE, hTE]
+  have htake : colE.take j = S.sd.Q.take j := by
+    apply List.ext_getElem?
+    intro k
+    simp only [List.getElem?_take]
+    split_ifs with hk
+    · exact hagree k (by omega)
+    · rfl
+  refine ⟨Tree.rolesCol S.cE.path S.cE.col 0 (colE.take j), ?_, ?_⟩
+  · rw [hb, hpre, hPEd, hTE]
+  · rw [htake]; exact rolesCol_transColumn_E8 S.cE S.sd.col _ 0
+
+/-- L7.6a step 4 helper: the fitted entries of `H` before `j` are fitted roles, without
+repetition. -/
+theorem fitted_rolesCol_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) (j : Nat) :
+    (Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j)).Nodup ∧
+    ∀ z ∈ Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j), z ∈ S.fittedRoles j := by
+  obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
+  have hsplit : Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q =
+      Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) ++
+        Tree.rolesCol S.sd.col.path S.sd.col.col (0 + (S.sd.Q.take j).length) (S.sd.Q.drop j) := by
+    rw [← Tree.rolesCol_append, List.take_append_drop]
+  have hnd := Tree.roles_nodup S.H
+  rw [hroles, hQ, hsplit] at hnd
+  refine ⟨?_, fun z hz => ?_⟩
+  · refine hnd.sublist ?_
+    exact (List.sublist_append_left _ _).trans ((List.sublist_append_left _ _).trans
+      ((List.sublist_cons_self _ _).trans (List.sublist_append_right _ _)))
+  · obtain ⟨k, -, hk, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 _ hz
+    simp only [List.length_take, Nat.zero_add] at hk
+    refine List.mem_filter.2 ⟨?_, List.any_eq_true.2 ⟨k, List.mem_range.2 (by omega), hin⟩⟩
+    rw [hQ, hsplit]
+    exact List.mem_append_left _ hz
+
+/-- L7.6a step 4 helper: `Γ(F)`'s roles are `P_R`, `R` and bank roles. -/
+theorem scan_src_roles_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j) :
+    ∃ Bk, (S.scanRecord i j).F.roles = S.preRoot ++ S.R :: Bk ∧ ∀ z ∈ Bk, z ∈ S.bankRoles := by
+  have hS' := hS
+  obtain ⟨⟨-, -, -, hsd, hrd, -, -⟩, -⟩ := hS'
+  obtain ⟨hi, -⟩ := reach_idx_E8 hij
+  obtain ⟨colR, hcolR, hcurR, -⟩ := bank_chain_E8 S hS
+  obtain ⟨-, -, -, -, -, -, hcur, -⟩ := Scan.rootData_spec hsd hrd
+  have hic : i ≤ S.rd.cursor := by rw [hcur]; exact Scan.trace_fst_le_cursor _ _ hij.1
+  have hiR : i < colR.length := by omega
+  have haH : (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]; simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+  have hroles := Tree.truncAfter_roles_under haH
+  rw [col_prefix_E8 hcolR hiR] at hroles
+  obtain ⟨A, B, hr⟩ := roles_col_decomp hcolR
+  have hsplit : Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR =
+      Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take i) ++
+        Tree.rolesCol S.rd.col.path S.rd.col.col (0 + (colR.take i).length) (colR.drop i) := by
+    rw [← Tree.rolesCol_append, List.take_append_drop]
+  have hbankOf : ∀ z, z ∈ S.H.roles → ∀ k ≤ S.rd.cursor, z.inEntry ⟨S.rd.col, k⟩ = true →
+      z ∈ S.bankRoles := fun z hz k hk hin =>
+    List.mem_filter.2 ⟨hz, List.any_eq_true.2 ⟨k, List.mem_range.2 (by omega), hin⟩⟩
+  refine ⟨Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take i) ++
+    Role.slot ⟨S.rd.col, i⟩ :: List.map (Role.under (⟨S.rd.col, i⟩ : EntryAddr).heightPath)
+      ((S.H.heightAt ⟨S.rd.col, i⟩).getD Tree.empty).roles, ?_, fun z hz => ?_⟩
+  · show (S.H.truncAfter ⟨S.rd.col, i⟩).roles = _
+    rw [hroles]; simp [ScanSetup.preRoot, ScanSetup.R]
+  rcases List.mem_append.1 hz with hz | hz
+  · obtain ⟨k, -, hk, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 z hz
+    simp only [List.length_take, Nat.zero_add] at hk
+    refine hbankOf z ?_ k (by omega) hin
+    rw [hr, hsplit]; simp [hz]
+  · rcases List.mem_cons.1 hz with rfl | hz
+    · refine hbankOf _ ?_ i hic (by simp [Role.inEntry])
+      rw [Tree.mem_roles_iff]; simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+    · obtain ⟨r, hr', rfl⟩ := List.mem_map.1 hz
+      obtain ⟨Bh, hBh⟩ : ∃ Bh, S.H.heightAt ⟨S.rd.col, i⟩ = some Bh := by
+        simp [Tree.heightAt, Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+      rw [hBh, Option.getD_some] at hr'
+      refine hbankOf _ (Tree.under_mem_roles hBh hr') i hic ?_
+      rw [inEntry_iff]; right; rw [Role.path_under]; exact List.prefix_append _ _
+
+end ScanInj_E8
+
 /-- L7.6a step 5 (Valid clause 1): the target chart is injective on `P(E, b)`. -/
 theorem scan_valid1_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
     Set.InjOn (S.scanPacket i j β).tgtChart
       {x | x ∈ prefixRoles (S.scanPacket i j β).rk.E (S.scanPacket i j β).rk.b} := by
-  sorry
+  have hS' := hS
+  obtain ⟨⟨-, -, -, hsd, -, -, -⟩, ⟨hinj, -, hPE⟩, -⟩ := hS'
+  obtain ⟨fE, hpre, hmap⟩ := scan_tgt_prefix_E8 S hS (i := i) hj
+  obtain ⟨hndF, -⟩ := fitted_rolesCol_E8 hsd j
+  have hnd : (prefixRoles S.E (S.scanRecord i j).b).Nodup :=
+    (Tree.roles_nodup S.E).sublist (List.takeWhile_sublist _)
+  rw [hpre] at hnd
+  have hnd' := List.nodup_append.1 hnd
+  have hTfE : S.TE ∉ fE := (List.nodup_cons.1 hnd'.2.1).1
+  have hfEP : ∀ y ∈ fE, y ∉ S.PE := fun y hy h =>
+    hnd'.2.2 _ h _ (List.mem_cons_of_mem _ hy) rfl
+  have hTP : S.TE ∉ S.PE := fun h => hnd'.2.2 _ h _ List.mem_cons_self rfl
+  obtain ⟨hTc, -⟩ := scan_hosts_E8 S hS
+  have hfresh : ∀ n ∈ S.usedNames, ∀ r, n ≠ Name.role S.fitTag r := by
+    rintro n hn r rfl; exact freshTag_fresh S.usedNames r hn
+  have hPEu : ∀ y ∈ S.PE, S.ePre y ∈ S.usedNames := fun y hy => by
+    simp only [ScanSetup.usedNames, List.mem_append]
+    exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hy)))
+  have hstopu : S.stopNm ∈ S.usedNames := by simp [ScanSetup.usedNames]
+  have hval : ∀ y ∈ S.PE, S.ePre y ≠ S.stopNm := fun y hy h => by
+    have := hPE y hy; rw [h] at this; exact lt_irrefl _ this
+  -- the chart on each part
+  have hcP : ∀ y ∈ S.PE, S.pkTgtChart y = S.ePre y := fun y hy => by
+    simp only [ScanSetup.pkTgtChart, if_pos hy]
+  have hcF : ∀ y ∈ fE, S.pkTgtChart y = .role S.fitTag (S.toH y) := fun y hy => by
+    have h1 := hfEP y hy
+    have h2 : y ≠ S.TE := fun h => hTfE (h ▸ hy)
+    simp only [ScanSetup.pkTgtChart, if_neg h1, if_neg h2]
+  intro x hx y hy hxy
+  change S.pkTgtChart x = S.pkTgtChart y at hxy
+  have hx' : x ∈ S.PE ++ S.TE :: fE := by
+    have : (S.scanPacket i j β).rk.b = (S.scanRecord i j).b := rfl
+    rw [← hpre]; exact hx
+  have hy' : y ∈ S.PE ++ S.TE :: fE := by
+    rw [← hpre]; exact hy
+  simp only [List.mem_append, List.mem_cons] at hx' hy'
+  rcases hx' with hx' | rfl | hx' <;> rcases hy' with hy' | rfl | hy'
+  · rw [hcP x hx', hcP y hy'] at hxy; exact hinj hx' hy' hxy
+  · rw [hcP x hx', hTc] at hxy; exact absurd hxy (hval x hx')
+  · rw [hcP x hx', hcF y hy'] at hxy; exact absurd hxy (hfresh _ (hPEu x hx') _)
+  · rw [hcP y hy', hTc] at hxy; exact absurd hxy.symm (hval y hy')
+  · rfl
+  · rw [hTc, hcF y hy'] at hxy; exact absurd hxy (hfresh _ hstopu _)
+  · rw [hcP y hy', hcF x hx'] at hxy; exact absurd hxy.symm (hfresh _ (hPEu y hy') _)
+  · rw [hTc, hcF x hx'] at hxy; exact absurd hxy.symm (hfresh _ hstopu _)
+  · rw [hcF x hx', hcF y hy'] at hxy
+    simp only [Name.role.injEq, true_and] at hxy
+    refine List.inj_on_of_nodup_map ?_ hx' hy' hxy
+    rw [hmap]; exact hndF
 
 /-- L7.6a step 5 (Valid clause 2): the source chart is injective on `Γ(F)`. -/
 theorem scan_valid2_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
     (β : Role → Ordinal.{u}) :
     Set.InjOn (S.scanPacket i j β).srcChart {x | x ∈ (S.scanPacket i j β).rk.F.roles} := by
-  sorry
+  have hS' := hS
+  obtain ⟨⟨-, hInL, -, hsd, hrd, -, -⟩, ⟨hinj, -, hPE⟩, -, -, -, ⟨-, hbinj, -, -, hbfresh⟩⟩ := hS'
+  obtain ⟨Bk, hroles, hBk⟩ := scan_src_roles_E8 S hS hij
+  have hnd := Tree.roles_nodup (S.scanRecord i j).F
+  rw [hroles] at hnd
+  have hnd' := List.nodup_append.1 hnd
+  have hRB : S.R ∉ Bk := (List.nodup_cons.1 hnd'.2.1).1
+  have hBP : ∀ y ∈ Bk, y ∉ S.preRoot := fun y hy h => hnd'.2.2 _ h _ (List.mem_cons_of_mem _ hy) rfl
+  have hRP : S.R ∉ S.preRoot := fun h => hnd'.2.2 _ h _ List.mem_cons_self rfl
+  obtain ⟨-, hRc⟩ := scan_hosts_E8 S hS
+  have hcP : ∀ y ∈ S.preRoot, S.pkSrcChart y = S.ePre (S.chi y) := fun y hy => by
+    simp only [ScanSetup.pkSrcChart, if_pos hy]
+  have hcB : ∀ y ∈ Bk, S.pkSrcChart y = S.bankNm y := fun y hy => by
+    have h2 : y ≠ S.R := fun h => hRB (h ▸ hy)
+    simp only [ScanSetup.pkSrcChart, if_neg (hBP y hy), if_neg h2]
+  have hPv : ∀ y ∈ S.preRoot, S.chi y ∈ S.PE := fun y hy =>
+    (scan_pre_val_E8 S hS (fun _ => 0) (preRoot_sub_preStop_E8 hsd hrd hy)).1
+  have hval : ∀ y ∈ S.preRoot, S.ePre (S.chi y) ≠ S.stopNm := fun y hy h => by
+    have := hPE _ (hPv y hy); rw [h] at this; exact lt_irrefl _ this
+  -- `χ̂` is injective on `P_R`
+  obtain ⟨T', -, horig, hpre'⟩ := Closure.anchorOrigin_prefix hInL hsd
+  have hchi : ∀ y ∈ S.preRoot, Closure.anchorOrigin S.E S.cap y = some (S.chi y) := by
+    intro y hy
+    obtain ⟨y', hy', -, -⟩ := hpre' y (preRoot_sub_preStop_E8 hsd hrd hy)
+    simp [ScanSetup.chi, anchorD, hy']
+  intro x hx y hy hxy
+  change S.pkSrcChart x = S.pkSrcChart y at hxy
+  have hx' : x ∈ S.preRoot ++ S.R :: Bk := by rw [← hroles]; exact hx
+  have hy' : y ∈ S.preRoot ++ S.R :: Bk := by rw [← hroles]; exact hy
+  simp only [List.mem_append, List.mem_cons] at hx' hy'
+  rcases hx' with hx' | rfl | hx' <;> rcases hy' with hy' | rfl | hy'
+  · rw [hcP x hx', hcP y hy'] at hxy
+    have h1 := hinj (hPv x hx') (hPv y hy') hxy
+    exact horig x y _ (hchi x hx') (h1 ▸ hchi y hy')
+  · rw [hcP x hx', hRc] at hxy; exact absurd hxy (hval x hx')
+  · rw [hcP x hx', hcB y hy'] at hxy
+    exact absurd (hxy ▸ List.mem_map_of_mem (hPv x hx')) (hbfresh y (hBk y hy')).1
+  · rw [hcP y hy', hRc] at hxy; exact absurd hxy.symm (hval y hy')
+  · rfl
+  · rw [hRc, hcB y hy'] at hxy; exact absurd hxy.symm (hbfresh y (hBk y hy')).2.1
+  · rw [hcP y hy', hcB x hx'] at hxy
+    exact absurd (hxy.symm ▸ List.mem_map_of_mem (hPv y hy')) (hbfresh x (hBk x hx')).1
+  · rw [hRc, hcB x hx'] at hxy; exact absurd hxy (hbfresh x (hBk x hx')).2.1
+  · rw [hcB x hx', hcB y hy'] at hxy; exact hbinj (hBk x hx') (hBk y hy') hxy
 
 /-- L7.6a step 8 (Valid clause 4 of the paper, the joint diagram): `prefixGraph E b` through the
 target chart, `Γ(F)` through the source chart, and the auxiliary diagram hold at `pkAsg β`. -/
