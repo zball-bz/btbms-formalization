@@ -6,23 +6,23 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 |---|---|---|---|---|---|---|
 | G-001 | closed | exposition | §1.2 txt:95-101 | Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there | claude, codex |  |
 | G-002 | closed | repairable | §3.1 txt:263-268 | "P implies S" is false without V, I, H | codex | claude |
-| G-003 | repaired | repairable | §4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474 | Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written | claude, codex |  |
+| G-003 | closed | repairable | §4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474 | Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written | claude, codex |  |
 | G-004 | closed | exposition | §5.2 txt:864-866 | "The hull contains the whole J_b" must mean J_b ∈ H, not J_b ⊆ H | codex | claude |
 | G-005 | closed | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
 | G-006 | closed | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude | codex |
 | G-007 | closed | repairable | lean/BTBMS/Expansion.lean (statement port) | Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height | codex | claude |
 | G-008 | closed | repairable | checks/lock/, scripts/lean-status.sh, tracker/refresh.py (tooling, not the paper) | Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed | codex | claude |
-| G-009 | repaired | unknown | §3 txt:553-560 | Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour | claude | codex |
-| G-010 | repaired | unknown | §3 txt:520-541 | Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix | claude | codex |
-| G-011 | repaired | unknown | §4 txt:667-681 | First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed | claude |  |
-| G-012 | repaired | unknown | §8.5 txt:1418-1423 | Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched | claude |  |
-| G-013 | repaired | repairable | blueprint D3.3b | word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole | codex |  |
-| G-014 | repaired | repairable | blueprint T3.2i | num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0 | codex |  |
-| G-015 | repaired | repairable | blueprint D3.1d | origin_spec_full claims parent lookup is preserved at slots that do not exist in the output | codex |  |
-| G-016 | repaired | repairable | blueprint D3.1e, L4.3c, L7.5a | moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false | codex, claude | claude |
-| G-017 | repaired | repairable | blueprint L8.8a | failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner | codex |  |
-| G-018 | repaired | exposition | blueprint D3.1d, L8.6a | anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap) | codex |  |
-| G-019 | repaired | exposition | blueprint L4.3, L4.3d | childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export | codex, claude | claude |
+| G-009 | closed | unknown | §3 txt:553-560 | Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour | claude | codex |
+| G-010 | closed | unknown | §3 txt:520-541 | Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix | claude | codex |
+| G-011 | closed | unknown | §4 txt:667-681 | First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed | claude |  |
+| G-012 | closed | unknown | §8.5 txt:1418-1423 | Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched | claude |  |
+| G-013 | closed | repairable | blueprint D3.3b | word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole | codex |  |
+| G-014 | closed | repairable | blueprint T3.2i | num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0 | codex |  |
+| G-015 | closed | repairable | blueprint D3.1d | origin_spec_full claims parent lookup is preserved at slots that do not exist in the output | codex |  |
+| G-016 | closed | repairable | blueprint D3.1e, L4.3c, L7.5a | moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false | codex, claude | claude |
+| G-017 | closed | repairable | blueprint L8.8a | failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner | codex |  |
+| G-018 | closed | exposition | blueprint D3.1d, L8.6a | anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap) | codex |  |
+| G-019 | closed | exposition | blueprint L4.3, L4.3d | childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export | codex, claude | claude |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -44,7 +44,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-003 — Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written
 
-**Detail:** Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so "confined" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement. Codex T-017: repair partial; closure providers BP-03..BP-05, BP-08, BP-09 need correction.
+**Detail:** Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so "confined" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement. Codex T-017: repair partial; closure providers BP-03..BP-05, BP-08, BP-09 need correction. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Define records and packets as explicit finite structures (constructors with occurrence/projection fields) and prove the closure lemmas before stating S_n in Lean.
 
@@ -98,35 +98,35 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-009 — Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour
 
-**Detail:** Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written.
+**Detail:** Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Refs:** blueprint/INTEGRATION.md §2.2, codex-blueprint-review.md BP-07
 
 
 ## G-010 — Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix
 
-**Detail:** Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases.
+**Detail:** Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Refs:** blueprint/INTEGRATION.md §2.2, codex-blueprint-review.md BP-06
 
 
 ## G-011 — First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed
 
-**Detail:** Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass.
+**Detail:** Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Refs:** blueprint/INTEGRATION.md §2.2-2.3
 
 
 ## G-012 — Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched
 
-**Detail:** Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field.
+**Detail:** Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Refs:** blueprint/INTEGRATION.md §2.2-2.3
 
 
 ## G-013 — word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Add KernelDefined E rd and discharge it at consumers.
 
@@ -135,7 +135,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-014 — num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Require actual-data/coherence hypotheses; recheck every application.
 
@@ -144,7 +144,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-015 — origin_spec_full claims parent lookup is preserved at slots that do not exist in the output
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Restrict the slot clause to actual output entries/roles.
 
@@ -153,7 +153,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-016 — moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** State the exclusion at every current moveAddr (moves.take i) b (MovesOutside); U3 supplies it; propagate through the cap/readmission chain.
 
@@ -162,7 +162,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-017 — failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Add Admitted or source-entry membership and pass it to factorization.
 
@@ -171,7 +171,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-018 — anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap)
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Supply the structural origin-prefix lemma without InL E.
 
@@ -180,7 +180,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-019 — childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export
 
-**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3).
+**Detail:** Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).
 
 **Fix:** Export (setHeight a A1).roles <+: F.roles and graph subset (bounded-tested in blueprint/repairs/TESTS.md).
 

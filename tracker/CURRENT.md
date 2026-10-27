@@ -88,18 +88,24 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
     one-line argument checked directly.
 - One commit per integration step.
 
-## Next
-- **D-5 (user, 2026-10-28):** only the locked main theorem matters. Lean is the only verifier,
-  with no Codex checks and no fidelity sign-off. D-4 is Part C.
-- The plan lives in `lean/BTBMS/Plan/` (T-018) with the statement corrections (T-021). It counts
-  252 nodes needed for MAIN. `lake build` passes, and the remaining proofs are `sorry`.
-- **T-022 (running):** a rolling pool of at most 8 provers.
-  - Each works in its own worktree, `/home/dev/ggg/btbms-wt-<k>` on branch `prove/A<k>`, under
-    the rules in `tracker/PROVER-BRIEF.md`.
-  - Root merges each branch into main, runs `lake build` and `scripts/lean-status.sh`, then
-    hands out the next nodes. The Plan tab ranks them: longest remaining chain first, then
-    ready nodes.
-  - Batch 1: A1 order laws (D1.1a, D1.1, D1.4a, D1.4), A2 addresses (D1.2a–f), A3 shift/hole laws
-    (D1.5–D1.5b), A4 F5.1a, F5.1, D6.4, N4.1b, N4.1a, A5 N4.3–N4.6, A6 N4.7–N4.8, A7 the assembly
-    N5.1–N5.2, A8 L7.5d.
-- **Done** when `checks/lock/check.sh --final` passes.
+## Result (2026-10-28)
+- **The main theorem is formally verified.** `checks/lock/check.sh --final` passes on main
+  (merge 5eb7d06), after a cold rebuild of the BTBMS modules. It reports, for both
+  `BTBMS.mainTheorem` and `BTBMS.paperTheorem`: the statement lock is intact, the type is exactly
+  the locked `MainTheorem` / `PaperTheorem`, and the axioms are only `propext`,
+  `Classical.choice` and `Quot.sound`.
+- **The proof** lives in `lean/BTBMS/Plan/{Spine,U1..U5}.lean` and `lean/BTBMS/Main.lean`, about
+  4,200 declarations. The hierarchy is Part C (the reflection hierarchy, D-4).
+- **Leftover `sorry`s.** 17 declarations still contain one, and none is on the main theorem's
+  dependency path. They are:
+  - test mirrors (N1.1);
+  - T3.2q `head_path`/`head_path_rev`, made unnecessary by `condA_ord`'s direct proof;
+  - alternative readmission lemmas (L7.5b/c);
+  - graph lemmas no one used;
+  - R9.2 `sigma_lt`.
+
+  They can be deleted in a cleanup pass.
+- **Duplication.** U2 holds a duplicated copy of the phase-copy machinery (`*_G3` over
+  `OrdData_G3`), which could be deduplicated.
+- **Worktrees.** Prover worktrees `/home/dev/ggg/btbms-wt-1..8` and their `prove/*` branches are
+  merged and can be removed.

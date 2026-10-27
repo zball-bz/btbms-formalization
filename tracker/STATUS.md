@@ -1,19 +1,13 @@
 # Status snapshot
 
-Generated 2026-10-27T18:56:39+00:00 at commit `57a5263`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T19:19:10+00:00 at commit `5eb7d06`. Hand-written context lives in `CURRENT.md`.
 
-Phase: **P4 Formalize**
+Phase: **P5 Final verification**
 
 ## todo (1)
 - T-008 [claude] Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals
 
-## doing (1)
-- T-022 [claude] Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes
-
-## blocked (1)
-- T-020 [claude] Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements
-
-## done (19)
+## done (21)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker
 - T-002 [claude] Blind review of the paper (Claude)
 - T-003 [codex] Blind review of the paper (Codex)
@@ -32,4 +26,6 @@ Phase: **P4 Formalize**
 - T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
 - T-018 [claude] Move the skeleton into lean/BTBMS/Plan (Part C, Part B and off-chain nodes dropped, false statements corrected); every node mapped to Lean declarations
 - T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)
+- T-020 [claude] Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements
 - T-021 [claude] Correct the false statements BP-01..BP-05 and provider gaps BP-08/BP-09; rerun Codex's counterexample files against the amended skeleton
+- T-022 [claude] Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes

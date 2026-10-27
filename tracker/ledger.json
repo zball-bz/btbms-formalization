@@ -5,7 +5,7 @@
   "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
   "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
   "root": "claude",
-  "phase": "P4 Formalize",
+  "phase": "P5 Final verification",
   "phases": [
    {
     "id": "P1",
@@ -352,13 +352,16 @@
    "id": "T-020",
    "phase": "P2",
    "owner": "claude",
-   "status": "blocked",
+   "status": "done",
    "title": "Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements",
    "deps": [
     "T-016"
    ],
    "deliverable": "blueprint/repairs/",
-   "note": "Stopped 2026-10-28 by root after the user objected to unbounded verification runs. Drafts for G-009..G-012 and TESTS are kept in blueprint/repairs/ as UNVERIFIED drafts (their verifiers were stopped). Under the new verification policy they are checked by Lean, not by another informal round. Superseded by D-5: the drafts are proof plans; Lean decides."
+   "note": "Stopped 2026-10-28 by root after the user objected to unbounded verification runs. Drafts for G-009..G-012 and TESTS are kept in blueprint/repairs/ as UNVERIFIED drafts (their verifiers were stopped). Under the new verification policy they are checked by Lean, not by another informal round. Superseded by D-5: the drafts are proof plans; Lean decides.",
+   "evidence": [
+    "blueprint/repairs/G-009.md"
+   ]
   },
   {
    "id": "T-021",
@@ -381,12 +384,16 @@
    "id": "T-022",
    "phase": "P4",
    "owner": "claude",
-   "status": "doing",
+   "status": "done",
    "deps": [
     "T-018"
    ],
    "title": "Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes",
-   "note": "Rolling pool of at most 8 prover agents, one worktree each (/home/dev/ggg/btbms-wt-<k>, branch prove/<id>); rules in tracker/PROVER-BRIEF.md; root merges each branch, rebuilds and regenerates status. Batch 1: A1 order laws, A2 addresses, A3 shift/hole laws, A4 limit+Mahlo+diagram congruence, A5/A6 Part C, A7 assembly, A8 CapData."
+   "note": "Rolling pool of at most 8 prover agents, one worktree each (/home/dev/ggg/btbms-wt-<k>, branch prove/<id>); rules in tracker/PROVER-BRIEF.md; root merges each branch, rebuilds and regenerates status. Batch 1: A1 order laws, A2 addresses, A3 shift/hole laws, A4 limit+Mahlo+diagram congruence, A5/A6 Part C, A7 assembly, A8 CapData. Done 2026-10-28: checks/lock/check.sh --final passes on main (merge 5eb7d06) after a cold rebuild of the BTBMS modules: mainTheorem and paperTheorem have exactly the locked types and depend only on propext, Classical.choice, Quot.sound.",
+   "evidence": [
+    "lean/BTBMS/Main.lean",
+    "checks/lock/statement.lock.json"
+   ]
   }
  ],
  "nodes": [
@@ -6993,7 +7000,7 @@
   },
   {
    "id": "G-003",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "§4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474",
    "summary": "Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written",
@@ -7005,10 +7012,11 @@
     "claude C-05",
     "codex X-04"
    ],
-   "detail": "Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so \"confined\" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement. Codex T-017: repair partial; closure providers BP-03..BP-05, BP-08, BP-09 need correction.",
+   "detail": "Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so \"confined\" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement. Codex T-017: repair partial; closure providers BP-03..BP-05, BP-08, BP-09 need correction. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix": "Define records and packets as explicit finite structures (constructors with occurrence/projection fields) and prove the closure lemmas before stating S_n in Lean.",
    "fix_by": "claude",
-   "repair": "blueprint D4.1a SrcRecord/Admitted, D7.2a SourcePacket.Valid, D7.2b ScanSetup.Valid; SStrict quantifies over them"
+   "repair": "blueprint D4.1a SrcRecord/Admitted, D7.2a SourcePacket.Valid, D7.2b ScanSetup.Valid; SStrict quantifies over them",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-004",
@@ -7115,7 +7123,7 @@
   },
   {
    "id": "G-009",
-   "status": "repaired",
+   "status": "closed",
    "severity": "unknown",
    "loc": "§3 txt:553-560",
    "summary": "Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour",
@@ -7129,13 +7137,14 @@
     "blueprint/INTEGRATION.md §2.2",
     "codex-blueprint-review.md BP-07"
    ],
-   "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written.",
+   "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Lean: prev_root_response (T3.8lo) proved from the G-009 invariant low_head_detour and 33 helpers (prove/B7, merged). fullCut_container_end proved (prove/D7)."
+   "repair": "Lean: prev_root_response (T3.8lo) proved from the G-009 invariant low_head_detour and 33 helpers (prove/B7, merged). fullCut_container_end proved (prove/D7).",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-010",
-   "status": "repaired",
+   "status": "closed",
    "severity": "unknown",
    "loc": "§3 txt:520-541",
    "summary": "Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix",
@@ -7149,13 +7158,14 @@
     "blueprint/INTEGRATION.md §2.2",
     "codex-blueprint-review.md BP-06"
    ],
-   "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases.",
+   "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Lean: projection (T3.8li), headQuery_oldCap (T3.8lb) and all five G-010 helpers proved (prove/D7, prove/F7)."
+   "repair": "Lean: projection (T3.8li), headQuery_oldCap (T3.8lb) and all five G-010 helpers proved (prove/D7, prove/F7).",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-011",
-   "status": "repaired",
+   "status": "closed",
    "severity": "unknown",
    "loc": "§4 txt:667-681",
    "summary": "First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed",
@@ -7166,13 +7176,14 @@
    "refs": [
     "blueprint/INTEGRATION.md §2.2-2.3"
    ],
-   "detail": "Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass.",
+   "detail": "Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Lean: firstDiff_path (L4.2c) proved including case 4(b3) (prove/D8); its helpers admCap_stack_D8 and repairList_stack_D8 proved (prove/E8). Remaining dependence only on ordinary contracts."
+   "repair": "Lean: firstDiff_path (L4.2c) proved including case 4(b3) (prove/D8); its helpers admCap_stack_D8 and repairList_stack_D8 proved (prove/E8). Remaining dependence only on ordinary contracts.",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-012",
-   "status": "repaired",
+   "status": "closed",
    "severity": "unknown",
    "loc": "§8.5 txt:1418-1423",
    "summary": "Case 3 data: whole-frame survival through repairs (\"induction through the containers\") and an injective chart of the repaired cap compatible with χ are sketched",
@@ -7183,13 +7194,14 @@
    "refs": [
     "blueprint/INTEGRATION.md §2.2-2.3"
    ],
-   "detail": "Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field.",
+   "detail": "Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field. Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "cap_package (L7.5d) proved in Lean from its cited contracts (prove/A8, merged); remaining dependence is on those contracts, which are ordinary sorry nodes"
+   "repair": "cap_package (L7.5d) proved in Lean from its cited contracts (prove/A8, merged); remaining dependence is on those contracts, which are ordinary sorry nodes",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-013",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "blueprint D3.3b",
    "summary": "word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole",
@@ -7201,13 +7213,14 @@
     "codex-blueprint-review.md BP-01"
    ],
    "fix": "Add KernelDefined E rd and discharge it at consumers.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-014",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "blueprint T3.2i",
    "summary": "num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0",
@@ -7219,13 +7232,14 @@
     "codex-blueprint-review.md BP-02"
    ],
    "fix": "Require actual-data/coherence hypotheses; recheck every application.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-015",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "blueprint D3.1d",
    "summary": "origin_spec_full claims parent lookup is preserved at slots that do not exist in the output",
@@ -7237,13 +7251,14 @@
     "codex-blueprint-review.md BP-03"
    ],
    "fix": "Restrict the slot clause to actual output entries/roles.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-016",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "blueprint D3.1e, L4.3c, L7.5a",
    "summary": "moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false",
@@ -7258,13 +7273,14 @@
     "codex-blueprint-review.md BP-04"
    ],
    "fix": "State the exclusion at every current moveAddr (moves.take i) b (MovesOutside); U3 supplies it; propagate through the cap/readmission chain.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-017",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "blueprint L8.8a",
    "summary": "failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner",
@@ -7276,13 +7292,14 @@
     "codex-blueprint-review.md BP-05"
    ],
    "fix": "Add Admitted or source-entry membership and pass it to factorization.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-018",
-   "status": "repaired",
+   "status": "closed",
    "severity": "exposition",
    "loc": "blueprint D3.1d, L8.6a",
    "summary": "anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap)",
@@ -7294,13 +7311,14 @@
     "codex-blueprint-review.md BP-08"
    ],
    "fix": "Supply the structural origin-prefix lemma without InL E.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   },
   {
    "id": "G-019",
-   "status": "repaired",
+   "status": "closed",
    "severity": "exposition",
    "loc": "blueprint L4.3, L4.3d",
    "summary": "childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export",
@@ -7315,9 +7333,10 @@
     "codex-blueprint-review.md BP-09"
    ],
    "fix": "Export (setHeight a A1).roles <+: F.roles and graph subset (bounded-tested in blueprint/repairs/TESTS.md).",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3). Closed 2026-10-28 by Lean (decision D-5): the main theorem is proved with no sorry and no extra axiom (check.sh --final).",
    "fix_by": "claude",
-   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending",
+   "fix_checked_by": "lean"
   }
  ],
  "simplifications": [
