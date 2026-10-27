@@ -1635,9 +1635,112 @@ theorem two_candidates (I : Interface.{u}) {K : Key} {fr : BlkVar → Option Ord
       (fun he => (h2 he.symm).le)
     exact ⟨β, hβ, h4, h3, h6, h5⟩
 
+/-- L8.4 (helper): a tree of size `0` is empty. -/
+theorem eq_empty_of_size_zero_D4 {α : Type} {t : Tree α} (h : t.size = 0) : t = Tree.empty := by
+  obtain ⟨cols⟩ := t
+  cases cols with
+  | nil => rfl
+  | cons c cs => simp [Tree.size, Tree.roles, Tree.rolesF, Tree.rolesCols] at h
+
+/-- L8.4 (helper): the free block of the empty key is the owner's `Lim` atom. -/
+theorem freeBlock_empty_D4 : freeBlock Tree.empty = [BaseAtom.lim .owner] := rfl
+
+/-- L8.4 (helper): the target frame names of a packet are low. -/
+theorem toFr_tgtFrame_low_D4 {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
+    (hv : pk.Valid P) {w : BlkVar} {x : Name} (h : pk.tgtFrame.toFr w = some x) :
+    x ∈ pk.lowNames := by
+  obtain ⟨-, hreps, hhost, -⟩ := lowNames_spec pk hadm hv
+  cases w with
+  | host => cases h; exact hhost
+  | ord q =>
+    obtain ⟨ov, hov, rfl⟩ := Option.map_eq_some_iff.1 h
+    exact (hreps ov (List.mem_of_getElem? hov)).1
+  | cur q =>
+    obtain ⟨ov, hov, rfl⟩ := Option.map_eq_some_iff.1 h
+    exact (hreps ov (List.mem_of_getElem? hov)).2
+  | owner => cases h
+  | inner _ => cases h
+
+/-- L8.4 (helper): a nonempty source height gives a role `z` of `F` inside `a`, right after the
+slot of `a` in reading order: `J_u ≺ J_{α z}` and `u < α z` (txt:1212). -/
+theorem src_above_owner_D4 (I : Interface.{u}) (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
+    (hv : pk.Valid I.toPrims) (hne : pk.rk.srcHeight ≠ Tree.empty) :
+    ∃ b, I.Elem (pk.asg pk.owner) b ∧ pk.asg pk.owner < b := by
+  have ha : pk.rk.a ∈ pk.rk.F.entryAddrs := hadm.2.2.1
+  obtain ⟨hV, hI, -⟩ := hadm.2.2.2.1
+  have hα := valid_src_config pk hv
+  obtain ⟨post, hroles, -⟩ := Tree.roles_entry ha
+  change (pk.rk.F.heightAt pk.rk.a).getD Tree.empty ≠ Tree.empty at hne
+  generalize (pk.rk.F.heightAt pk.rk.a).getD Tree.empty = X at hroles hne
+  obtain ⟨cols⟩ := X
+  cases cols with
+  | nil => exact absurd rfl hne
+  | cons col cs =>
+    let z : Role := .ord ⟨pk.rk.a.heightPath, 0⟩
+    have hz : pk.rk.F.roles = prefixRoles pk.rk.F pk.rk.a ++ .slot pk.rk.a :: z ::
+        ((Tree.rolesCol [] 0 0 col ++ Tree.rolesCols [] 1 cs).map
+          (Role.under pk.rk.a.heightPath) ++ post) := by
+      rw [hroles]
+      simp [Tree.roles, Tree.rolesF, Tree.rolesCols, Role.under, z]
+    have hzm : z ∈ pk.rk.F.roles := by rw [hz]; simp
+    have hin : z.inEntry pk.rk.a = true := by simp [Role.inEntry, z, Role.path]
+    refine ⟨(pk.asg ∘ pk.srcChart) z, owner_path_elem_config I hV hI hα ha hzm hin, ?_⟩
+    have hpw := config_pairwise hα
+    rw [hz, List.pairwise_append] at hpw
+    exact List.rel_of_pairwise_cons hpw.2.1 List.mem_cons_self
+
 /-- L8.4, base `S_0` (txt:1211-1214; S-3 rejected: the capture along `J_u ≺ J_b` is kept). -/
 theorem sStrict_zero (I : Interface.{u}) : SStrict I.toPrims 0 := by
-  sorry
+  intro pk hadm hv hsz L hL
+  have ha : pk.rk.a ∈ pk.rk.F.entryAddrs := hadm.2.2.1
+  have hkey : pk.rk.tgtKey < pk.rk.srcKey := hadm.2.2.2.2.2.1
+  have hB : pk.rk.tgtHeight = Tree.empty := eq_empty_of_size_zero_D4 hsz
+  have hK : pk.rk.tgtKey = Tree.empty := relKey_eq_empty.2 hB
+  have hsrc : pk.rk.srcHeight ≠ Tree.empty := by
+    intro h
+    have hS : pk.rk.srcKey = Tree.empty := relKey_eq_empty.2 h
+    rw [hK, hS] at hkey
+    exact lt_irrefl _ hkey
+  obtain ⟨b, hub, hltb⟩ := src_above_owner_D4 I pk hadm hv hsrc
+  obtain ⟨Ls, -, hLsu, -, hfac⟩ := factorization pk hv ha hL
+  apply hfac
+  have hlow : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
+  obtain ⟨o, v, hov, heo, hev⟩ := hv.2.2.2.2.2.1
+  have hhost : pk.tgtFrame.host = pk.host := hv.2.2.1
+  have hfrlow : ∀ w x, pk.tgtFrame.toFr w = some x → pk.asg x < pk.asg pk.owner :=
+    fun w x h => hlow x (toFr_tgtFrame_low_D4 pk hadm hv h)
+  rw [hK]
+  refine blockAbove_capture I hub hLsu ?_ ?_
+  · intro w _ y hy
+    obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+    exact hfrlow w x hx
+  · refine ⟨fun w => if w = .owner then pk.asg pk.owner
+      else ((pk.tgtFrame.toFr w).map pk.asg).getD 0, fun w y hy => ?_, fun w hw hn => ?_,
+      fun w hw => ?_, ?_⟩
+    · have hw : w ≠ .owner := by rintro rfl; cases hy
+      simp [hw, hy]
+    · simp only [posBlock, freeBlock_empty_D4, baseVars, List.cons_append, List.nil_append,
+        List.flatMap_cons, List.flatMap_nil, BaseAtom.vars, List.append_nil, List.mem_cons,
+        List.mem_nil_iff, or_false] at hw
+      rcases hw with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+        first | (simp [Frame.toFr, hov] at hn; done) | simpa using hLsu
+    · by_cases hwo : w = .owner
+      · simp [hwo, hltb]
+      · simp only [hwo, if_false]
+        cases hf : pk.tgtFrame.toFr w with
+        | none => simp only [Option.map_none, Option.getD_none]
+                  exact lt_of_le_of_lt zero_le hltb
+        | some x => exact (hfrlow w x hf).trans hltb
+    · have hl : IsLim (pk.asg pk.owner) := (I.edge_lim heo).2.2
+      intro a hat
+      simp only [posBlock, freeBlock_empty_D4, List.cons_append, List.nil_append, List.mem_cons,
+        List.mem_nil_iff, or_false] at hat
+      rcases hat with rfl | rfl | rfl
+      · simpa [BaseAtom.Holds] using hl
+      · simp [BaseAtom.Holds, Frame.toFr, hov, hhost]
+        exact heo
+      · simp [BaseAtom.Holds, Frame.toFr, hov, hhost]
+        exact hev
 
 /-! ## §8.2: `S_{<n} ⇒ W_{<n}` -/
 
