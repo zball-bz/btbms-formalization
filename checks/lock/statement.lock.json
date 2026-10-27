@@ -19,7 +19,7 @@
   "lean/lean-toolchain": "3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71",
   "lean/lakefile.toml": "ed6bcef0361207ffbe9c246a7d5d9d3303c8adbe9dc467fbfde5aa8f61698851",
   "lean/lake-manifest.json": "1cb06ee2f8b1e50c34fbb9400653f636d8c1c9976c2ea6bd6f8645b4f9c46fe3",
-  "checks/lock/LockCheck.lean": "a4edf13b3d441354dc44f2340fc541e32f7369552ba03c6c06e38de844a6e1d4",
+  "checks/lock/LockCheck.lean": "e45c3bfba65f2daf3d03e13efc1848eb60894dcb5fdd289b02614956d4a73500",
   "checks/lock/lock.py": "d476048e7c58e2cd13b21292fac684e85007968574fb3c509975598da9180285",
   "checks/lock/check.sh": "8f1cde225ec8fae941c31f9298250982f28a3d009936ce44f0f3d376b667def1",
   "package:Cli": "1539e3f350ff73273a7d3abd5bdd65744934a4bc84708402ab77afd2ea896ffc (8 files)",

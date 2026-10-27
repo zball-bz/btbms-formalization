@@ -7,6 +7,8 @@ elaborated statements and the exported theorems (T-019 review):
 * `mainTheorem` and `paperTheorem` are theorems whose stored type is *syntactically*
   `MainTheorem.{u}` / `PaperTheorem.{u}` for their single universe parameter `u`. The stored
   type is compared, never an elaborated term, so no coercion can be inserted;
+* every module in the import closure has plain identifier components, so Lake reads each source
+  from its standard path inside a tree that `lock.py` hashes (no `«..»`, `«.lake»`, separators);
 * no declaration of the `BTBMS` library is an `axiom`, and the exported theorems use no axioms
   beyond `propext`, `Classical.choice`, `Quot.sound` and (until the proof is complete)
   `sorryAx`. With `BTBMS_FINAL=1`, `sorryAx` is rejected too. -/
@@ -22,6 +24,13 @@ example : PaperTheorem.{u} =
 
 end BTBMS
 
+/-- A module name whose every component is a plain identifier (no path manipulation). -/
+def plainModuleName : Lean.Name → Bool
+  | .anonymous => true
+  | .str p s => plainModuleName p && !s.isEmpty && !s.front.isDigit &&
+      s.all fun c => c.isAlphanum || c == '_' || c == '\''
+  | .num _ _ => false
+
 open Lean Elab Command in
 run_cmd do
   let env ← getEnv
@@ -29,6 +38,8 @@ run_cmd do
   let standard := [``propext, ``Classical.choice, ``Quot.sound]
   let allowed := if final then standard else ``sorryAx :: standard
   let mods := env.header.moduleNames
+  for m in mods do
+    unless plainModuleName m do throwError "unsupported module name in the import closure: {m}"
   for (n, ci) in env.constants.map₁.toList do
     let some idx := env.getModuleIdxFor? n | continue
     if (`BTBMS).isPrefixOf mods[idx.toNat]! then

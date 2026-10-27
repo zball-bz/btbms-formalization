@@ -1,6 +1,6 @@
 # Status snapshot
 
-Generated 2026-10-27T10:30:22+00:00 at commit `27ec925`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T10:49:00+00:00 at commit `2e90d99`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P2 Repair & simplify (blueprint)**
 

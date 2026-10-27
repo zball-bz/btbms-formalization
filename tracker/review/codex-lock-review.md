@@ -329,3 +329,67 @@ Further artificial schema tests found only nonblocking defensive-validation issu
 All mutations and outputs were confined to scratch copies and this appended review. The real reviewed source hashes remained unchanged, and `blueprint/` was not read.
 
 STATUS: COMPLETE
+
+## Follow-up 3
+
+Reviewed **2e90d99de03bb74ea7f32dbc9ce438be5be02175**. The exact previous nested-directory case is fixed, and both defensive JSON validation changes pass. **B is still incomplete for supported imports that traverse into the actual excluded root cache.** No new required writer change was found, and the mathematical statement remains unchanged.
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| Previous `BTBMS/.lake/Hidden.lean` case | **Fixed** | Its source edit now changes the fingerprint; the actual tracker reports unknown/stale instead of proved. |
+| Complete active-source coverage (B) | **Partially fixed** | Valid quoted parent-traversal imports reach `lean/.lake/Hidden.lean`, which remains excluded. A fresh build detects its new `sorryAx`, but the saved status still appears current and proved. |
+| Nonobject declaration row validation | **Fixed** | The controlled case now exits 1, publishes a failed record and yields unknown progress. |
+| Non-string axiom-item validation | **Fixed** | The controlled case now exits 1 with a failed record, rather than accepting data that crashes the reader. |
+
+### What the patch fixes
+
+The root test at `lock.py:64–65` correctly distinguishes a nested directory named `.lake` from the hashed root's own cache. I replayed the full old case using the current build/status pipeline: after `lean/BTBMS/.lake/Hidden.lean` changes from `True.intro` to `by sorry`, the fingerprint changes and the recorded leaf becomes **unknown (status not current)**. The normal integrity check still passes the admitted baseline; `--final` correctly rejects its `sorryAx`.
+
+The writer's explicit object and axiom-string checks (`lean_status.py:71–77`) fix both reported defensive cases. All 13 controlled writer regressions pass, including failed build/audit/extraction, malformed JSON, fingerprint changes and successful 2,000-declaration output. Evidence: `scratch/codex/lock-fu3-old-case-result.json` and `lock-fu3-writer-harness/results.json`.
+
+### Remaining B: a supported traversal import
+
+Lean 4.33.1 and Lake accept both of these import names:
+
+```lean
+import BTBMS.«..».«.lake».Hidden
+import BTBMS.«../.lake».Hidden
+```
+
+They retain the known `BTBMS` module prefix but resolve their source to the actual root cache path **`lean/.lake/Hidden.lean`**, not the now-hashed nested `lean/BTBMS/.lake/` path. A direct `import «.lake».Hidden` is rejected as an unknown module prefix; the prefix-plus-traversal variants are accepted. This behavior was verified with actual Lake builds, not assumed from filesystem normalization.
+
+The full current-project reproduction uses the first import and an ordinary, nonsymlink source file:
+
+```lean
+namespace BTBMS
+theorem traversalProof : True := True.intro
+end BTBMS
+```
+
+The current status script successfully builds, audits the main exports, extracts declarations and publishes a current successful record. Then only this source body is changed to `by sorry` and the project is rebuilt normally. Fresh `#print axioms BTBMS.traversalProof` shows `sorryAx`, but:
+
+```
+fingerprint unchanged
+lock_ok = True
+status_problem = None
+claims["audit-leaf"] = "proved"
+```
+
+There are no symlinks or forged `.olean`/JSON files. Both proof artifacts were produced by the real compiler from the corresponding source. This remains a source-current progress failure, not a bypass of a fresh final-theorem axiom audit or a demand to distrust the compiler.
+
+Evidence: `scratch/codex/lock-fu3-path-probes/results.json` records both accepted import variants; `lock-fu3-traversal-full/` contains the full current-pipeline driver, source, logs and `result.json`, including the successful pre-edit audit metadata.
+
+### Required repair and disposition
+
+**B needs active-source coverage enforcement, not another directory-name exception.** Either:
+
+- resolve imported source paths and require every active `.lean` input to be fingerprinted, including one under an otherwise excluded cache; or
+- reject unsupported path-manipulating import layouts before accepting status, handling normalized traversal and separators inside quoted module components generally—not just the two demonstrated spellings.
+
+The project need not support these import names. Explicit rejection is sufficient. A source inventory that hashes all actual Lean inputs, rather than excluding them because they reside in a cache-named directory, is also valid; compiled `.olean` artifacts can remain outside that inventory.
+
+**G-008 should remain open only for this source-coverage item.** A/C and the earlier stored-type, axiom and opaque-hole repairs remain accepted. No change to `MainTheorem`, `PaperTheorem`, or the JSON writer is required by this follow-up.
+
+All mutations and generated evidence were confined to scratch copies. The real reviewed sources remained unchanged, and `blueprint/` was not read.
+
+STATUS: COMPLETE

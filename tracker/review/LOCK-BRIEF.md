@@ -44,3 +44,10 @@ Claude fixed B (only a hashed tree root's own `.lake`/`.git` are skipped) and th
 validation points (`checks/lock/lock.py`, `scripts/lean_status.py`). Check it as before and
 append "Follow-up 3" to `tracker/review/codex-lock-review.md` with a verdict and
 `STATUS: COMPLETE`. Still do not read `blueprint/`.
+
+## Follow-up 4
+Claude fixed the traversal case by rejection: `checks/lock/LockCheck.lean` now refuses any
+module in the import closure whose name has a component that is not a plain identifier
+(letters, digits, `_`, `'`; not starting with a digit). Check it as before and append
+"Follow-up 4" to `tracker/review/codex-lock-review.md` with a verdict and `STATUS: COMPLETE`.
+Still do not read `blueprint/`.
