@@ -3501,18 +3501,229 @@ def Confined (F : Forest) (a : EntryAddr) : Prop :=
   ∃ sd, Scan.stopData F = some sd ∧ a.heightPath <+: sd.col.path ∧
     (Scan.stepKind F = some .special → ∃ e, sd.ownerEntry = some e ∧ a.heightPath <+: e.col.path)
 
+/-- L4.3a helper: the take-structure of a truncated entry at the last level. -/
+theorem take_succ_of_getElem?_E1 {β : Type} {l : List β} {i : Nat} {x : β} (h : l[i]? = some x) :
+    l.take (i + 1) = l.take i ++ [x] := by
+  rw [List.take_add_one, h]; rfl
+
+theorem length_take_of_getElem?_E1 {β : Type} {l : List β} {i : Nat} {x : β} (h : l[i]? = some x) :
+    (l.take i).length = i := by
+  have := (List.getElem?_eq_some_iff.mp h).1
+  simp; omega
+
+/-- L4.3a helper: the word of a truncated tree with the marked height replaced splits off the
+word of that height. -/
+theorem wordAt_setAux_trunc_E1 (X : Forest) : ∀ (P : List (Nat × Nat)) (t : Forest) (j i e : Nat),
+    (t.entryAt ⟨⟨P, j⟩, i⟩).isSome →
+    Scan.wordAt e (Tree.setAux X P j i (Tree.truncAux P j i t)) =
+      Scan.wordAt e (Tree.setAux Tree.empty P j i (Tree.truncAux P j i t)) ++
+        Scan.wordAt (e + P.length + 1) X
+  | [], .node cols, j, i, e, he => by
+    rw [Tree.entryAt_eq_bind] at he
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols] at he
+    obtain ⟨col, hc, hx⟩ : ∃ col, cols[j]? = some col ∧ (col[i]?).isSome := by
+      cases hc : cols[j]? with
+      | none => rw [hc] at he; simp at he
+      | some col => rw [hc] at he; exact ⟨col, rfl, by simpa using he⟩
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hx
+    have hgd : cols.getD j [] = col := by simp [List.getD, hc]
+    simp only [Tree.truncAux, hgd, take_succ_of_getElem?_E1 hx, Tree.setAux]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hx),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hx)]
+    simp only [Scan.wordAt, Scan.wordCols_append', Scan.wordCols, List.append_nil]
+    rw [Scan.wordCol_snoc e _ x.1 X]
+    simp
+  | (c, i₀) :: rest, .node cols, j, i, e, he => by
+    rw [Tree.entryAt_cons] at he
+    obtain ⟨col, hc, y, hy, hyr⟩ : ∃ col, cols[c]? = some col ∧ ∃ y, col[i₀]? = some y ∧
+        (y.2.entryAt ⟨⟨rest, j⟩, i⟩).isSome := by
+      simp only [Tree.cols] at he
+      cases hc : cols[c]? with
+      | none => rw [hc] at he; simp at he
+      | some col =>
+        cases hy : col[i₀]? with
+        | none => simp [hc, hy] at he
+        | some y => exact ⟨col, rfl, y, hy, by simpa [hc, hy] using he⟩
+    have hgd : cols.getD c [] = col := by simp [List.getD, hc]
+    have ih := wordAt_setAux_trunc_E1 X rest y.2 j i (e + 1) hyr
+    simp only [Tree.truncAux, hgd, hy, Option.map_some, Option.toList_some, Tree.setAux]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hy),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hy)]
+    simp only [Scan.wordAt, Scan.wordCols_append', Scan.wordCols, List.append_nil]
+    rw [Scan.wordCol_snoc e _ y.1 (Tree.setAux X rest j i (Tree.truncAux rest j i y.2)),
+      Scan.wordCol_snoc e _ y.1 (Tree.setAux Tree.empty rest j i (Tree.truncAux rest j i y.2)), ih]
+    simp only [List.length_cons, List.append_assoc]
+    congr 4
+    omega
+
+/-- L4.3a helper: for a tree truncated after `a`, the word of `F.setHeight a X` is the word of
+`F.setHeight a ∅` followed by the word of `X` at the depth of `a`'s height. -/
+theorem word_setHeight_E1 {F : Forest} {a : EntryAddr} (ha : a ∈ F.entryAddrs)
+    (htr : F.truncAfter a = F) (X : Forest) :
+    Scan.word (F.setHeight a X) =
+      Scan.word (F.setHeight a Tree.empty) ++ Scan.wordAt a.heightPath.length X := by
+  have hs : (F.entryAt a).isSome := (Tree.mem_entryAddrs_iff _ _).mp ha
+  have ht : Tree.truncAux a.col.path a.col.col a.idx F = F := by
+    rw [Tree.truncAfter_eq_body] at htr
+    simpa [Tree.truncAfterBody, hs] using htr
+  simp only [Tree.setHeight, Tree.setHeightBody, hs, if_true, Scan.word]
+  rw [← ht]
+  have := wordAt_setAux_trunc_E1 X a.col.path F a.col.col a.idx 0 hs
+  rw [this]
+  simp [EntryAddr.heightPath]
+
+/-- L4.3a helper: comparing words at a common depth compares the forests. -/
+theorem wordAt_lt_iff_E1 (d : Nat) (X Y : Forest) : Scan.wordAt d X < Scan.wordAt d Y ↔ X < Y := by
+  rw [← Scan.word_lt_iff]
+  have h := fun Z : Forest => Scan.wordAt_add 0 d Z
+  simp only [Nat.zero_add] at h
+  rw [h X, h Y]
+  refine Scan.list_map_lt_iff (S := Set.univ) ?_ (fun _ _ => trivial) (fun _ _ => trivial)
+  intro A _ B _ hAB
+  obtain ⟨⟨a1, a2⟩, rfl⟩ : ∃ p, toLex p = A := ⟨ofLex A, rfl⟩
+  obtain ⟨⟨b1, b2⟩, rfl⟩ : ∃ p, toLex p = B := ⟨ofLex B, rfl⟩
+  simp only [ofLex_toLex]
+  rw [Prod.Lex.toLex_lt_toLex] at hAB ⊢
+  rcases hAB with h1 | ⟨h1, h2⟩
+  · left; omega
+  · right; exact ⟨by omega, h2⟩
+
+
+/-- L4.3a helper: replacing along the route through the marked entry replaces inside its height. -/
+theorem replaceAt_trunc_E1 (Z : Forest) : ∀ (P : List (Nat × Nat)) (t : Forest) (j i : Nat)
+    (p : Nat) (H : Forest) (ℓ : Nat), t.entryAt ⟨⟨P, j⟩, i⟩ = some (p, H) → P.length + 1 ≤ ℓ →
+    replaceAt 0 0 Z ℓ (Tree.truncAux P j i t) =
+      Tree.setAux (replaceAt 0 0 Z (ℓ - (P.length + 1)) H) P j i (Tree.truncAux P j i t)
+  | [], .node cols, j, i, p, H, ℓ + 1, he, _ => by
+    rw [Tree.entryAt_eq_bind] at he
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols] at he
+    obtain ⟨col, hc, hx⟩ : ∃ col, cols[j]? = some col ∧ col[i]? = some (p, H) := by
+      cases hc : cols[j]? with
+      | none => simp [hc] at he
+      | some col => exact ⟨col, rfl, by simpa [hc] using he⟩
+    have hgd : cols.getD j [] = col := by simp [List.getD, hc]
+    simp only [Tree.truncAux, hgd, take_succ_of_getElem?_E1 hx, Tree.setAux, replaceAt]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hx)]
+    simp only [Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+      Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMap_id, Scan.treeMapCol_id_fun, List.map_id]
+    simp
+  | (c, i₀) :: rest, .node cols, j, i, p, H, ℓ + 1, he, hℓ => by
+    rw [Tree.entryAt_cons] at he
+    obtain ⟨col, hc, y, hy, hyr⟩ : ∃ col, cols[c]? = some col ∧ ∃ y, col[i₀]? = some y ∧
+        y.2.entryAt ⟨⟨rest, j⟩, i⟩ = some (p, H) := by
+      simp only [Tree.cols] at he
+      cases hc : cols[c]? with
+      | none => simp [hc] at he
+      | some col =>
+        cases hy : col[i₀]? with
+        | none => simp [hc, hy] at he
+        | some y => exact ⟨col, rfl, y, hy, by simpa [hc, hy] using he⟩
+    have hgd : cols.getD c [] = col := by simp [List.getD, hc]
+    have ih := replaceAt_trunc_E1 Z rest y.2 j i p H ℓ hyr (by simp at hℓ; omega)
+    simp only [Tree.truncAux, hgd, hy, Option.map_some, Option.toList_some, Tree.setAux, replaceAt]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hy)]
+    simp only [Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+      Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMap_id, Scan.treeMapCol_id_fun, List.map_id]
+    simp only [id, ih, List.length_cons]
+    have h1 : ℓ + 1 - (rest.length + 1 + 1) = ℓ - (rest.length + 1) := by omega
+    rw [h1]
+    simp
+
+
 -- provides: U3, L4.3a (a confined operation only replaces the marked height, and decreases it)
 theorem expand_confined {F F' : Forest} {a : EntryAddr} {k : Nat} (hF : Scan.InL F)
     (ha : a ∈ F.entryAddrs) (htr : F.truncAfter a = F) (hc : Confined F a)
     (hexp : expand F k = some F') :
-    ∃ A'', F' = F.setHeight a A'' ∧ A'' < (F.heightAt a).getD Tree.empty := by sorry
+    ∃ A'', F' = F.setHeight a A'' ∧ A'' < (F.heightAt a).getD Tree.empty := by
+  have hs : (F.entryAt a).isSome := (Tree.mem_entryAddrs_iff _ _).mp ha
+  obtain ⟨⟨p, H⟩, hpH⟩ := Option.isSome_iff_exists.mp hs
+  have ht : Tree.truncAux a.col.path a.col.col a.idx F = F := by
+    rw [Tree.truncAfter_eq_body] at htr
+    simpa [Tree.truncAfterBody, hs] using htr
+  have hne : F ≠ Tree.empty := by
+    rintro rfl
+    simp only [Tree.empty, Tree.entryAt, Tree.colAt] at hpH
+    cases hp : a.col.path with
+    | nil => simp [hp, Tree.forestAt, Tree.cols] at hpH
+    | cons x rest => simp [hp, Tree.forestAt, Tree.cols] at hpH
+  have key : ∀ Z ℓ, a.heightPath.length ≤ ℓ →
+      replaceAt 0 0 Z ℓ F = F.setHeight a (replaceAt 0 0 Z (ℓ - a.heightPath.length) H) := by
+    intro Z ℓ hℓ
+    have h1 := replaceAt_trunc_E1 Z a.col.path F a.col.col a.idx p H ℓ hpH
+      (by simpa [EntryAddr.heightPath] using hℓ)
+    rw [ht] at h1
+    rw [h1]
+    simp [Tree.setHeight, Tree.setHeightBody, hs, EntryAddr.heightPath]
+  obtain ⟨sd, hsd, hin, hsp⟩ := hc
+  obtain ⟨-, hdepth, -⟩ := Scan.stopData_spec hsd
+  have hexp0 := hexp
+  rw [Scan.expand_eq_paperOp hne hF.1 hF.2.1 k] at hexp
+  obtain ⟨A'', hF'⟩ : ∃ A'', F' = F.setHeight a A'' := by
+    obtain ⟨kd, hkd⟩ := Option.isSome_iff_exists.mp (Scan.stepKind_isSome hne hF.1 hF.2.1)
+    cases kd with
+    | deletion =>
+      exfalso
+      obtain ⟨x, xs, hx⟩ := Scan.lastCol_of_stopData hsd
+      rw [(Scan.stepKind_deletion_iff F).mp hkd] at hx
+      simp at hx
+    | special =>
+      obtain ⟨oe, hoe, hoein⟩ := hsp hkd
+      obtain ⟨-, hoeh, -, col, q, Fl, hcol, hlast, -, -⟩ := Scan.ownerEntry_spec hkd hsd hoe
+      rw [Scan.paperOp_special hkd hsd hoe hcol hlast] at hexp
+      obtain rfl := Option.some.inj hexp
+      refine ⟨_, key _ _ ?_⟩
+      show a.heightPath.length ≤ sd.depth - 1
+      have h1 := hoein.length_le
+      have h2 : oe.heightPath.length = oe.col.path.length + 1 := by simp [EntryAddr.heightPath]
+      rw [hoeh] at h2
+      omega
+    | ordinary =>
+      obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (Scan.rootData_of_ordinary hkd)
+      rw [Scan.paperOp_ordinary hkd hsd hrd] at hexp
+      split at hexp
+      · simp at hexp
+      · obtain rfl := Option.some.inj hexp
+        refine ⟨_, key _ _ ?_⟩
+        show a.heightPath.length ≤ sd.depth
+        have h1 := hin.length_le
+        omega
+  refine ⟨A'', hF', ?_⟩
+  have hlt := Closure.expand_lt hne hF.1 hF.2.1 hexp0
+  have hsome : F.heightAt a = some H := by simp [Tree.heightAt, hpH]
+  have hFF : F.setHeight a H = F := (Tree.setHeight_basic F a H ha).2.2.2.1 hsome
+  rw [hsome, Option.getD_some]
+  rw [hF', ← Scan.word_lt_iff] at hlt
+  conv at hlt => rhs; rw [← hFF]
+  rw [word_setHeight_E1 ha htr A'', word_setHeight_E1 ha htr H, Scan.list_append_lt_append_left,
+    wordAt_lt_iff_E1] at hlt
+  exact hlt
 
 -- provides: U3, L4.3a (a safe prefix cutting inside the marked height)
 theorem safePrefix_inside {F : Forest} {a : EntryAddr} (ha : a ∈ F.entryAddrs)
     (htr : F.truncAfter a = F) {k : Nat}
     (hk : Scan.mu (F.setHeight a Tree.empty) ≤ k) :
     ∃ A'', Scan.safePrefix F k = F.setHeight a A'' ∧ A'' ≤ (F.heightAt a).getD Tree.empty := by
-  sorry
+  set A' := (F.heightAt a).getD Tree.empty with hA'
+  have hsome : F.heightAt a = some A' := by
+    have hs : (F.entryAt a).isSome := (Tree.mem_entryAddrs_iff _ _).mp ha
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hs
+    simp [hA', Tree.heightAt, hx]
+  have hFF : F.setHeight a A' = F := (Tree.setHeight_basic F a A' ha).2.2.2.1 hsome
+  set W0 := Scan.word (F.setHeight a Tree.empty) with hW0
+  have hk' : W0.length ≤ k := hk
+  refine ⟨Scan.safePrefix A' (k - W0.length), ?_, Scan.safePrefix_le _ _⟩
+  apply Scan.word_injective
+  rw [word_setHeight_E1 ha htr, Scan.word_safePrefix, ← hW0]
+  conv_lhs => rw [← hFF, word_setHeight_E1 ha htr, ← hW0]
+  rw [List.take_append, List.take_of_length_le hk']
+  congr 1
+  exact (Scan.spF_spec _ _ _).1.symm
 
 /-- L4.3: scan records become descendant records after a source reduction. -/
 def RecKind.toDesc {E : Forest} : RecKind E → RecKind E
