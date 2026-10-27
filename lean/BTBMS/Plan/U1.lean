@@ -1311,39 +1311,184 @@ theorem paperOp_ordinary_zero {E : Forest} {sd : StopData} (hk : stepKind E = so
 /-- D1.6c: the reference's depth agrees with the paper's route whenever the latter stops
 (no use of I). -/
 theorem tailLayer_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
-    tailLayer E = (sd.depth : Int) := by sorry
+    tailLayer E = (sd.depth : Int) := by
+  obtain ⟨-, -, -, -, -, htl, -⟩ := stopData_core h
+  exact htl
+
+/-- D1.6c (helper): `tailLayer` is at least `-1`. -/
+theorem tailLayer_ge (F : Forest) : -1 ≤ tailLayer F := by
+  induction hn : sizeOf F using Nat.strong_induction_on generalizing F with
+  | _ n ih =>
+  rw [tailLayer_eq]
+  rcases hc : F.cols.getLast? with _ | col
+  · simp
+  simp only
+  rcases he : col.getLast? with _ | ⟨p, h⟩
+  · simp
+  have := ih _ (hn ▸ sizeOf_lt_of_last hc he) h rfl
+  simp only
+  omega
 
 /-- D1.6c: the reference's deletion test. -/
 theorem tailLayer_neg_iff {E : Forest} (hE : E ≠ Tree.empty) :
-    tailLayer E < 0 ↔ E.cols.getLast? = some [] := by sorry
+    tailLayer E < 0 ↔ E.cols.getLast? = some [] := by
+  obtain ⟨cols⟩ := E
+  have hne : cols ≠ [] := by rintro rfl; exact hE rfl
+  obtain ⟨col, hc⟩ : ∃ c, cols.getLast? = some c := by
+    cases hx : cols.getLast? with
+    | none => simp at hx; exact absurd hx hne
+    | some c => exact ⟨c, rfl⟩
+  rw [tailLayer_eq]
+  simp only [Tree.cols] at hc ⊢
+  rw [hc]
+  simp only
+  rcases he : col.getLast? with _ | ⟨p, h⟩
+  · simp at he; simp [he]
+  · have := tailLayer_ge h
+    have hcne : col ≠ [] := by intro h0; simp [h0] at he
+    simp only [Option.some.injEq, hcne, iff_false]
+    omega
 
 /-- D1.6c: the reference's layers are the paper's route forests. -/
 theorem skipLayers_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) {d : Nat}
-    (hd : d ≤ sd.depth) : E.forestAt (sd.col.path.take d) = some (skipLayers E d) := by sorry
+    (hd : d ≤ sd.depth) : E.forestAt (sd.col.path.take d) = some (skipLayers E d) := by
+  obtain ⟨-, -, -, -, -, -, -, hfa, -⟩ := stopData_core h
+  exact hfa d hd
 
 theorem skipLayers_add (E : Forest) (a b : Nat) : skipLayers (skipLayers E a) b = skipLayers E (a + b) := by
-  sorry
+  induction a generalizing E with
+  | zero => simp [skipLayers]
+  | succ a ih =>
+    rw [show a + 1 + b = (a + b) + 1 by omega]
+    exact ih (nextLayer E)
 
 /-- D1.6c: `leftCount` counts the columns of the layers above `d` (no hypothesis). -/
 theorem leftCount_eq_sum (E : Forest) (d : Nat) :
-    leftCount E d = ((List.range d).map fun k => (skipLayers E k).cols.length).sum := by sorry
+    leftCount E d = ((List.range d).map fun k => (skipLayers E k).cols.length).sum := by
+  induction d generalizing E with
+  | zero => rfl
+  | succ d ih =>
+    rw [leftCount, ih, List.range_succ_eq_map]
+    simp [skipLayers, Function.comp_def]
 
 /-- D1.6c: `t` agrees (txt:101-103). -/
 theorem tailNum_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
-    tailNum E sd.depth = sd.t := by sorry
+    tailNum E sd.depth = sd.t := by
+  obtain ⟨hcc, -, ht, -, -, -, hsum, -⟩ := stopData_core h
+  rw [tailNum, ht, ColAddr.num, hsum]
+  omega
 
 /-- D1.6c: `r` agrees. -/
 theorem rootAt_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
-    rootAt E sd.depth = sd.r := by sorry
+    rootAt E sd.depth = sd.r := by
+  obtain ⟨-, -, -, hlast, -⟩ := stopData_core h
+  simp [rootAt, lastEntry?, hlast]
 
 /-- D1.6c: the special tests agree. -/
 theorem isSpecial_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
-    isSpecial E sd.depth = specialStop sd := by sorry
+    isSpecial E sd.depth = specialStop sd := by
+  obtain ⟨hcc, -, ht, hlast, -, -, hsum, -⟩ := stopData_core h
+  have hnum : sd.t = leftCount E sd.depth + sd.col.col := by
+    rw [ht, ColAddr.num, hsum]; omega
+  unfold isSpecial specialStop
+  rw [hlast]
+  rcases Nat.eq_zero_or_pos sd.depth with h0 | hpos
+  · simp [h0]
+  · have hlc : 1 ≤ leftCount E sd.depth := by
+      obtain ⟨k, hk⟩ : ∃ k, sd.depth = k + 1 := ⟨sd.depth - 1, by omega⟩
+      obtain ⟨x, xs, hc⟩ := lastCol_of_stopData h
+      have hEne : E.cols ≠ [] := by intro h0; simp [h0] at hc
+      have := List.length_pos_of_ne_nil hEne
+      rw [hk, leftCount]; omega
+    rcases hQ : sd.Q with _ | ⟨x, Q'⟩
+    · simp only [List.nil_append, Tree.empty, Tree.cols, List.isEmpty_nil, Bool.true_and,
+        decide_eq_true hpos]
+      rw [Bool.eq_iff_iff]
+      simp only [Bool.and_eq_true, bne_iff_ne, beq_iff_eq, ne_eq]
+      omega
+    · obtain ⟨y, rest, hyr⟩ : ∃ y rest, Q' ++ [(sd.r, Tree.empty)] = y :: rest := by
+        cases Q' with
+        | nil => exact ⟨_, _, rfl⟩
+        | cons a l => exact ⟨a, _, rfl⟩
+      simp [hyr]
+
+/-- D1.6c (helper): a shift by `0` fixes a column. -/
+theorem mapCol_shiftVal_zero (r : Nat) (col : Column) : Tree.mapCol (shiftVal r 0) col = col := by
+  have h := shift_zero r (.node [col])
+  simp only [shift, Tree.map, Tree.mapCols] at h
+  simpa using h
+
+/-- D1.6c (helper, item 8): the column that `specialOut` places, read off the forest `H` holding
+the owner column as its last column. -/
+def specialZ (n : Nat) (H : Forest) : Forest :=
+  let col := H.cols.getLast?.getD []
+  let pf := col.getLast?.getD (0, Tree.empty)
+  .node [col.dropLast ++
+    List.replicate (n + if col.dropLast.isEmpty then 1 else 0) (pf.1, .node pf.2.cols.dropLast)]
+
+/-- D1.6c (helper, item 8, generalized): along a route with nonempty last columns down to layer
+`k`, `expandSpecial` at depth `k + 1` is the placement of `specialZ` at depth `k`. -/
+theorem expandSpecial_eq_replaceAt (n : Nat) : ∀ (k : Nat) (G : Forest),
+    (∀ j ≤ k, ∃ col, (skipLayers G j).cols.getLast? = some col ∧ col ≠ []) →
+    expandSpecial n (k + 1) G = replaceAt 0 0 (specialZ n (skipLayers G k)) k G
+  | 0, G, hG => by
+    obtain ⟨col, hc, hne⟩ := hG 0 le_rfl
+    obtain ⟨⟨p, h⟩, he⟩ : ∃ x, col.getLast? = some x := by
+      cases hx : col.getLast? with
+      | none => simp at hx; exact absurd hx hne
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨cols⟩ := G
+    simp only [skipLayers, Tree.cols] at hc
+    obtain ⟨c, cs, rfl⟩ : ∃ c cs, cols = c :: cs := by
+      cases cols with
+      | nil => simp at hc
+      | cons c cs => exact ⟨c, cs, rfl⟩
+    simp only [expandSpecial, replaceAt, specialZ, skipLayers, Tree.cols, hc, he,
+      Option.getD_some]
+    rw [show List.map (Tree.mapCol (shiftVal 0 0)) (c :: cs).dropLast = (c :: cs).dropLast from
+      List.map_id'' (mapCol_shiftVal_zero 0) _]
+    by_cases hd : col.dropLast.isEmpty
+    · simp only [hd, if_true]
+      rw [List.isEmpty_iff.mp hd]
+      simp [List.replicate_succ]
+    · simp [hd]
+  | k + 1, G, hG => by
+    obtain ⟨col, hc, hne⟩ := hG 0 (Nat.zero_le _)
+    obtain ⟨⟨p, h⟩, he⟩ : ∃ x, col.getLast? = some x := by
+      cases hx : col.getLast? with
+      | none => simp at hx; exact absurd hx hne
+      | some x => exact ⟨x, rfl⟩
+    simp only [skipLayers] at hc
+    have hnl := nextLayer_of_last hc he
+    have ih := expandSpecial_eq_replaceAt n k h (fun j hj => by
+      have := hG (j + 1) (by omega)
+      simpa [skipLayers, hnl] using this)
+    have hsk : skipLayers G (k + 1) = skipLayers h k := by
+      show skipLayers (nextLayer G) k = _; rw [hnl]
+    obtain ⟨cols⟩ := G
+    simp only [Tree.cols] at hc
+    simp only [expandSpecial, replaceAt, Tree.cols, hc, he, Option.getD_some]
+    rw [mapLast_eq, hc]
+    simp only [Option.map_some, Option.toList_some]
+    rw [mapLast_eq, he, hsk]
+    simp only [Option.map_some, Option.toList_some, shiftVal_zero]
+    have hf : ∀ x : Nat × Forest, (x.1, Tree.map (shiftVal 0 0) x.2) = x := fun x => by
+      rw [show Tree.map (shiftVal 0 0) x.2 = x.2 from shift_zero 0 x.2]
+    rw [← ih, List.map_id'' (mapCol_shiftVal_zero 0) cols.dropLast, List.map_id'' hf]
 
 /-- D1.6c: the special outputs agree. -/
 theorem expandSpecial_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd)
     (hs : specialStop sd = true) (n : Nat) : some (expandSpecial n sd.depth E) = specialOut E sd n := by
-  sorry
+  have hpos : 0 < sd.depth := by
+    simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq] at hs; exact hs.1.1
+  obtain ⟨-, -, -, -, hcont, -⟩ := stopData_core h
+  obtain ⟨oe, col, p, hoe, -, hcol, hlastc, hlastp, -, -⟩ := ownerEntry_data h hpos
+  have hgen := expandSpecial_eq_replaceAt n (sd.depth - 1) E (fun j hj => by
+    obtain ⟨c, q, a1, a2, -⟩ := hcont j (by omega)
+    exact ⟨c, a1, by intro h0; simp [h0] at a2⟩)
+  rw [show sd.depth - 1 + 1 = sd.depth by omega] at hgen
+  rw [hgen]
+  simp only [specialOut, hoe, hcol, hlastp, Hole.fill, specialZ, hlastc, Option.getD_some]
 
 /-- D1.6c: the reference's root search finds the paper's visible root. -/
 theorem rootLayer_of_resolve {E : Forest} {sd : StopData} {o : ColAddr} (h : stopData E = some sd)
