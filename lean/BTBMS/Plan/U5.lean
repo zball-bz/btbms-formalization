@@ -825,7 +825,52 @@ theorem mahlo_chain (I : Interface.{u}) : ∀ (k : Nat) (κ : Cardinal.{u}) (w :
       (∀ i, i ≤ k → I.Edge (v (i + 1)) (a (i + 1)) (a i)) ∧
       (∀ i, 1 ≤ i → i ≤ k → I.Edge (v (i + 1)) (a (i + 1)) (v i)) ∧
       (∀ i, 1 ≤ i → i ≤ k + 1 → a i < v i) := by
-  sorry
+  intro k
+  induction k with
+  | zero =>
+    intro κ w hκ hw hκw
+    obtain ⟨hunc, hreg⟩ := hκ.uncountable_regular
+    obtain ⟨C, hC, hCe⟩ := I.club_edge κ w hunc hreg hw hκw
+    have h0 : (0 : Ordinal.{u}) < κ.ord := Ordinal.omega0_pos.trans (isLim_ord hunc).2
+    obtain ⟨x, hxC, -⟩ := IsClub.exists_gt_ord hunc hC h0
+    refine ⟨fun i => if i = 0 then x.1 else κ.ord, fun _ => w, rfl, rfl, ?_, ?_, ?_⟩
+    · intro i hi
+      obtain rfl : i = 0 := by omega
+      simpa using hCe x hxC
+    · intro i h1 h2; omega
+    · intro i h1 h2
+      obtain rfl : i = 1 := by omega
+      simpa using hκw
+  | succ k ih =>
+    intro κ w hκ hw hκw
+    obtain ⟨hunc, hreg⟩ := hκ.uncountable_regular
+    obtain ⟨C, hC, hCe⟩ := I.club_edge κ w hunc hreg hw hκw
+    obtain ⟨x, hxC, μ, hμ, hμx⟩ := StationaryIn.exists_mem_club hκ.stationary_pred hC
+    obtain ⟨y, hyC, hxy⟩ := IsClub.exists_gt_ord hunc hC x.2
+    have hylim : IsLim y.1 := (I.edge_lim (hCe y hyC)).1
+    obtain ⟨a, v, ha, hv, h1, h2, h3⟩ := ih μ y.1 hμ hylim (hμx ▸ hxy)
+    refine ⟨fun i => if i = k + 2 then κ.ord else a i, fun i => if i = k + 2 then w else v i,
+      by simp, by simp, ?_, ?_, ?_⟩
+    · intro i hi
+      by_cases hik : i = k + 1
+      · subst hik
+        simp only [if_neg (show k + 1 ≠ k + 2 by omega), ha, hμx]
+        exact hCe x hxC
+      · simp only [if_neg (show i + 1 ≠ k + 2 by omega), if_neg (show i ≠ k + 2 by omega)]
+        exact h1 i (by omega)
+    · intro i hi1 hi2
+      by_cases hik : i = k + 1
+      · subst hik
+        simp only [if_neg (show k + 1 ≠ k + 2 by omega), hv]
+        exact hCe y hyC
+      · simp only [if_neg (show i + 1 ≠ k + 2 by omega), if_neg (show i ≠ k + 2 by omega)]
+        exact h2 i hi1 (by omega)
+    · intro i hi1 hi2
+      by_cases hik : i = k + 2
+      · subst hik
+        simpa using hκw
+      · simp only [if_neg hik]
+        exact h3 i hi1 (by omega)
 
 /-- L6.7c: the seed assignment `A_i ↦ a_i`, `U_i ↦ v_i`. -/
 noncomputable def seedVal (a v : Nat → Ordinal.{u}) : Role → Ordinal.{u}
