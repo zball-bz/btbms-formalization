@@ -1730,10 +1730,190 @@ theorem num_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x 
   · simp [ColAddr.num] at hx1 ⊢; omega
   · simp [ColAddr.num] at hx1 ⊢; omega
 
+-- G9 (helper)
+theorem container_col {o b : ColAddr} {e : EntryAddr} (h : o.container b = some e) : e.col = o :=
+  ((ColAddr.container_spec o b e).mp h).1
+
+-- G9 (helper): containment below a common step
+theorem container_cons (ci ei : Nat) (π₁ π₂ : List (Nat × Nat)) (c₁ c₂ : Nat) :
+    (⟨(ci, ei) :: π₁, c₁⟩ : ColAddr).container ⟨(ci, ei) :: π₂, c₂⟩ =
+      ((⟨π₁, c₁⟩ : ColAddr).container ⟨π₂, c₂⟩).map fun e => ⟨⟨(ci, ei) :: π₁, c₁⟩, e.idx⟩ := by
+  unfold ColAddr.container
+  simp only [List.length_cons, List.drop_succ_cons, List.take_succ_cons, List.cons.injEq, true_and]
+  cases List.drop π₁.length π₂ with
+  | nil => rfl
+  | cons x xs =>
+    obtain ⟨k, i⟩ := x
+    simp only
+    split_ifs <;> rfl
+
+-- G9 (helper): containment below a common prefix
+theorem container_append (R so sx : List (Nat × Nat)) (c c' : Nat) :
+    (⟨R ++ so, c⟩ : ColAddr).container ⟨R ++ sx, c'⟩ =
+      ((⟨so, c⟩ : ColAddr).container ⟨sx, c'⟩).map fun e => ⟨⟨R ++ so, c⟩, e.idx⟩ := by
+  induction R with
+  | nil =>
+    simp only [List.nil_append]
+    cases h : (⟨so, c⟩ : ColAddr).container ⟨sx, c'⟩ with
+    | none => rfl
+    | some e =>
+      simp only [Option.map_some]
+      rw [← container_col h]
+  | cons s R ih =>
+    obtain ⟨ci, ei⟩ := s
+    rw [List.cons_append, List.cons_append, container_cons, ih, Option.map_map]
+    rfl
+
+-- G9 (helper): a column at the root level contains nothing at the root level
+theorem container_nil_nil (c c' : Nat) : (⟨[], c⟩ : ColAddr).container ⟨[], c'⟩ = none := by
+  simp [ColAddr.container]
+
+-- G9 (helper)
+theorem container_nil_cons (c c' k i : Nat) (rest : List (Nat × Nat)) :
+    (⟨[], c⟩ : ColAddr).container ⟨(k, i) :: rest, c'⟩ = if k = c then some ⟨⟨[], c⟩, i⟩ else none := by
+  simp [ColAddr.container]
+
+-- G9 (helper)
+theorem container_cons_nil (c c' : Nat) (s : Nat × Nat) (rest : List (Nat × Nat)) :
+    (⟨s :: rest, c⟩ : ColAddr).container ⟨[], c'⟩ = none := by
+  simp [ColAddr.container]
+
+-- G9 (helper)
+theorem container_cons_ne (c c' : Nat) (s t : Nat × Nat) (rs rt : List (Nat × Nat)) (h : s ≠ t) :
+    (⟨s :: rs, c⟩ : ColAddr).container ⟨t :: rt, c'⟩ = none := by
+  unfold ColAddr.container
+  simp only [List.length_cons, List.drop_succ_cons, List.take_succ_cons, List.cons.injEq]
+  cases List.drop rs.length rt with
+  | nil => rfl
+  | cons x xs =>
+    obtain ⟨k, i⟩ := x
+    simp only
+    rw [if_neg (by intro hh; exact h hh.1.1.symm)]
+
 theorem container_kerCol (S : OrdStep) {x x' o o' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (ho : kerCol S.sd S.rd o = some o') (hxq : isQMat S.sd x = false) :
     o'.container x' = (o.container x).map fun e =>
-      ⟨o', if o = S.rd.col then S.m + (e.idx - S.rd.cursor) else e.idx⟩ := by sorry
+      ⟨o', if o = S.rd.col then S.m + (e.idx - S.rd.cursor) else e.idx⟩ := by
+  obtain ⟨sx, hxp, hxc⟩ := kerCol_tail_spec S hx hxq
+  by_cases hoq : isQMat S.sd o = true
+  · -- Q-material `o` contains no root-tail column, and its image contains no image of one
+    have hox : o.container x = none := by
+      cases h : o.container x with
+      | none => rfl
+      | some e =>
+        exfalso
+        obtain ⟨-, hpre⟩ := (ColAddr.container_spec o x e).mp h
+        have hpre' : o.path <+: x.path := by
+          rw [← container_col h]
+          exact List.IsPrefix.trans (List.prefix_append _ _) hpre
+        have := isQMat_of_prefix S.sd hoq hpre'
+        rw [hxq] at this
+        cases this
+    rw [hox, Option.map_none]
+    -- `o' = ⟨(0, j) :: rest, o.col⟩` with `j < m`
+    unfold kerCol at ho
+    rw [if_pos hoq] at ho
+    unfold isQMat at hoq
+    cases hd : o.path.drop S.sd.col.path.length with
+    | nil => rw [hd] at ho; cases ho
+    | cons p rest =>
+      obtain ⟨ci, j⟩ := p
+      rw [hd] at ho hoq
+      simp only [Option.some.injEq] at ho
+      subst ho
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hoq
+      have hj : j < S.m := hoq.2.2
+      rcases hxc with ⟨-, -, rfl⟩ | ⟨-, -, -, rfl⟩ | ⟨e, rest', -, -, rfl⟩ |
+          ⟨ci', e, rest', -, hci', -, rfl⟩
+      · exact container_cons_nil _ _ _ _
+      · exact container_cons_nil _ _ _ _
+      · exact container_cons_ne _ _ _ _ _ _ (by simp; omega)
+      · exact container_cons_ne _ _ _ _ _ _ (by simp; omega)
+  · have hoq' : isQMat S.sd o = false := by simpa using hoq
+    obtain ⟨so, hop, hoc⟩ := kerCol_tail_spec S ho hoq'
+    obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+    have hoeq : o = ⟨S.rd.col.path ++ so, o.col⟩ := by
+      show (⟨o.path, o.col⟩ : ColAddr) = _; rw [hop]
+    have hxeq : x = ⟨S.rd.col.path ++ sx, x.col⟩ := by
+      show (⟨x.path, x.col⟩ : ColAddr) = _; rw [hxp]
+    have hcont : o.container x = ((⟨so, o.col⟩ : ColAddr).container ⟨sx, x.col⟩).map
+        fun e => ⟨o, e.idx⟩ := by
+      conv_lhs => rw [hoeq, hxeq]
+      rw [container_append]
+      rw [← hoeq]
+    rw [hcont, Option.map_map]
+    rcases hoc with ⟨rfl, hoc, rfl⟩ | ⟨rfl, hoc, hown, rfl⟩ | ⟨e₀, rest_o, rfl, he₀, rfl⟩ |
+        ⟨ci₀, e₀, rest_o, rfl, hci₀, hown, rfl⟩
+    · -- `o` is the root column
+      have hor : o = S.rd.col := by
+        rw [hoeq]; show (⟨_, _⟩ : ColAddr) = ⟨S.rd.col.path, S.rd.col.col⟩; rw [List.append_nil, hoc]
+      rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest', rfl, he, rfl⟩ |
+          ⟨ci', e, rest', rfl, hci', -, rfl⟩
+      · simp [container_nil_nil]
+      · simp [container_nil_nil]
+      · rw [container_nil_cons, container_nil_cons, if_pos rfl, if_pos hoc.symm]
+        simp [hor]
+      · rw [container_nil_cons, container_nil_cons, if_neg (by omega), if_neg (by omega)]
+        rfl
+    · -- `o` a later root-level column
+      have hor : o ≠ S.rd.col := by
+        intro h; rw [h] at hoc; omega
+      rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest', rfl, he, rfl⟩ |
+          ⟨ci', e, rest', rfl, hci', -, rfl⟩
+      · simp [container_nil_nil]
+      · simp [container_nil_nil]
+      · rw [container_nil_cons, container_nil_cons, if_neg (by omega), if_neg (by omega)]
+        rfl
+      · rw [container_nil_cons, container_nil_cons]
+        by_cases hco : ci' = o.col
+        · rw [if_pos hco, if_pos (by omega)]
+          simp [hor]
+        · rw [if_neg hco, if_neg (by omega)]
+          rfl
+    · -- `o` inside a restored height of the root
+      have hor : o ≠ S.rd.col := by
+        intro h; rw [h] at hop
+        have := congrArg List.length hop
+        simp at this
+      rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest', rfl, he, rfl⟩ |
+          ⟨ci', e, rest', rfl, hci', -, rfl⟩
+      · simp [container_cons_nil]
+      · simp [container_cons_nil]
+      · by_cases hee : e = e₀
+        · subst hee
+          rw [container_cons, container_cons]
+          simp only [Option.map_map]
+          congr 1
+          funext e'
+          simp [hor]
+        · rw [container_cons_ne _ _ _ _ _ _ (by simp; omega),
+            container_cons_ne _ _ _ _ _ _ (by simp; omega)]
+          rfl
+      · rw [container_cons_ne _ _ _ _ _ _ (by simp; omega),
+          container_cons_ne _ _ _ _ _ _ (by simp; omega)]
+        rfl
+    · -- `o` in a later body column of the root forest
+      have hor : o ≠ S.rd.col := by
+        intro h; rw [h] at hop
+        have := congrArg List.length hop
+        simp at this
+      rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest', rfl, he, rfl⟩ |
+          ⟨ci', e, rest', rfl, hci', -, rfl⟩
+      · simp [container_cons_nil]
+      · simp [container_cons_nil]
+      · rw [container_cons_ne _ _ _ _ _ _ (by simp; omega),
+          container_cons_ne _ _ _ _ _ _ (by simp; omega)]
+        rfl
+      · by_cases hee : ci' = ci₀ ∧ e = e₀
+        · obtain ⟨rfl, rfl⟩ := hee
+          rw [container_cons, container_cons]
+          simp only [Option.map_map]
+          congr 1
+          funext e'
+          simp [hor]
+        · rw [container_cons_ne _ _ _ _ _ _ (by simp; omega),
+            container_cons_ne _ _ _ _ _ _ (by simp; omega)]
+          rfl
 
 -- G9.4s5: the stack of Q-material images: the head and Q-material images only
 theorem onStack_kerCol_qmat (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
@@ -1750,19 +1930,6 @@ theorem colAt_cons (cols : List Column) (ci ei : Nat) (π : List (Nat × Nat)) (
   cases hx : (cols[ci]?).bind (·[ei]?) with
   | none => rfl
   | some x => obtain ⟨q, h⟩ := x; rfl
-
--- G9 (helper): containment below a common step
-theorem container_cons (ci ei : Nat) (π₁ π₂ : List (Nat × Nat)) (c₁ c₂ : Nat) :
-    (⟨(ci, ei) :: π₁, c₁⟩ : ColAddr).container ⟨(ci, ei) :: π₂, c₂⟩ =
-      ((⟨π₁, c₁⟩ : ColAddr).container ⟨π₂, c₂⟩).map fun e => ⟨⟨(ci, ei) :: π₁, c₁⟩, e.idx⟩ := by
-  unfold ColAddr.container
-  simp only [List.length_cons, List.drop_succ_cons, List.take_succ_cons, List.cons.injEq, true_and]
-  cases List.drop π₁.length π₂ with
-  | nil => rfl
-  | cons x xs =>
-    obtain ⟨k, i⟩ := x
-    simp only
-    split_ifs <;> rfl
 
 -- G9 (helper): the column-level form of G9.4l, by induction along the cap's address
 theorem litCapAux_colAt (k p : Nat) (π : List (Nat × Nat)) (j : Nat) (F : Forest)
@@ -2496,10 +2663,6 @@ theorem iterate_underCol_onStack (g : ColAddr) (n : Nat) {x y : ColAddr} (h : x.
   | succ n ih =>
     rw [Function.iterate_succ_apply', Function.iterate_succ_apply']
     exact (onStack_underCol g _ _).mpr (Or.inr ⟨_, ih, rfl⟩)
-
--- G9 (helper)
-theorem container_col {o b : ColAddr} {e : EntryAddr} (h : o.container b = some e) : e.col = o :=
-  ((ColAddr.container_spec o b e).mp h).1
 
 theorem iterate_underCol_container (g : ColAddr) (n : Nat) (o b : ColAddr) :
     ((underCol g)^[n] o).container ((underCol g)^[n] b) =
