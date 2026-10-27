@@ -663,18 +663,159 @@ def seedGraph (m : Nat) : List (BaseAtom Role) :=
     [BaseAtom.edge (seedU (i + 1)) (seedA (i + 1)) (seedA i),
      BaseAtom.edge (seedU (i + 1)) (seedA (i + 1)) (if i = 0 then seedA 0 else seedU i)]
 
+/-- L6.7a (helper): roles of a branch column. -/
+theorem rolesCol_branch (π : List (Nat × Nat)) (c i k : Nat) :
+    Tree.rolesCol π c 0 (branch i k) = .slot ⟨⟨π, c⟩, 0⟩ ::
+      (List.range k).flatMap fun j => [Role.ord ⟨π ++ (c, 0) :: List.replicate j (0, 0), 0⟩,
+        Role.slot ⟨⟨π ++ (c, 0) :: List.replicate j (0, 0), 0⟩, 0⟩] := by
+  induction k generalizing π c i with
+  | zero => simp [branch, Tree.rolesCol, Tree.rolesF, Tree.rolesCols, Tree.empty]
+  | succ k ih =>
+    simp only [branch, Tree.rolesCol, Tree.rolesF, Tree.rolesCols, ih, List.append_nil,
+      List.range_succ_eq_map, List.flatMap_cons, List.flatMap_map, List.replicate,
+      List.cons_append, List.nil_append]
+    simp [List.append_assoc]
+
 /-- L6.7a (testable; checked by `#eval` for `m ≤ 6`). -/
 theorem seed_roles (m : Nat) : (seed (m + 1)).roles = seedRoles m := by
-  sorry
+  simp [seed, Tree.roles, Tree.rolesF, Tree.rolesCols, Tree.rolesCol, rolesCol_branch,
+    seedRoles, seedA, seedU, seedCol, List.range_succ_eq_map, List.flatMap_map]
+
+/-- L6.7a (helper): the forest under `j` first entries of a branch. -/
+theorem forestAt_branch : ∀ (j i k : Nat), j ≤ k →
+    (Tree.node [branch i k]).forestAt (List.replicate j (0, 0)) =
+      some (Tree.node [branch (i + j) (k - j)])
+  | 0, i, k, _ => by simp [Tree.forestAt]
+  | j + 1, i, k + 1, h => by
+    simp only [List.replicate, Tree.forestAt, Tree.cols, branch]
+    simp only [List.getElem?_cons_zero, Option.bind_some]
+    rw [forestAt_branch j (i + 1) k (by omega), show i + (j + 1) = i + 1 + j by omega,
+      show k + 1 - (j + 1) = k - j by omega]
+  | j + 1, _, 0, h => absurd h (by omega)
+
+/-- L6.7a (helper): the forest at the path of `seedCol (j + 2)`. -/
+theorem forestAt_seed {m j : Nat} (hj : j < m) :
+    (seed (m + 1)).forestAt ((1, 0) :: List.replicate j (0, 0)) =
+      some (Tree.node [branch (1 + j) (m - 1 - j)]) := by
+  obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by omega⟩
+  simp only [seed, Tree.forestAt, Tree.cols, branch, List.getElem?_cons_succ,
+    List.getElem?_cons_zero, Option.bind_some]
+  rw [forestAt_branch j 1 m' (by omega), show m' + 1 - 1 - j = m' - j by omega]
+
+/-- L6.7a (helper): the first entry of a branch has parent `i`. -/
+theorem branch_head (i k : Nat) : ∃ h, branch i k = [(i, h)] := by
+  cases k <;> exact ⟨_, rfl⟩
+
+/-- L6.7a (helper): the entry `U_{i+1}` of the seed has parent `i`. -/
+theorem entryAt_seed {m i : Nat} (hi : i ≤ m) :
+    ∃ h, (seed (m + 1)).entryAt ⟨seedCol (i + 1), 0⟩ = some (i, h) := by
+  cases i with
+  | zero =>
+    obtain ⟨h, hh⟩ := branch_head 0 m
+    exact ⟨h, by simp [Tree.entryAt, Tree.colAt, Tree.forestAt, Tree.cols, seedCol, seed, hh]⟩
+  | succ j =>
+    obtain ⟨h, hh⟩ := branch_head (j + 1) (m - 1 - j)
+    refine ⟨h, ?_⟩
+    simp only [Tree.entryAt, Tree.colAt, seedCol]
+    rw [forestAt_seed (by omega), Nat.add_comm 1 j]
+    simp [Tree.cols, hh]
+
+/-- L6.7a (helper): resolution along a run of first entries. -/
+theorem resolveAux_replicate : ∀ (n s : Nat) (pre : List (Nat × Nat)) (q : Nat), s ≤ q →
+    q < s + n → ColAddr.resolveAux s pre (List.replicate n (0, 0)) 0 q =
+      some ⟨pre ++ List.replicate (q - s) (0, 0), 0⟩
+  | 0, s, pre, q, h1, h2 => absurd h2 (by omega)
+  | n + 1, s, pre, q, h1, h2 => by
+    simp only [List.replicate, ColAddr.resolveAux, Nat.add_zero]
+    by_cases hq : q = s
+    · subst hq; simp
+    · rw [if_neg (by omega), resolveAux_replicate n (s + 1) _ q (by omega) (by omega)]
+      obtain ⟨d, hd⟩ : ∃ d, q - s = d + 1 := ⟨q - s - 1, by omega⟩
+      rw [hd, show q - (s + 1) = d by omega]
+      simp [List.replicate]
+
+/-- L6.7a (helper): the representatives of the parent of `U_{i+1}` (`[R9]` for `i ≥ 1`). -/
+theorem rep_seed (i : Nat) :
+    (seedCol (i + 1)).rep 0 i = some (seedA i, if i = 0 then seedA 0 else seedU i) := by
+  match i with
+  | 0 => rfl
+  | 1 => rfl
+  | j + 2 =>
+    have hres : (seedCol (j + 3)).resolve 0 (j + 2) = some (seedCol (j + 2)) := by
+      show ColAddr.resolveAux 0 [] ((1, 0) :: List.replicate (j + 1) (0, 0)) 0 (j + 2) = _
+      simp only [ColAddr.resolveAux]
+      rw [if_neg (by omega), resolveAux_replicate (j + 1) _ _ (j + 2) (by omega) (by omega)]
+      simp [seedCol]
+    have hcont : (seedCol (j + 2)).container (seedCol (j + 3)) = some ⟨seedCol (j + 2), 0⟩ := by
+      simp only [ColAddr.container, seedCol, List.length_cons, List.length_replicate,
+        List.drop_succ_cons, List.drop_replicate, List.take_succ_cons, List.take_replicate]
+      simp
+    simp only [ColAddr.rep, hres, Option.map_some, hcont, seedA, seedU]
+    simp
 
 /-- L6.7a (testable; checked by `#eval` for `m ≤ 6`). -/
 theorem seed_graph_sub (m : Nat) : ∀ a ∈ graph (seed (m + 1)), a ∈ seedGraph m := by
-  sorry
+  intro a ha
+  have hr := seed_roles m
+  have hmem : ∀ x ∈ seedRoles m,
+      x = seedA 0 ∨ ∃ i, i ≤ m ∧ (x = seedA (i + 1) ∨ x = seedU (i + 1)) := by
+    intro x hx
+    simp only [seedRoles, List.mem_cons, List.mem_flatMap, List.mem_range] at hx
+    rcases hx with rfl | ⟨i, hi, hx⟩
+    · exact Or.inl rfl
+    · simp only [List.mem_nil_iff, or_false] at hx
+      exact Or.inr ⟨i, by omega, hx⟩
+  simp only [graph, List.mem_append] at ha
+  unfold seedGraph
+  simp only [List.mem_append]
+  rcases ha with ((h1 | h2) | h3) | h4
+  · rw [hr] at h1; exact Or.inl (Or.inl (Or.inl h1))
+  · rw [hr] at h2; exact Or.inl (Or.inl (Or.inr h2))
+  · obtain ⟨c, hc, hca⟩ := List.mem_filterMap.1 h3
+    have hcr : Role.ord c ∈ seedRoles m := by
+      rw [← hr]
+      obtain ⟨x, hx, hxc⟩ := List.mem_filterMap.1 hc
+      cases x with
+      | ord d => cases hxc; exact hx
+      | slot _ => cases hxc
+    split_ifs at hca with hs
+    cases hca
+    rcases hmem _ hcr with h0 | ⟨i, hi, hx | hx⟩
+    · simp only [seedA, Role.ord.injEq] at h0
+      subst h0
+      exact Or.inl (Or.inr (by simp [seedA, seedCol]))
+    · simp only [seedA, Role.ord.injEq] at hx
+      subst hx
+      exfalso
+      cases i with
+      | zero => simp [seedCol, Tree.colAt, Tree.forestAt, seed, Tree.cols] at hs
+      | succ j =>
+        simp only [seedCol, Tree.colAt] at hs
+        rw [forestAt_seed (by omega)] at hs
+        simp [Tree.cols] at hs
+    · simp [seedU] at hx
+  · obtain ⟨e, he, hea⟩ := List.mem_flatMap.1 h4
+    have her : Role.slot e ∈ seedRoles m := by
+      rw [← hr]
+      obtain ⟨x, hx, hxe⟩ := List.mem_filterMap.1 he
+      cases x with
+      | slot d => cases hxe; exact hx
+      | ord _ => cases hxe
+    rcases hmem _ her with h0 | ⟨i, hi, hx | hx⟩
+    · simp [seedA] at h0
+    · simp [seedA] at hx
+    · simp only [seedU, Role.slot.injEq] at hx
+      subst hx
+      obtain ⟨h, hh⟩ := entryAt_seed hi
+      rw [hh] at hea
+      simp only [rep_seed] at hea
+      refine Or.inr (List.mem_flatMap.2 ⟨i, List.mem_range.2 (by omega), ?_⟩)
+      simpa [seedU, seedA] using hea
 
 /-- L6.7a: `L_0 = ()` has one role and one atom (testable). -/
 theorem seed_zero_graph : (seed 0).roles = [.ord ⟨[], 0⟩] ∧
-    graph (seed 0) = [BaseAtom.lim (.ord ⟨[], 0⟩)] := by
-  sorry
+    graph (seed 0) = [BaseAtom.lim (.ord ⟨[], 0⟩)] :=
+  ⟨rfl, rfl⟩
 
 /-- L6.7b: the descending Mahlo chain (txt:1005-1011): from a weakly `k`-Mahlo `κ` and a limit
 `w > κ`, values `a_0 < a_1 < v_1 < … < a_{k+1} = κ < v_{k+1} = w` with all seed edges. -/
