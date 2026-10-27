@@ -877,13 +877,99 @@ noncomputable def seedVal (a v : Nat → Ordinal.{u}) : Role → Ordinal.{u}
   | .ord c => if c = ⟨[], 0⟩ then a 0 else a (c.path.length + 1)
   | .slot e => v (e.col.path.length + 1)
 
+/-- L6.7c (helper): `seedVal` on the ordinary seed roles. -/
+theorem seedVal_A (a v : Nat → Ordinal.{u}) (i : Nat) : seedVal a v (seedA i) = a i := by
+  match i with
+  | 0 => simp [seedVal, seedA, seedCol]
+  | 1 => simp [seedVal, seedA, seedCol]
+  | j + 2 => simp [seedVal, seedA, seedCol]
+
+/-- L6.7c (helper): `seedVal` on the seed slots. -/
+theorem seedVal_U (a v : Nat → Ordinal.{u}) (i : Nat) : seedVal a v (seedU (i + 1)) = v (i + 1) := by
+  match i with
+  | 0 => simp [seedVal, seedU, seedCol]
+  | j + 1 => simp [seedVal, seedU, seedCol]
+
+/-- L6.7c (helper): the reading order of `L_{m+2}` extends that of `L_{m+1}`. -/
+theorem seedRoles_succ (m : Nat) :
+    seedRoles (m + 1) = seedRoles m ++ [seedA (m + 2), seedU (m + 2)] := by
+  simp [seedRoles, List.range_succ (n := m + 1), List.flatMap_append]
+
+/-- L6.7c (helper): the last seed role is `U_{m+1}`. -/
+theorem seedRoles_getLast? (m : Nat) : (seedRoles m).getLast? = some (seedU (m + 1)) := by
+  cases m with
+  | zero => rfl
+  | succ m => rw [seedRoles_succ]; simp
+
+/-- L6.7c (helper): a chain gives the relation on consecutive pairs. -/
+theorem zip_tail_of_isChain {α : Type} {R : α → α → Prop} :
+    ∀ {l : List α}, List.IsChain R l → ∀ xy ∈ l.zip l.tail, R xy.1 xy.2
+  | [], _, xy, h => by simp at h
+  | [_], _, xy, h => by simp at h
+  | x :: y :: l, hc, xy, h => by
+    rw [List.isChain_cons_cons] at hc
+    simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons] at h
+    rcases h with rfl | h
+    · exact hc.1
+    · exact zip_tail_of_isChain hc.2 xy (by simpa using h)
+
 /-- L6.7c: a Mahlo chain realizes the seed graph. -/
 theorem seedGraph_holds (I : Interface.{u}) {m : Nat} {a v : Nat → Ordinal.{u}}
     (h1 : ∀ i, i ≤ m → I.Edge (v (i + 1)) (a (i + 1)) (a i))
     (h2 : ∀ i, 1 ≤ i → i ≤ m → I.Edge (v (i + 1)) (a (i + 1)) (v i))
     (h3 : ∀ i, 1 ≤ i → i ≤ m + 1 → a i < v i) :
     BaseHolds I.toPrims (seedGraph m) (seedVal a v) := by
-  sorry
+  have hchain : ∀ m', m' ≤ m →
+      List.IsChain (fun x y => seedVal a v x < seedVal a v y) (seedRoles m') := by
+    intro m' hm'
+    induction m' with
+    | zero =>
+      have := I.edge_lt (h1 0 (Nat.zero_le _))
+      have hU1 : seedVal a v (seedU 1) = v 1 := seedVal_U a v 0
+      show List.IsChain _ [seedA 0, seedA 1, seedU 1]
+      simp only [List.isChain_cons_cons, List.isChain_singleton, and_true, seedVal_A, hU1]
+      exact this
+    | succ k ih =>
+      rw [seedRoles_succ]
+      refine (ih (by omega)).append (List.isChain_pair.2 ?_) ?_
+      · rw [seedVal_A, seedVal_U]
+        exact h3 (k + 2) (by omega) (by omega)
+      · intro x hx y hy
+        rw [seedRoles_getLast?, Option.mem_some_iff] at hx
+        simp only [List.head?_cons, Option.mem_some_iff] at hy
+        subst hx hy
+        rw [seedVal_A, seedVal_U]
+        exact (I.edge_lt (h2 (k + 1) (by omega) hm')).1
+  have hlim : ∀ x ∈ seedRoles m, IsLim (seedVal a v x) := by
+    intro x hx
+    simp only [seedRoles, List.mem_cons, List.mem_flatMap, List.mem_range] at hx
+    rcases hx with rfl | ⟨i, hi, hx⟩
+    · rw [seedVal_A]; exact (I.edge_lim (h1 0 (Nat.zero_le _))).1
+    · simp only [List.mem_nil_iff, or_false] at hx
+      rcases hx with rfl | rfl
+      · rw [seedVal_A]; exact (I.edge_lim (h1 i (by omega))).2.1
+      · rw [seedVal_U]; exact (I.edge_lim (h1 i (by omega))).2.2
+  intro b hb
+  simp only [seedGraph, List.mem_append, List.mem_map, List.mem_singleton, List.mem_flatMap,
+    List.mem_range] at hb
+  rcases hb with (((⟨x, hx, rfl⟩ | ⟨xy, hxy, rfl⟩) | rfl) | ⟨i, hi, hb⟩)
+  · exact hlim x hx
+  · exact zip_tail_of_isChain (hchain m le_rfl) xy hxy
+  · show I.Elem (seedVal a v (seedA 0)) (seedVal a v (seedA 1))
+    rw [seedVal_A, seedVal_A]
+    exact I.edge_elem_low (h1 0 (Nat.zero_le _))
+  · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hb
+    rcases hb with rfl | rfl
+    · show I.Edge _ _ _
+      rw [seedVal_U, seedVal_A, seedVal_A]
+      exact h1 i (by omega)
+    · show I.Edge _ _ _
+      rw [seedVal_U, seedVal_A]
+      split_ifs with h0
+      · subst h0; rw [seedVal_A]; exact h1 0 (Nat.zero_le _)
+      · obtain ⟨j, rfl⟩ : ∃ j, i = j + 1 := ⟨i - 1, by omega⟩
+        rw [seedVal_U]
+        exact h2 (j + 1) (by omega) (by omega)
 
 /-! ## D8.1 / §8.1: failures, (19), the two-candidate fact, `S_0` -/
 
