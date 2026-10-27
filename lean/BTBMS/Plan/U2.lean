@@ -2232,6 +2232,75 @@ theorem resolve_copyCol (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i �
       simp only [if_neg hne, Option.map_map]
       rfl
 
+-- G9 (helper): a mapped column, entrywise
+theorem mapCol_eq_map (f : Nat → Nat) (col : Column) :
+    Tree.mapCol f col = col.map fun x => (f x.1, Tree.map f x.2) := by
+  induction col with
+  | nil => simp [Tree.mapCol]
+  | cons x xs ih =>
+    obtain ⟨p, H⟩ := x
+    simp [Tree.mapCol, ih]
+
+-- G9 (helper): the stack columns of the stopping column are columns of `A`
+theorem mem_colAddrs_of_sdstack (S : OrdStep) {o : ColAddr} (ho : S.sd.col.OnStack o) :
+    o ∈ S.A.colAddrs := by
+  obtain ⟨-, -, hmem, -⟩ := rootData_col S.hsd S.hrd
+  have := (Tree.stack_mem_prefix hmem).2.1 o ho
+  have hr : Role.ord o ∈ S.A.roles := (List.takeWhile_sublist _).subset this
+  rw [Tree.mem_colAddrs_iff]
+  exact (Tree.mem_roles_iff _ _).mp hr
+
+-- G9 (helper): the stack columns of the stopping column strictly between `r` and `t` are
+-- non-Q template columns
+theorem tmplCol_of_sdstack (S : OrdStep) {x : Nat} {o : ColAddr} (hx : S.sd.r < x)
+    (hxt : x < S.sd.t) (ho : S.sd.col.resolve 0 x = some o) :
+    IsTmplCol S.A S.sd S.rd o ∧ isQMat S.sd o = false := by
+  obtain ⟨hst, hnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp ho
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  obtain ⟨hker, hoq⟩ := kerCol_of_onStack_tail S hkh (isQMat_of_short S.sd le_rfl) hst (by omega)
+  refine ⟨⟨mem_colAddrs_of_sdstack S hst, ?_, ?_, hker⟩, hoq⟩
+  · intro h; rw [h] at hnum; omega
+  · intro h; rw [h] at hnum; omega
+
+-- G9 (helper): a copy's column in `B` is the shifted column of a context of `A`
+theorem colAt_copyCol (S : OrdStep) {h : Nat} (hh : h ≤ S.n) {o : ColAddr}
+    (ho : IsTmplCol S.A S.sd S.rd o) (hoq : isQMat S.sd o = false) :
+    ∃ Z, S.B.colAt (S.copyCol h o) =
+      ((context S.A S.sd Z).colAt o).map (Tree.mapCol (shiftVal S.sd.r (h * S.d))) := by
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  have hit := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined
+  rcases Nat.eq_zero_or_pos h with h0 | hpos
+  · subst h0
+    refine ⟨(kernel S.A S.sd S.rd)^[S.n] Tree.empty, ?_⟩
+    have hB : S.B = context S.A S.sd ((kernel S.A S.sd S.rd)^[S.n] Tree.empty) := by
+      have := hit S.n
+      rw [S.out] at this
+      exact Option.some.inj this
+    simp only [OrdStep.copyCol, if_true, Nat.zero_mul]
+    rw [← hB]
+    cases S.B.colAt o with
+    | none => rfl
+    | some col =>
+      simp only [Option.map_some, mapCol_eq_map]
+      congr 1
+      conv_lhs => rw [← List.map_id col]
+      congr 1
+      funext x
+      have h1 : shiftVal S.sd.r 0 x.1 = x.1 := by simp [shiftVal]
+      have h2 : Tree.map (shiftVal S.sd.r 0) x.2 = x.2 := shift_zero S.sd.r x.2
+      rw [h1, h2]
+      rfl
+  · refine ⟨(kernel S.A S.sd S.rd)^[S.n - h] Tree.empty, ?_⟩
+    have hA' := hit (S.n - h)
+    simp only [OrdStep.copyCol, if_neg (show h ≠ 0 by omega)]
+    rw [colAt_phaseCol_tail S ⟨hpos, hh⟩ ho hoq hA']
+
 -- G9.4c: contents in `K` of a copy: parents shifted by `τ_h`, keys `κ_h`-related before the
 -- active index `u` (all keys when the copy does not contain `c`)
 theorem copyCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -2243,7 +2312,84 @@ theorem copyCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi 
       (actualKeys (litCap S.B c k ρ) (S.copyCol h o)).take
           (((o.container S.sd.col).map (·.idx)).getD (parents S.A o).length) =
         kappaQ S.sd.r S.d h ((actualKeys S.A o).take
-          (((o.container S.sd.col).map (·.idx)).getD (parents S.A o).length)) := by sorry
+          (((o.container S.sd.col).map (·.idx)).getD (parents S.A o).length)) := by
+  obtain ⟨hres, hcont, hlast⟩ := resolve_copyCol S hi ha hq hc hh hx hxt ho
+  obtain ⟨hst, hnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp ho
+  obtain ⟨hcst, hcnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp hres
+  obtain ⟨hot, hoq⟩ := tmplCol_of_sdstack S hx hxt ho
+  have hφ : phaseOff S.sd i a ≤ i := by unfold phaseOff; split_ifs <;> omega
+  obtain ⟨Z, hBcol⟩ := colAt_copyCol S (show h ≤ S.n by omega) hot hoq
+  obtain ⟨hcpar, hctake, hcnone⟩ := colAt_context_onStack S.hsd Z hst
+  have hcmem : c ∈ S.B.colAddrs := by
+    rw [Tree.mem_colAddrs_iff]
+    unfold IsUpward at hup
+    cases hB : S.B.colAt c with
+    | none => rw [hB] at hup; exact hup.elim
+    | some _ => rfl
+  obtain ⟨hK1, hK2⟩ := colAt_litCap_onStack (k := k) (p := ρ) hcmem hcst
+  -- `B` in terms of the context column `C`
+  set C := ((context S.A S.sd Z).colAt o).getD [] with hC
+  have hBget : (S.B.colAt (S.copyCol h o)).getD [] = Tree.mapCol (shiftVal S.sd.r (h * S.d)) C := by
+    rw [hBcol, hC]
+    cases (context S.A S.sd Z).colAt o <;> simp [Tree.mapCol]
+  have hBpar : parents S.B (S.copyCol h o) = (parents S.A o).map (shiftVal S.sd.r (h * S.d)) := by
+    rw [← hcpar]
+    simp only [parents, hBget, mapCol_eq_map, List.map_map, ← hC]
+    rfl
+  have hBkeys : actualKeys S.B (S.copyCol h o) =
+      kappaQ S.sd.r S.d h (actualKeys (context S.A S.sd Z) o) := by
+    simp only [actualKeys, hBget, mapCol_eq_map, List.map_map, kappaQ, ← hC]
+    congr 1
+    funext y
+    simp only [Function.comp_apply, WithTop.map_coe]
+    rw [hcnum, ← hnum]
+    exact congrArg _ (relKey_shift S.sd.r S.d h (o.num 0) (by omega) y.2)
+  cases hce : o.container S.sd.col with
+  | none =>
+    rw [hce] at hcont
+    simp only [Option.map_none] at hcont
+    have hK := hK2 hcont
+    have hctx := hcnone hce
+    simp only [Option.map_none, Option.getD_none]
+    refine ⟨?_, ?_⟩
+    · simp only [parents, hK]; exact hBpar
+    · have : actualKeys (litCap S.B c k ρ) (S.copyCol h o) = actualKeys S.B (S.copyCol h o) := by
+        simp only [actualKeys, hK]
+      rw [this, hBkeys]
+      unfold kappaQ
+      rw [List.map_take]
+      simp only [actualKeys, hctx]
+  | some e =>
+    rw [hce] at hcont
+    simp only [Option.map_some] at hcont
+    obtain ⟨hKp, hKk⟩ := hK1 _ hcont
+    have hl := hlast e hce
+    simp only [Option.map_some, Option.getD_some]
+    refine ⟨?_, ?_⟩
+    · rw [hKp, hBpar]
+      apply List.take_of_length_le
+      simp only [List.length_map]
+      omega
+    · rw [hKk, hBkeys]
+      unfold kappaQ
+      rw [← List.map_take]
+      congr 1
+      have := hctake e hce
+      simp only [actualKeys, ← List.map_take]
+      congr 1
+      cases h1 : (context S.A S.sd Z).colAt o with
+      | none =>
+        rw [h1] at this
+        cases h2 : S.A.colAt o with
+        | none => rfl
+        | some _ => rw [h2] at this; cases this
+      | some C1 =>
+        rw [h1] at this
+        cases h2 : S.A.colAt o with
+        | none => rw [h2] at this; cases this
+        | some C2 =>
+          rw [h2] at this
+          simpa using this
 
 -- G9.4d: contents in `K` of the head `s_h` (`1 ≤ h ≤ φ`): the query part `τ_{h−1}(Q)` with keys
 -- `κ_{h−1}(y)`, then restored entries with parents `< r`
