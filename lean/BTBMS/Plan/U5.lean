@@ -4630,6 +4630,83 @@ theorem stageSetup_clauses (I : Interface.{u}) {n : Nat} {E : Forest}
   · -- S6
     simp [hS, stageSetup, Set.InjOn, Diagram.vars]
 
+/-- L8.6h (helper): `K` comes after `R` in reading order. -/
+theorem K_after_R_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) : ∀ x ∈ rs.K, rs.R ∈ rolesBefore H x := by
+  have hK : rs.K = (((rolesBefore H (.ord sd.col)).dropWhile (· != .ord rd.col)).drop 1).filter
+      (fun x => !((List.range rd.cursor).any fun i => x.inEntry ⟨rd.col, i⟩)) := by
+    simp only [roleSets, hsd, hrd, Option.bind_eq_bind, Option.bind_some] at hrs
+    cases hrs; rfl
+  obtain ⟨-, hR, -⟩ := rs_spec_E4 hsd hrd hrs
+  have hRT := root_before_stop_D4 hsd hrd
+  obtain ⟨s, t, hst⟩ := List.append_of_mem (List.takeWhile_subset _ hRT)
+  have hnd := Tree.roles_nodup H
+  obtain ⟨-, hbet⟩ := between_E4 hst hnd (Scan.stopData_col_mem hsd) hRT
+  intro x hx
+  rw [hK, rolesBefore, hbet] at hx
+  have hxt : x ∈ t := List.takeWhile_subset _ (List.mem_filter.1 hx).1
+  rw [hst] at hnd
+  have hxs : x ∉ s := fun h => (List.nodup_append.1 hnd).2.2 x h x (List.mem_cons_of_mem _ hxt) rfl
+  have hxR : x ≠ .ord rd.col := fun h =>
+    (List.nodup_cons.1 (List.nodup_append.1 hnd).2.1).1 (h ▸ hxt)
+  rw [hR, rolesBefore, hst, takeWhile_ne_append_E4 hxs, List.takeWhile_cons_of_pos (by
+    simpa using fun h => hxR h.symm)]
+  simp
+
+/-- L8.6h (helper): every query role is a variable of the stage problem (its `lim` atom). -/
+theorem qry_mem_vars_E4 {V : Type} {E : Forest} {cap : Option (Closure.AdmCap E)}
+    {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData (Closure.anchor E cap) = some sd)
+    (hrd : Scan.rootData (Closure.anchor E cap) = some rd) {rs : RoleSets}
+    (hrs : roleSets (Closure.anchor E cap) = some rs) (Λ : Diagram V) (ν : Role → V) (m : Nat)
+    (G : Forest) : ∀ x ∈ rs.Q, SVar.qry x ∈ (stageDiagram E cap sd rs Λ ν m G).vars := by
+  intro x hx
+  obtain ⟨hr, -, hTQ, -⟩ := Q_spec_E4 hsd hrd hrs
+  have hxH : x ∈ (Closure.anchor E cap).roles := by rw [hr]; simp [hx]
+  have hxT : x ≠ rs.T := fun h => hTQ (h ▸ hx)
+  have hlim : BaseAtom.lim x ∈ queryAtoms (Closure.anchor E cap) rs := by
+    refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨?_, ?_⟩, ?_⟩
+    · simp only [graph, List.mem_append]
+      exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hxH)))
+    · simp [BaseAtom.vars, hx]
+    · simp [BaseAtom.vars, hx]
+  have hq : qryVar (V := V) E cap (Closure.anchor E cap) rs m x = .qry x := by
+    simp [qryVar, hxT, hx]
+  simp only [stageDiagram, vars_append_E4, ofBase_vars, baseVars_map, List.mem_append,
+    List.mem_map]
+  left; left; left; left; right
+  exact ⟨x, List.mem_flatMap.2 ⟨_, hlim, by simp [BaseAtom.vars]⟩, hq⟩
+
+/-- L8.6h (helper): replace the query values of a realization by `β` on `Q`. -/
+def updQry_E4 {V : Type} (a₀ : SVar V → Ordinal.{u}) (Q : List Role) (β : Role → Ordinal.{u}) :
+    SVar V → Ordinal.{u}
+  | .qry x => if x ∈ Q then β x else a₀ (.qry x)
+  | .main x => a₀ (.main x)
+  | .lab v => a₀ (.lab v)
+  | .ref y => a₀ (.ref y)
+  | .top => a₀ .top
+
+/-- L8.6h (helper): `updQry_E4` does not touch the reference chart. -/
+theorem updQry_refVar_E4 {V : Type} (a₀ : SVar V → Ordinal.{u}) (Q : List Role)
+    (β : Role → Ordinal.{u}) (E : Forest) (cap : Option (Closure.AdmCap E)) (H : Forest)
+    (rs : RoleSets) (m : Nat) (y : Role) :
+    updQry_E4 a₀ Q β (refVar E cap H rs m y) = a₀ (refVar E cap H rs m y) := by
+  rcases refVar_cases_E4 (V := V) E cap H rs m y with h | ⟨_, _, _, h⟩ <;> rw [h] <;> rfl
+
+/-- L8.6h (helper): if the stopping column has no query, `Q` is empty. -/
+theorem Q_nil_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) (h : sd.Q = []) : rs.Q = [] := by
+  obtain ⟨-, -, -, -, -, hQ, -⟩ := rs_spec_E4 hsd hrd hrs
+  have hsd0 : Scan.stopData (dummySetup_E4 H none sd rd).H = some (dummySetup_E4 H none sd rd).sd :=
+    hsd
+  obtain ⟨-, -, hq⟩ := stop_roles_D4 hsd0
+  rw [hQ]
+  refine hq.trans ?_
+  show Tree.rolesCol sd.col.path sd.col.col 0 sd.Q = []
+  rw [h]; rfl
+
 /-- L8.6h: fit the transported query before the restored `K` (txt:1288-1304): a realization of
 the stage problem with `t = p`, all values below `W`, and all query values below the first
 value of `K` (or `W` if `K` is empty). -/
@@ -4652,7 +4729,124 @@ theorem stage_fit (I : Interface.{u}) {n : Nat} (hW : WFit I.toPrims n) {E : For
       ∀ x ∈ rs.Q, a (.qry x) < (match rs.K with
         | [] => α rs.T
         | v :: _ => α v) := by
-  sorry
+  obtain ⟨hTd, hR, -, hP, hD, hQ, hKP⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨-, -, hTQ, hPQ⟩ := Q_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨a₀, hfix₀, hbel₀, hhold₀⟩ := hT
+  have hRmem : rs.R ∈ (Closure.anchor E cap).roles := by
+    rw [hR]; exact List.takeWhile_subset _ (root_before_stop_D4 hyp.stop hyp.root)
+  have hTmem : rs.T ∈ (Closure.anchor E cap).roles := by
+    rw [hTd]; exact Scan.stopData_col_mem hyp.stop
+  have hqv := qry_mem_vars_E4 hyp.stop hyp.root hrs Λ ν m G
+  rcases firstK_cases hyp.inL hyp.ordinary hyp.stop hyp.root hrs with hK | ⟨v, rest, hK, hv⟩ |
+    ⟨rest, hK, hcl⟩
+  · -- `K = []`
+    refine ⟨a₀, hfix₀, hbel₀, hhold₀, fun x hx => ?_⟩
+    rw [hK]; exact hbel₀ _ (hqv x hx)
+  · -- `v` on the route: capture below `α v`
+    have hvK : v ∈ rs.K := by rw [hK]; exact List.mem_cons_self
+    have hvP : v ∈ rs.P := hKP v hvK
+    have hvH : v ∈ (Closure.anchor E cap).roles := by
+      rw [hP] at hvP; exact List.takeWhile_subset _ hvP
+    have hRv : α rs.R < α v :=
+      config_lt_of_before hyp.config hvH (K_after_R_E4 hyp.stop hyp.root hrs v hvK)
+    have hvT : α v < α rs.T := by
+      rw [hTd]; rw [hP] at hvP
+      exact config_lt_of_before hyp.config (Scan.stopData_col_mem hyp.stop) hvP
+    have helem := route_chain I hyp.inL.1 hyp.inL.2.1 hyp.stop hyp.config hvH hv
+    rw [← hTd] at helem
+    have hfixlt : ∀ z ∈ (stageDiagram E cap sd rs Λ ν m G).vars,
+        (stageFixed (Closure.anchor E cap) rs Fix z ∨ z = SVar.top) → σ z < α v := by
+      intro z hz hF
+      rcases hF with hF | rfl
+      · rw [hσ z hF]
+        cases z with
+        | main x => exact (config_lt_of_before hyp.config hRmem hF).trans hRv
+        | lab w =>
+          show b w < α v
+          exact (hR ▸ hyp.fixBelow w (lab_vars_E4 hyp hrs hz) hF).trans hRv
+        | ref y => exact absurd hF id
+        | qry x => exact absurd hF id
+        | top => exact absurd hF id
+      · rw [htop]; exact hRv
+    obtain ⟨a, hfa, hba, hha⟩ := I.capture _ _ σ helem hfixlt ⟨a₀, hfix₀, hbel₀, hhold₀⟩
+    refine ⟨a, hfa, fun z hz => (hba z hz).trans hvT, hha, fun x hx => ?_⟩
+    rw [hK]; exact hba _ (hqv x hx)
+  · -- the closed root owner: fit the query by `W_{<n}`
+    rcases hyp.query with hQ0 | ⟨hstd, hsize⟩
+    · have := Q_nil_E4 hyp.stop hyp.root hrs hQ0
+      refine ⟨a₀, hfix₀, hbel₀, hhold₀, fun x hx => ?_⟩
+      rw [this] at hx; cases hx
+    · have hgetD : ((Closure.anchor E cap).colAt rd.col).getD [] =
+          ((Closure.anchor E cap).colAt rd.col).getD [] := rfl
+      have hfixm : ∀ x ∈ rolesBefore (Closure.anchor E cap) rs.R, a₀ (SVar.main x) = α x :=
+        fun x hx => (hfix₀ (SVar.main x) (Or.inl hx)).trans (hσ (SVar.main x) hx)
+      have htop₀ : a₀ SVar.top = α rs.R := (hfix₀ _ (Or.inr rfl)).trans htop
+      set S := stageSetup E cap sd rd rs m α a₀ with hS
+      have hcl' : rd.cursor < (((Closure.anchor E cap).colAt rd.col).getD []).length ∧
+          rd.col.container sd.col ≠ some ⟨rd.col, rd.cursor⟩ := hcl
+      have hSC := stageSetup_clauses I hyp hrs hstd hcl' hhold₀ htop₀ hbel₀ hfixm
+      obtain ⟨β, hβ, hβlt⟩ := hW S ((valid_iff S).2 hSC) hsize
+      have hQS : S.queryRoles = rs.Q := by rw [hQ]; rfl
+      have hown : S.ownerVal S.rd.cursor = α (.slot ⟨rd.col, rd.cursor⟩) := rfl
+      set a := updQry_E4 a₀ rs.Q β with ha
+      have hqa : ∀ x ∈ rs.Q, a (.qry x) = β x := fun x hx => by simp [ha, updQry_E4, hx]
+      have hβv : ∀ x ∈ rs.Q, β x < α (.slot ⟨rd.col, rd.cursor⟩) := fun x hx => by
+        rw [← hown]; exact hβlt x (hQS ▸ hx)
+      have hsT : α (.slot ⟨rd.col, rd.cursor⟩) < α rs.T := by
+        have hvK : Role.slot ⟨rd.col, rd.cursor⟩ ∈ rs.K := by rw [hK]; exact List.mem_cons_self
+        have hvP := hKP _ hvK
+        rw [hTd]; rw [hP] at hvP
+        exact config_lt_of_before hyp.config (by rw [← hTd]; exact hTmem) hvP
+      -- the fitted query block
+      have hb4 : BaseHolds I.toPrims (queryAtoms (Closure.anchor E cap) rs)
+          (a ∘ qryVar E cap (Closure.anchor E cap) rs m) := by
+        have hqg : S.queryGraph = queryAtoms (Closure.anchor E cap) rs := by
+          rw [queryAtoms, hP, hTd, ← hQS]; rfl
+        rw [hqg] at hβ
+        refine (baseHolds_congr _ _ _ _ fun x hx => ?_).1 hβ
+        obtain ⟨at', hat, hxa⟩ := List.mem_flatMap.1 hx
+        have hxv := mem_of_restrictTo_D4 (List.mem_filter.1 hat).1 hxa
+        simp only [List.mem_append, List.mem_singleton] at hxv
+        rcases hxv with (hxP | rfl) | hxQ
+        · have hxQ' : x ∉ S.queryRoles := by rw [hQS]; exact hPQ x hxP
+          obtain ⟨y, hy, -, hq⟩ := qryVar_P_E4 (V := V) hyp.inL hyp.stop hyp.root hrs m hxP
+          have hxT : x ≠ .ord sd.col := by rw [hP] at hxP; exact ne_of_mem_rolesBefore_D4 hxP
+          simp only [ScanSetup.fitVal, ScanSetup.baseVal, Function.comp_apply, hq]
+          rw [if_neg hxQ', if_neg (show x ≠ Role.ord S.sd.col from hxT), ha, updQry_refVar_E4]
+          show ((Closure.anchorOrigin E cap x).map fun y => S.asg (S.ePre y)).getD 0 = _
+          rw [hy]; rfl
+        · have hTQ' : rs.T ∉ S.queryRoles := by rw [hQS]; exact hTQ
+          simp only [ScanSetup.fitVal, ScanSetup.baseVal, Function.comp_apply]
+          rw [if_neg hTQ', if_pos (show rs.T = Role.ord S.sd.col from hTd)]
+          simp [qryVar, ha, updQry_E4]; rfl
+        · have hxQ' : x ∈ S.queryRoles := by rw [hQS]; exact hxQ
+          have hxT : x ≠ rs.T := fun h => hTQ (h ▸ hxQ)
+          simp only [ScanSetup.fitVal, Function.comp_apply, if_pos hxQ']
+          simp [qryVar, hxT, hxQ, ha, updQry_E4]
+      refine ⟨a, ?_, ?_, ?_, ?_⟩
+      · intro z hz
+        rw [← hfix₀ z hz]
+        cases z with
+        | qry x => exact absurd hz (by simp [stageFixed])
+        | _ => rfl
+      · intro z hz
+        cases z with
+        | qry x =>
+          by_cases hx : x ∈ rs.Q
+          · rw [hqa x hx]; exact (hβv x hx).trans hsT
+          · simp only [ha, updQry_E4, hx, if_false]; exact hbel₀ _ hz
+        | _ => exact hbel₀ _ hz
+      · obtain ⟨h1, h2, h3, -, h5, h6, h7, h8⟩ :=
+          (stageDiagram_holds_E4 _ _ _ _ _ _ _ _ _ _).1 hhold₀
+        refine (stageDiagram_holds_E4 _ _ _ _ _ _ _ _ _ _).2 ⟨h1, h2, ?_, hb4, h5, h6, h7, ?_⟩
+        · refine (baseHolds_congr _ _ _ _ fun y _ => ?_).1 h3
+          exact (updQry_refVar_E4 a₀ rs.Q β E cap _ rs m y).symm
+        · intro y hy
+          rw [ha, updQry_refVar_E4]
+          exact h8 y hy
+      · intro x hx
+        rw [hK, hqa x hx]
+        exact hβv x hx
 
 /-- L8.6i: restore `K` at its original values with the new root `p`; the union is `G_{m+1}` and
 the stage invariant holds at `m + 1` (txt:1306-1311). -/
