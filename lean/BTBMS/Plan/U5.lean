@@ -41,12 +41,23 @@ def ElemStep {V : Type} (D : List (BaseAtom V)) (x y : V) : Prop :=
 theorem elem_of_steps (I : Interface.{u}) {V : Type} {D : List (BaseAtom V)}
     {β : V → Ordinal.{u}} (hD : BaseHolds I.toPrims D β) {x y : V} (hx : IsLim (β x))
     (h : Relation.ReflTransGen (ElemStep D) x y) : I.Elem (β x) (β y) := by
-  sorry
+  induction h with
+  | refl => exact I.elem_refl hx
+  | @tail z y _ hzy ih =>
+    refine I.elem_trans ih ?_
+    rcases hzy with hm | ⟨a, hm⟩ | ⟨c, hm⟩
+    · exact hD _ hm
+    · exact I.edge_elem_high (hD _ hm)
+    · exact I.edge_elem_low (hD _ hm)
 
 /-- N5.2: chains survive enlarging the diagram. -/
 theorem steps_mono {V : Type} {D D' : List (BaseAtom V)} (hDD' : ∀ a ∈ D, a ∈ D') {x y : V}
     (h : Relation.ReflTransGen (ElemStep D) x y) : Relation.ReflTransGen (ElemStep D') x y := by
-  sorry
+  refine Relation.ReflTransGen.mono (fun a b hab => ?_) x y h
+  rcases hab with hm | ⟨c, hm⟩ | ⟨c, hm⟩
+  · exact Or.inl (hDD' _ hm)
+  · exact Or.inr (Or.inl ⟨c, hDD' _ hm⟩)
+  · exact Or.inr (Or.inr ⟨c, hDD' _ hm⟩)
 
 /-! ## N5.3 Block problems: floor encoding, capture, monotonicity -/
 
@@ -909,19 +920,48 @@ theorem descent_ordinary (I : Interface.{u}) {A A' : Forest} {k : Nat} {α : Rol
 /-- N5.1a: every nonempty standard expression has a configuration (induction on `IsStd`). -/
 theorem std_configured {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) {A : Forest}
     (hA : IsStd A) (hne : A ≠ Tree.empty) : ∃ θ, Conf A θ := by
-  sorry
+  induction hA with
+  | seed m => exact h.seed m
+  | @expand e e' n hs he ih =>
+    have hne' : e ≠ Tree.empty := by
+      rintro rfl
+      exact hne (Option.some.inj ((Scan.expand_empty n).symm.trans he)).symm
+    obtain ⟨θ, hθ⟩ := ih hne'
+    obtain ⟨θ', -, hθ'⟩ := h.descent e e' n θ hs hne' hθ he hne
+    exact ⟨θ', hθ'⟩
+
+/-- N5.1c: the empty forest is accessible (nothing is below it). -/
+theorem acc_empty {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) (B : Std)
+    (hB : B.1 = Tree.empty) : Acc Std.lt B := by
+  refine Acc.intro _ fun C hCB => ?_
+  change C.1 < B.1 at hCB
+  rw [hB] at hCB
+  have hC : C.1 ≠ Tree.empty := by
+    intro hh
+    rw [hh] at hCB
+    exact lt_irrefl _ hCB
+  exact absurd (h.empty_least C.1 hC) (lt_asymm hCB)
 
 /-- N5.1b (S-2, accessibility form): below a configured nonempty standard `A` of maximum `θ`,
 every standard `B ≤ A` is accessible (induction on `θ`). -/
 theorem acc_of_conf {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) :
     ∀ (θ : Ordinal.{u}) (A : Forest), IsStd A → A ≠ Tree.empty → Conf A θ →
       ∀ B : Std, B.1 ≤ A → Acc Std.lt B := by
-  sorry
-
-/-- N5.1c: the empty forest is accessible (nothing is below it). -/
-theorem acc_empty {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) (B : Std)
-    (hB : B.1 = Tree.empty) : Acc Std.lt B := by
-  sorry
+  intro θ
+  induction θ using WellFoundedLT.induction with
+  | _ θ ih =>
+    intro A hA hne hconf B hBA
+    refine Acc.intro _ fun C hCB => ?_
+    by_cases hC : C.1 = Tree.empty
+    · exact acc_empty h C hC
+    · have hCA : C.1 < A := lt_of_lt_of_le hCB hBA
+      obtain ⟨n, A', hex, hCA'⟩ := h.cofinal C.1 A C.2 (h.closure A hA) hCA
+      have hne' : A' ≠ Tree.empty := by
+        intro hh
+        rw [hh] at hCA'
+        exact not_lt_of_ge hCA' (h.empty_least C.1 hC)
+      obtain ⟨θ', hlt, hconf'⟩ := h.descent A A' n θ hA hne hconf hex hne'
+      exact ih θ' hlt A' (IsStd.expand n hA hex) hne' hconf' C hCA'
 
 /-- R9.2: the ordinal interpretation `σ(∅) = 0`, `σ(E) = min {max α + 1 : α ⊨ Γ(E)}`. -/
 noncomputable def sigma (P : Prims.{u}) (E : Forest) : Ordinal.{u} :=
