@@ -928,11 +928,411 @@ structure CapData (P : Prims.{u}) (pk : SourcePacket.{u}) where
     ({ E := pk.rk.E, b := pk.rk.b, F := H'.truncAfter (Closure.moveAddr w.moves pk.rk.b),
        a := Closure.moveAddr w.moves pk.rk.b, kind := .repair w.moves } : SrcRecord).Admitted
 
+/-! ### L7.5d helpers (G-012; `blueprint/repairs/lean/G012.lean`, adapted to the integrated
+contracts `Closure.MovesOutside`, `Closure.moves_spec`, `Closure.applyMoves_litCap_addr`,
+`repair_moves_outside`) -/
+
+end Packet
+
+namespace Tree
+
+/-- D1.2g helper (G-012): `takeWhile` passes a block all of whose members satisfy the test. -/
+theorem takeWhile_append_of_forall {p : Role → Bool} :
+    ∀ (l₁ l₂ : List Role), (∀ a ∈ l₁, p a = true) → (l₁ ++ l₂).takeWhile p = l₁ ++ l₂.takeWhile p
+  | [], _, _ => rfl
+  | a :: l₁, l₂, h => by
+    have ha : p a = true := h a (List.mem_cons_self ..)
+    have ih := takeWhile_append_of_forall l₁ l₂ (fun b hb => h b (List.mem_cons_of_mem _ hb))
+    simp only [List.cons_append, List.takeWhile_cons, ha, if_true, ih]
+
+/-- D1.2g helper (G-012): a role of `t` whose path extends `e.heightPath` is a role of the height
+of `e`, placed under `e.heightPath`. -/
+theorem mem_under_of_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {x : Role}
+    (hx : x ∈ t.roles) (hpath : e.heightPath <+: x.path) :
+    x ∈ ((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) := by
+  obtain ⟨h, hh⟩ : ∃ h, t.heightAt e = some h := by
+    have h1 := (mem_entryAddrs_iff _ _).mp he
+    cases hE : t.entryAt e with
+    | none => simp [hE] at h1
+    | some v => exact ⟨v.2, by simp [Tree.heightAt, hE]⟩
+  rw [hh, Option.getD_some, List.mem_map]
+  obtain ⟨π', hπ'⟩ := hpath
+  have hcol : ∀ d : ColAddr, d.path = e.heightPath ++ π' →
+      t.colAt d = h.colAt ⟨π', d.col⟩ := by
+    intro d hd
+    unfold Tree.colAt
+    rw [hd, forestAt_append, forestAt_heightPath, hh]
+    rfl
+  cases x with
+  | ord d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.ord ⟨π', d.col⟩, ?_, ?_⟩
+    · have hx' := (mem_roles_iff _ _).mp hx
+      rw [mem_roles_iff]
+      simp only at hx' ⊢
+      rwa [hcol d hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+  | slot d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.slot ⟨⟨π', d.col.col⟩, d.idx⟩, ?_, ?_⟩
+    · have hx' := (mem_roles_iff _ _).mp hx
+      rw [mem_roles_iff]
+      simp only at hx' ⊢
+      unfold Tree.entryAt at hx' ⊢
+      rwa [hcol d.col hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+
+/-- D1.2g item 2 (G-012): no role of the prefix `P(t, e)` lies inside `e`. -/
+theorem not_inEntry_of_mem_prefix {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
+    {y : Role} (hy : y ∈ Packet.prefixRoles t e) : y.inEntry e = false := by
+  obtain ⟨post, hroles, -⟩ := roles_entry he
+  have hnd := roles_nodup t
+  rw [hroles] at hnd
+  have hdis := List.disjoint_of_nodup_append hnd
+  have hyt : y ∈ t.roles := (List.takeWhile_sublist _).subset hy
+  by_contra hin
+  have hin' : y.inEntry e = true := by simpa using hin
+  have hne : y ≠ .slot e := by
+    rintro rfl
+    exact hdis hy (List.mem_cons_self ..)
+  have hpath : e.heightPath <+: y.path := by
+    simpa [Role.inEntry, hne, List.isPrefixOf_iff_prefix] using hin'
+  exact hdis hy (List.mem_cons_of_mem _ (List.mem_append_left _ (mem_under_of_inEntry he hyt hpath)))
+
+/-- D1.2g item 1 (G-012): the prefix of an entry and its slot precede every other role inside
+the entry. -/
+theorem prefix_slot_before_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
+    {x : Role} (hx : x ∈ t.roles) (hin : x.inEntry e = true) (hne : x ≠ .slot e) :
+    Packet.prefixRoles t e ++ [.slot e] <+: Packet.rolesBefore t x := by
+  obtain ⟨post, hroles, -⟩ := roles_entry he
+  have hxP : x ∉ Packet.prefixRoles t e := fun h => by
+    have h1 := not_inEntry_of_mem_prefix he h
+    rw [hin] at h1
+    exact absurd h1 (by decide)
+  unfold Packet.rolesBefore
+  rw [hroles, takeWhile_append_of_forall]
+  · simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, Ne.symm hne, not_false_eq_true,
+      if_true]
+    exact ⟨_, by rw [List.append_assoc]; rfl⟩
+  · intro a ha
+    simp only [bne_iff_ne, ne_eq]
+    rintro rfl
+    exact hxP ha
+
+end Tree
+
+namespace Packet
+
+open Hier
+
+/-- L7.5a-1 (G-012): a repair step that retains `e` (or a container of `e`) is undone by the
+backward index map, on `U_e` and on `A_{e.col}`. -/
+theorem mapEntry_bwd_fwd {K : Forest} {e : EntryAddr} {m : Closure.Move}
+    (h : Closure.RepairStepOK K e m) :
+    m.mapEntry m.bwdIdx (m.mapEntry m.fwdIdx e) = e ∧
+      m.mapRole m.bwdIdx (m.mapRole m.fwdIdx (.ord e.col)) = .ord e.col := by
+  obtain ⟨col, -, hij, -, -, -, hret⟩ := h
+  rcases hret with hret | ⟨ρ, hρ⟩
+  · -- the retained entry is `e` itself: `e.col = m.col`, `e.idx = m.j`
+    subst hret
+    have hp : ∀ g : Nat → Nat, m.mapPath g m.col.path = m.col.path := by
+      intro g; unfold Closure.Move.mapPath; simp
+    have hc : (⟨m.col.path, m.col.col⟩ : ColAddr) = m.col := rfl
+    refine ⟨?_, ?_⟩
+    · simp only [Closure.Move.mapEntry, hp, hc, if_true]
+      congr 1
+      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
+      split <;> split <;> omega
+    · simp only [Closure.Move.mapRole, hp]
+  · -- the retained entry contains `e.col`: `e.col.path = m.col.path ++ (m.col.col, m.j) :: ρ`
+    obtain ⟨⟨π, cc⟩, idx⟩ := e
+    simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
+    subst hρ
+    have hmp : ∀ (g : Nat → Nat) (x : Nat),
+        m.mapPath g (m.col.path ++ (m.col.col, x) :: ρ) = m.col.path ++ (m.col.col, g x) :: ρ := by
+      intro g x; unfold Closure.Move.mapPath; simp
+    have hne : ∀ x : Nat, (⟨m.col.path ++ (m.col.col, x) :: ρ, cc⟩ : ColAddr) ≠ m.col := by
+      intro x h
+      have h' := congrArg (fun c : ColAddr => c.path.length) h
+      simp at h'
+    have hji : m.bwdIdx (m.fwdIdx m.j) = m.j := by
+      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
+      split <;> split <;> omega
+    refine ⟨?_, ?_⟩
+    · simp only [Closure.Move.mapEntry, hmp, if_neg (hne _), hji]
+    · simp only [Closure.Move.mapRole, hmp, hji]
+
+/-- L7.5a-1 (G-012): along a repair list for `b`, undoing the moves (last first) sends the moved
+slot and host column back to `U_b` and `A_{b.col}`. -/
+theorem foldr_bwd_moveAddr {K : Forest} {b : EntryAddr} {ms : List Closure.Move}
+    (h : Closure.RepairList K b ms) :
+    ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.slot (Closure.moveAddr ms b)) = .slot b ∧
+      ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.ord (Closure.moveAddr ms b).col) =
+        .ord b.col := by
+  induction ms using List.reverseRecOn with
+  | nil => exact ⟨rfl, rfl⟩
+  | append_singleton ms m ih =>
+    -- the prefix is a repair list, and the last step retains the current marked entry
+    have hpre : Closure.RepairList K b ms := by
+      intro idx hidx
+      have h' := h idx (by simp; omega)
+      rwa [List.take_append_of_le_length (by omega), List.getElem_append_left hidx] at h'
+    have hlast : Closure.RepairStepOK (Closure.applyMoves K ms) (Closure.moveAddr ms b) m := by
+      have h' := h ms.length (by simp)
+      simpa using h'
+    obtain ⟨ih1, ih2⟩ := ih hpre
+    obtain ⟨hb1, hb2⟩ := mapEntry_bwd_fwd hlast
+    have hma : Closure.moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (Closure.moveAddr ms b) := by
+      show Closure.moveAddrBody _ _ = _
+      simp [Closure.moveAddrBody, List.foldl_append]; rfl
+    have hcol : ∀ (g : Nat → Nat) (e : EntryAddr),
+        (m.mapEntry g e).col = ⟨m.mapPath g e.col.path, e.col.col⟩ := by
+      intro g e
+      unfold Closure.Move.mapEntry
+      dsimp only
+      split <;> rfl
+    rw [hma, List.foldr_append, List.foldr_append]
+    constructor
+    · simp only [List.foldr_cons, List.foldr_nil, Closure.Move.mapRole, hb1]
+      exact ih1
+    · have hb2' : m.mapRole m.bwdIdx (.ord (m.mapEntry m.fwdIdx (Closure.moveAddr ms b)).col) =
+          .ord (Closure.moveAddr ms b).col := by
+        rw [hcol]; exact hb2
+      simp only [List.foldr_cons, List.foldr_nil, hb2']
+      exact ih2
+
+/-- L7.5a-2 (G-012; consumers L7.5d `marked_slot`, `marked_host`): the moved marked entry and its
+host column have origins `U_b` and `A_{b.col}`. -/
+theorem origin_moveAddr {E : Forest} (hE : Scan.InL E) (w : Closure.AdmCap E) {b : EntryAddr}
+    (hbc : b.heightPath <+: w.col.path) (hout : Closure.MovesOutside w.moves b) :
+    w.origin (.slot (Closure.moveAddr w.moves b)) = some (.slot b) ∧
+      w.origin (.ord (Closure.moveAddr w.moves b).col) = some (.ord b.col) := by
+  obtain ⟨h1, h2⟩ := foldr_bwd_moveAddr (Closure.moves_spec hE w b hbc hout).1
+  have hne : (Role.slot b) ≠ .slot ⟨w.col, w.cut⟩ := by
+    intro h
+    have hb : b = ⟨w.col, w.cut⟩ := Role.slot.inj h
+    have hlen := hbc.length_le
+    simp [hb, EntryAddr.heightPath] at hlen
+  constructor
+  · show Closure.originBody w _ = _
+    simp only [Closure.originBody, h1, if_neg hne]
+  · show Closure.originBody w _ = _
+    simp only [Closure.originBody, h2]
+    simp
+
+/-- L7.5a-3 (G-012; consumers L7.5d `marked_mem`, `stop_inside`, `marked_prefix`): the moved
+marked entry `bm` is an entry of `w.H`; `w.H` is the literal cap at the relocated column `c'`
+inside `bm`; the stopping column and the closing slot lie inside `bm`; every role of `P(w.H, bm)`
+has an origin. -/
+theorem marked_entry_cap {E : Forest} (hE : IsStd E) (w : Closure.AdmCap E) {b : EntryAddr}
+    (hb : b ∈ E.entryAddrs) (hbc : b.heightPath <+: w.col.path)
+    (hout : Closure.MovesOutside w.moves b) :
+    Closure.moveAddr w.moves b ∈ w.H.entryAddrs ∧
+    w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
+      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par ∧
+    (∀ sd, Scan.stopData w.H = some sd →
+      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
+        w.col.col⟩ ∧
+      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
+      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true) ∧
+    ∀ x ∈ prefixRoles w.H (Closure.moveAddr w.moves b), (w.origin x).isSome := by
+  have hL : Scan.InL E := Closure.std_inL hE
+  obtain ⟨-, -, -, hG, hH⟩ := Closure.moves_spec hL w b hbc hout
+  -- `bm` is an entry of `w.H` (U2 `moves_spec` items 4-5, U1 `setHeight_basic`)
+  have hbE : (E.heightAt b).isSome := by
+    have h := (Tree.mem_entryAddrs_iff _ _).mp hb
+    simpa [Tree.heightAt] using h
+  have hbmG : Closure.moveAddr w.moves b ∈
+      (Closure.applyMoves (E.truncAfter b) w.moves).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]
+    have h : ((Closure.applyMoves (E.truncAfter b) w.moves).heightAt
+        (Closure.moveAddr w.moves b)).isSome := by rw [hG]; exact hbE
+    simpa [Tree.heightAt] using h
+  have hmem : Closure.moveAddr w.moves b ∈ w.H.entryAddrs := by
+    rw [hH]; exact (Tree.setHeight_basic _ _ _ hbmG).1
+  -- `w.H` is the literal cap at the relocated column (U2 `applyMoves_litCap_addr`, all moves)
+  obtain ⟨hup', hlit, -⟩ :=
+    Closure.applyMoves_litCap_addr hL.2.2.1 w hbc hout w.moves.length le_rfl
+  rw [List.take_length] at hup' hlit
+  have hwH : w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
+      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par := hlit
+  -- the stopping column and the closing slot lie inside `bm` (U2 T3.8c `stopData_litCap`)
+  have hin : ∀ sd, Scan.stopData w.H = some sd →
+      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
+        w.col.col⟩ ∧
+      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
+      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true := by
+    intro sd hsd
+    rw [hwH, Closure.stopData_litCap hup'] at hsd
+    obtain rfl := Option.some.inj hsd
+    refine ⟨rfl, ?_, ?_⟩ <;>
+      simp [Role.inEntry, Role.path, Scan.closingSlot, List.isPrefixOf_iff_prefix]
+  refine ⟨hmem, hwH, hin, ?_⟩
+  -- origins on the prefix: `none` only at the closing slot (U2 `origin_spec_full` item 2), which
+  -- is inside `bm`, hence not in `P(w.H, bm)` (D1.2g item 2)
+  intro x hx
+  by_contra hno
+  have hxH : x ∈ w.H.roles := (List.takeWhile_sublist _).subset hx
+  obtain ⟨sd, hsd, rfl⟩ := ((Closure.origin_spec_full hL w).2.1 x hxH).mp
+    (Option.not_isSome_iff_eq_none.mp hno)
+  have h1 := Tree.not_inEntry_of_mem_prefix hmem hx
+  rw [(hin sd hsd).2.2] at h1
+  exact absurd h1 (by decide)
+
+/-- L7.5d-1 (G-012): value separation in its exact form. A configuration is strictly increasing
+along the reading order, so a chart `f` through which a configuration `a ∘ f` is read is
+injective on the roles. -/
+theorem injOn_of_config {P : Prims.{u}} {E : Forest} {V : Type} {f : Role → V}
+    {a : V → Ordinal.{u}} (h : IsConfig P E (a ∘ f)) : Set.InjOn f {x | x ∈ E.roles} := by
+  intro x hx y hy hxy
+  by_contra hne
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp hx
+  obtain ⟨j, hj⟩ := List.mem_iff_getElem?.mp hy
+  have hij : i ≠ j := by
+    rintro rfl
+    exact hne (Option.some.inj (hi.symm.trans hj))
+  rcases Nat.lt_or_gt_of_ne hij with h1 | h1
+  · have h2 := isConfig_before h ⟨i, j, hi, hj, h1⟩
+    simp [Function.comp, hxy] at h2
+  · have h2 := isConfig_before h ⟨j, i, hj, hi, h1⟩
+    simp [Function.comp, hxy] at h2
+
+/-- L7.5d-2 helper (G-012): `takeWhile (· != x)` stops inside a prefix that contains `x`. -/
+theorem takeWhile_ne_take_append {x : Role} :
+    ∀ (l r : List Role) (m : Nat), x ∈ l.take m →
+      (l.take m ++ r).takeWhile (· != x) = l.takeWhile (· != x)
+  | [], _, _, h => by simp at h
+  | _ :: _, _, 0, h => by simp at h
+  | y :: l, r, m + 1, h => by
+    by_cases hy : y = x
+    · subst hy; simp
+    · have h' : x ∈ l.take m := by
+        simp only [List.take_succ_cons, List.mem_cons] at h
+        rcases h with h | h
+        · exact absurd h.symm hy
+        · exact h
+      simp only [List.take_succ_cons, List.cons_append, List.takeWhile_cons]
+      simp [hy, takeWhile_ne_take_append l r m h']
+
+/-- L7.5d-2 (G-012): the literal cap keeps `A_c` and everything before it. -/
+theorem litCap_rolesBefore_col {E : Forest} {c : ColAddr} {k p : Nat}
+    (hup : Closure.IsUpward E c k p) :
+    Role.ord c ∈ (Closure.litCap E c k p).roles ∧
+      rolesBefore (Closure.litCap E c k p) (.ord c) = rolesBefore E (.ord c) := by
+  have hcol : ∃ col, E.colAt c = some col ∧ k ≤ col.length := by
+    unfold Closure.IsUpward at hup
+    split at hup
+    · rename_i col hc
+      refine ⟨col, hc, ?_⟩
+      split at hup
+      · rename_i hk
+        exact (List.getElem?_eq_some_iff.mp hk).1.le
+      · omega
+    · exact hup.elim
+  obtain ⟨col, hc, hk⟩ := hcol
+  have hcE : c ∈ E.colAddrs := (Tree.mem_colAddrs_iff _ _).mpr (by simp [hc])
+  have hkp : k ≤ (Scan.parents E c).length := by simp [Scan.parents, hc, hk]
+  obtain ⟨⟨m, hm⟩, -⟩ := Closure.litCap_spec (p := p) hcE hkp
+  have hmem : Role.ord c ∈ (Closure.litCap E c k p).roles :=
+    Scan.stopData_col_mem (Closure.stopData_litCap hup)
+  refine ⟨hmem, ?_⟩
+  have h1 : Role.ord c ∈ E.roles.take m := by
+    rw [hm] at hmem
+    simpa using hmem
+  unfold rolesBefore
+  rw [hm]
+  exact takeWhile_ne_take_append _ _ m h1
+
+/-- L7.5d-3 (G-012): `capRole` is the origin wherever the origin is defined. -/
+theorem capRole_of_origin {E : Forest} (w : Closure.AdmCap E) {x y : Role}
+    (h : w.origin x = some y) : capRole w x = y := by
+  simp [capRole, h]
+
 -- provides: U3, L7.5d (requested by U5 R30): the Case 3 data exist.
 theorem cap_package {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
     (hv : pk.Valid P) {c : ColAddr} {k p : Nat} (hfd : pk.rk.firstDiff = .capAt c k p) :
     Nonempty (CapData P pk) := by
-  sorry
+  -- sources: L4.2 `firstDiff_cap`, U2 L3.1 `repair`, T3.2 `std_inL`/`std_condP`
+  obtain ⟨hbc, hcE, hup, hKV, hKI, -, hKA, -, -⟩ := firstDiff_cap hadm hfd
+  have hstd : IsStd pk.rk.E := hadm.1
+  have hL : Scan.InL pk.rk.E := Closure.std_inL hstd
+  obtain ⟨w, hwc, hwk, hwp, ⟨sd, hsd, -, -⟩, c₀, hup₀, hwH⟩ :=
+    Closure.repair hL (Closure.std_condP hstd) hup hKV hKI hKA
+  have hw : w.col = c ∧ w.cut = k ∧ w.par = p := ⟨hwc, hwk, hwp⟩
+  -- `ordinary`: U2 T3.8c `litCap_ordinary` at the relocated column; `root`: spine
+  have hHL : Scan.InL w.H := w.inL
+  have hord : Scan.stepKind w.H = some .ordinary := by
+    rw [hwH] at hHL ⊢
+    exact Closure.litCap_ordinary hL.2.1 hup₀ hHL.1 hHL.2.1
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (Scan.rootData_of_ordinary hord)
+  -- sources: L7.4 `joint_cap`, L7.5 `joint_repair`
+  have JC := joint_cap pk hadm hv hfd
+  have JR := joint_repair pk hadm hv hfd w hw
+  dsimp only at JC JR
+  obtain ⟨hKcfg, hκtgt, hκown, -, hown_lt, -, hbelow, -, hholds⟩ := JC
+  obtain ⟨hHcfg, -, -, hframe, -, -, -⟩ := JR
+  -- the marked entry: L4.3c `repair_moves_outside`, L7.5a `frame_repair`, L7.5a-2, L7.5a-3
+  have hbc' : pk.rk.b.heightPath <+: w.col.path := hwc ▸ hbc
+  have hout := repair_moves_outside hadm hfd w hw
+  have hME := marked_entry_cap hstd w hadm.2.1 hbc' hout
+  have hOM := origin_moveAddr hL w hbc' hout
+  have hFR := frame_repair hstd w hadm.2.1 hbc' hout
+  dsimp only at hFR
+  -- the `E`-prefix: U2 D3.1d `admCap_query`, L7.5d-2, D1.2g
+  have hT : w.origin (.ord sd.col) = some (.ord c) := by
+    have h := (Closure.admCap_query hL w hsd).2.2.2.1
+    rwa [hwc] at h
+  have hePre : ePrefix pk.rk.E (some w) sd = rolesBefore pk.rk.E (.ord c) := by
+    simp [ePrefix, Closure.anchorOrigin, hT]
+  have hlit := litCap_rolesBefore_col hup
+  have hcapT : capRole w (.ord sd.col) = .ord c := capRole_of_origin w hT
+  have hcE' : Role.ord c ∈ pk.rk.E.roles :=
+    (Tree.mem_roles_iff _ _).mpr ((Tree.mem_colAddrs_iff _ _).mp hcE)
+  have hcin : (Role.ord c).inEntry pk.rk.b = true := by
+    simp [Role.inEntry, Role.path, List.isPrefixOf_iff_prefix.mpr hbc]
+  have hpre := Tree.prefix_slot_before_inEntry hadm.2.1 hcE' hcin (by simp)
+  refine ⟨{
+    w := w, sd := sd, rd := rd, nm := capChart pk, nmH := capChart pk ∘ capRole w,
+    asg' := pk.asg, ordinary := hord, stop := hsd, root := hrd,
+    qsize := (query_size_bound hadm hfd w hw hsd).2.2,
+    nm_tgt := hκtgt, nm_owner := hκown,
+    pre_sub := fun y hy => by rw [hePre]; exact hpre.subset (List.mem_append_left _ hy),
+    nm_inj := ?_, nmH_inj := injOn_of_config hHcfg,
+    compat := fun x _ y h => by simp only [Function.comp, capRole_of_origin w h],
+    asg_old := fun _ _ => rfl, config := hHcfg,
+    ePrefix_holds := ?_, ePrefix_below := ?_,
+    marked_mem := hME.1, marked_slot := hOM.1, marked_host := hOM.2,
+    marked_prefix := ?_, marked_frame := congrArg Frame.reps hframe,
+    stop_inside := (hME.2.2.1 sd hsd).2.1,
+    owner_lt := ?_,
+    readmit := fun n H' hexp habove => (repair_output hadm hfd w hw hexp habove).2.2.2.2 }⟩
+  · -- `nm_inj`: L7.4 (a) and L7.5d-1 on `K`, since `ePrefix = rolesBefore K A_c ⊆ K.roles`
+    intro y hy y' hy' h
+    have h1 : y ∈ rolesBefore (Closure.litCap pk.rk.E c k p) (.ord c) := by
+      rw [hlit.2, ← hePre]; exact hy
+    have h2 : y' ∈ rolesBefore (Closure.litCap pk.rk.E c k p) (.ord c) := by
+      rw [hlit.2, ← hePre]; exact hy'
+    exact injOn_of_config hKcfg ((List.takeWhile_sublist _).subset h1)
+      ((List.takeWhile_sublist _).subset h2) h
+  · -- `ePrefix_holds`: L7.4 (f) and N3.1 `baseHolds_map`
+    rw [hePre]
+    exact (baseHolds_map P (capChart pk) _ pk.asg).mp hholds
+  · -- `ePrefix_below`: L7.4 (e), `rolesBefore K A_c = rolesBefore E A_c`, `capRole T = A_c`
+    intro y hy
+    rw [hePre, ← hlit.2] at hy
+    show pk.asg (capChart pk y) < pk.asg (capChart pk (capRole w (.ord sd.col)))
+    rw [hcapT]
+    exact hbelow y hy
+  · -- `marked_prefix`: L7.5a (prefix clause) and L7.5a-3 (origins defined on the prefix)
+    intro x hx
+    obtain ⟨z, hz⟩ := Option.isSome_iff_exists.mp (hME.2.2.2 x hx)
+    exact ⟨z, capRole_of_origin w hz ▸ hFR.2.2.1 x hx, hz⟩
+  · -- `owner_lt`: L7.4 (d)
+    show pk.asg pk.owner < pk.asg (capChart pk (capRole w (.ord sd.col)))
+    rw [hcapT]
+    exact hown_lt
 
 
 end Packet
