@@ -19875,6 +19875,12 @@ theorem phase_path_fwd_G3 (S : OrdData_G3) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ 
 
 /-! ### T3.2r helpers (branch G3): the test classes -/
 
+theorem List.take_take_of_le_G3 {α : Type} {l : List α} {k m : Nat} (h : k ≤ m) :
+    (l.take m).take k = l.take k := by
+  rw [List.take_take, Nat.min_eq_left h]
+
+
+
 /-- T3.2r (G3), class (a): tests of a context column (its stack is context, and its active key
 lists are the old ones). -/
 theorem aAt_ctx_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs)
@@ -19942,7 +19948,192 @@ the old root tests at the reset boundary, T3.2p). -/
 theorem aAt_head_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {c : ColAddr}
     (hc : phaseCol S.sd S.rd j S.rd.col = some c) (i : Nat) :
     AAt S.B (activeKeys_D7_G3 S.B c) c i := by
-  sorry
+  intro p hp
+  rw [activeKeys_self_G3]
+  have hpp : PhasePair_D7_G3 S j S.sd.col c (j - 1) := Or.inr ⟨rfl, hc, rfl⟩
+  have hVA : CondV S.A := S.inL.1
+  obtain ⟨hmB, hparm, hkeym⟩ := headQuery_prefix_D7_G3 S hj hc
+  obtain ⟨col, hBcol, hlen, -, hU⟩ := colAt_head S.inL S.kind S.hsd S.hrd S.out hj hc
+  obtain ⟨hra, hnum⟩ := phasePair_num_D7_G3 S hj hpp
+  obtain ⟨hcolA, -, -, -⟩ := stopData_spec S.hsd
+  obtain ⟨hres, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  have hrdmem : S.rd.col ∈ S.A.colAddrs := (rootData_spec S.hsd S.hrd).2.2.2.2.2.1
+  have hsdmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcolA]; rfl
+  have hm : S.sd.Q.length = S.m := rfl
+  have hparA : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcolA]
+  have hBpar : parents S.B c = col.map Prod.fst := by simp [parents, hBcol]
+  -- starts and queries of the cuts `k ≤ m`
+  have hpfx : ∀ k, k < S.m → (parents S.B c)[k]? =
+      ((parents S.A S.sd.col)[k]?).map (shiftVal S.sd.r ((j - 1) * S.d)) := by
+    intro k hk
+    rw [← List.getElem?_take_of_lt hk, hparm, List.getElem?_map, List.getElem?_take_of_lt hk]
+  have hst : ∀ k, k ≤ S.m → cutStart S.B c k =
+      shiftVal S.sd.r ((j - 1) * S.d) (cutStart S.A S.sd.col k) := by
+    intro k hk
+    unfold cutStart
+    split_ifs with hk0
+    · rw [hnum]; unfold shiftVal; rw [if_pos (by omega)]; omega
+    · rw [hpfx (k - 1) (by omega)]
+      obtain ⟨q, hq⟩ : ∃ q, (parents S.A S.sd.col)[k - 1]? = some q :=
+        ⟨_, List.getElem?_eq_getElem (by rw [hparA]; simp; omega)⟩
+      rw [hq]; rfl
+  have hqk : ∀ k, k ≤ S.m → cutQuery (actualKeys S.B c) k =
+      kappaQ_G3 S.sd.r S.d (j - 1) (cutQuery (actualKeys S.A S.sd.col) k) := by
+    intro k hk
+    have : (actualKeys S.B c).take k =
+        kappaQ_G3 S.sd.r S.d (j - 1) ((actualKeys S.A S.sd.col).take k) := by
+      rw [← List.take_take_of_le_G3 hk, hkeym]
+      unfold kappaQ_G3
+      rw [List.map_take, List.map_take, List.take_take, Nat.min_eq_left hk]
+    unfold cutQuery
+    rw [this]
+    unfold kappaQ_G3
+    rw [nu_map (kappaQry_strictMono_G3 _ _ _)]
+  have hlenB : (parents S.B c).length = S.m + (unconsumed S.A S.rd).length := by
+    rw [hBpar, List.length_map, hlen]; rfl
+  have hiB : i < S.m + (unconsumed S.A S.rd).length := by
+    rw [← hlenB]; exact (List.getElem?_eq_some_iff.1 hp).1
+  -- restored entries of the head are the unconsumed root entries
+  have hrest : ∀ v x, (unconsumed S.A S.rd)[v]? = some x →
+      (parents S.B c)[S.m + v]? = some x.1 ∧
+        (parents S.A S.rd.col)[S.rd.cursor + v]? = some x.1 ∧ x.1 < S.sd.r := by
+    intro v x hx
+    obtain ⟨y, hy, hy1, -⟩ := hU v x hx
+    rw [hm] at hy
+    refine ⟨by rw [hBpar, List.getElem?_map, hy, Option.map_some, hy1], ?_,
+      ker_unconsumed_lt hVA S.hsd S.hrd x (List.mem_of_getElem? hx)⟩
+    unfold unconsumed rootCol at hx
+    rw [List.getElem?_drop] at hx
+    simp [parents, hx]
+  rcases Nat.lt_trichotomy i S.m with him | rfl | him
+  · -- (d) the query prefix: the old terminal tests
+    rw [hpfx i him] at hp
+    obtain ⟨p0, hp0, rfl⟩ := Option.map_eq_some_iff.mp hp
+    have hA := aAt_active_of_inL_G3 S.inL hsdmem i p0 hp0
+    rw [activeKeys_self_G3] at hA
+    rw [hqk i him.le, hst i him.le]
+    exact phase_path_fwd_G3 S hj hpp (cutQuery_noninc _ _) (ne_top_of_mem_cutQuery_D7_G3 _ _ _) hA
+  · -- (e) the first restored entry: the terminal's last test, then the root edge at `Z`
+    obtain ⟨x, hx⟩ : ∃ x, (unconsumed S.A S.rd)[0]? = some x :=
+      ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    obtain ⟨hB0, hR0, hxr⟩ := hrest 0 x hx
+    rw [Nat.add_zero] at hB0 hR0
+    rw [hB0] at hp
+    cases hp
+    have hpr : (parents S.A S.sd.col)[S.m]? = some S.sd.r := by
+      rw [hparA, List.getElem?_append_right (by simp [hm]), List.length_map, hm, Nat.sub_self]
+      rfl
+    have hA := aAt_active_of_inL_G3 S.inL hsdmem S.m S.sd.r hpr
+    rw [activeKeys_self_G3] at hA
+    -- the root edge `r → p_c` at the complete query
+    have hcurR : S.rd.cursor < (actualKeys S.A S.rd.col).length := by
+      rw [← length_parents_F7_G3]; exact (List.getElem?_eq_some_iff.1 hR0).1
+    have hedge : Edge S.A (activeKeys_D7_G3 S.A S.sd.col) S.sd.col
+        (cutQuery (actualKeys S.A S.sd.col) S.m) S.sd.r x.1 := by
+      refine ⟨S.rd.col, hres, ?_⟩
+      rw [resp_eq_parents]
+      have hcur : cursor (activeKeys_D7_G3 S.A S.sd.col S.rd.col)
+          (cutQuery (actualKeys S.A S.sd.col) S.m) = S.rd.cursor := by
+        have h0 := rdcursor_eq_F7_G3 S
+        unfold OrdData_G3.termZ at h0
+        unfold activeKeys_D7_G3
+        cases hRs : S.rd.col.container S.sd.col with
+        | none => exact h0.symm
+        | some e =>
+          have hl := container_sdcol_last_G3 S hRs
+          rw [length_parents_F7_G3] at hl
+          simp only
+          rw [cursor_active_G3 (by omega) (ne_top_of_mem_cutQuery_D7_G3 _ _ _) (by omega)]
+          exact h0.symm
+      rw [hcur, hR0]
+    have := phase_path_fwd_G3 S hj hpp (cutQuery_noninc _ _) (ne_top_of_mem_cutQuery_D7_G3 _ _ _)
+      (hA.tail hedge)
+    have e1 : shiftVal S.sd.r ((j - 1) * S.d) x.1 = x.1 := by
+      unfold shiftVal; rw [if_neg (by omega)]
+    rw [e1] at this
+    rw [hqk S.m le_rfl, hst S.m le_rfl]
+    exact this
+  · -- (f) later restored entries: the old root tests at the reset boundary (T3.2p)
+    obtain ⟨v, rfl⟩ : ∃ v, i = S.m + v := ⟨i - S.m, by omega⟩
+    have hv1 : 1 ≤ v := by omega
+    have hvU : v < (unconsumed S.A S.rd).length := by omega
+    obtain ⟨x, hx⟩ : ∃ x, (unconsumed S.A S.rd)[v]? = some x :=
+      ⟨_, List.getElem?_eq_getElem hvU⟩
+    obtain ⟨x', hx'⟩ : ∃ x', (unconsumed S.A S.rd)[v - 1]? = some x' :=
+      ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    obtain ⟨hBv, hRv, hxr⟩ := hrest v x hx
+    obtain ⟨hBv', hRv', hxr'⟩ := hrest (v - 1) x' hx'
+    rw [hBv] at hp
+    cases hp
+    set K := actualKeys S.A S.rd.col with hK
+    have hKlen : S.rd.cursor + v < K.length := by
+      rw [hK, ← length_parents_F7_G3]; exact (List.getElem?_eq_some_iff.1 hRv).1
+    -- root keys are `κ`-fixed
+    have hfix : ∀ k, kappaQ_G3 S.sd.r S.d (j - 1) (cutQuery K k) = cutQuery K k := by
+      intro k
+      have h1 := (kappaQ_fix_D7_G3 S.sd.r S.d (j - 1) S.A (o := S.rd.col) (by omega)).1
+      unfold kappaQ_G3 at h1 ⊢
+      rw [← cutQuery_map (kappaQry_strictMono_G3 _ _ _), h1]
+    -- the start
+    have hstB : cutStart S.B c (S.m + v) = x'.1 := by
+      unfold cutStart
+      rw [if_neg (by omega), show S.m + v - 1 = S.m + (v - 1) by omega, hBv']
+      rfl
+    have hstA : cutStart S.A S.rd.col (S.rd.cursor + v) = x'.1 := by
+      unfold cutStart
+      rw [if_neg (by omega), show S.rd.cursor + v - 1 = S.rd.cursor + (v - 1) by omega, hRv']
+      rfl
+    -- the query: the reset boundary is the old root boundary
+    have hcnum : c.num 0 = S.sd.r + j * S.d := by
+      have := num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inl rfl) hj.1 hc
+      rw [this, hrnum]
+      simp [phaseOff, isQMat_rdcol_G3 S, OrdData_G3.d]
+    have hrestK : ((actualKeys S.B c).drop S.m).take v = (K.drop S.rd.cursor).take v := by
+      apply List.ext_getElem?
+      intro u
+      rw [List.getElem?_take, List.getElem?_take, List.getElem?_drop, List.getElem?_drop]
+      split_ifs with hu
+      · obtain ⟨xu, hxu⟩ : ∃ xu, (unconsumed S.A S.rd)[u]? = some xu :=
+          ⟨_, List.getElem?_eq_getElem (by omega)⟩
+        obtain ⟨y, hy, -, hy2⟩ := hU u xu hxu
+        rw [hm] at hy
+        have hy2' := hy2 (fun h => by omega)
+        have hRu : ((S.A.colAt S.rd.col).getD [])[S.rd.cursor + u]? = some xu := by
+          unfold unconsumed rootCol at hxu
+          rwa [List.getElem?_drop] at hxu
+        simp only [actualKeys, hBcol, Option.getD_some, List.getElem?_map, hy, hK, hRu,
+          Option.map_some]
+        rw [hy2', hcnum, hrnum, show period S.sd = S.d from rfl,
+          relKey_shift S.sd.r S.d j S.sd.r le_rfl, kappa_fix S.sd.r S.d j S.sd.r le_rfl]
+      · rfl
+    have hqB : cutQuery (actualKeys S.B c) (S.m + v) = cutQuery K (S.rd.cursor + v) := by
+      obtain ⟨hcK, h1, h2⟩ := rootCap_headHyp_F7_G3 S (ks := K) (Or.inl rfl)
+      have h1' : cutQuery K S.rd.cursor ≤ kappaQ_G3 S.sd.r S.d (j - 1) S.termZ := by
+        rw [← hfix, kappaQ_le_iff_F7_G3]; exact h1
+      have h2' : kappaQ_G3 S.sd.r S.d (j - 1) S.termZ < cutQuery K (S.rd.cursor + 1) := by
+        rw [← hfix, kappaQ_lt_iff_G3]; exact h2 (by omega)
+      have hZ : nu (kappaQ_G3 S.sd.r S.d (j - 1) ((actualKeys S.A S.sd.col).take S.m)) =
+          kappaQ_G3 S.sd.r S.d (j - 1) S.termZ := by
+        unfold kappaQ_G3 OrdData_G3.termZ cutQuery
+        rw [nu_map (kappaQry_strictMono_G3 _ _ _)]
+      unfold cutQuery
+      rw [List.take_add, hrestK, hkeym, ← nu_append_nu, hZ]
+      exact reset_nu K _ (by omega) (kappaQ_noninc_G3 _ _ _ (cutQuery_noninc _ _)) h1' h2' hv1
+        hKlen.le
+    -- the old root test, read on the stopping column's stack below `r`
+    have hA := aAt_active_of_inL_G3 S.inL hrdmem (S.rd.cursor + v) x.1 hRv
+    rw [activeKeys_self_G3, hstA] at hA
+    have hA' := path_activeKeys_onStack_F7_G3 S.A hVA hres hxr' hA
+    have := phase_path_fwd_G3 S hj hpp (cutQuery_noninc _ _) (ne_top_of_mem_cutQuery_D7_G3 _ _ _)
+      hA'
+    have e1 : shiftVal S.sd.r ((j - 1) * S.d) x.1 = x.1 := by
+      unfold shiftVal; rw [if_neg (by omega)]
+    have e2 : shiftVal S.sd.r ((j - 1) * S.d) x'.1 = x'.1 := by
+      unfold shiftVal; rw [if_neg (by omega)]
+    rw [e1, e2, hfix] at this
+    rw [hqB, hstB]
+    exact this
 
 /-- T3.2r (G3): every test of an ordinary output, in its active system. -/
 theorem aAt_ord_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs) (i : Nat) :
