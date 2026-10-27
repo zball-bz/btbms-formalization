@@ -1644,13 +1644,6 @@ theorem onStack_prefix {x o : ColAddr} (ho : x.OnStack o) : o.path <+: x.path :=
   · rw [hp]; exact List.take_prefix _ _
   · rw [hp]
 
--- G9.4s4: on root-tail material `kerCol` is a stack isomorphism onto the kernel output, with
--- `num (kerCol o) = num o − r`, and it carries containment
-theorem onStack_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
-    (hxq : isQMat S.sd x = false) (o' : ColAddr) :
-    x'.OnStack o' ↔ ∃ o, x.OnStack o ∧ S.sd.r ≤ o.num 0 ∧ isQMat S.sd o = false ∧
-      kerCol S.sd S.rd o = some o' := by sorry
-
 -- G9.4s4b: every stack column with number `≥ r` of root-tail material is root-tail material
 theorem kerCol_of_onStack_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (hxq : isQMat S.sd x = false) {o : ColAddr} (ho : x.OnStack o) (hr : S.sd.r ≤ o.num 0) :
@@ -2856,6 +2849,319 @@ theorem headCol_eq (S : OrdStep) {kh : ColAddr} (hkh : kerCol S.sd S.rd S.sd.col
   unfold OrdStep.headCol
   rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S)]
   rfl
+
+-- G9 (helper): the template map at the root level
+theorem kerCol_nil_eq (S : OrdStep) {o : ColAddr} (hoq : isQMat S.sd o = false)
+    (hp : o.path = S.rd.col.path) :
+    kerCol S.sd S.rd o = if o.col = S.rd.col.col then some ⟨[], 0⟩
+      else if S.rd.col.col < o.col ∧ S.rd.owner = false then some ⟨[], o.col - S.rd.col.col⟩
+      else none := by
+  obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+  unfold kerCol
+  simp only [hoq, hp, List.take_length, List.drop_length, Bool.false_eq_true, if_false, if_true, hidx]
+
+-- G9 (helper): the template map through a root-level step
+theorem kerCol_cons_eq (S : OrdStep) {o : ColAddr} (hoq : isQMat S.sd o = false) {ci e : Nat}
+    {rest : List (Nat × Nat)} (hp : o.path = S.rd.col.path ++ (ci, e) :: rest) :
+    kerCol S.sd S.rd o = if ci = S.rd.col.col ∧ S.rd.cursor ≤ e then
+        some ⟨(0, S.m + (e - S.rd.cursor)) :: rest, o.col⟩
+      else if S.rd.col.col < ci ∧ S.rd.owner = false then some ⟨(ci - S.rd.col.col, e) :: rest, o.col⟩
+      else none := by
+  obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+  unfold kerCol
+  simp only [hoq, hp, List.take_left, List.drop_left, Bool.false_eq_true, if_false, if_true, hidx]
+  rfl
+
+-- G9 (helper): numbers of root-tail columns
+theorem num_tail (S : OrdStep) {o : ColAddr} {s : List (Nat × Nat)} (hp : o.path = S.rd.col.path ++ s) :
+    o.num 0 + S.rd.col.col = S.sd.r + (s.map (·.1 + 1)).sum + o.col := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  rw [← hrnum]
+  simp only [ColAddr.num, hp, List.map_append, List.sum_append]
+  omega
+
+-- G9.4s4, forward direction
+theorem onStack_kerCol_tail_mp (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) (o' : ColAddr) (h : x'.OnStack o') :
+    ∃ o, x.OnStack o ∧ S.sd.r ≤ o.num 0 ∧ isQMat S.sd o = false ∧ kerCol S.sd S.rd o = some o' := by
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path S.hsd S.hrd
+  have hRq : ∀ {o : ColAddr}, o.path = S.rd.col.path → isQMat S.sd o = false := fun {o} hp =>
+    isQMat_of_short S.sd (by rw [hp]; exact hpre.length_le)
+  have hpq : ∀ {o : ColAddr}, o.path <+: x.path → isQMat S.sd o = false := fun {o} hp => by
+    cases hq : isQMat S.sd o
+    · rfl
+    · have := isQMat_of_prefix S.sd hq hp; rw [hxq] at this; cases this
+  obtain ⟨sx, hxp, hxc⟩ := kerCol_tail_spec S hx hxq
+  obtain ⟨op, oc⟩ := o'
+  -- the root column itself
+  have hroot : ∀ (hne : x ≠ S.rd.col), ∃ o, x.OnStack o ∧ S.sd.r ≤ o.num 0 ∧
+      isQMat S.sd o = false ∧ kerCol S.sd S.rd o = some ⟨[], 0⟩ :=
+    fun hne => ⟨S.rd.col, onStack_rdcol S hx hxq hne,
+      by rw [(rootData_spec S.hsd S.hrd).2.2.2.1], isQMat_rdcol S, kerCol_rdcol S⟩
+  -- a root-level column `⟨R, idx + j⟩`
+  have hlevel : ∀ j, (j = 0 ∨ S.rd.owner = false) → x.OnStack ⟨S.rd.col.path, S.rd.col.col + j⟩ →
+      ∃ o, x.OnStack o ∧ S.sd.r ≤ o.num 0 ∧ isQMat S.sd o = false ∧
+        kerCol S.sd S.rd o = some ⟨[], j⟩ := by
+    intro j hj hst
+    refine ⟨⟨S.rd.col.path, S.rd.col.col + j⟩, hst, ?_, hRq rfl, ?_⟩
+    · have := num_tail S (o := ⟨S.rd.col.path, S.rd.col.col + j⟩) (s := []) (by simp)
+      simp at this; omega
+    · rw [kerCol_nil_eq S (o := ⟨S.rd.col.path, S.rd.col.col + j⟩) (hRq rfl) rfl]
+      by_cases hj0 : j = 0
+      · subst hj0; simp
+      · have hown : S.rd.owner = false := hj.resolve_left hj0
+        simp only [show ¬ (S.rd.col.col + j = S.rd.col.col) by omega, if_false, hown, and_true]
+        rw [if_pos (by omega)]
+        simp
+  rcases hxc with ⟨rfl, hxc, rfl⟩ | ⟨rfl, hxc, hown, rfl⟩ | ⟨e, rest, rfl, he, rfl⟩ |
+      ⟨ci, e, rest, rfl, hci, hown, rfl⟩
+  · -- `x` is the root: its image `⟨[],0⟩` has an empty stack
+    rcases h with ⟨l, _, _, hl, -, -⟩ | ⟨-, hlt⟩
+    · simp at hl
+    · simp at hlt
+  · rcases h with ⟨l, _, _, hl, -, -⟩ | ⟨hp, hlt⟩
+    · simp at hl
+    · simp only at hp hlt
+      subst hp
+      have := hlevel oc (Or.inr hown) (Or.inr ⟨by rw [hxp, List.append_nil], by simp only; omega⟩)
+      exact this
+  · have hne : x ≠ S.rd.col := by
+      intro h; rw [h] at hxp; have := congrArg List.length hxp; simp at this
+    rcases h with ⟨l, ck, ik, hl, hp, hle⟩ | ⟨hp, hlt⟩
+    · simp only at hp hle
+      cases l with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hl
+        simp only [List.take_zero] at hp
+        subst hp
+        rw [show oc = 0 by omega]
+        exact hroot hne
+      | succ l =>
+        simp only [List.getElem?_cons_succ] at hl
+        simp only [List.take_succ_cons] at hp
+        subst hp
+        have hp' : (⟨S.rd.col.path ++ (S.rd.col.col, e) :: rest.take l, oc⟩ : ColAddr).path <+:
+            x.path := by
+          rw [hxp]; exact List.prefix_append_right_inj _ |>.mpr (List.cons_prefix_cons.mpr ⟨rfl, List.take_prefix _ _⟩)
+        refine ⟨⟨S.rd.col.path ++ (S.rd.col.col, e) :: rest.take l, oc⟩, ?_, ?_, hpq hp', ?_⟩
+        · refine Or.inl ⟨S.rd.col.path.length + (l + 1), ck, ik, ?_, ?_, hle⟩
+          · rw [hxp, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
+            simpa using hl
+          · rw [hxp, List.take_length_add_append]; rfl
+        · have := num_tail S (o := ⟨S.rd.col.path ++ (S.rd.col.col, e) :: rest.take l, oc⟩) rfl
+          simp at this; omega
+        · rw [kerCol_cons_eq S (hpq hp') rfl, if_pos ⟨rfl, he⟩]
+    · simp only at hp hlt
+      subst hp
+      refine ⟨⟨x.path, oc⟩, Or.inr ⟨rfl, hlt⟩, ?_, hpq (List.prefix_refl _), ?_⟩
+      · have := num_tail S (o := ⟨x.path, oc⟩) hxp
+        simp at this; omega
+      · rw [kerCol_cons_eq S (o := ⟨x.path, oc⟩) (hpq (List.prefix_refl _)) hxp,
+          if_pos ⟨rfl, he⟩]
+  · rcases h with ⟨l, ck, ik, hl, hp, hle⟩ | ⟨hp, hlt⟩
+    · simp only at hp hle
+      cases l with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hl
+        simp only [List.take_zero] at hp
+        subst hp
+        refine hlevel oc (Or.inr hown) (Or.inl ⟨S.rd.col.path.length, ci, e, ?_, ?_, by simp only; omega⟩)
+        · rw [hxp, List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+        · rw [hxp, List.take_left]
+      | succ l =>
+        simp only [List.getElem?_cons_succ] at hl
+        simp only [List.take_succ_cons] at hp
+        subst hp
+        have hp' : (⟨S.rd.col.path ++ (ci, e) :: rest.take l, oc⟩ : ColAddr).path <+: x.path := by
+          rw [hxp]; exact List.prefix_append_right_inj _ |>.mpr (List.cons_prefix_cons.mpr ⟨rfl, List.take_prefix _ _⟩)
+        refine ⟨⟨S.rd.col.path ++ (ci, e) :: rest.take l, oc⟩, ?_, ?_, hpq hp', ?_⟩
+        · refine Or.inl ⟨S.rd.col.path.length + (l + 1), ck, ik, ?_, ?_, hle⟩
+          · rw [hxp, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
+            simpa using hl
+          · rw [hxp, List.take_length_add_append]; rfl
+        · have := num_tail S (o := ⟨S.rd.col.path ++ (ci, e) :: rest.take l, oc⟩) rfl
+          simp at this; omega
+        · rw [kerCol_cons_eq S (hpq hp') rfl, if_neg (by omega), if_pos ⟨hci, hown⟩]
+    · simp only at hp hlt
+      subst hp
+      refine ⟨⟨x.path, oc⟩, Or.inr ⟨rfl, hlt⟩, ?_, hpq (List.prefix_refl _), ?_⟩
+      · have := num_tail S (o := ⟨x.path, oc⟩) hxp
+        simp at this; omega
+      · rw [kerCol_cons_eq S (o := ⟨x.path, oc⟩) (hpq (List.prefix_refl _)) hxp,
+          if_neg (by omega), if_pos ⟨hci, hown⟩]
+
+-- G9.4s4, backward direction
+theorem onStack_kerCol_tail_mpr (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) {o o' : ColAddr} (hst : x.OnStack o) (hr : S.sd.r ≤ o.num 0)
+    (hoq : isQMat S.sd o = false) (ho : kerCol S.sd S.rd o = some o') : x'.OnStack o' := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨sx, hxp, hxc⟩ := kerCol_tail_spec S hx hxq
+  obtain ⟨so, hop, hoc⟩ := kerCol_tail_spec S ho hoq
+  -- the stack of `x` is `o`'s path as a prefix of `x`'s
+  have hlen : o.path.length ≤ x.path.length := by
+    rcases hst with ⟨k, -, -, -, hp, -⟩ | ⟨hp, -⟩
+    · rw [hp, List.length_take]; omega
+    · rw [hp]
+  rcases hoc with ⟨rfl, hoc, rfl⟩ | ⟨rfl, hoc, hown, rfl⟩ | ⟨e₀, rest_o, rfl, he₀, rfl⟩ |
+      ⟨ci₀, e₀, rest_o, rfl, hci₀, hown, rfl⟩
+  · -- `o` is the root column, imaged to the head `⟨[], 0⟩`
+    rw [List.append_nil] at hop
+    rcases hxc with ⟨rfl, hxc, rfl⟩ | ⟨rfl, hxc, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+        ⟨ci, e, rest, rfl, hci, -, rfl⟩
+    · exfalso
+      have h1 := ColAddr.num_lt_of_onStack 0 hst
+      have h2 := num_tail S (o := o) (s := []) (by simpa using hop)
+      have h3 := num_tail S (o := x) (s := []) (by simpa using hxp)
+      simp at h2 h3
+      omega
+    · exact Or.inr ⟨rfl, by simp only; omega⟩
+    · exact Or.inl ⟨0, 0, S.m + (e - S.rd.cursor), rfl, rfl, by simp only; omega⟩
+    · exact Or.inl ⟨0, ci - S.rd.col.col, e, rfl, rfl, by simp only; omega⟩
+  · -- `o` a later root-level column
+    rw [List.append_nil] at hop
+    rcases hxc with ⟨rfl, hxc, rfl⟩ | ⟨rfl, hxc, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+        ⟨ci, e, rest, rfl, hci, -, rfl⟩
+    · rw [List.append_nil] at hxp
+      rcases hst with ⟨k, _, _, hk, hp, _⟩ | ⟨_, hlt⟩
+      · exfalso
+        have h1 := (List.getElem?_eq_some_iff.mp hk).1
+        have := congrArg List.length hp
+        rw [List.length_take, hop, hxp] at this
+        rw [hxp] at h1
+        omega
+      · exfalso; omega
+    · rw [List.append_nil] at hxp
+      rcases hst with ⟨k, _, _, hk, hp, _⟩ | ⟨_, hlt⟩
+      · exfalso
+        have h1 := (List.getElem?_eq_some_iff.mp hk).1
+        have := congrArg List.length hp
+        rw [List.length_take, hop, hxp] at this
+        rw [hxp] at h1
+        omega
+      · exact Or.inr ⟨rfl, by simp only; omega⟩
+    · exfalso
+      rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, -⟩
+      · have hk' : k = S.rd.col.path.length := by
+          have := congrArg List.length hp
+          rw [List.length_take, hop, hxp] at this
+          simp at this; omega
+        subst hk'
+        rw [hxp, List.getElem?_append_right le_rfl, Nat.sub_self] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hk
+        omega
+      · rw [hop, hxp] at hp
+        have := congrArg List.length hp
+        simp at this
+    · rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, -⟩
+      · have hk' : k = S.rd.col.path.length := by
+          have := congrArg List.length hp
+          rw [List.length_take, hop, hxp] at this
+          simp at this; omega
+        subst hk'
+        rw [hxp, List.getElem?_append_right le_rfl, Nat.sub_self] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hk
+        exact Or.inl ⟨0, ci - S.rd.col.col, e, rfl, rfl, by simp only; omega⟩
+      · exfalso
+        rw [hop, hxp] at hp
+        have := congrArg List.length hp
+        simp at this
+  · -- `o` inside a restored height of the root: `x` passes through the same step
+    rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+        ⟨ci, e, rest, rfl, hci, -, rfl⟩
+    · exfalso; rw [hop, hxp] at hlen; simp at hlen
+    · exfalso; rw [hop, hxp] at hlen; simp at hlen
+    · rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+      · have hkl : k < x.path.length := (List.getElem?_eq_some_iff.mp hk).1
+        have hk' : k = S.rd.col.path.length + (rest_o.length + 1) := by
+          have := congrArg List.length hp
+          rw [List.length_take, Nat.min_eq_left hkl.le, hop] at this
+          simp at this; omega
+        subst hk'
+        rw [hop, hxp, List.take_length_add_append, List.take_succ_cons] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq, true_and] at hp'
+        obtain ⟨rfl, hrest⟩ := hp'
+        rw [hxp, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk
+        simp only [List.getElem?_cons_succ] at hk
+        refine Or.inl ⟨rest_o.length + 1, ck, ik, ?_, ?_, hle⟩
+        · simpa using hk
+        · show (0, S.m + (e₀ - S.rd.cursor)) :: rest_o = _
+          rw [List.take_succ_cons, ← hrest]
+      · rw [hop, hxp] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq, true_and] at hp'
+        obtain ⟨rfl, rfl⟩ := hp'
+        exact Or.inr ⟨rfl, hlt⟩
+    · exfalso
+      rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+      · have hkl : k < x.path.length := (List.getElem?_eq_some_iff.mp hk).1
+        have hk' : S.rd.col.path.length < k := by
+          have := congrArg List.length hp
+          rw [List.length_take, Nat.min_eq_left hkl.le, hop] at this
+          simp at this; omega
+        obtain ⟨j, rfl⟩ : ∃ j, k = S.rd.col.path.length + (j + 1) := ⟨k - S.rd.col.path.length - 1, by omega⟩
+        rw [hop, hxp, List.take_length_add_append, List.take_succ_cons] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        omega
+      · rw [hop, hxp] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        omega
+  · -- `o` in a later body column of the root forest
+    rcases hxc with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+        ⟨ci, e, rest, rfl, hci, -, rfl⟩
+    · exfalso; rw [hop, hxp] at hlen; simp at hlen
+    · exfalso; rw [hop, hxp] at hlen; simp at hlen
+    · exfalso
+      rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+      · have hkl : k < x.path.length := (List.getElem?_eq_some_iff.mp hk).1
+        have hk' : S.rd.col.path.length < k := by
+          have := congrArg List.length hp
+          rw [List.length_take, Nat.min_eq_left hkl.le, hop] at this
+          simp at this; omega
+        obtain ⟨j, rfl⟩ : ∃ j, k = S.rd.col.path.length + (j + 1) := ⟨k - S.rd.col.path.length - 1, by omega⟩
+        rw [hop, hxp, List.take_length_add_append, List.take_succ_cons] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        omega
+      · rw [hop, hxp] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        omega
+    · rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+      · have hkl : k < x.path.length := (List.getElem?_eq_some_iff.mp hk).1
+        have hk' : k = S.rd.col.path.length + (rest_o.length + 1) := by
+          have := congrArg List.length hp
+          rw [List.length_take, Nat.min_eq_left hkl.le, hop] at this
+          simp at this; omega
+        subst hk'
+        rw [hop, hxp, List.take_length_add_append, List.take_succ_cons] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        obtain ⟨⟨rfl, rfl⟩, hrest⟩ := hp'
+        rw [hxp, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk
+        simp only [List.getElem?_cons_succ] at hk
+        refine Or.inl ⟨rest_o.length + 1, ck, ik, ?_, ?_, hle⟩
+        · simpa using hk
+        · show (ci₀ - S.rd.col.col, e₀) :: rest_o = _
+          rw [List.take_succ_cons, ← hrest]
+      · rw [hop, hxp] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq] at hp'
+        obtain ⟨⟨rfl, rfl⟩, rfl⟩ := hp'
+        exact Or.inr ⟨rfl, hlt⟩
+
+-- G9.4s4 (moved here from before G9.4s4b: its proof uses `onStack_rdcol`): on root-tail material `kerCol` is a stack isomorphism onto the kernel output, with
+-- `num (kerCol o) = num o − r`, and it carries containment
+theorem onStack_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) (o' : ColAddr) :
+    x'.OnStack o' ↔ ∃ o, x.OnStack o ∧ S.sd.r ≤ o.num 0 ∧ isQMat S.sd o = false ∧
+      kerCol S.sd S.rd o = some o' := by
+  constructor
+  · exact onStack_kerCol_tail_mp S hx hxq o'
+  · rintro ⟨o, hst, hr, hoq, ho⟩
+    exact onStack_kerCol_tail_mpr S hx hxq hst hr hoq ho
 
 -- G9.4a: the heads `s_1, …, s_φ` are on the stack of `c`; a head containing `c` does so through
 -- an entry of index `≥ m` (a restored entry)
