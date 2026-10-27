@@ -5175,7 +5175,32 @@ theorem stage_step (I : Interface.{u}) {n : Nat} (hW : WFit I.toPrims n) {E : Fo
 /-- L8.6, `W_{<n} ⇒ D_{<n}` with labels (txt:1250-1323). -/
 theorem dLab_of_wFit (I : Interface.{u}) (n : Nat) (hW : WFit I.toPrims n) :
     DLab I.toPrims n := by
-  sorry
+  rw [dLab_iff]
+  intro E cap α sd rd V Λ ν eν b Fix hyp k H' hH'
+  obtain ⟨rs, hrs, hT, hR, -, hP, -⟩ := roleSets_eq hyp.stop hyp.root
+  have hL := hyp.inL
+  have key : ∀ m G, expand (Closure.anchor E cap) m = some G →
+      ∃ g b'', StageInv I.toPrims (Closure.anchor E cap) rs α Λ ν b Fix m G g b'' := by
+    intro m
+    induction m with
+    | zero =>
+      intro G hG
+      obtain ⟨G₀, hinv⟩ := stage_zero_inv hyp hrs
+      have h0 := hinv.1
+      rw [hG] at h0; cases h0
+      exact ⟨α, b, hinv⟩
+    | succ m ih =>
+      intro G' hG'
+      obtain ⟨G, hG⟩ := Option.isSome_iff_exists.1
+        (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 m)
+      obtain ⟨g, b'', hinv⟩ := ih G hG
+      exact stage_step I hW hyp hrs hinv hG'
+  obtain ⟨γ, b', hinv⟩ := key k H' hH'
+  obtain ⟨-, hcfg, hlt, -, -, hpre, hfix, hP', hΛ, hΛT, hmove⟩ := hinv
+  rw [hT] at hlt hΛT
+  rw [hR] at hpre hmove
+  rw [hP] at hP' hmove
+  exact ⟨γ, b', hcfg, hlt, hfix, hP', hΛ, hΛT, hpre, hmove⟩
 
 /-- D8.1a: the label-free core follows from `DLab` (`E = H`, no cap, `Λ` the prefix graph of
 `H` before `T`, `ν = eν = id`, `b = α`, nothing fixed). -/
