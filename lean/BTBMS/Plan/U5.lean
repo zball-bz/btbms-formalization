@@ -4848,6 +4848,44 @@ theorem stage_fit (I : Interface.{u}) {n : Nat} (hW : WFit I.toPrims n) {E : For
         rw [hK, hqa x hx]
         exact hβv x hx
 
+/-- L8.6i (helper): an atom of `Γ(E)` is a `lim` atom, a consecutive `lt` atom, or structural. -/
+theorem graph_cases_E4 {E : Forest} {at' : BaseAtom Role} (h : at' ∈ graph E) :
+    (∃ z ∈ E.roles, at' = .lim z) ∨ (∃ xy ∈ E.roles.zip E.roles.tail, at' = .lt xy.1 xy.2) ∨
+      isStruct at' = true := by
+  simp only [graph, List.mem_append, List.mem_map, List.mem_filterMap, List.mem_flatMap] at h
+  rcases h with (((⟨x, hx, rfl⟩ | ⟨xy, hxy, rfl⟩) | ⟨c, hc, hca⟩) | ⟨e, he, hea⟩)
+  · exact Or.inl ⟨x, hx, rfl⟩
+  · exact Or.inr (Or.inl ⟨xy, hxy, rfl⟩)
+  · right; right
+    split_ifs at hca
+    cases hca; rfl
+  · right; right
+    split at hea
+    · split at hea
+      · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;> rfl
+      · simp at hea
+    · simp at hea
+
+/-- L8.6i (helper): consecutive pairs give a chain. -/
+theorem isChain_of_zip_E4 {β : Type} {R : β → β → Prop} :
+    ∀ {l : List β}, (∀ xy ∈ l.zip l.tail, R xy.1 xy.2) → List.IsChain R l
+  | [], _ => List.IsChain.nil
+  | [_], _ => List.isChain_singleton _
+  | x :: y :: l, h => by
+    refine List.isChain_cons_cons.2 ⟨h (x, y) (by simp), isChain_of_zip_E4 fun xy hxy => h xy ?_⟩
+    simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons] at hxy ⊢
+    exact Or.inr hxy
+
+/-- L8.6i (helper): `K` is a sublist of the roles of `H`. -/
+theorem K_sublist_E4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) {rs : RoleSets}
+    (hrs : roleSets H = some rs) : List.Sublist rs.K H.roles := by
+  simp only [roleSets, hsd, hrd, Option.bind_eq_bind, Option.bind_some] at hrs
+  cases hrs
+  exact (List.filter_sublist).trans ((List.drop_sublist _ _).trans
+    ((List.dropWhile_sublist _).trans (List.takeWhile_sublist _)))
+
 /-- L8.6i: restore `K` at its original values with the new root `p`; the union is `G_{m+1}` and
 the stage invariant holds at `m + 1` (txt:1306-1311). -/
 theorem stage_restore (I : Interface.{u}) {n : Nat} {E : Forest}
@@ -4866,7 +4904,248 @@ theorem stage_restore (I : Interface.{u}) {n : Nat} {E : Forest}
         | [] => α rs.T
         | v :: _ => α v)) :
     ∃ g' b', StageInv I.toPrims (Closure.anchor E cap) rs α Λ ν b Fix (m + 1) G' g' b' := by
-  sorry
+  classical
+  have hL := hyp.inL
+  obtain ⟨hTd, hR, -, hP, hD, -, hKP⟩ := rs_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨hHr, -, hTQ, hPQ⟩ := Q_spec_E4 hyp.stop hyp.root hrs
+  obtain ⟨hroles', hqT, hqD, hfpre, hstruct⟩ := stage_succ hL hrs hG hG'
+  obtain ⟨h1, h2, -, h4, h5, h6, h7, -⟩ := (stageDiagram_holds_E4 _ _ _ _ _ _ _ _ _ _).1 hholds
+  have hRmem : rs.R ∈ (Closure.anchor E cap).roles := by
+    rw [hR]; exact List.takeWhile_subset _ (root_before_stop_D4 hyp.stop hyp.root)
+  have hTmem : rs.T ∈ (Closure.anchor E cap).roles := by
+    rw [hTd]; exact Scan.stopData_col_mem hyp.stop
+  have hRT : α rs.R < α rs.T := by
+    rw [hR, hTd]; exact config_lt_of_before hyp.config (Scan.stopData_col_mem hyp.stop)
+      (root_before_stop_D4 hyp.stop hyp.root)
+  have hPH : ∀ x ∈ rs.P, x ∈ (Closure.anchor E cap).roles := fun x hx => by
+    rw [hP] at hx; exact List.takeWhile_subset _ hx
+  have hPT : ∀ x ∈ rs.P, α x < α rs.T := fun x hx => by
+    rw [hP] at hx; rw [hTd]; exact config_lt_of_before hyp.config (Scan.stopData_col_mem hyp.stop) hx
+  have hPG : ∀ x ∈ rs.P, x ∈ G.roles := fun x hx => (persist_prefix hL hrs hG).subset hx
+  have hpreP : ∀ x ∈ rolesBefore (Closure.anchor E cap) rs.R, x ∈ rs.P := fun x hx => by
+    rw [hP]; rw [hR] at hx; exact mem_rolesBefore_trans_D4 hx (root_before_stop_D4 hyp.stop hyp.root)
+  have hQH : ∀ x ∈ rs.Q, x ∈ (Closure.anchor E cap).roles := fun x hx => by rw [hHr]; simp [hx]
+  -- the query block contains the `lt` chain from `T` through `Q`
+  have hqlt : ∀ xy ∈ (rs.T :: rs.Q).zip (rs.T :: rs.Q).tail,
+      BaseAtom.lt xy.1 xy.2 ∈ queryAtoms (Closure.anchor E cap) rs := by
+    intro xy hxy
+    have hg := lt_chain_graph_D4 (E := Closure.anchor E cap) (pre := rs.P) (l := rs.T :: rs.Q)
+      (post := rs.N :: ((Closure.anchor E cap).roles.dropWhile (· != rs.N)).drop 1)
+      (hHr.trans (by simp)) xy hxy
+    have h1' := List.of_mem_zip hxy
+    have hx1 : xy.1 ∈ rs.T :: rs.Q := h1'.1
+    have hx2 : xy.2 ∈ rs.Q := h1'.2
+    refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, ?_⟩, ?_⟩
+    · simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+        decide_eq_true_eq, List.mem_append, List.mem_singleton]
+      refine ⟨?_, Or.inr hx2⟩
+      rcases List.mem_cons.1 hx1 with h | h
+      · exact Or.inl (Or.inr h)
+      · exact Or.inr h
+    · simp [BaseAtom.vars, hx2]
+  have hzipQ : ∀ xy ∈ rs.Q.zip rs.Q.tail, xy ∈ (rs.T :: rs.Q).zip (rs.T :: rs.Q).tail := by
+    intro xy hxy
+    cases hQ : rs.Q with
+    | nil => rw [hQ] at hxy; simp at hxy
+    | cons y₀ Qt =>
+      rw [hQ] at hxy
+      simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons] at hxy ⊢
+      exact Or.inr hxy
+  have hqvQ : ∀ x ∈ rs.Q, qryVar (V := V) E cap (Closure.anchor E cap) rs m x = .qry x := by
+    intro x hx
+    have hxT : x ≠ rs.T := fun h => hTQ (h ▸ hx)
+    simp [qryVar, hxT, hx]
+  have hqvT : qryVar (V := V) E cap (Closure.anchor E cap) rs m rs.T = .top := by simp [qryVar]
+  -- nodup of the new roles
+  have hnd := Tree.roles_nodup G'
+  rw [hroles'] at hnd
+  obtain ⟨-, hndn, hdisj⟩ := List.nodup_append.1 hnd
+  obtain ⟨hfRn, hndQK⟩ := List.nodup_cons.1 hndn
+  obtain ⟨hndQ, hndK, hdQK⟩ := List.nodup_append.1 hndQK
+  have hqinj := List.inj_on_of_nodup_map hndQ
+  have hfinj := List.inj_on_of_nodup_map hndK
+  set f := fMap (Closure.anchor E cap) (m + 1) (m + 1) with hf
+  set q := qMap (Closure.anchor E cap) (m + 1) (m + 1) with hqm
+  have hfRG : f rs.R ∉ G.roles := fun h => hdisj _ h _ List.mem_cons_self rfl
+  -- the new configuration
+  let g' : Role → Ordinal.{u} := fun z =>
+    if z ∈ G.roles then a (.main z) else if z = f rs.R then α rs.R else
+      if h : ∃ x ∈ rs.Q, q x = z then a (.qry h.choose) else
+        if h : ∃ x ∈ rs.K, f x = z then α h.choose else 0
+  have e1 : ∀ z ∈ G.roles, g' z = a (.main z) := fun z hz => by simp [g', hz]
+  have e2 : g' (f rs.R) = α rs.R := by simp [g', hfRG]
+  have e3 : ∀ x ∈ rs.Q, g' (q x) = a (.qry x) := by
+    intro x hx
+    have hmem : q x ∈ rs.Q.map q := List.mem_map_of_mem hx
+    have hxG : q x ∉ G.roles := fun h => hdisj _ h _ (List.mem_cons_of_mem _
+      (List.mem_append_left _ hmem)) rfl
+    have hxR : q x ≠ f rs.R := fun h => hfRn (h ▸ List.mem_append_left _ hmem)
+    have hex : ∃ y ∈ rs.Q, q y = q x := ⟨x, hx, rfl⟩
+    simp only [g', hxG, hxR, if_false, dif_pos hex]
+    rw [hqinj hex.choose_spec.1 hx hex.choose_spec.2]
+  have e4 : ∀ x ∈ rs.K, g' (f x) = α x := by
+    intro x hx
+    have hmem : f x ∈ rs.K.map f := List.mem_map_of_mem hx
+    have hxG : f x ∉ G.roles := fun h => hdisj _ h _ (List.mem_cons_of_mem _
+      (List.mem_append_right _ hmem)) rfl
+    have hxR : f x ≠ f rs.R := fun h => hfRn (h ▸ List.mem_append_right _ hmem)
+    have hnex : ¬ ∃ y ∈ rs.Q, q y = f x := by
+      rintro ⟨y, hy, hyx⟩
+      exact hdQK _ (List.mem_map_of_mem hy) _ hmem hyx
+    have hex : ∃ y ∈ rs.K, f y = f x := ⟨x, hx, rfl⟩
+    simp only [g', hxG, hxR, if_false, dif_neg hnex, dif_pos hex]
+    rw [hfinj hex.choose_spec.1 hx hex.choose_spec.2]
+  have hGlt : ∀ z ∈ G.roles, a (.main z) < α rs.R := fun z hz => htop ▸ h6 z hz
+  -- the `lt` chain of `G'`
+  have hchain : List.IsChain (fun x y => g' x < g' y) G'.roles := by
+    rw [hroles']
+    refine List.IsChain.append ?_ ?_ ?_
+    · refine isChain_of_zip_E4 fun xy hxy => ?_
+      have hm := List.of_mem_zip hxy
+      rw [e1 _ hm.1, e1 _ (List.mem_of_mem_tail hm.2)]
+      exact h1 _ (by
+        simp only [graph, List.mem_append]
+        exact Or.inl (Or.inl (Or.inr (List.mem_map_of_mem hxy))))
+    · refine List.isChain_cons.2 ⟨?_, List.IsChain.append ?_ ?_ ?_⟩
+      · intro y hy
+        cases hQ : rs.Q with
+        | cons y₀ Qt =>
+          rw [hQ] at hy
+          simp only [List.map_cons, List.cons_append, List.head?_cons, Option.mem_def,
+            Option.some.injEq] at hy
+          subst hy
+          have hy₀ : y₀ ∈ rs.Q := by rw [hQ]; exact List.mem_cons_self
+          rw [e2, e3 y₀ hy₀]
+          have := h4 _ (hqlt (rs.T, y₀) (by rw [hQ]; simp))
+          simp only [BaseAtom.Holds, Function.comp_apply, hqvT, hqvQ y₀ hy₀, htop] at this
+          exact this
+        | nil =>
+          rw [hQ] at hy
+          cases hK : rs.K with
+          | nil => rw [hK] at hy; simp at hy
+          | cons k₀ Kt =>
+            rw [hK] at hy
+            simp only [List.map_nil, List.nil_append, List.map_cons, List.head?_cons,
+              Option.mem_def, Option.some.injEq] at hy
+            subst hy
+            have hk₀ : k₀ ∈ rs.K := by rw [hK]; exact List.mem_cons_self
+            rw [e2, e4 k₀ hk₀]
+            exact config_lt_of_before hyp.config (hPH k₀ (hKP k₀ hk₀))
+              (K_after_R_E4 hyp.stop hyp.root hrs k₀ hk₀)
+      · rw [List.isChain_map]
+        refine isChain_of_zip_E4 fun xy hxy => ?_
+        have hm := List.of_mem_zip hxy
+        have hx1 := hm.1
+        have hx2 := List.mem_of_mem_tail hm.2
+        rw [e3 _ hx1, e3 _ hx2]
+        have := h4 _ (hqlt xy (hzipQ xy hxy))
+        simp only [BaseAtom.Holds, Function.comp_apply, hqvQ _ hx1, hqvQ _ hx2] at this
+        exact this
+      · rw [List.isChain_map]
+        refine isChain_of_zip_E4 fun xy hxy => ?_
+        have hm := List.of_mem_zip hxy
+        rw [e4 _ hm.1, e4 _ (List.mem_of_mem_tail hm.2)]
+        obtain ⟨s', t', hst⟩ := mem_zip_tail_iff_D4.1 (show (xy.1, xy.2) ∈ rs.K.zip rs.K.tail from hxy)
+        have hpw := (config_pairwise hyp.config).sublist (K_sublist_E4 hyp.stop hyp.root hrs)
+        rw [hst] at hpw
+        exact List.rel_of_pairwise_cons (List.pairwise_append.1 hpw).2.1 List.mem_cons_self
+      · intro x hx y hy
+        obtain ⟨x', hx', rfl⟩ := List.mem_map.1 (List.mem_of_getLast? hx)
+        cases hK : rs.K with
+        | nil => rw [hK] at hy; simp at hy
+        | cons k₀ Kt =>
+          rw [hK] at hy
+          simp only [List.map_cons, List.head?_cons, Option.mem_def, Option.some.injEq] at hy
+          subst hy
+          have hk₀ : k₀ ∈ rs.K := by rw [hK]; exact List.mem_cons_self
+          rw [e3 x' hx', e4 k₀ hk₀]
+          have := hq x' hx'
+          rw [hK] at this
+          exact this
+    · intro x hx y hy
+      simp only [List.head?_cons, Option.mem_def, Option.some.injEq] at hy
+      subst hy
+      rw [e1 x (List.mem_of_getLast? hx), e2]
+      exact hGlt x (List.mem_of_getLast? hx)
+  -- `g' ∘ q` reads the query block, `g' ∘ f` reads `α` on `D`
+  have hqval : ∀ v, (v ∈ rs.D ∨ v = rs.T ∨ v ∈ rs.Q) →
+      g' (q v) = a (qryVar E cap (Closure.anchor E cap) rs m v) := by
+    rintro v (hv | rfl | hv)
+    · have hvP := D_sub_P_E4 hyp.stop hyp.root hrs v hv
+      obtain ⟨y, hy, -, hqv⟩ := qryVar_P_E4 (V := V) hL hyp.stop hyp.root hrs m hvP
+      rw [hqD v hv, e1 _ (fMap_D_mem_E4 hL hyp.stop hyp.root hrs hG v hv), hqv,
+        refVar_origin_E4 hL hyp.stop rs m hv hy]
+    · rw [hqT, e2, hqvT, htop]
+    · rw [e3 v hv, hqvQ v hv]
+  have hfval : ∀ v ∈ rs.D, g' (f v) = α v := by
+    intro v hv
+    rw [hD] at hv
+    rcases List.mem_append.1 hv with hv | hv
+    · rcases List.mem_append.1 hv with hv | hv
+      · rw [← hR] at hv
+        rw [hfpre v hv, e1 v (hPG v (hpreP v hv))]
+        exact hfixed (.main v) hv
+      · rw [List.mem_singleton.1 hv, ← hR]; exact e2
+    · exact e4 v hv
+  have hcfg : IsConfig I.toPrims G' g' := by
+    intro at' hat
+    rcases graph_cases_E4 hat with ⟨z, hz, rfl⟩ | ⟨xy, hxy, rfl⟩ | hs
+    · show IsLim (g' z)
+      rw [hroles'] at hz
+      rcases List.mem_append.1 hz with hz | hz
+      · rw [e1 z hz]; exact config_lim h1 hz
+      · rcases List.mem_cons.1 hz with rfl | hz
+        · rw [e2]; exact config_lim hyp.config hRmem
+        · rcases List.mem_append.1 hz with hz | hz
+          · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hz
+            rw [e3 y hy]
+            have hlim : BaseAtom.lim y ∈ queryAtoms (Closure.anchor E cap) rs := by
+              refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨?_, by simp [BaseAtom.vars, hy]⟩,
+                by simp [BaseAtom.vars, hy]⟩
+              simp only [graph, List.mem_append]
+              exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem (hQH y hy))))
+            have := h4 _ hlim
+            simp only [BaseAtom.Holds, Function.comp_apply, hqvQ y hy] at this
+            exact this
+          · obtain ⟨k, hk, rfl⟩ := List.mem_map.1 hz
+            rw [e4 k hk]; exact config_lim hyp.config (hPH k (hKP k hk))
+    · exact zip_tail_of_isChain hchain xy hxy
+    · rcases hstruct at' hat hs with hin | ⟨a', ha', hs', rfl⟩ | ⟨a', ha', rfl⟩
+      · exact (BaseAtom.holds_congr _ at' g' (a ∘ SVar.main) fun v hv =>
+          e1 v (graph_vars_roles_D4 hin v hv)).2 (h1 at' hin)
+      · refine (baseAtom_holds_map' _ q g' a').2 ?_
+        refine (BaseAtom.holds_congr _ a' _ _ fun v hv => ?_).2 (h4 a' ha')
+        exact hqval v (queryAtoms_struct_vars hL hrs a' ha' hs' v hv)
+      · refine (baseAtom_holds_map' _ f g' a').2 ?_
+        refine (BaseAtom.holds_congr _ a' _ α fun v hv => ?_).2
+          (hyp.config a' (List.mem_filter.1 (List.mem_filter.1 ha').1).1)
+        exact hfval v (mem_of_restrictTo_D4 (List.mem_filter.1 ha').1 hv)
+  refine ⟨g', a ∘ SVar.lab, hG', hcfg, ?_, e2, fun x hx => e4 x hx, ?_, ?_, ?_, h2, ?_, ?_⟩
+  · intro x hx
+    rw [hroles'] at hx
+    rcases List.mem_append.1 hx with hx | hx
+    · rw [e1 x hx]; exact (hGlt x hx).trans hRT
+    · rcases List.mem_cons.1 hx with rfl | hx
+      · rw [e2]; exact hRT
+      · rcases List.mem_append.1 hx with hx | hx
+        · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+          rw [e3 y hy]
+          exact hbelow _ (qry_mem_vars_E4 hyp.stop hyp.root hrs Λ ν m G y hy)
+        · obtain ⟨k, hk, rfl⟩ := List.mem_map.1 hx
+          rw [e4 k hk]; exact hPT k (hKP k hk)
+  · intro x hx
+    rw [e1 x (hPG x (hpreP x hx))]
+    exact hfixed (.main x) hx
+  · intro v hv
+    exact hfixed (.lab v) hv
+  · intro x hx
+    rw [e1 x (hPG x hx)]
+    exact h5 x hx
+  · intro v hv
+    exact (htop ▸ h7 v hv).trans hRT
+  · intro _ x hx _ _
+    rw [e1 x (hPG x hx)]
+    exact hGlt x (hPG x hx)
 
 /-- L8.6j: one copy stage (transport, fit, restore). -/
 theorem stage_step (I : Interface.{u}) {n : Nat} (hW : WFit I.toPrims n) {E : Forest}
