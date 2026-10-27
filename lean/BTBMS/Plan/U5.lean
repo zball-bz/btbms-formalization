@@ -3103,6 +3103,256 @@ theorem scan_gt (I : Interface.{u}) {n : Nat} (hSn : ∀ m < n, SStrict I.toPrim
     exact ⟨β', inv_step_D4 S hfit' hagree h17a h17b (fun x hx => (hent x hx).2)
       (fun x hx => ((hent x hx).2.le.trans hc).trans (queryBlockMax_le_Cmax_D4 S j))⟩
 
+/-! ### L8.5f helpers (D4): the bank candidate -/
+
+/-- L8.5 (helper): the root column has a first entry. -/
+theorem root_col_cons_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) :
+    ∃ colR, S.H.colAt S.rd.col = some colR ∧ S.rd.cursor < colR.length ∧
+      ∃ x col, colR = x :: col := by
+  obtain ⟨colR, hcolR, hcur, -⟩ := bank_pairwise_D4 S hS
+  refine ⟨colR, hcolR, hcur, ?_⟩
+  cases colR with
+  | nil => simp at hcur
+  | cons x col => exact ⟨x, col, rfl⟩
+
+/-- L8.5 (helper): the representatives seen from the root column are pre-root roles. -/
+theorem rep_preRoot_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {q : Nat}
+    {o v : Role} (hr : S.rd.col.rep 0 q = some (o, v)) :
+    o ∈ setupPreRoot S ∧ v ∈ setupPreRoot S := by
+  obtain ⟨colR, hcolR, -, x, col, rfl⟩ := root_col_cons_D4 hS
+  exact rep_before_D4 hcolR hr
+
+/-- L8.5 (helper): pre-root roles are not bank roles. -/
+theorem preRoot_not_bank_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {x : Role}
+    (hx : x ∈ setupPreRoot S) : x ∉ setupBank S := by
+  have hsd := hS.1.2.2.2.1
+  have hrd := hS.1.2.2.2.2.1
+  obtain ⟨colR, post, hcolR, hr⟩ := root_roles_D4 hsd hrd
+  obtain ⟨colR', hcolR', hcur, -⟩ := bank_pairwise_D4 S hS
+  rw [hcolR] at hcolR'
+  cases hcolR'
+  intro hb
+  obtain ⟨hxr, i', hi', hin⟩ := (mem_bank_iff_D4 S).1 hb
+  have hm := mem_rolesCol_of_inEntry_D4 hcolR (by omega) hxr hin
+  have hnd := Tree.roles_nodup S.H
+  rw [hr, List.nodup_append] at hnd
+  exact hnd.2.2 _ hx _ (List.mem_cons_of_mem _ (List.mem_append_left _ hm)) rfl
+
+/-- L8.5 (helper): on pre-root roles the bank values are the transported values. -/
+theorem bankVal_preRoot_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {x : Role}
+    (hx : x ∈ setupPreRoot S) : setupBankVal S x = S.baseVal x := by
+  have hb := preRoot_not_bank_D4 hS hx
+  have hR : x ≠ .ord S.rd.col := ne_of_mem_rolesBefore_D4 hx
+  simp [setupBankVal, hb, hR]
+
+/-- L8.5 (helper): transported values of pre-stop roles are below `ρ` (S2). -/
+theorem baseVal_preStop_lt_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S)
+    {x : Role} (hx : x ∈ S.preStop) : S.baseVal x < S.asg S.stopNm := by
+  have hL := hS.1.2.1
+  have hsd := hS.1.2.2.2.1
+  obtain ⟨T', hT', -, horig⟩ := Closure.anchorOrigin_prefix (E := S.E) (cap := S.cap) hL hsd
+  obtain ⟨y, hy, hyE, -⟩ := horig x hx
+  have hxT : x ≠ .ord S.sd.col := ne_of_mem_rolesBefore_D4 hx
+  have hyP : y ∈ setupEPrefix S := by simp [setupEPrefix, ePrefix, hT', hyE]
+  simpa [ScanSetup.baseVal, hxT, hy] using hS.2.1.2.2 y hyP
+
+/-- L8.5 (helper): the root entry `i ≤ c` whose key is `K`. -/
+theorem root_entry_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {i : Nat}
+    {K : Key} (hx : (Scan.rootKeys S.H S.rd)[i]? = some K) :
+    ∃ pR Rh, S.H.entryAt ⟨S.rd.col, i⟩ = some (pR, Rh) ∧
+      (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs ∧ K = relKey (S.rd.col.num 0) Rh := by
+  obtain ⟨colR, hcolR, -⟩ := root_col_cons_D4 hS
+  simp only [Scan.rootKeys, hcolR, Option.getD_some, List.getElem?_map] at hx
+  obtain ⟨⟨pR, Rh⟩, hxR, hK⟩ := Option.map_eq_some_iff.1 hx
+  have hent : S.H.entryAt ⟨S.rd.col, i⟩ = some (pR, Rh) := by simp [Tree.entryAt, hcolR, hxR]
+  exact ⟨pR, Rh, hent, (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl), hK.symm⟩
+
+/-- L8.5 (helper, L8.2c): the structural atoms touching bank entry `i ≤ c` lie in the bank
+graph. -/
+theorem localStruct_bank_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {i : Nat}
+    (hi : i ≤ S.rd.cursor) (he : (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs) :
+    ∀ a ∈ localStruct S.H ⟨S.rd.col, i⟩, a ∈ setupBankGraph S := by
+  intro a ha
+  have hvars := localStruct_vars hS.1.2.1.1 he a ha
+  obtain ⟨hg, hs⟩ := List.mem_filter.1 ha
+  simp only [Bool.and_eq_true, List.any_eq_true] at hs
+  obtain ⟨-, w, hw, hwin⟩ := hs
+  have hb : ∀ v ∈ a.vars, v.inEntry ⟨S.rd.col, i⟩ = true → v ∈ setupBank S := fun v hv hin =>
+    (mem_bank_iff_D4 S).2 ⟨graph_vars_roles_D4 hg v hv, i, hi, hin⟩
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, List.all_eq_true.2 fun v hv => ?_⟩, ?_⟩
+  · simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq]
+    rcases hvars v hv with hin | rfl | ⟨ov, hov, h⟩
+    · exact Or.inr (hb v hv hin)
+    · exact Or.inl (Or.inr rfl)
+    · obtain ⟨q, -, hq⟩ := List.mem_filterMap.1 hov
+      have := rep_preRoot_D4 hS hq
+      rcases h with rfl | rfl
+      · exact Or.inl (Or.inl this.1)
+      · exact Or.inl (Or.inl this.2)
+  · exact List.any_eq_true.2 ⟨w, hw, by simp [hb w hw hwin]⟩
+
+/-- L8.5 (helper): the bank candidate of root entry `i`: the fitted frame of query entry `j`, and
+the bank values (S5) on the new variables. -/
+noncomputable def bankCand_D4 (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordinal.{u})
+    (w : BlkVar) : Ordinal.{u} :=
+  match (frameOf ⟨S.sd.col, j⟩).toFr w with
+  | some x => S.fitVal β x
+  | none => setupBankVal S (blockMap ⟨S.rd.col, i⟩ w)
+
+/-- L8.5 (helper): the new variables of the free block of query entry `j`'s key are the owner and
+the internal roles (the fitted frame is complete, R10). -/
+theorem freeBlock_new_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {j : Nat}
+    (hj : j < S.sd.Q.length) {w : BlkVar}
+    (hw : w ∈ baseVars (posBlock (queryKey S j) (querySel S j)))
+    (hn : (frameOf ⟨S.sd.col, j⟩).toFr w = none) :
+    w = .owner ∨ ∃ r ∈ (queryKey S j).roles, w = .inner r := by
+  have hsd := hS.1.2.2.2.1
+  obtain ⟨p, Jh, hq, hent, he⟩ := query_entry_D4 hsd hj
+  obtain ⟨-, -, ht, -⟩ := Scan.stopData_spec hsd
+  have hK : queryKey S j = relKey (S.sd.col.num 0) Jh := by
+    simp [queryKey, Scan.queryKeys, List.getElem?_map, hq, ht]
+  have hselp : querySel S j = p := by simp [querySel, hq]
+  have hplt : p < S.sd.col.num 0 :=
+    ((ColAddr.resolve_isSome_iff 0 _ p).1 (hS.1.2.1.1 _ he p Jh hent)).2
+  have hw' : w ∈ baseVars (posBlock (relKey (S.sd.col.num 0) Jh) (querySel S j)) := by
+    rw [← hK]; exact hw
+  rcases posBlock_vars _ _ w hw with rfl | rfl | ⟨q, hq' | hq'⟩ | h
+  · simp [Frame.toFr] at hn
+  · exact Or.inl rfl
+  all_goals first
+    | exact Or.inr h
+    | (exfalso
+       have hlt : q < S.sd.col.num 0 := by
+         rcases posBlock_ordcur_D4 hw' (by first | exact Or.inl hq' | exact Or.inr hq') with h | h
+         · exact h
+         · rw [h, hselp]; exact hplt
+       subst hq'
+       have h1 := toFr_isSome_D4 ⟨S.sd.col, j⟩ hlt
+       rw [hn] at h1; simp at h1)
+
+/-- L8.5 (helper): the bank candidate realizes the free block of the common key `K` (D7.1a, S5,
+R3, R10): its frame fields below `r` are the root's own representatives. -/
+theorem bankCand_spec_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {i j : Nat}
+    (hi : i ≤ S.rd.cursor) {K : Key}
+    (hKR : (Scan.rootKeys S.H S.rd)[i]? = some K) (β : Role → Ordinal.{u}) :
+    BaseHolds P (freeBlock K) (bankCand_D4 S i j β) ∧
+    (∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → bankCand_D4 S i j β w = S.fitVal β x) ∧
+    (∀ r ∈ K.roles, Role.under (EntryAddr.heightPath ⟨S.rd.col, i⟩) r ∈ S.H.roles ∧
+      (Role.under (EntryAddr.heightPath ⟨S.rd.col, i⟩) r).inEntry ⟨S.rd.col, i⟩ = true) := by
+  have hsd := hS.1.2.2.2.1
+  have hrd := hS.1.2.2.2.2.1
+  have hV := hS.1.2.1.1
+  obtain ⟨pR, Rh, hent, he, hK⟩ := root_entry_D4 hS hKR
+  have hhgt : S.H.heightAt ⟨S.rd.col, i⟩ = some Rh := by simp [Tree.heightAt, hent]
+  have hKr : K.roles = Rh.roles := by rw [hK, relKey_roles]
+  obtain ⟨hres, hnum, -⟩ := Scan.rootData_col hsd hrd
+  have hvis := rep_visible S.sd.col S.rd.col (by rw [hnum]; exact hres)
+  have hplt : pR < S.rd.col.num 0 :=
+    ((ColAddr.resolve_isSome_iff 0 _ pR).1 (hV _ he pR Rh hent)).2
+  have hinner : ∀ r ∈ K.roles, Role.under (EntryAddr.heightPath ⟨S.rd.col, i⟩) r ∈ S.H.roles ∧
+      (Role.under (EntryAddr.heightPath ⟨S.rd.col, i⟩) r).inEntry ⟨S.rd.col, i⟩ = true :=
+    fun r hr => under_mem_D4 he hhgt (hKr ▸ hr)
+  have hsb := slot_mem_bank_D4 S hS hi
+  have hK' : K = relKey (S.rd.col.num 0) ((S.H.heightAt ⟨S.rd.col, i⟩).getD Tree.empty) := by
+    rw [hhgt]; exact hK
+  -- every variable of the free block reads `R`, a pre-root role or a bank role
+  have himg : ∀ w ∈ baseVars (freeBlock K),
+      blockMap ⟨S.rd.col, i⟩ w ∈ setupPreRoot S ∨ blockMap ⟨S.rd.col, i⟩ w = .ord S.rd.col ∨
+        blockMap ⟨S.rd.col, i⟩ w ∈ setupBank S := by
+    intro w hw
+    have hw' : w ∈ baseVars (posBlock K pR) := by
+      simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hw
+    rcases posBlock_vars _ _ w hw' with rfl | rfl | ⟨q, rfl | rfl⟩ | ⟨r, hr, rfl⟩
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inr (Or.inr hsb)
+    · simp only [blockMap]
+      cases hr : S.rd.col.rep 0 q with
+      | none => exact Or.inr (Or.inl rfl)
+      | some ov => exact Or.inl (rep_preRoot_D4 hS hr).1
+    · simp only [blockMap]
+      cases hr : S.rd.col.rep 0 q with
+      | none => exact Or.inr (Or.inl rfl)
+      | some ov => exact Or.inl (rep_preRoot_D4 hS hr).2
+    · obtain ⟨h1, h2⟩ := hinner r hr
+      exact Or.inr (Or.inr ((mem_bank_iff_D4 S).2 ⟨h1, i, hi, h2⟩))
+  refine ⟨fun a ha => ?_, fun w x hx => by simp [bankCand_D4, hx], hinner⟩
+  have ha' : a ∈ posBlock K pR := List.mem_append_left _ ha
+  have hg := posBlock_heads_graph he hV a (by rw [← hK']; simpa [hent] using ha')
+  have hbg : a.map (blockMap ⟨S.rd.col, i⟩) ∈ setupBankGraph S := by
+    refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, List.all_eq_true.2 fun v hv => ?_⟩, ?_⟩
+    · rw [baseAtom_vars_map] at hv
+      obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hv
+      have := himg w (List.mem_flatMap.2 ⟨a, ha, hw⟩)
+      simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq]
+      tauto
+    · obtain ⟨w, hw, hw'⟩ := posBlock_has_new_D4 _ _ a ha'
+      rw [baseAtom_vars_map]
+      refine List.any_eq_true.2 ⟨blockMap ⟨S.rd.col, i⟩ w, List.mem_map_of_mem hw, ?_⟩
+      simp only [decide_eq_true_eq]
+      have hwv : w ∈ baseVars (freeBlock K) := List.mem_flatMap.2 ⟨a, ha, hw⟩
+      rcases hw' with rfl | rfl | ⟨r, rfl⟩
+      · exact Or.inl rfl
+      · exact Or.inr hsb
+      · rcases himg _ hwv with h | h | h
+        · exfalso
+          have hm : BlkVar.inner r ∈ baseVars (posBlock K pR) := by
+            simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hwv
+          obtain ⟨r', hr', hrr⟩ : ∃ r' ∈ K.roles, BlkVar.inner r = .inner r' := by
+            rcases posBlock_vars _ _ _ hm with h | h | ⟨q, h | h⟩ | h
+            · cases h
+            · cases h
+            · cases h
+            · cases h
+            · exact h
+          cases hrr
+          obtain ⟨h1, h2⟩ := hinner r hr'
+          exact preRoot_not_bank_D4 hS h ((mem_bank_iff_D4 S).2 ⟨h1, i, hi, h2⟩)
+        · exact Or.inl h
+        · exact Or.inr h
+  have h5 := hS.2.2.2.2.1 _ hbg
+  rw [baseAtom_holds_map'] at h5
+  refine (BaseAtom.holds_congr P a _ _ fun w hw => ?_).1 h5
+  have hwv : w ∈ baseVars (freeBlock K) := List.mem_flatMap.2 ⟨a, ha, hw⟩
+  cases hx : (frameOf ⟨S.sd.col, j⟩).toFr w with
+  | none => simp [bankCand_D4, hx]
+  | some x =>
+    simp only [Function.comp, bankCand_D4, hx]
+    have hw' : w ∈ baseVars (posBlock (relKey (S.rd.col.num 0) Rh) pR) := by
+      rw [← hK]
+      simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hwv
+    cases w with
+    | host =>
+      cases hx
+      rw [show blockMap ⟨S.rd.col, i⟩ .host = .ord S.rd.col from rfl, setupBankVal_root_D4]
+      simp [frameOf, ScanSetup.fitVal, not_query_D4 hsd (x := .ord S.sd.col) (Or.inr rfl),
+        ScanSetup.baseVal]
+    | owner => cases hx
+    | inner _ => cases hx
+    | ord q =>
+      have hq : q < S.rd.col.num 0 := by
+        rcases posBlock_ordcur_D4 hw' (Or.inl rfl) with h | h
+        · exact h
+        · rw [h]; exact hplt
+      simp only [Frame.toFr, frameOf, reps0_getElem?] at hx
+      obtain ⟨⟨o, v⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hx
+      have hov' : S.rd.col.rep 0 q = some (o, v) := by rw [hvis q hq]; exact hov
+      simp only [blockMap, hov', Option.map_some, Option.getD_some]
+      have hpre := (rep_preRoot_D4 hS hov').1
+      rw [bankVal_preRoot_D4 hS hpre]
+      simp [ScanSetup.fitVal, not_query_D4 hsd (Or.inl (preRoot_sub_preStop_D4 hsd hrd hpre))]
+    | cur q =>
+      have hq : q < S.rd.col.num 0 := by
+        rcases posBlock_ordcur_D4 hw' (Or.inr rfl) with h | h
+        · exact h
+        · rw [h]; exact hplt
+      simp only [Frame.toFr, frameOf, reps0_getElem?] at hx
+      obtain ⟨⟨o, v⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hx
+      have hov' : S.rd.col.rep 0 q = some (o, v) := by rw [hvis q hq]; exact hov
+      simp only [blockMap, hov', Option.map_some, Option.getD_some]
+      have hpre := (rep_preRoot_D4 hS hov').2
+      rw [bankVal_preRoot_D4 hS hpre]
+      simp [ScanSetup.fitVal, not_query_D4 hsd (Or.inl (preRoot_sub_preStop_D4 hsd hrd hpre))]
+
 /-- L8.5f: `x_i = y_j`: the two-candidate fact on the bank block and the positive block
 (txt:1235-1241). -/
 theorem scan_eq (I : Interface.{u}) (S : ScanSetup.{u}) (hS : S.Valid I.toPrims) {i j : Nat}
