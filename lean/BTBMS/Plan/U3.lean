@@ -12129,13 +12129,377 @@ theorem scan_valid2_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j
   · rw [hRc, hcB x hx'] at hxy; exact absurd hxy (hbfresh x (hBk x hx')).2.1
   · rw [hcB x hx', hcB y hy'] at hxy; exact hbinj (hBk x hx') (hBk y hy') hxy
 
+/-- L7.6a step 8(a) helper: the owner of an atom is one of its variables. -/
+theorem atomOwner_mem_vars_G8 {V : Type} {a : BaseAtom V} {z : V} (h : atomOwner a = some z) :
+    z ∈ a.vars := by
+  cases a <;> simp_all [atomOwner, BaseAtom.vars]
+
+/-- L7.6a step 8(a) helper: `χ̂` sends a slot to a slot. -/
+theorem chi_slot_G8 (S : ScanSetup.{u}) (e : EntryAddr) : ∃ e', S.chi (.slot e) = .slot e' := by
+  unfold ScanSetup.chi anchorD
+  cases hc : S.cap with
+  | none => exact ⟨e, by simp [Closure.anchorOrigin]⟩
+  | some w =>
+    rcases origin_slot w e with h | ⟨e', h⟩
+    · exact ⟨e, by simp [Closure.anchorOrigin, h]⟩
+    · exact ⟨e', by simp [Closure.anchorOrigin, h]⟩
+
+/-- L7.6a step 8(a) helper: an atom of `Γ(H)` inside `P⁻ ∪ {T} ∪ fitted_j` that reads `T` or a
+query role is fitted. -/
+theorem scan_fit_atom_G8 {P : Prims.{u}} (S : ScanSetup.{u}) {j : Nat} {β : Role → Ordinal.{u}}
+    (hfit : S.Fitted P j β) {a : BaseAtom Role} (ha : a ∈ graph S.H)
+    (hv : ∀ v ∈ a.vars, v ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j)
+    (hq : ∃ v ∈ a.vars, v ∈ Role.ord S.sd.col :: S.queryRoles) : a.Holds P (S.fitVal β) := by
+  apply hfit
+  unfold restrictTo ScanSetup.queryGraph restrictTo
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨List.mem_filter.2 ⟨ha, ?_⟩, ?_⟩, ?_⟩
+  · refine List.all_eq_true.2 fun v hv' => ?_
+    have := hv v hv'
+    simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq] at this ⊢
+    rcases this with (h | h) | h
+    · exact Or.inl (Or.inl h)
+    · exact Or.inl (Or.inr h)
+    · exact Or.inr (List.mem_filter.1 h).1
+  · obtain ⟨v, hv', hvq⟩ := hq
+    exact List.any_eq_true.2 ⟨v, hv', by simpa using hvq⟩
+  · exact List.all_eq_true.2 fun v hv' => by simpa using hv v hv'
+
 /-- L7.6a step 8(a): the target prefix graph through the target chart. -/
 theorem scan_joint_tgt_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
     {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) :
     BaseHolds P ((prefixGraph S.E (S.scanRecord i j).b).map (BaseAtom.map S.pkTgtChart))
       (S.pkAsg β) := by
-  sorry
+  have hS' := hS
+  obtain ⟨⟨-, hInL, -, hsd, -, -, -⟩, ⟨-, h2, hPE⟩, -, -, -, -⟩ := hS'
+  obtain ⟨-, hj⟩ := reach_idx_E8 hij
+  obtain ⟨hb, hTE, hnum, -, hrep⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨colE, hcolE, hagree⟩ := scan_col_E8 S hS
+  have hcolH := (Scan.stopData_spec hsd).1
+  have hjE : j < colE.length := (List.getElem?_eq_some_iff.1
+    ((hagree j hj).trans (List.getElem?_eq_getElem hj))).1
+  have htake : colE.take j = S.sd.Q.take j := by
+    apply List.ext_getElem?
+    intro k
+    simp only [List.getElem?_take]
+    split_ifs with hk
+    · exact hagree k (by omega)
+    · rfl
+  set fE := Tree.rolesCol S.cE.path S.cE.col 0 (S.sd.Q.take j) with hfEdef
+  set fH := Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) with hfHdef
+  have hPEd : rolesBefore S.E (.ord S.cE) = S.PE := by simp only [ScanSetup.PE, hTE]
+  have hpre : prefixRoles S.E (S.scanRecord i j).b = S.PE ++ S.TE :: fE := by
+    rw [hb, col_prefix_E8 hcolE hjE, hPEd, hTE, htake]
+  have hfE : fE.map S.toH = fH := rolesCol_transColumn_E8 S.cE S.sd.col _ 0
+  obtain ⟨hfnd, hfsub⟩ := fitted_rolesCol_E8 hsd j
+  have hPb : S.PE ++ S.TE :: fE <+: S.E.roles := by rw [← hpre]; exact List.takeWhile_prefix _
+  have hPEpre : S.PE <+: S.E.roles := (List.prefix_append _ _).trans hPb
+  have hPnd : (S.PE ++ S.TE :: fE).Nodup := (Tree.roles_nodup S.E).sublist hPb.sublist
+  have hPnd' := List.nodup_append.1 hPnd
+  have hTf : S.TE ∉ fE := (List.nodup_cons.1 hPnd'.2.1).1
+  have hTP : S.TE ∉ S.PE := fun h => hPnd'.2.2 _ h _ List.mem_cons_self rfl
+  have hfP : ∀ v ∈ fE, v ∉ S.PE := fun v hv h => hPnd'.2.2 _ h _ (List.mem_cons_of_mem _ hv) rfl
+  have hTEH : S.toH S.TE = .ord S.sd.col := by
+    rw [hTE]; simp [ScanSetup.toH, transColumn, relocCol]
+  obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
+  have hndH := Tree.roles_nodup S.H
+  rw [hroles, List.nodup_append, List.nodup_cons] at hndH
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := fun h => hndH.2.1.1 (List.mem_append_left _ h)
+  have hTH : Role.ord S.sd.col ∈ S.H.roles := by rw [hroles]; simp
+  have hpreH : ∀ y ∈ S.preStop, y ∈ S.H.roles := fun y hy => by rw [hroles]; simp [hy]
+  -- values of the target chart
+  have hstopv : S.pkAsg β S.stopNm = S.asg S.stopNm :=
+    pkAsg_used_E8 S β (by simp [ScanSetup.usedNames])
+  have hfitT : S.fitVal β (.ord S.sd.col) = S.asg S.stopNm := by
+    simp [ScanSetup.fitVal, hTq, ScanSetup.baseVal]
+  intro x hx
+  obtain ⟨a, ha, rfl⟩ := List.mem_map.1 hx
+  rw [BaseAtom.holds_map]
+  set α : Role → Ordinal.{u} := S.pkAsg β ∘ S.pkTgtChart with hα
+  have hαP : ∀ v ∈ S.PE, α v = S.asg (S.ePre v) := by
+    intro v hv
+    simp only [hα, Function.comp_apply, ScanSetup.pkTgtChart, if_pos hv]
+    exact pkAsg_used_E8 S β (by
+      simp only [ScanSetup.usedNames, List.mem_append]
+      exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hv))))
+  have hαT : α S.TE = S.asg S.stopNm := by
+    simp only [hα, Function.comp_apply, (scan_hosts_E8 S hS).1, hstopv]
+  have hαf : ∀ v ∈ fE, α v = S.fitVal β (S.toH v) ∧ S.toH v ∈ S.fittedRoles j ∧
+      S.toH v ∈ S.queryRoles := by
+    intro v hv
+    have hvH : S.toH v ∈ S.fittedRoles j := hfsub _ (by
+      have := List.mem_map_of_mem (f := S.toH) hv; rwa [hfE] at this)
+    have hvq : S.toH v ∈ S.queryRoles := (List.mem_filter.1 hvH).1
+    have hvT : v ≠ S.TE := fun h => hTf (h ▸ hv)
+    refine ⟨?_, hvH, hvq⟩
+    simp only [hα, Function.comp_apply, ScanSetup.pkTgtChart, if_neg (hfP v hv), if_neg hvT,
+      ScanSetup.pkAsg, if_true, ScanSetup.fitVal, if_pos hvq]
+  have hαL : ∀ v ∈ S.TE :: fE, α v = S.fitVal β (S.toH v) ∧
+      S.toH v ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j := by
+    intro v hv
+    rcases List.mem_cons.1 hv with rfl | hv
+    · rw [hαT, hTEH, hfitT]; exact ⟨rfl, by simp⟩
+    · obtain ⟨h1, h2, -⟩ := hαf v hv
+      exact ⟨h1, List.mem_append_right _ h2⟩
+  have hαpre : ∀ y ∈ S.preStop, α (S.chi y) = S.fitVal β y := by
+    intro y hy
+    obtain ⟨-, h1, h2, h3⟩ := scan_pre_val_E8 S hS β hy
+    simp only [hα, Function.comp_apply, h1, h2, h3]
+  unfold prefixGraph restrictTo at ha
+  obtain ⟨haE, hall⟩ := List.mem_filter.1 ha
+  have hvars : ∀ v ∈ a.vars, v ∈ S.PE ++ S.TE :: fE := by
+    intro v hv; rw [← hpre]; simpa using List.all_eq_true.1 hall v hv
+  by_cases hA : ∀ v ∈ a.vars, v ∈ S.PE
+  · -- an atom inside `P_E` (S2)
+    have hin : a ∈ restrictTo (graph S.E) S.PE :=
+      List.mem_filter.2 ⟨haE, List.all_eq_true.2 fun v hv => by simpa using hA v hv⟩
+    have := h2 _ (List.mem_map_of_mem hin)
+    rw [BaseAtom.holds_map] at this
+    exact (amalg_baseAtom_congr P a (fun v hv => hαP v (hA v hv))).2 this
+  rcases graph_atom_cases S.E a haE with ⟨k, x, y, rfl, hx, hy⟩ | ⟨z, -, hown⟩
+  · -- an order atom
+    have hyP := hvars y (by simp [BaseAtom.vars])
+    obtain ⟨m, hm⟩ := List.mem_iff_getElem?.1 hyP
+    have hmlt : m < (S.PE ++ S.TE :: fE).length := (List.getElem?_eq_some_iff.1 hm).1
+    have hmE : S.E.roles[m]? = some y := by rw [getElem?_of_prefix hPb hmlt]; exact hm
+    have hmk : m = k + 1 :=
+      (List.getElem?_inj (List.getElem?_eq_some_iff.1 hmE).1 (Tree.roles_nodup S.E)).1
+        (hmE.trans hy.symm)
+    subst hmk
+    have hxP : (S.PE ++ S.TE :: fE)[k]? = some x := by
+      rw [← getElem?_of_prefix hPb (by omega)]; exact hx
+    show α x < α y
+    rcases lt_trichotomy (k + 1) S.PE.length with hlt | heq | hgt
+    · exfalso; apply hA; intro v hv
+      simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hv
+      rcases hv with rfl | rfl
+      · rw [List.getElem?_append_left (by omega)] at hxP; exact List.mem_of_getElem? hxP
+      · rw [List.getElem?_append_left hlt] at hm; exact List.mem_of_getElem? hm
+    · rw [List.getElem?_append_left (by omega)] at hxP
+      rw [List.getElem?_append_right (by omega), heq, Nat.sub_self] at hm
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at hm
+      subst hm
+      rw [hαP x (List.mem_of_getElem? hxP), hαT]
+      exact hPE x (List.mem_of_getElem? hxP)
+    · rw [List.getElem?_append_right (by omega)] at hxP hm
+      have hk1 : k + 1 - S.PE.length = (k - S.PE.length) + 1 := by omega
+      rw [hk1] at hm
+      have hyf : y ∈ fE := by
+        simp only [List.getElem?_cons_succ] at hm; exact List.mem_of_getElem? hm
+      have hL : (S.TE :: fE).map S.toH = Role.ord S.sd.col :: fH := by
+        rw [List.map_cons, hTEH, hfE]
+      have hsplit : S.queryRoles = fH ++ Tree.rolesCol S.sd.col.path S.sd.col.col
+          (0 + (S.sd.Q.take j).length) (S.sd.Q.drop j) := by
+        rw [hQ, hfHdef, ← Tree.rolesCol_append, List.take_append_drop]
+      have hH : S.H.roles = S.preStop ++ ((S.TE :: fE).map S.toH ++
+          (Tree.rolesCol S.sd.col.path S.sd.col.col (0 + (S.sd.Q.take j).length) (S.sd.Q.drop j) ++
+            Role.slot (Scan.closingSlot S.sd) :: post)) := by
+        rw [hroles, hL, hsplit]; simp
+      have hget : ∀ t, t < (S.TE :: fE).length → ∀ v, (S.TE :: fE)[t]? = some v →
+          S.H.roles[S.preStop.length + t]? = some (S.toH v) := by
+        intro t ht v hv
+        rw [hH, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
+          List.getElem?_append_left (by simpa using ht), List.getElem?_map, hv]
+        rfl
+      have hx' := hget _ (List.getElem?_eq_some_iff.1 hxP).1 _ hxP
+      have hy' := hget _ (List.getElem?_eq_some_iff.1 hm).1 _ hm
+      have hlt' := (graph_lt_iff S.H _ _).2 ⟨_, hx', by rw [← Nat.add_assoc] at hy'; exact hy'⟩
+      obtain ⟨hvx, hix⟩ := hαL x (List.mem_of_getElem? hxP)
+      obtain ⟨hvy, hiy⟩ := hαL y (List.mem_of_getElem? hm)
+      have := scan_fit_atom_G8 S hfit hlt' (fun v hv => by
+          simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hv
+          rcases hv with rfl | rfl
+          · exact hix
+          · exact hiy)
+        ⟨S.toH y, by simp [BaseAtom.vars], List.mem_cons_of_mem _ (hαf y hyf).2.2⟩
+      rw [hvx, hvy]; exact this
+  · -- an owned atom
+    have hzv : z ∈ a.vars := atomOwner_mem_vars_G8 hown
+    have hzP := hvars z hzv
+    have hownE : a ∈ ownedBy (graph S.E) z := List.mem_filter.2 ⟨haE, by simp [hown]⟩
+    rcases List.mem_append.1 hzP with hzPE | hzT
+    · exfalso; apply hA; intro v hv
+      rcases owned_before hownE hv with h | rfl
+      · exact rolesBefore_sub_prefix hPEpre hzPE h
+      · exact hzPE
+    rcases List.mem_cons.1 hzT with rfl | hzf
+    · -- owned by `T_E`
+      rcases (mem_graph_iff S.E a).1 haE with ⟨x, -, rfl⟩ | ⟨_, x, y, -, -, rfl⟩ |
+        ⟨c, -, -, rfl⟩ | ⟨e, p, o, v, -, -, ha'⟩
+      · simp only [atomOwner, Option.some.injEq] at hown
+        subst hown
+        have hl : BaseAtom.lim (Role.ord S.sd.col) ∈ graph S.H :=
+          (mem_graph_iff _ _).2 (Or.inl ⟨_, hTH, rfl⟩)
+        have := scan_fit_atom_G8 S hfit hl (by simp [BaseAtom.vars])
+          ⟨_, by simp [BaseAtom.vars], List.mem_cons_self⟩
+        show IsLim (α S.TE)
+        rw [hαT, ← hfitT]; exact this
+      · simp [atomOwner] at hown
+      · simp only [atomOwner, Option.some.injEq] at hown
+        rw [hTE, Role.ord.injEq] at hown
+        have hq1 : c.num 0 + 1 = S.sd.col.num 0 := by
+          rw [← hnum, ← hown]; simp [ColAddr.num]; omega
+        have hrn := rep_next c
+        rw [hown] at hrn
+        have hr := hrep (c.num 0) (by omega)
+        rw [hrn] at hr
+        cases hsr : S.sd.col.rep 0 (c.num 0) with
+        | none => rw [hsr] at hr; cases hr
+        | some xv =>
+          obtain ⟨x0, v0⟩ := xv
+          rw [hsr] at hr
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+          obtain ⟨hx0, hv0⟩ := hr
+          have hsr' := hsr
+          unfold ColAddr.rep at hsr'
+          obtain ⟨o, hres, hov⟩ := Option.map_eq_some_iff.1 hsr'
+          simp only [Prod.mk.injEq] at hov
+          obtain ⟨rfl, rfl⟩ := hov
+          have hso : S.sd.col.rep 0 (c.num 0) = some (.ord o, .ord o) := by
+            cases hco : o.container S.sd.col with
+            | some e' =>
+              simp only [hco] at hv0
+              obtain ⟨e'', he''⟩ := chi_slot_G8 S e'
+              rw [he''] at hv0; cases hv0
+            | none =>
+              unfold ColAddr.rep; rw [hres]; simp [hco]
+          obtain ⟨hoe, hcol1⟩ := prev_of_rep hso hq1
+          have hoP : Role.ord o ∈ S.preStop := (stop_reps_E8 hsd hso).1
+          have hsdc : (⟨o.path, o.col + 1⟩ : ColAddr) = S.sd.col := by
+            rw [hoe]; exact colAddr_eq rfl (by simp; omega)
+          have hel : BaseAtom.elem (.ord o) (.ord S.sd.col) ∈ graph S.H := by
+            rw [mem_graph_iff]
+            refine Or.inr (Or.inr (Or.inl ⟨o, hpreH _ hoP, by rw [hsdc]; exact hTH, by rw [hsdc]⟩))
+          have := scan_fit_atom_G8 S hfit hel (fun v hv => by
+              simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hv
+              rcases hv with rfl | rfl
+              · exact List.mem_append_left _ (List.mem_append_left _ hoP)
+              · simp)
+            ⟨_, by simp [BaseAtom.vars], List.mem_cons_self⟩
+          show P.Elem (α (.ord c)) (α (.ord ⟨c.path, c.col + 1⟩))
+          rw [hown, ← hTE, hαT, ← hfitT]
+          have hx0' : S.chi (Role.ord o) = Role.ord c := hx0
+          rw [← hx0', hαpre _ hoP]
+          exact this
+      · exfalso
+        rcases ha' with rfl | rfl <;> simp [atomOwner, hTE] at hown
+    · -- owned by a role of an earlier query entry: block transport
+      obtain ⟨m, p, h, hm, hzm⟩ := Tree.mem_rolesCol_iff.1 hzf
+      rw [Nat.zero_add] at hzm
+      have hm' := hm
+      rw [List.getElem?_take] at hm'
+      split_ifs at hm' with hmj
+      have hmQ : m < S.sd.Q.length := by omega
+      have hentE : S.E.entryAt ⟨S.cE, m⟩ = some (p, h) := by
+        simp [Tree.entryAt, hcolE, hagree m hmQ, hm']
+      have hentH : S.H.entryAt ⟨S.sd.col, m⟩ = some (p, h) := by
+        simp [Tree.entryAt, hcolH, List.getElem?_append_left hmQ, hm']
+      have heE : (⟨S.cE, m⟩ : EntryAddr) ∈ S.E.entryAddrs :=
+        (Tree.mem_entryAddrs_iff _ _).2 (by rw [hentE]; rfl)
+      have heH : (⟨S.sd.col, m⟩ : EntryAddr) ∈ S.H.entryAddrs :=
+        (Tree.mem_entryAddrs_iff _ _).2 (by rw [hentH]; rfl)
+      have hz' : z = .slot ⟨S.cE, m⟩ ∨ (⟨S.cE, m⟩ : EntryAddr).heightPath <+: z.path := by
+        rcases hzm with h1 | h1
+        · exact Or.inl h1
+        · right
+          rw [Tree.rolesF_eq_map_under] at h1
+          obtain ⟨r, -, rfl⟩ := List.mem_map.1 h1
+          rw [Role.path_under]; exact List.prefix_append _ _
+      obtain ⟨a₀, ha₀, rfl⟩ := graph_owned_block_core heE z hz' a hownE
+      have hblkH := posBlock_heads_graph heH hInL.1 a₀ (by
+        simpa [Tree.heightAt, hentE, hentH, hnum] using ha₀)
+      -- the block variables
+      have hmemf : ∀ r ∈ h.roles, Role.under (⟨S.cE, m⟩ : EntryAddr).heightPath r ∈ fE := by
+        intro r hr
+        refine Tree.mem_rolesCol_iff.2 ⟨m, p, h, hm, Or.inr ?_⟩
+        rw [Tree.rolesF_eq_map_under, Nat.zero_add]; exact List.mem_map_of_mem hr
+      have hslf : Role.slot (⟨S.cE, m⟩ : EntryAddr) ∈ fE :=
+        Tree.mem_rolesCol_iff.2 ⟨m, p, h, hm, Or.inl (by rw [Nat.zero_add])⟩
+      have hhost : α (.ord S.cE) = S.fitVal β (.ord S.sd.col) ∧
+          Role.ord S.sd.col ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j := by
+        rw [← hTE, hαT, hfitT]; exact ⟨rfl, by simp⟩
+      have hvar : ∀ w ∈ a₀.vars, α (blockMap ⟨S.cE, m⟩ w) = S.fitVal β (blockMap ⟨S.sd.col, m⟩ w) ∧
+          blockMap ⟨S.sd.col, m⟩ w ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j ∧
+          ((w = .owner ∨ ∃ r, w = .inner r) → blockMap ⟨S.sd.col, m⟩ w ∈ S.queryRoles) := by
+        intro w hw
+        have hwP : blockMap ⟨S.cE, m⟩ w ∈ S.PE ++ S.TE :: fE :=
+          hvars _ (by rw [baseAtom_vars_map]; exact List.mem_map_of_mem hw)
+        cases w with
+        | host => exact ⟨hhost.1, hhost.2, fun h => by rcases h with h | ⟨r, h⟩ <;> cases h⟩
+        | ord q =>
+          suffices hh : α (blockMap ⟨S.cE, m⟩ (.ord q)) = S.fitVal β (blockMap ⟨S.sd.col, m⟩ (.ord q)) ∧
+              blockMap ⟨S.sd.col, m⟩ (.ord q) ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j from
+            ⟨hh.1, hh.2, fun h => by rcases h with h | ⟨r, h⟩ <;> cases h⟩
+          by_cases hq : q < S.sd.col.num 0
+          · obtain ⟨⟨x0, v0⟩, hxv⟩ := Option.isSome_iff_exists.1 ((rep_isSome_iff _ _).2 hq)
+            have hc : S.cE.rep 0 q = some (S.chi x0, S.chi v0) := by rw [← hrep q hq, hxv]; rfl
+            have hx0 := (stop_reps_E8 hsd hxv).1
+            simp only [blockMap, hxv, hc, Option.map_some, Option.getD_some]
+            exact ⟨hαpre _ hx0, List.mem_append_left _ (List.mem_append_left _ hx0)⟩
+          · have hn : S.sd.col.rep 0 q = none := by
+              cases h' : S.sd.col.rep 0 q with
+              | none => rfl
+              | some _ => exact absurd ((rep_isSome_iff _ _).1 (by rw [h']; rfl)) hq
+            have hn' : S.cE.rep 0 q = none := by
+              cases h' : S.cE.rep 0 q with
+              | none => rfl
+              | some _ => exact absurd (hnum ▸ (rep_isSome_iff _ _).1 (by rw [h']; rfl)) hq
+            simp only [blockMap, hn, hn', Option.map_none, Option.getD_none]
+            exact hhost
+        | cur q =>
+          suffices hh : α (blockMap ⟨S.cE, m⟩ (.cur q)) = S.fitVal β (blockMap ⟨S.sd.col, m⟩ (.cur q)) ∧
+              blockMap ⟨S.sd.col, m⟩ (.cur q) ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j from
+            ⟨hh.1, hh.2, fun h => by rcases h with h | ⟨r, h⟩ <;> cases h⟩
+          by_cases hq : q < S.sd.col.num 0
+          · obtain ⟨⟨x0, v0⟩, hxv⟩ := Option.isSome_iff_exists.1 ((rep_isSome_iff _ _).2 hq)
+            have hc : S.cE.rep 0 q = some (S.chi x0, S.chi v0) := by rw [← hrep q hq, hxv]; rfl
+            have hv0 := (stop_reps_E8 hsd hxv).2
+            simp only [blockMap, hxv, hc, Option.map_some, Option.getD_some]
+            exact ⟨hαpre _ hv0, List.mem_append_left _ (List.mem_append_left _ hv0)⟩
+          · have hn : S.sd.col.rep 0 q = none := by
+              cases h' : S.sd.col.rep 0 q with
+              | none => rfl
+              | some _ => exact absurd ((rep_isSome_iff _ _).1 (by rw [h']; rfl)) hq
+            have hn' : S.cE.rep 0 q = none := by
+              cases h' : S.cE.rep 0 q with
+              | none => rfl
+              | some _ => exact absurd (hnum ▸ (rep_isSome_iff _ _).1 (by rw [h']; rfl)) hq
+            simp only [blockMap, hn, hn', Option.map_none, Option.getD_none]
+            exact hhost
+        | owner =>
+          have hto : S.toH (.slot ⟨S.cE, m⟩) = .slot ⟨S.sd.col, m⟩ := by
+            simp [ScanSetup.toH, transColumn]
+          obtain ⟨h1, h2, h3⟩ := hαf _ hslf
+          rw [hto] at h1 h2 h3
+          exact ⟨h1, List.mem_append_right _ h2, fun _ => h3⟩
+        | inner r =>
+          have hvE : Role.under (⟨S.cE, m⟩ : EntryAddr).heightPath r ∈ S.E.roles := hPb.subset hwP
+          have hmem := mem_under_of_inEntry_E8 heE hvE
+            (by rw [Role.path_under]; exact List.prefix_append _ _)
+          rw [show S.E.heightAt ⟨S.cE, m⟩ = some h by simp [Tree.heightAt, hentE],
+            Option.getD_some] at hmem
+          obtain ⟨r', hr', hrr⟩ := List.mem_map.1 hmem
+          have hr'r := Role.under_injective _ hrr
+          subst hr'r
+          have hto : S.toH (Role.under (⟨S.cE, m⟩ : EntryAddr).heightPath r') =
+              Role.under (⟨S.sd.col, m⟩ : EntryAddr).heightPath r' :=
+            transColumn_under_E8 S.cE S.sd.col m r'
+          obtain ⟨h1, h2, h3⟩ := hαf _ (hmemf r' hr')
+          rw [hto] at h1 h2 h3
+          exact ⟨h1, List.mem_append_right _ h2, fun _ => h3⟩
+      -- the owner variable of the block atom
+      rw [atomOwner_map] at hown
+      obtain ⟨w0, hw0, -⟩ := Option.map_eq_some_iff.1 hown
+      have hw0v := atomOwner_mem_vars_G8 hw0
+      have hw0k := posBlock_owner ha₀ hw0
+      have hH' := scan_fit_atom_G8 S hfit hblkH (fun v hv => by
+          rw [baseAtom_vars_map] at hv
+          obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hv
+          exact (hvar w hw).2.1)
+        ⟨_, by rw [baseAtom_vars_map]; exact List.mem_map_of_mem hw0v,
+          List.mem_cons_of_mem _ ((hvar w0 hw0v).2.2 hw0k)⟩
+      rw [BaseAtom.holds_map] at hH' ⊢
+      exact (amalg_baseAtom_congr P a₀ (fun w hw => (hvar w hw).1)).2 hH'
 
 /-- L7.6a step 8(b) helper: roles inside a root entry are not pre-root roles. -/
 theorem preRoot_not_bank_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {v : Role}
