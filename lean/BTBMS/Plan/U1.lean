@@ -1973,9 +1973,43 @@ def ReturnBound (E : Forest) (e : EntryAddr) (c : ColAddr) (k : Nat) : Prop :=
   (parents E c)[k]? = some (e.col.num 0) →
     boundary (actualKeys E c) k < boundary (actualKeys E e.col) e.idx
 
+/-- L2.3a helper: an entry containing a column of `E` is an entry of `E`. -/
+theorem mem_entryAddrs_of_contains {E : Forest} {e : EntryAddr} {c : ColAddr}
+    (hc : c ∈ E.colAddrs) (hec : e.Contains c) : e ∈ E.entryAddrs := by
+  rw [Tree.mem_colAddrs_iff] at hc
+  rw [Tree.mem_entryAddrs_iff]
+  obtain ⟨rest, hrest⟩ := hec
+  unfold Tree.colAt at hc
+  rw [← hrest, Tree.forestAt_append, Tree.forestAt_heightPath] at hc
+  unfold Tree.heightAt at hc
+  cases h : E.entryAt e <;> simp_all
+
+/-- L2.3a helper: the index of an entry is below the length of its column. -/
+theorem idx_lt_of_mem_entryAddrs {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
+    e.idx < ((E.colAt e.col).getD []).length := by
+  rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at he
+  obtain ⟨x, hx⟩ := he
+  obtain ⟨col, hcol, hx⟩ := Tree.colAt_of_entryAt hx
+  rw [hcol, Option.getD_some]
+  exact (List.getElem?_eq_some_iff.1 hx).1
+
+/-- L2.3a helper: a column with a parent at some index is a column of `E`. -/
+theorem mem_colAddrs_of_parents {E : Forest} {o : ColAddr} {k q : Nat}
+    (h : (parents E o)[k]? = some q) : o ∈ E.colAddrs := by
+  rw [Tree.mem_colAddrs_iff]
+  cases hc : E.colAt o with
+  | none => simp [parents, hc] at h
+  | some _ => rfl
+
 /-- L2.3a: the empty cut is below every boundary of an entry. -/
 theorem cutBound_zero {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) (c : ColAddr) :
-    CutBound E e c 0 := by sorry
+    CutBound E e c 0 := by
+  intro _
+  rw [cutQuery_zero]
+  have hlen : e.idx < (actualKeys E e.col).length := by
+    rw [length_actualKeys]; exact idx_lt_of_mem_entryAddrs he
+  obtain ⟨x, l, hxl⟩ := List.exists_cons_of_ne_nil (boundary_ne_nil hlen)
+  rw [hxl]; exact List.nil_lt_cons x l
 
 /-- L2.3a (localized pre-entry-cut barrier): `C_e(c,k)` follows from the return bounds at
 smaller column numbers inside `H_e` and at earlier entries of `c`; no A at `(c,k)` is used. -/
@@ -1983,12 +2017,67 @@ theorem cutBound_of_returns {E : Forest} (hV : CondV E) {e : EntryAddr} (he : e 
     {c : ColAddr} (hc : c ∈ E.colAddrs) (hec : e.Contains c) {k : Nat}
     (hk : k ≤ (parents E c).length)
     (hlow : ∀ o ∈ E.colAddrs, e.Contains o → o.num 0 < c.num 0 → ∀ v, ReturnBound E e o v)
-    (hprev : ∀ k' < k, ReturnBound E e c k') : CutBound E e c k := by sorry
+    (hprev : ∀ k' < k, ReturnBound E e c k') : CutBound E e c k := by
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact cutBound_zero he c
+  intro hpath
+  rcases Relation.ReflTransGen.cases_tail hpath with hxa | ⟨z, -, hza⟩
+  · -- the path is reflexive: the preceding entry returns to the host
+    have hk1 : k - 1 < (parents E c).length := by omega
+    have hpk : (parents E c)[k - 1]? = some (e.col.num 0) := by
+      rw [List.getElem?_eq_getElem hk1]
+      simp only [cutStart, Nat.pos_iff_ne_zero.1 hkpos, if_false,
+        List.getElem?_eq_getElem hk1, Option.getD_some] at hxa
+      rw [hxa]
+    have := hprev (k - 1) (by omega) hpk
+    rwa [boundary_eq_cutQuery, Nat.sub_add_cancel hkpos] at this
+  · obtain ⟨o, hzo, hresp⟩ := hza
+    have haz : e.col.num 0 < z := edge_lt hV ⟨o, hzo, hresp⟩
+    have heo : e.Contains o := EntryAddr.contains_of_resolve hec hzo haz
+    have hoz : o.num 0 = z := ColAddr.resolve_num hzo
+    have hzc : z < c.num 0 := ColAddr.resolve_lt hzo
+    rw [resp_eq_parents] at hresp
+    have hoE : o ∈ E.colAddrs := mem_colAddrs_of_parents hresp
+    have hv : cursor (actualKeys E o) (cutQuery (actualKeys E c) k) < (actualKeys E o).length := by
+      rw [length_actualKeys]
+      have := (List.getElem?_eq_some_iff.1 hresp).1
+      simpa [parents] using this
+    have h1 := (cursor_spec (actualKeys E o) _ (cutQuery_noninc _ _)).2 hv
+    have h2 := hlow o hoE heo (hoz ▸ hzc) _ hresp
+    rw [boundary_eq_cutQuery] at h2
+    exact lt_trans h1 h2
 
 /-- L2.3a: the return step: `C_e(c,k)`, actual A at `(c,k)` and S give `R_e(c,k)`. -/
 theorem returnBound_of_cutBound {E : Forest} (hS : CondS E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {c : ColAddr} (hc : c ∈ E.colAddrs) (hec : e.Contains c) {k : Nat}
-    (hA : AAt E (actualKeys E) c k) (hcut : CutBound E e c k) : ReturnBound E e c k := by sorry
+    (hA : AAt E (actualKeys E) c k) (hcut : CutBound E e c k) : ReturnBound E e c k := by
+  intro hpk
+  have hW := hcut (hA _ hpk)
+  rw [parents_getElem?, Option.map_eq_some_iff] at hpk
+  obtain ⟨⟨q, J⟩, hent, hq⟩ := hpk
+  simp only at hq
+  subst hq
+  have hret : IsOwnerReturn E e ⟨c, k⟩ := isOwnerReturn_of_parent hec hent
+  have hmem : (⟨c, k⟩ : EntryAddr) ∈ E.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  have hKS := hS e he ⟨c, k⟩ hmem hret
+  obtain ⟨col, hcol, hck⟩ := Tree.colAt_of_entryAt hent
+  have hkc : k < (actualKeys E c).length := by
+    rw [length_actualKeys, hcol, Option.getD_some]; exact (List.getElem?_eq_some_iff.1 hck).1
+  have hu : e.idx < (actualKeys E e.col).length := by
+    rw [length_actualKeys]; exact idx_lt_of_mem_entryAddrs he
+  refine boundary_lt_of_cut hkc hu hW ?_
+  have hck' : (actualKeys E c)[k] = ((relKey (c.num 0) J : Key) : WithTop Key) := by
+    obtain ⟨_, heq⟩ := List.getElem?_eq_some_iff.1 hck
+    simp [actualKeys, hcol, heq]
+  rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at he
+  obtain ⟨⟨pe, He⟩, hente⟩ := he
+  obtain ⟨cole, hcole, hcke⟩ := Tree.colAt_of_entryAt hente
+  have hue : (actualKeys E e.col)[e.idx] = ((relKey (e.col.num 0) He : Key) : WithTop Key) := by
+    obtain ⟨_, heq⟩ := List.getElem?_eq_some_iff.1 hcke
+    simp [actualKeys, hcole, heq]
+  rw [hck', hue, WithTop.coe_lt_coe]
+  simpa [Tree.heightAt, hent, hente] using hKS
 
 /-- L2.3a: the joint barrier predicate at `(c, k)` for the containing entry `e`. -/
 def BarPred (E : Forest) (e : EntryAddr) (c : ColAddr) (k : Nat) : Prop :=
@@ -2000,17 +2089,47 @@ theorem barPred_step {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E) {
     (hk : k ≤ (parents E c).length)
     (ihlow : ∀ o ∈ E.colAddrs, e.Contains o → o.num 0 < c.num 0 →
       ∀ v ≤ (parents E o).length, BarPred E e o v)
-    (ihprev : ∀ k' < k, BarPred E e c k') : BarPred E e c k := by sorry
+    (ihprev : ∀ k' < k, BarPred E e c k') : BarPred E e c k := by
+  have hcut : CutBound E e c k := by
+    refine cutBound_of_returns hV he hc hec hk ?_ (fun k' hk' => (ihprev k' hk').2)
+    intro o ho heo hlt v
+    by_cases hv : v ≤ (parents E o).length
+    · exact (ihlow o ho heo hlt v hv).2
+    · intro h
+      rw [List.getElem?_eq_none (by omega)] at h
+      cases h
+  exact ⟨hcut, returnBound_of_cutBound hS he hc hec ((condAK_iff _ _).1 hA c hc k) hcut⟩
 
 /-- L2.3a: the joint induction on `(c.num 0, k)`, all occurrences and scopes simultaneously. -/
 theorem barrier_joint {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {c : ColAddr} (hc : c ∈ E.colAddrs) (hec : e.Contains c) {k : Nat}
-    (hk : k ≤ (parents E c).length) : CutBound E e c k ∧ ReturnBound E e c k := by sorry
+    (hk : k ≤ (parents E c).length) : CutBound E e c k ∧ ReturnBound E e c k := by
+  suffices H : ∀ N, ∀ c ∈ E.colAddrs, c.num 0 = N → e.Contains c →
+      ∀ k ≤ (parents E c).length, BarPred E e c k from H _ c hc rfl hec k hk
+  intro N
+  induction N using Nat.strong_induction_on with
+  | _ N ihN =>
+    intro c hc hN hec k
+    induction k using Nat.strong_induction_on with
+    | _ k ihk =>
+      intro hk
+      exact barPred_step hV hA hS he hc hec hk
+        (fun o ho heo hlt v hv => ihN _ (hN ▸ hlt) o ho rfl heo v hv)
+        (fun k' hk' => ihk k' hk' (by omega))
 
 /-- L2.3 (`barrier`†, txt:205-207): at an owner return, `B_c(v) < B_a(u)`. -/
 theorem barrier {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E) {e₀ e : EntryAddr}
     (he₀ : e₀ ∈ E.entryAddrs) (he : e ∈ E.entryAddrs) (hret : IsOwnerReturn E e₀ e) :
-    boundary (actualKeys E e.col) e.idx < boundary (actualKeys E e₀.col) e₀.idx := by sorry
+    boundary (actualKeys E e.col) e.idx < boundary (actualKeys E e₀.col) e₀.idx := by
+  obtain ⟨hcont, q, J, hent, hres⟩ := (isOwnerReturn_iff E e₀ e).1 hret
+  have hq : e₀.col.num 0 = q := ColAddr.resolve_num hres
+  subst hq
+  have hpk : (parents E e.col)[e.idx]? = some (e₀.col.num 0) := by
+    rw [parents_getElem?, hent]; rfl
+  have hcE : e.col ∈ E.colAddrs := mem_colAddrs_of_parents hpk
+  have hk : e.idx ≤ (parents E e.col).length :=
+    le_of_lt (List.getElem?_eq_some_iff.1 hpk).1
+  exact (barrier_joint hV hA hS he₀ hcE hcont hk).2 hpk
 
 /-- L2.3 (`cut_barrier`†, txt:207-209): at any complete cut, including the full cut after the
 last entry, a read of an active containing entry by the cut's ancestor path has query strictly
@@ -2019,7 +2138,8 @@ theorem cut_barrier {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E) {e
     (he : e ∈ E.entryAddrs) {c : ColAddr} (hc : c ∈ E.colAddrs) (hec : e.Contains c) {k : Nat}
     (hk : k ≤ (parents E c).length)
     (hpath : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) (e.col.num 0)) :
-    cutQuery (actualKeys E c) k < boundary (actualKeys E e.col) e.idx := by sorry
+    cutQuery (actualKeys E c) k < boundary (actualKeys E e.col) e.idx :=
+  (barrier_joint hV hA hS he hc hec hk).1 hpath
 
 /-! ## L2.4, L2.4a, L2.4b — independent capping (G-006) -/
 
@@ -2874,7 +2994,13 @@ theorem cut_barrier_read {E : Forest} (hE : InL E) {c : ColAddr} (hc : c ∈ E.c
     {k : Nat} (hk : k ≤ (parents E c).length) {y : Nat}
     (hy : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y)
     {o : ColAddr} (ho : c.resolve 0 y = some o) {e : EntryAddr} (he : o.container c = some e) :
-    cutQuery (actualKeys E c) k < cutQuery (actualKeys E o) (e.idx + 1) := by sorry
+    cutQuery (actualKeys E c) k < cutQuery (actualKeys E o) (e.idx + 1) := by
+  obtain ⟨hV, -, -, hA, hS⟩ := hE
+  obtain ⟨rfl, hec⟩ := (ColAddr.container_spec _ c e).1 he
+  have hy' : e.col.num 0 = y := ColAddr.resolve_num ho
+  subst hy'
+  rw [← boundary_eq_cutQuery]
+  exact cut_barrier hV hA hS (mem_entryAddrs_of_contains hc hec) hc hec hk hy
 
 /-- L2.5d (requested by U5 R15): the trace of the raw scan starts at `(0,0)`, moves by the three
 comparison rules, stays within the cursors, and ends at `(cursor, j)` with `j = |qry|` when the
