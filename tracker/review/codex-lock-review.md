@@ -153,3 +153,99 @@ These repairs concern the guard and progress machinery. **No change to the appro
 The unchanged lock passed on the baseline and on the two deliberately invalid proof implementations in scratch; the ordinary fixed-universe export failed as expected. Original reviewed files were hash-checked after the probes. `blueprint/` remained unread throughout.
 
 STATUS: COMPLETE
+
+## Follow-up
+
+Reviewed commit **55faa50f8b9ca1ab2bae78bab92cceccb1dad317** independently. I replayed the original exploits in scratch copies, tested the new `--final` mode, and tried additional source/status failure cases. **Changes 1, 2 and 5 are fixed. Changes 3 and 4 are substantially improved but are not yet complete.** No bypass of the corrected stored-type/axiom checks in the documented `check.sh --final` command was found. The remaining defects concern coverage of actual source inputs and the progress-generation pipeline.
+
+`blueprint/` remained unread. No real Lean, checks, dependency or tracker-status file was modified.
+
+| Original required change | Verdict | Recheck result |
+|---|---|---|
+| 1. Exact exported-type guard | **Fixed** | The old coercion exploit, a plain `mainTheorem : True`, and a fixed-universe export are all rejected. |
+| 2. Axiom-aware progress and final acceptance | **Fixed for the original defect** | The shortcut axiom is rejected; axiom rows/dependents are now untrusted/extra-axiom states. The normal admitted baseline passes the development check and fails `--final` on `sorryAx`. |
+| 3. Resolved transitive dependency pinning | **Partially fixed** | Relocated package changes are detected and ordinary dependency sources are covered. A directory-symlink source alias can still evade the source walk and fingerprint. |
+| 4. Current, failure-aware status | **Partially fixed** | Ordinary dirty-source edits invalidate old data, and nonzero build/extraction failures record failure. But fresh progress does not require the exported-type/lock audit to pass; source aliases can hide a new hole; malformed or large JSON can preserve an older success record. |
+| 5. Opaque direct holes | **Fixed** | The opaque-body probe now reports `direct_sorry=true` and “stated”; its dependent theorem remains “proved modulo sorry.” Direct and transitive counts are separately labelled. |
+
+### Verified repairs
+
+`LockCheck.lean:36–47` now reads the actual constants, requires theorem declarations, and compares their stored types with the named propositions at their single universe parameter. No proof-term elaboration or coercion occurs in that comparison. The stricter syntactic check is safe for the chosen public signature. The valid Prop `rfl` checks remain in place.
+
+The full scratch replays returned:
+
+| Program/check | Exit |
+|---|---:|
+| Original admitted Main, normal integrity check | 0, explicitly incomplete |
+| Original admitted Main, `--final` | 1, rejects `sorryAx` |
+| Former `True` exports plus admitted coercions | 1, wrong stored type |
+| Correctly typed exports supplied by `auditShortcut` axiom | 1, BTBMS axiom rejected |
+| Exports specialized to universe 0 | 1, wrong universe/type |
+| Plain `True` exports without coercions | 1, wrong stored type |
+| Mutation of Regular.lean in the relocated project's resolved Mathlib copy | 1, package digest changed |
+
+The new classifier also reports `axiom injected : False` as **axiom (untrusted)** and its theorem wrapper as **assumes extra axioms**. It no longer mistakes either for a proof. The collector's opaque-value case and count labels work as requested. Evidence: `scratch/codex/lock-followup-replay-results.json`, its named logs, and `lock-status-probe/followup-classified.json`.
+
+### Remaining A — current progress does not require the exported-type audit
+
+The exact-type guard is effective when invoked, but `scripts/lean-status.sh:13–15` still runs only `lake build` and `Status.lean`. It neither runs `LockCheck.lean` nor records successful validation of the exported target types. `refresh.py:102–112` also does not use a false `lock.verify()` result to invalidate progress; only `build_ok` and fingerprint equality control `status_problem`.
+
+I tested the clean, axiom-free scratch exports
+
+```lean
+theorem mainTheorem : True := True.intro
+theorem paperTheorem : True := True.intro
+```
+
+The new lock command correctly exited 1. Nevertheless a **fresh** `scripts/lean-status.sh` exited 0, printed zero direct and transitive holes, and the actual `lean_stats` function returned:
+
+```
+lock_ok = True
+status_problem = None
+main_axioms = []
+claims["T9.1"] = "proved"
+```
+
+This is not stale JSON and is not a bypass of `--final`; it is a missing connection between the effective guard and the authoritative progress claim. A successful build proves the constant's actual `True` type, not its expected ledger target.
+
+**Required fix:** run the nonfinal lock/export audit as part of status generation, record its outcome, and require that outcome plus an intact approved lock before calling the main target proved. A separate `guard_ok`/audit field is preferable to silently redefining `build_ok`; diagnostics can still be retained when the audit fails. Freshness acceptance must reject older records that lack the required audit evidence.
+
+### Remaining B — an imported source can be omitted through a directory symlink
+
+`lock.py:47–58` calls `os.walk` without following directory symlinks and skips `.lake`. The following supported source layout is consequently invisible to the fingerprint:
+
+```
+lean/BTBMS/AuditLinked/  ->  lean/.lake/audit-linked-source/
+                                      Basic.lean
+```
+
+The copied Main imports `BTBMS.AuditLinked.Basic`. Initially the linked source proves `auditLinkedProof : True` with `True.intro`; I generated a fresh status. I then changed only that actual `.lean` source to `by sorry` and ran the real `lake build` successfully. A fresh `#print axioms` shows `sorryAx`, but `lock.fingerprint()` is unchanged and `lock.verify()` remains intact. Reading the earlier status through the current tracker function still reports this leaf as **proved**, with no status problem.
+
+This was confirmed through the actual Lake/status pipeline, not only a standalone hash test, and no compiled artifact or JSON was forged. The compiler freshly built both versions from the changed source. An outside-root symlink was rejected by Lean; the confirmed case uses the internal skipped-directory target above. Evidence: `scratch/codex/lock-followup-linked-pipeline-result.json` and the `lock-followup-linked-*` logs; the independent companion probe is under `lock-followup-symlink/`.
+
+**Required fix:** fail closed on unsupported source-directory symlinks, or follow and hash their actual source targets with cycle handling. In either design, do not allow active Lean source to be hidden under an excluded build directory through a visible alias. Resolving the package root is not sufficient for links below it. This is the remaining source-coverage/freshness issue; normal resolved package paths and ordinary source files are now handled correctly.
+
+### Remaining C — status serialization can fail before invalidating old success
+
+The complete JSON array is still passed as one command-line argument (`lean-status.sh:16`) and parsed before any replacement record is written (`:19–23`). Controlled producer tests of the unmodified writer give:
+
+| Producer outcome | Script exit | Previous success record |
+|---|---:|---|
+| Build exits nonzero | 1 | Replaced with `build_ok=false` |
+| Extraction exits nonzero | 1 | Replaced with `build_ok=false` |
+| Extraction exits zero with malformed JSON | 1 | **Preserved**, because JSON parsing fails before the write |
+| Extraction exits zero with valid JSON for 2,000 declarations | 126 | **Preserved**, because launching Python fails with `Argument list too long` |
+
+The last case is a practical library-size limit. These tests used controlled lock/producer stubs only to exercise the actual shell/Python writer; they do not claim a fake compiler passed the real proof gate. If proof sources changed since the old record, the ordinary fingerprint check still makes that record stale. Thus this test alone does not establish a false current proof, but it contradicts the promised failure invalidation and prevents reporting larger developments.
+
+**Required fix:** establish an in-progress/failed record before generation, pass JSON by file/stdin rather than argv, validate/parse within failure handling, and atomically publish success only after the build, required audit and extraction have succeeded. Evidence: `scratch/codex/lock-followup-status-harness/results.json` and accompanying logs.
+
+### Scope and disposition
+
+The ordinary source-edit freshness test now gives **unknown (status not current)** as intended. Fresh transitive `sorry` detection remains correct. The remaining A/B cases explain why current progress can still say proved; they are not failures of `collectAxioms`.
+
+As in the first review, a genuine compiler and its compiled artifacts remain trusted. Hashing toolchain `bin/` and `src/` is not a complete fingerprint of dynamic libraries/core `.olean` files under `lib/lean`; I treat this as a trust-boundary note, not another required anti-tampering project. Likewise the new exact export check and final whitelist are not being reopened by these findings.
+
+**G-008 should remain open for the three focused repairs above.** No change to the approved mathematical propositions is required. All reviewed real source hashes remained unchanged, and only this follow-up and scratch evidence were written.
+
+STATUS: COMPLETE

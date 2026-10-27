@@ -11,6 +11,9 @@ Locked inputs (T-019 review):
   * every package Lake actually resolves (from `lean/lake-manifest.json`, relative to `lean/`),
     as one digest over its Lean sources and configuration;
   * the Lean toolchain the checks run (`bin/` and the core sources under `src/`).
+Any symlink inside a hashed tree is refused (fail closed), so no source can hide behind an alias
+into a skipped build directory (T-019 follow-up). The compiled toolchain libraries and `.olean`
+files are trusted, not hashed.
 """
 import hashlib
 import json
@@ -44,12 +47,21 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+class LockError(Exception):
+    pass
+
+
 def tree_digest(root, keep):
-    """Digest over (relative path, file hash) of every kept file under root, skipping build dirs."""
+    """Digest over (relative path, file hash) of every kept file under root, skipping build dirs.
+
+    Raises LockError on any symlink below root."""
     h = hashlib.sha256()
     count = 0
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for name in dirnames + filenames:
+            if (Path(dirpath) / name).is_symlink():
+                raise LockError(f'unsupported symlink in a locked tree: {Path(dirpath) / name}')
         for name in sorted(filenames):
             p = Path(dirpath) / name
             if keep(p):
@@ -92,7 +104,11 @@ def verify():
     if not LOCK.exists():
         return False, ['no lock recorded']
     recorded = json.loads(LOCK.read_text())['inputs']
-    now = current()
+    try:
+        now = current()
+        tree_digest(LEAN_DIR, lambda f: f.suffix == '.lean')  # refuses symlinked project sources
+    except LockError as e:
+        return False, [str(e)]
     problems = [f'{p}: changed' for p in recorded if now.get(p) != recorded[p]]
     problems += [f'{p}: not in lock' for p in now if p not in recorded]
     return not problems, problems

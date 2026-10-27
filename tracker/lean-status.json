@@ -1,8 +1,14 @@
 {
- "generated": "2026-10-27T09:29:19+00:00",
- "head": "e910929",
- "fingerprint": "5e2f1b3c5b6da0b903ecd0f76cc3bb20cde5fbb2b967ffda3903a59de167cbcc",
+ "state": "ok",
  "build_ok": true,
+ "audit_ok": true,
+ "audit": [
+  "BTBMS.mainTheorem: type exact; axioms [propext, sorryAx, Classical.choice, Quot.sound]; proof incomplete (sorryAx)",
+  "BTBMS.paperTheorem: type exact; axioms [propext, sorryAx, Classical.choice, Quot.sound]; proof incomplete (sorryAx)"
+ ],
+ "lock_ok": true,
+ "lock_problems": [],
+ "fingerprint": "d8a0f902edf6e80f6c5a9ccae2d46ddb8451a0d874609fffb5046fa0cec13cff",
  "decls": [
   {
    "axioms": [
@@ -665,5 +671,7 @@
    "module": "BTBMS.Syntax",
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
- ]
+ ],
+ "generated": "2026-10-27T10:05:30+00:00",
+ "head": "55faa50"
 }

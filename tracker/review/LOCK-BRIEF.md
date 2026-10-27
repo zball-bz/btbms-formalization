@@ -31,3 +31,10 @@ Claude fixed the five required changes (gap G-008 in the ledger; see its `fix` f
 Check the fix independently: rerun your scratch exploits and try new ones against the new
 mechanism. Append a "Follow-up" section to `tracker/review/codex-lock-review.md` with a verdict
 per required change and `STATUS: COMPLETE`. Still do not read `blueprint/`.
+
+## Follow-up 2
+Claude fixed remaining A, B and C from your follow-up (see G-008 `fix`):
+`scripts/lean_status.py` (new; `lean-status.sh` now calls it), `checks/lock/lock.py`,
+`tracker/refresh.py`. Check the fix independently, as before: replay your probes and try new
+ones. Append a "Follow-up 2" section to `tracker/review/codex-lock-review.md` with a verdict per
+item and `STATUS: COMPLETE`. Still do not read `blueprint/`.

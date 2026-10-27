@@ -97,16 +97,28 @@ def decl_state(d):
 def lean_stats(ledger):
     """Lock state, declaration status from the last build, and each claim's derived Lean status.
 
-    The status record counts only if its fingerprint matches the current inputs and its build
-    succeeded; otherwise every derived state is reported as unknown."""
+    The status record counts only if it was generated successfully (build, lock/export audit,
+    extraction), its fingerprint matches the current inputs, and the lock is intact; otherwise
+    every derived state is reported as unknown."""
     ok, problems = lock.verify()
     status = json.loads(LEAN_STATUS.read_text()) if LEAN_STATUS.exists() else {}
+    try:
+        fingerprint = lock.fingerprint()
+    except lock.LockError as e:
+        fingerprint = None
+        problems = problems + [str(e)]
     if not status:
         problem = 'no status recorded; run scripts/lean-status.sh'
-    elif not status.get('build_ok'):
-        problem = 'last build or extraction failed'
-    elif status.get('fingerprint') != lock.fingerprint():
+    elif status.get('state') == 'running':
+        problem = 'status generation in progress (or interrupted)'
+    elif status.get('state') != 'ok':
+        problem = f"last generation failed: {status.get('reason', 'unknown reason')}"
+    elif not (status.get('build_ok') and status.get('audit_ok')):
+        problem = 'record lacks a passing build and lock/export audit'
+    elif fingerprint is None or status.get('fingerprint') != fingerprint:
         problem = 'stale: Lean sources or dependencies changed since the last scripts/lean-status.sh'
+    elif not ok:
+        problem = 'statement lock broken'
     else:
         problem = None
     decls = [] if problem else status['decls']
@@ -128,7 +140,7 @@ def lean_stats(ledger):
             claims[n['id']] = next(s for s in LEAN_STATES if s in states)
     main = by_name.get('BTBMS.mainTheorem')
     return {
-        'lock_ok': ok, 'lock_problems': problems, 'status_problem': problem,
+        'lock_ok': ok and fingerprint is not None, 'lock_problems': problems, 'status_problem': problem,
         'status_generated': status.get('generated'), 'status_head': status.get('head'),
         'decls': decls,
         'sorry_decls': None if problem else sum(d['direct_sorry'] for d in decls),
