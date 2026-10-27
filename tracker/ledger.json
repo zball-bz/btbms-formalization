@@ -7153,7 +7153,7 @@
   },
   {
    "id": "G-011",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "unknown",
    "loc": "§4 txt:667-681",
    "summary": "First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed",
@@ -7164,7 +7164,9 @@
    "refs": [
     "blueprint/INTEGRATION.md §2.2-2.3"
    ],
-   "detail": "Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass."
+   "detail": "Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass.",
+   "fix_by": "claude",
+   "repair": "Lean: firstDiff_path (L4.2c) proved, including case 4(b3) with a moved cap anchor (prove/D8, merged). Open: helpers admCap_stack_D8 and repairList_stack_D8 (stack correspondence along moves)."
   },
   {
    "id": "G-012",
