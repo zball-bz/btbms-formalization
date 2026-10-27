@@ -828,14 +828,193 @@ of the forest there. -/
 def Scan.IsRoutePath (E : Forest) (π : List (Nat × Nat)) : Prop :=
   ∀ d < π.length, ∃ F, E.forestAt (π.take d) = some F ∧ F.lastStep? = π[d]?
 
+namespace Scan
+
+/-! D1.2d helpers: one step of the route, `routeColsAux` with explicit fuel, and fuel adequacy. -/
+
+theorem lastStep?_eq_some {F : Forest} {s : Nat × Nat} (h : F.lastStep? = some s) :
+    ∃ col p h', F.cols.getLast? = some col ∧ col.getLast? = some (p, h') ∧
+      s = (F.cols.length - 1, col.length - 1) ∧ F.forestAt [s] = some h' := by
+  unfold Tree.lastStep? at h
+  rw [Option.bind_eq_some_iff] at h
+  obtain ⟨col, hcol, hs⟩ := h
+  split_ifs at hs with hce
+  cases hs
+  obtain ⟨⟨p, h'⟩, hl⟩ : ∃ x, col.getLast? = some x := by
+    cases hc : col.getLast? with
+    | none => simp [List.getLast?_eq_none_iff] at hc; simp [hc] at hce
+    | some x => exact ⟨x, rfl⟩
+  refine ⟨col, p, h', hcol, hl, rfl, ?_⟩
+  rw [Tree.forestAt_cons]
+  rw [List.getLast?_eq_getElem?] at hcol hl
+  simp [hcol, hl, Tree.forestAt]
+
+theorem isRoutePath_cons {E : Forest} {s : Nat × Nat} {σ : List (Nat × Nat)} :
+    IsRoutePath E (s :: σ) ↔ E.lastStep? = some s ∧ ∃ h, E.forestAt [s] = some h ∧ IsRoutePath h σ := by
+  have hsplit : ∀ (rest : List (Nat × Nat)) h, E.forestAt [s] = some h →
+      E.forestAt (s :: rest) = h.forestAt rest := by
+    intro rest h hh
+    rw [show s :: rest = [s] ++ rest from rfl, Tree.forestAt_append, hh]
+    rfl
+  constructor
+  · intro hr
+    obtain ⟨F, hF, hl⟩ := hr 0 (by simp)
+    simp only [List.take_zero, Tree.forestAt] at hF
+    cases hF
+    simp only [List.getElem?_cons_zero] at hl
+    obtain ⟨col, p, h, -, -, -, hh⟩ := lastStep?_eq_some hl
+    refine ⟨hl, h, hh, ?_⟩
+    intro d hd
+    obtain ⟨F, hF, hl'⟩ := hr (d + 1) (by simp; omega)
+    rw [List.take_succ_cons, hsplit _ h hh] at hF
+    exact ⟨F, hF, by simpa using hl'⟩
+  · rintro ⟨hl, h, hh, hr⟩ d hd
+    cases d with
+    | zero => exact ⟨E, rfl, by simpa using hl⟩
+    | succ d =>
+      obtain ⟨F, hF, hl'⟩ := hr d (by simp at hd; omega)
+      refine ⟨F, ?_, by simpa using hl'⟩
+      rw [List.take_succ_cons, hsplit _ h hh]
+      exact hF
+
+theorem exists_list_iff {β : Type} {P : List β → Prop} :
+    (∃ σ, P σ) ↔ P [] ∨ ∃ s σ, P (s :: σ) := by
+  constructor
+  · rintro ⟨σ, h⟩
+    cases σ with
+    | nil => exact Or.inl h
+    | cons s σ => exact Or.inr ⟨s, σ, h⟩
+  · rintro (h | ⟨s, σ, h⟩)
+    · exact ⟨[], h⟩
+    · exact ⟨s :: σ, h⟩
+
+/-- D1.2d helper: membership in `routeColsAux` with explicit fuel. -/
+theorem mem_routeColsAux_iff : ∀ (fuel : Nat) (F : Forest) (π : List (Nat × Nat)) (c : ColAddr),
+    c ∈ routeColsAux fuel F π ↔ ∃ σ, c.path = π ++ σ ∧ σ.length < fuel ∧ IsRoutePath F σ ∧
+      ∃ G, F.forestAt σ = some G ∧ G.cols.length = c.col + 1
+  | 0, F, π, c => by simp [routeColsAux]
+  | fuel + 1, F, π, c => by
+    rw [exists_list_iff]
+    simp only [List.append_nil, List.length_nil, Nat.zero_lt_succ, true_and, List.length_cons,
+      Nat.add_lt_add_iff_right, isRoutePath_cons]
+    have h0 : IsRoutePath F [] := fun d hd => absurd hd (Nat.not_lt_zero _)
+    simp only [h0, true_and]
+    unfold routeColsAux
+    cases hl : F.cols.getLast? with
+    | none =>
+      have hF : F.cols = [] := List.getLast?_eq_none_iff.1 hl
+      simp only [List.not_mem_nil, false_iff, not_or, not_exists, not_and]
+      refine ⟨fun _ G hG => ?_, fun s σ _ _ hs => ?_⟩
+      · simp only [Tree.forestAt, Option.some.injEq] at hG
+        subst hG; simp [hF]
+      · simp [Tree.lastStep?, hl] at hs
+    | some col =>
+      have hlen : 0 < F.cols.length := by
+        cases hc : F.cols with
+        | nil => simp [hc] at hl
+        | cons _ _ => simp
+      rw [List.mem_cons]
+      apply or_congr
+      · constructor
+        · rintro rfl
+          exact ⟨rfl, F, rfl, by simp; omega⟩
+        · rintro ⟨hp, G, hG, hGl⟩
+          simp only [Tree.forestAt, Option.some.injEq] at hG
+          subst hG
+          obtain ⟨p, c'⟩ := c
+          simp only at hp hGl ⊢
+          rw [hp]; congr 1; omega
+      · cases hcl : col.getLast? with
+        | none =>
+          simp only [List.not_mem_nil, false_iff, not_exists, not_and]
+          intro s σ _ _ hs
+          obtain ⟨col', p, h', hcol', hl', -, -⟩ := lastStep?_eq_some hs.1
+          rw [hl] at hcol'; cases hcol'
+          rw [hcl] at hl'; cases hl'
+        | some x =>
+          obtain ⟨p, h⟩ := x
+          simp only
+          rw [mem_routeColsAux_iff fuel h]
+          have hstep : F.lastStep? = some (F.cols.length - 1, col.length - 1) := by
+            have hne : col ≠ [] := by intro hc; simp [hc] at hcl
+            simp [Tree.lastStep?, hl, hne]
+          obtain ⟨col', p', h', hcol', hl', hs', hh'⟩ := lastStep?_eq_some hstep
+          rw [hl] at hcol'; cases hcol'
+          rw [hcl] at hl'; cases hl'
+          constructor
+          · rintro ⟨σ, hp, hσ, hr, G, hG, hGl⟩
+            refine ⟨_, σ, by rw [hp]; simp, hσ, ⟨hstep, h, hh', hr⟩, G, ?_, hGl⟩
+            rw [show (F.cols.length - 1, col.length - 1) :: σ = [_] ++ σ from rfl,
+              Tree.forestAt_append, hh']
+            exact hG
+          · rintro ⟨s, σ, hp, hσ, ⟨hs, h'', hh'', hr⟩, G, hG, hGl⟩
+            rw [hstep] at hs; cases hs
+            rw [hh'] at hh''; cases hh''
+            refine ⟨σ, by rw [hp]; simp, hσ, hr, G, ?_, hGl⟩
+            rw [show (F.cols.length - 1, col.length - 1) :: σ = [_] ++ σ from rfl,
+              Tree.forestAt_append, hh'] at hG
+            exact hG
+
+/-- D1.2d helper (fuel adequacy): a route path is shorter than the number of roles of `E`. -/
+theorem length_lt_size_of_isRoutePath {E : Forest} {σ : List (Nat × Nat)} (hr : IsRoutePath E σ)
+    {G : Forest} (hG : E.forestAt σ = some G) (hne : G.cols ≠ []) : σ.length < E.size := by
+  let L := (List.range (σ.length + 1)).map fun d => Role.ord ⟨σ.take d, 0⟩
+  have hnd : L.Nodup := by
+    refine List.Nodup.map_on ?_ List.nodup_range
+    intro x hx y hy hxy
+    simp only [List.mem_range] at hx hy
+    simp only [Role.ord.injEq, ColAddr.mk.injEq, and_true] at hxy
+    have := congrArg List.length hxy
+    simp only [List.length_take] at this
+    omega
+  have hsub : L ⊆ E.roles := by
+    intro x hx
+    simp only [L, List.mem_map, List.mem_range] at hx
+    obtain ⟨d, hd, rfl⟩ := hx
+    rw [Tree.mem_roles_ord]
+    rcases Nat.lt_or_ge d σ.length with hd' | hd'
+    · obtain ⟨F, hF, hl⟩ := hr d hd'
+      rw [List.getElem?_eq_getElem hd'] at hl
+      obtain ⟨col, -, -, hcol, -, -, -⟩ := lastStep?_eq_some hl
+      have : F.cols ≠ [] := by intro h; simp [h] at hcol
+      simp only [Tree.colAt, hF, Option.bind_some]
+      cases hc : F.cols with
+      | nil => exact absurd hc this
+      | cons _ _ => simp
+    · have hd'' : d = σ.length := by omega
+      subst hd''
+      simp only [List.take_length, Tree.colAt, hG, Option.bind_some]
+      cases hc : G.cols with
+      | nil => exact absurd hc hne
+      | cons _ _ => simp
+  have := (hnd.subperm hsub).length_le
+  simp only [L, List.length_map, List.length_range] at this
+  unfold Tree.size
+  omega
+
+end Scan
+
 /-- D1.2d: membership in the spine's `routeCols` (whose fuel `E.size + 1` suffices). -/
 theorem Scan.mem_routeCols_iff (E : Forest) (c : ColAddr) :
     c ∈ Scan.routeCols E ↔ Scan.IsRoutePath E c.path ∧
-      ∃ F, E.forestAt c.path = some F ∧ F.cols.length = c.col + 1 := by sorry
+      ∃ F, E.forestAt c.path = some F ∧ F.cols.length = c.col + 1 := by
+  rw [Scan.routeCols, Scan.mem_routeColsAux_iff]
+  simp only [List.nil_append]
+  constructor
+  · rintro ⟨σ, rfl, -, hr, G, hG, hGl⟩
+    exact ⟨hr, G, hG, hGl⟩
+  · rintro ⟨hr, G, hG, hGl⟩
+    refine ⟨c.path, rfl, ?_, hr, G, hG, hGl⟩
+    have := Scan.length_lt_size_of_isRoutePath hr hG (by intro h; simp [h] at hGl)
+    omega
 
 /-- D1.2d: route columns are columns of `E`. -/
 theorem Scan.mem_colAddrs_of_mem_routeCols {E : Forest} {c : ColAddr} (h : c ∈ Scan.routeCols E) :
-    c ∈ E.colAddrs := by sorry
+    c ∈ E.colAddrs := by
+  obtain ⟨-, F, hF, hFl⟩ := (Scan.mem_routeCols_iff E c).1 h
+  rw [Tree.mem_colAddrs_iff, Tree.colAt, hF, Option.bind_some]
+  rw [List.getElem?_eq_getElem (by omega)]
+  rfl
 
 /-! ## D2.1, D2.1a, L2.1, L2.1a–c, L2.3b, L2.5 — the generic word library (S-6, U1 half) -/
 
