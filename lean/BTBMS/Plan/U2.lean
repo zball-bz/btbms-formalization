@@ -22772,33 +22772,8 @@ theorem root_prev (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 �
   · omega
   · omega
 
--- T3.8lq (txt:564-571): fixed roots `ρ ≤ r`: the actual source cursors agree.
--- VERIFY-U2 (F3): the owner flags need not agree (`ρ = r`, cut in a restored origin: the old
--- cap's root `R` contains the cut, the new cap's root does not; 106 bounded cases), so the
--- drafted conjunct `rdN.owner = rdO.owner` is removed; T3.8lr/T3.8ls use only cursor and column.
-theorem root_fixed_cursor (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
-    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
-    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
-    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B) (hρ : ρ ≤ S.sd.r)
-    {rdN rdO : RootData} (hN : rootData (litCap S.B c k ρ) = some rdN)
-    (hO : rootData (litCap S.A a k ρ) = some rdO) :
-    rdN.cursor = rdO.cursor ∧ rdN.col = rdO.col := by sorry
-
--- T3.8lr (txt:576-582): closed side targets with fixed root
-theorem closed_side (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
-    (hc : phaseCol S.sd S.rd i a = some c) (hroute : ¬ OnHoleRoute S.sd a)
-    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
-    (hρ : ρ ≤ S.sd.r) (hold : Success (litCap S.A a k ρ) (localSuffix S.A a)) :
-    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
-
--- T3.8ls (txt:583-605): direct body targets with fixed root (remainders (4), delayed change)
-theorem direct_body (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
-    (hroute : OnHoleRoute S.sd a) (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ))
-    (hend : capPos S.B c k < mu S.B) (hρ : ρ ≤ S.sd.r)
-    (hold : Success (litCap S.A a k ρ) (localSuffix S.A a)) :
-    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
+-- T3.8lq (`root_fixed_cursor`), T3.8lr (`closed_side`) and T3.8ls (`direct_body`) moved below
+-- T3.8li (`projection`), to the G-010 (D7) section (brief rule 5: the proof of T3.8lq uses it).
 
 /-! ## G-010 (D7) — the projection to an old cap (T3.8li) and the old terminal cap (T3.8lb)
 
@@ -24020,6 +23995,437 @@ theorem projection (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 
     subst hk0
     exact projection_host_D7 S hi ha hq hc hup hKL hρ hpa
   · exact condAK_litCap_D7 S.inL hup' (projection_finalTest_D7 S hi ha hq hc hup hKL hend hρ)
+
+-- T3.8lq–T3.8ls (moved here from after T3.8lp, brief rule 5: T3.8lq uses T3.8li `projection`).
+
+-- T3.8lq (G4, helper): the root cursor of a literal cap, as a scan of its actual root keys
+-- against the cut query of the capped column
+theorem rootCursor_litCap_G4 {E : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward E c k ρ)
+    {rd : RootData} (hrd : rootData (litCap E c k ρ) = some rd) :
+    rd.cursor = cursor (actualKeys (litCap E c k ρ) rd.col) (cutQuery (actualKeys E c) k) := by
+  have hsd := stopData_litCap hup
+  obtain ⟨-, -, -, -, hcur, -⟩ := rootData_path hsd hrd
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  have hq : (actualKeys E c).take k =
+      (queryKeys ⟨colDepth c, c, c.num 0, ρ, ((E.colAt c).getD []).take k⟩).map (↑) := by
+    simp only [actualKeys, queryKeys, List.map_map, ← List.map_take]
+    rfl
+  have hkeys : actualKeys (litCap E c k ρ) rd.col =
+      (rootKeys (litCap E c k ρ) rd).map (↑) := by
+    simp only [actualKeys, rootKeys, List.map_map]
+    rfl
+  unfold cutQuery
+  rw [cursor_nu, hq, hkeys, cursor_map WithTop.coe_strictMono, hcur]
+
+-- T3.8lq (G4, helper): a literal cap cuts a container column after its containing entry, whose
+-- height is the literal cap of that height
+theorem litCapAux_colAt_split_G4 (k p j : Nat) (σ : List (Nat × Nat)) (ci ei : Nat) (col : Column)
+    (q : Nat) (h : Forest) :
+    ∀ (π : List (Nat × Nat)) (F : Forest), F.colAt ⟨π, ci⟩ = some col → col[ei]? = some (q, h) →
+      (litCapAux k p (π ++ (ci, ei) :: σ) j F).colAt ⟨π, ci⟩ =
+        some (col.take ei ++ [(q, litCapAux k p σ j h)])
+  | [], .node cols, hcol, hei => by
+    have hcol' : cols[ci]? = some col := by
+      unfold Tree.colAt at hcol; simpa [Tree.forestAt, Tree.cols] using hcol
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.mp hcol').1
+    have hlen1 : (cols.take ci).length = ci := by rw [List.length_take]; omega
+    simp only [List.nil_append, litCapAux, List.getD_eq_getElem?_getD, hcol', Option.getD_some,
+      hei]
+    unfold Tree.colAt
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+    rw [List.getElem?_append_right (le_of_eq hlen1), hlen1, Nat.sub_self]
+    rfl
+  | (c0, e0) :: π, .node cols, hcol, hei => by
+    rw [colAt_cons] at hcol
+    obtain ⟨x, hx⟩ : ∃ x, (cols[c0]?).bind (·[e0]?) = some x := by
+      cases h1 : (cols[c0]?).bind (·[e0]?) with
+      | none => rw [h1] at hcol; cases hcol
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨q0, h0⟩ := x
+    rw [hx] at hcol
+    simp only [Option.bind_some] at hcol
+    obtain ⟨colc, hcolc, he0⟩ : ∃ colc, cols[c0]? = some colc ∧ colc[e0]? = some (q0, h0) := by
+      cases h1 : cols[c0]? with
+      | none => rw [h1] at hx; cases hx
+      | some colc => rw [h1] at hx; exact ⟨colc, rfl, hx⟩
+    have hc0 : c0 < cols.length := (List.getElem?_eq_some_iff.mp hcolc).1
+    have he0l : e0 < colc.length := (List.getElem?_eq_some_iff.mp he0).1
+    have hlen1 : (cols.take c0).length = c0 := by rw [List.length_take]; omega
+    have hlen2 : (colc.take e0).length = e0 := by rw [List.length_take]; omega
+    have ih := litCapAux_colAt_split_G4 k p j σ ci ei col q h π h0 hcol hei
+    simp only [List.cons_append, litCapAux, List.getD_eq_getElem?_getD, hcolc, Option.getD_some,
+      he0]
+    rw [colAt_cons]
+    rw [List.getElem?_append_right (le_of_eq hlen1), hlen1, Nat.sub_self]
+    simp only [List.getElem?_cons_zero, Option.bind_some]
+    rw [List.getElem?_append_right (le_of_eq hlen2), hlen2, Nat.sub_self]
+    simp only [List.getElem?_cons_zero, Option.bind_some]
+    exact ih
+
+-- T3.8lq (G4, helper): a word at any depth has `µ` atoms
+theorem len_wordAt_G4 (e : Nat) (X : Forest) : (wordAt e X).length = mu X := by
+  have := wordAt_add 0 e X
+  rw [Nat.zero_add] at this
+  rw [this, List.length_map]; rfl
+
+-- T3.8lq (G4, helper; L2.5c `sign_of_agreement`): the key of a literal cap of a height and the key
+-- of the complete height compare alike with the key of any height among the first `k` entries of
+-- the capped column
+theorem sign_litCapAux_G4 (r t k p : Nat) (σ : List (Nat × Nat)) (j : Nat) {H G : Forest}
+    {col : Column} (hG : H.forestAt σ = some G) (hcol : G.cols[j]? = some col) {v : Nat}
+    (hv : v < k) {x : Nat × Forest} (hx : col[v]? = some x) :
+    compare ((relKey r (litCapAux k p σ j H) : Key) : WithTop Key) ((relKey t x.2 : Key) : WithTop Key) =
+      compare ((relKey r H : Key) : WithTop Key) ((relKey t x.2 : Key) : WithTop Key) := by
+  obtain ⟨Apre, S, hw, -, hcap, -⟩ := capDecomp_E5 σ 0 j H G col hG hcol
+  rw [Nat.zero_add] at hw hcap
+  set e := σ.length with he
+  have hjl : j < G.cols.length := (List.getElem?_eq_some_iff.mp hcol).1
+  have hdrop : G.cols.drop j = col :: G.cols.drop (j + 1) := by
+    rw [List.drop_eq_getElem_cons hjl, (List.getElem?_eq_some_iff.mp hcol).2]
+  have hvl : v < col.length := (List.getElem?_eq_some_iff.mp hx).1
+  have hL : col.take k ≠ [] := by
+    intro h0
+    rcases List.take_eq_nil_iff.1 h0 with h0 | h0
+    · omega
+    · subst h0; simp at hvl
+  -- the common prefix `C`
+  set C := Apre ++ wordCol e (col.take k) with hC
+  have hwH : word H = C ++ (wordLater e (col.drop k) ++ wordCols e (G.cols.drop (j + 1)) ++ S) := by
+    show wordAt 0 H = _
+    rw [hw, hdrop, wordCols]
+    conv_lhs => rw [← List.take_append_drop k col]
+    rw [ker_wordCol_append e hL]
+    simp only [hC, List.append_assoc]
+  have hwH' : word (litCapAux k p σ j H) = C ++ [toLex (2 * e + 1, toLex (0, p))] := by
+    show wordAt 0 _ = _
+    rw [hcap k p, ker_wordCol_append e hL]
+    simp [hC, wordLater, Tree.empty, wordAt, wordCols]
+  -- the query height lies inside `C`
+  have hxC : mu x.2 + 1 ≤ C.length := by
+    have hvx : (col.take k)[v]? = some x := by rw [List.getElem?_take_of_lt hv]; exact hx
+    have hvk : v < (col.take k).length := (List.getElem?_eq_some_iff.mp hvx).1
+    have hsplit : col.take k = (col.take k).take v ++ x :: (col.take k).drop (v + 1) := by
+      conv_lhs => rw [← List.take_append_drop v (col.take k)]
+      rw [List.drop_eq_getElem_cons hvk, (List.getElem?_eq_some_iff.mp hvx).2]
+    have h1 := wordCol_split_E5 e ((col.take k).take v) x.1 x.2 ((col.take k).drop (v + 1))
+    rw [← hsplit] at h1
+    have h2 := len_wordCol_snoc_le_E5 e ((col.take k).take v) x.1
+    have h3 := len_wordAt_G4 (e + 1) x.2
+    have h4 : (wordCol e (col.take k)).length ≥ 1 + mu x.2 := by
+      rw [h1]; simp only [List.length_append]; omega
+    rw [hC, List.length_append]; omega
+  have hlen : mu x.2 < mu (litCapAux k p σ j H) := by
+    show mu x.2 < (word (litCapAux k p σ j H)).length
+    rw [hwH', List.length_append, List.length_singleton]; omega
+  have hagree : (word (litCapAux k p σ j H)).take (mu x.2 + 1) = (word H).take (mu x.2 + 1) := by
+    rw [hwH', hwH, List.take_append_of_le_length hxC, List.take_append_of_le_length hxC]
+  exact sign_of_agreement_compare r t hlen hagree
+
+-- T3.8lq (G4, helper): when the root of `A` contains the stopping column (owner case), it
+-- contains every template column
+theorem tmpl_container_rdcol_G4 (S : OrdStep) {a : ColAddr} (ha : IsTmplCol S.A S.sd S.rd a)
+    {e : EntryAddr} (he : S.rd.col.container S.sd.col = some e) :
+    ∃ e', S.rd.col.container a = some e' := by
+  by_cases haq : isQMat S.sd a = true
+  · obtain ⟨j, rest, hp, -⟩ := isQMat_spec S.sd haq
+    obtain ⟨h1, h2⟩ := (ColAddr.container_spec _ _ _).mp he
+    exact ⟨e, (ColAddr.container_spec _ _ _).mpr ⟨h1, h2.trans (by rw [hp]; exact List.prefix_append _ _)⟩⟩
+  · have haq' : isQMat S.sd a = false := by simpa using haq
+    obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+    obtain ⟨suf, hsuf, hcases⟩ := kerCol_tail_spec S ha' haq'
+    obtain ⟨-, -, -, -, -, hown, -⟩ := rootData_path S.hsd S.hrd
+    have howner : S.rd.owner = true := hown.mpr (by rw [he]; rfl)
+    rcases hcases with ⟨rfl, hcol, -⟩ | ⟨-, -, hown', -⟩ | ⟨e', rest, rfl, -, -⟩ |
+        ⟨-, -, -, -, -, hown', -⟩
+    · exfalso
+      apply ha.2.2.1
+      obtain ⟨ap, ac⟩ := a
+      simp only at hsuf hcol
+      rw [hsuf, List.append_nil, hcol]
+    · rw [howner] at hown'; cases hown'
+    · refine ⟨⟨S.rd.col, e'⟩, (ColAddr.container_spec _ _ _).mpr ⟨rfl, ?_⟩⟩
+      rw [hsuf, EntryAddr.heightPath]
+      exact ⟨rest, by simp⟩
+    · rw [howner] at hown'; cases hown'
+
+-- T3.8lq (G4, helper; L2.5 trace fact (3), cursor form): sources agreeing before `u`, whose keys
+-- at `u` compare alike with every query key, have the same final cursor for a run ending by `u`
+theorem cursor_agree_G4 {α : Type} [LinearOrder α] {src₁ src₂ qry : List α} {u : Nat}
+    (hpre : src₁.take u = src₂.take u) {x₁ x₂ : α} (h₁ : src₁[u]? = some x₁) (h₂ : src₂[u]? = some x₂)
+    (hs : ∀ y ∈ qry, compare x₁ y = compare x₂ y) (hrun : cursor src₁ qry ≤ u) :
+    cursor src₁ qry = cursor src₂ qry :=
+  cursor_eq_of_trace_eq (traceFrom_agree u src₁ src₂ qry 0 0 hpre ⟨x₁, x₂, h₁, h₂, hs⟩ hrun)
+
+-- T3.8lq (txt:564-571): fixed roots `ρ ≤ r`: the actual source cursors agree.
+-- VERIFY-U2 (F3): the owner flags need not agree (`ρ = r`, cut in a restored origin: the old
+-- cap's root `R` contains the cut, the new cap's root does not; 106 bounded cases), so the
+-- drafted conjunct `rdN.owner = rdO.owner` is removed; T3.8lr/T3.8ls use only cursor and column.
+theorem root_fixed_cursor (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
+    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B) (hρ : ρ ≤ S.sd.r)
+    {rdN rdO : RootData} (hN : rootData (litCap S.B c k ρ) = some rdN)
+    (hO : rootData (litCap S.A a k ρ) = some rdO) :
+    rdN.cursor = rdO.cursor ∧ rdN.col = rdO.col := by
+  -- the projected cap `K' = litCap A a k ρ` (T3.8li): upward, V, I, decorated A, hence S and A
+  have hφ := phaseOff_pos_D7 hi.1 hq
+  have hrt : S.sd.r < S.sd.t := (rootData_spec S.hsd S.hrd).2.2.2.2.1
+  have hd : 1 ≤ S.d := by simp only [OrdStep.d, period]; omega
+  have hproj : S.proj (phaseOff S.sd i a) ρ = ρ := by
+    unfold OrdStep.proj OrdStep.s
+    have : S.d ≤ phaseOff S.sd i a * S.d := Nat.le_mul_of_pos_left _ (by omega)
+    rw [if_neg (by omega), if_neg (by omega)]
+  have hP := projection S hi ha hq hc hup hKL hend (Or.inl hρ)
+  simp only [hproj] at hP
+  obtain ⟨hupA, hVO, hIO, hAO⟩ := hP
+  have hSO := upward_condS S.inL.1 S.inL.2.1 S.inL.2.2.1 S.condP hupA hVO hIO
+  have hAO' := capping_reverse hVO hSO (sel := routeCols (litCap S.A a k ρ)) (fun _ h => h) hAO
+  have hsdN := stopData_litCap hup
+  have hsdO := stopData_litCap hupA
+  obtain ⟨hresN, -, -, -, -, hownN, -⟩ := rootData_path hsdN hN
+  obtain ⟨hresO, -, -, -, -, hownO, -⟩ := rootData_path hsdO hO
+  simp only at hresN hresO hownN hownO
+  -- the root columns agree (both are the root's stack below `r`, or the root itself)
+  obtain ⟨hRa, hRc, hpa, b, hb⟩ := phasePair_root_D7 S (Or.inl ⟨ha, hc, rfl⟩)
+  obtain ⟨hres, -, -, -, -, hown, -⟩ := rootData_path S.hsd S.hrd
+  have hcol : rdN.col = rdO.col := by
+    rcases Nat.lt_or_ge ρ S.sd.r with hlt | hge
+    · rw [← ColAddr.resolve_of_resolve_lt hRc hlt, ColAddr.resolve_of_resolve_lt hRa hlt,
+        hresO] at hresN
+      exact (Option.some.inj hresN).symm
+    · have e : ρ = S.sd.r := by omega
+      rw [e, hRc] at hresN
+      rw [e, hRa] at hresO
+      rw [← Option.some.inj hresN, ← Option.some.inj hresO]
+  refine ⟨?_, hcol⟩
+  set o := rdO.col with ho_def
+  rw [hcol] at hresN hownN
+  have hon : o.num 0 = ρ := ColAddr.resolve_num hresO
+  -- the cursors as scans of the actual root keys against the old cut query `W`
+  set W := cutQuery (actualKeys S.A a) k with hW
+  have hcurN : rdN.cursor = cursor (actualKeys (litCap S.B c k ρ) o) W := by
+    rw [rootCursor_litCap_G4 hup hN, hcol]
+    have hQ : cutQuery (actualKeys S.B c) k = kappaQ S.sd.r S.d (phaseOff S.sd i a) W := by
+      rw [← capQ_eq_kappaQ S hi ha hq hc hup hend]
+      obtain ⟨hKcol, hKlen⟩ := litCap_colAt_self hup
+      unfold OrdStep.capQ cutQuery
+      congr 1
+      simp only [actualKeys, hKcol, Option.getD_some, List.map_append]
+      rw [List.take_left' (by rw [List.length_map, hKlen]), ← List.map_take]
+    rw [hQ]
+    have hfix := (kappaQ_fix_D7 S.sd.r S.d (phaseOff S.sd i a) (litCap S.B c k ρ) (o := o)
+      (by omega)).1
+    have := cursor_map (kappaQry_strictMono S.sd.r S.d (phaseOff S.sd i a))
+      (actualKeys (litCap S.B c k ρ) o) W
+    unfold kappaQ at hfix ⊢
+    rw [hfix] at this
+    exact this
+  have hcurO : rdO.cursor = cursor (actualKeys (litCap S.A a k ρ) o) W := rootCursor_litCap_G4 hupA hO
+  rw [hcurN, hcurO]
+  -- the stacks: `o` is on the stack of the stopping column, and `c` is placed under it
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path S.hsd S.hrd
+  have hcB : c ∈ S.B.colAddrs := mem_colAddrs_of_upward hup
+  have hcst : c.OnStack o := ((ColAddr.resolve_spec 0 _ _ _).mp hresN).1
+  have hast : a.OnStack o := ((ColAddr.resolve_spec 0 _ _ _).mp hresO).1
+  have hsdres : S.sd.col.resolve 0 ρ = some o := by
+    rcases Nat.lt_or_ge ρ S.sd.r with hlt | hge
+    · rw [← ColAddr.resolve_of_resolve_lt hres hlt, ColAddr.resolve_of_resolve_lt hRc hlt, hresN]
+    · have e : ρ = S.sd.r := by omega
+      rw [e, hres]
+      rw [e, hRa] at hresO
+      exact hresO
+  have hsdst : S.sd.col.OnStack o := ((ColAddr.resolve_spec 0 _ _ _).mp hsdres).1
+  have hcc : o.container c = o.container S.sd.col := by
+    rw [hb]; exact container_underCol_of_onStack hsdst b
+  -- `B` is a context of `A`, which keeps the stack columns of the stopping column
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hBZ⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack S.hsd Z hsdst
+  rw [← hBZ] at hpar htake hnone
+  obtain ⟨hK1, hK2⟩ := colAt_litCap_onStack (k := k) (p := ρ) hcB hcst
+  obtain ⟨hK'1, hK'2⟩ := colAt_litCap_onStack (k := k) (p := ρ) ha.1 hast
+  cases hea : o.container a with
+  | none =>
+    -- neither cap cuts the root column: both read the root column of `A`
+    have hsdnone : o.container S.sd.col = none := by
+      rcases Nat.lt_or_ge ρ S.sd.r with hlt | hge
+      · have hcont : ∀ X : ColAddr, X.resolve 0 S.sd.r = some S.rd.col → S.rd.col.path <+: X.path →
+            o.container X = o.container S.rd.col := by
+          intro X hX hpX
+          apply Option.ext; intro e
+          rw [ColAddr.container_spec, ColAddr.container_spec]
+          constructor
+          · rintro ⟨h1, h2⟩
+            exact ⟨h1, EntryAddr.contains_of_resolve h2 hX (by rw [h1]; omega)⟩
+          · rintro ⟨h1, h2⟩; exact ⟨h1, h2.trans hpX⟩
+        rw [hcont S.sd.col hres hpre, ← hcont a hRa hpa]; exact hea
+      · have e : ρ = S.sd.r := by omega
+        have hoR : o = S.rd.col := by
+          rw [e, hRa] at hresO; exact (Option.some.inj hresO).symm
+        cases hs : o.container S.sd.col with
+        | none => rfl
+        | some e₂ =>
+          rw [hoR] at hs hea
+          obtain ⟨e', he'⟩ := tmpl_container_rdcol_G4 S ha hs
+          rw [hea] at he'; cases he'
+    have h1 := hK2 (by rw [hcc]; exact hsdnone)
+    have h2 := hK'2 hea
+    have h3 := hnone hsdnone
+    simp only [actualKeys, h1, h2, h3]
+  | some e₁ =>
+    -- `K'` cuts the root column after its containing entry `e₁`, whose height `H` is capped
+    obtain ⟨he1col, σ, hσ⟩ := (ColAddr.container_spec _ _ _).mp hea
+    have hapath : a.path = o.path ++ (o.col, e₁.idx) :: σ := by
+      rw [← hσ, EntryAddr.heightPath, he1col]; simp
+    obtain ⟨colA, hcolA⟩ := Option.isSome_iff_exists.mp ((Tree.mem_colAddrs_iff _ _).mp ha.1)
+    have hfa : S.A.forestAt a.path = (S.A.heightAt e₁).bind fun f => f.forestAt σ := by
+      rw [← hσ, Tree.forestAt_append, Tree.forestAt_heightPath]
+    obtain ⟨H, hH⟩ : ∃ H, S.A.heightAt e₁ = some H := by
+      cases h : S.A.heightAt e₁ with
+      | none =>
+        unfold Tree.colAt at hcolA
+        rw [hfa, h] at hcolA; cases hcolA
+      | some H => exact ⟨H, rfl⟩
+    obtain ⟨G, hG, hGa⟩ : ∃ G, H.forestAt σ = some G ∧ G.cols[a.col]? = some colA := by
+      unfold Tree.colAt at hcolA
+      rw [hfa, hH, Option.bind_some] at hcolA
+      cases h : H.forestAt σ with
+      | none => rw [h] at hcolA; cases hcolA
+      | some G => rw [h, Option.bind_some] at hcolA; exact ⟨G, rfl, hcolA⟩
+    obtain ⟨⟨q, H₀⟩, hent⟩ : ∃ x, S.A.entryAt e₁ = some x := by
+      unfold Tree.heightAt at hH
+      cases h : S.A.entryAt e₁ with
+      | none => rw [h] at hH; cases hH
+      | some x => exact ⟨x, rfl⟩
+    have hHH : H₀ = H := by
+      unfold Tree.heightAt at hH; rw [hent] at hH; exact Option.some.inj hH
+    subst hHH
+    obtain ⟨colO, hcolO, hqO⟩ : ∃ colO, S.A.colAt o = some colO ∧ colO[e₁.idx]? = some (q, H₀) := by
+      unfold Tree.entryAt at hent
+      rw [he1col] at hent
+      cases h : S.A.colAt o with
+      | none => rw [h] at hent; cases hent
+      | some colO => rw [h, Option.bind_some] at hent; exact ⟨colO, rfl, hent⟩
+    have hidx : e₁.idx < colO.length := (List.getElem?_eq_some_iff.mp hqO).1
+    have hK'col : (litCap S.A a k ρ).colAt o =
+        some (colO.take e₁.idx ++ [(q, litCapAux k ρ σ a.col H₀)]) := by
+      have hlit : litCap S.A a k ρ = litCapAux k ρ a.path a.col S.A := by
+        show litCapBody S.A a k ρ = _
+        unfold litCapBody
+        rw [if_pos (by rw [hcolA]; rfl)]
+      rw [hlit, hapath]
+      exact litCapAux_colAt_split_G4 k ρ a.col σ o.col e₁.idx colO q H₀ o.path S.A hcolO hqO
+    have hkeysO : actualKeys (litCap S.A a k ρ) o =
+        (colO.take e₁.idx).map (fun x => ((relKey (o.num 0) x.2 : Key) : WithTop Key)) ++
+          [((relKey (o.num 0) (litCapAux k ρ σ a.col H₀) : Key) : WithTop Key)] := by
+      simp [actualKeys, hK'col]
+    have hkeysA : actualKeys S.A o =
+        colO.map (fun x => ((relKey (o.num 0) x.2 : Key) : WithTop Key)) := by
+      simp [actualKeys, hcolO]
+    have hlenO : (colO.take e₁.idx).length = e₁.idx := by rw [List.length_take]; omega
+    -- `K'` is an owner whose root scan is not exhausted (L2.4c)
+    have hrunO : cursor (actualKeys (litCap S.A a k ρ) o) W ≤ e₁.idx := by
+      have hne := owner_root_nonexhaust hVO hAO' hSO hsdO hO (hownO.mpr (by rw [hea]; rfl))
+      rw [hcurO, ← ho_def, hK'col, Option.getD_some, List.length_append, hlenO] at hne
+      simp at hne; omega
+    have hpreO : (actualKeys (litCap S.A a k ρ) o).take e₁.idx = (actualKeys S.A o).take e₁.idx := by
+      rw [hkeysO, hkeysA, List.take_left' (by simp; omega), List.map_take]
+    have hxO : (actualKeys (litCap S.A a k ρ) o)[e₁.idx]? =
+        some ((relKey (o.num 0) (litCapAux k ρ σ a.col H₀) : Key) : WithTop Key) := by
+      rw [hkeysO, List.getElem?_append_right (by rw [List.length_map, hlenO]), List.length_map,
+        hlenO, Nat.sub_self]
+      rfl
+    have hxA : (actualKeys S.A o)[e₁.idx]? = some ((relKey (o.num 0) H₀ : Key) : WithTop Key) := by
+      rw [hkeysA, List.getElem?_map, hqO]; rfl
+    -- the capped height and the complete height compare alike with every query key (L2.5c)
+    have hsign : ∀ y ∈ W, compare ((relKey (o.num 0) (litCapAux k ρ σ a.col H₀) : Key) : WithTop Key) y =
+        compare ((relKey (o.num 0) H₀ : Key) : WithTop Key) y := by
+      intro y hy
+      have hy' : y ∈ (actualKeys S.A a).take k := (nu_sublist _).subset hy
+      obtain ⟨v, hv, hyv⟩ := List.getElem_of_mem hy'
+      have hvk : v < k := by
+        have := hv; rw [List.length_take] at this; omega
+      have hva : v < colA.length := by
+        have := hv; simp [actualKeys, hcolA] at this; omega
+      obtain ⟨x, hx⟩ : ∃ x, colA[v]? = some x := ⟨_, List.getElem?_eq_getElem hva⟩
+      have hyx : y = ((relKey (a.num 0) x.2 : Key) : WithTop Key) := by
+        rw [← hyv, List.getElem_take]
+        simp [actualKeys, hcolA, (List.getElem?_eq_some_iff.mp hx).2]
+      rw [hyx]
+      exact sign_litCapAux_G4 (o.num 0) (a.num 0) k ρ σ a.col hG hGa hvk hx
+    cases hsd : o.container S.sd.col with
+    | none =>
+      -- `K` keeps the whole root column of `A`
+      have h1 : actualKeys (litCap S.B c k ρ) o = actualKeys S.A o := by
+        simp only [actualKeys, hK2 (by rw [hcc]; exact hsd), hnone hsd]
+      rw [h1]
+      exact (cursor_agree_G4 hpreO hxO hxA hsign hrunO).symm
+    | some e₂ =>
+      -- `K` cuts the root column after the last entry `e₂ ≥ e₁` (the stopping column is on the
+      -- route)
+      have hl := container_sdcol_last S hsd
+      have hlenA : (parents S.A o).length = colO.length := by simp [parents, hcolO]
+      obtain ⟨hKp, hKk⟩ := hK1 e₂ (by rw [hcc]; exact hsd)
+      have hBt := htake e₂ hsd
+      have hBk : (actualKeys S.B o).take e₂.idx = (actualKeys S.A o).take e₂.idx := by
+        simp only [actualKeys, ← List.map_take]
+        congr 1
+        cases hB : S.B.colAt o with
+        | none => rw [hB, hcolO] at hBt; cases hBt
+        | some C1 =>
+          rw [hB, hcolO] at hBt
+          simp only [Option.map_some, Option.some.injEq] at hBt
+          simp only [Option.getD_some, hBt, hcolO]
+      have hKt : (actualKeys (litCap S.B c k ρ) o).take e₂.idx = (actualKeys S.A o).take e₂.idx := by
+        rw [hKk, hBk]
+      have hKlen : (actualKeys (litCap S.B c k ρ) o).length = e₂.idx + 1 := by
+        have : (parents (litCap S.B c k ρ) o).length = e₂.idx + 1 := by
+          rw [hKp, hpar, List.length_take]; omega
+        simpa [parents, actualKeys] using this
+      rcases Nat.lt_or_ge e₁.idx e₂.idx with hlt | hge
+      · -- the old cut lies in an earlier restored origin: sign agreement at `e₁`
+        have hpreN : (actualKeys (litCap S.B c k ρ) o).take e₁.idx =
+            (actualKeys S.A o).take e₁.idx := by
+          rw [← Nat.min_eq_left hlt.le, ← List.take_take, hKt, List.take_take]
+        have hxN : (actualKeys (litCap S.B c k ρ) o)[e₁.idx]? =
+            some ((relKey (o.num 0) H₀ : Key) : WithTop Key) := by
+          rw [← List.getElem?_take_of_lt hlt, hKt, List.getElem?_take_of_lt hlt, hxA]
+        exact (cursor_agree_G4 (hpreO.trans hpreN.symm) hxO hxN hsign hrunO).symm
+      · -- the same containing entry: both scans stop by `e₁` (L2.4c), so they agree
+        have he : e₁.idx = e₂.idx := by omega
+        have hrunN : cursor (actualKeys (litCap S.B c k ρ) o) W ≤ e₁.idx := by
+          have hne := owner_root_nonexhaust hKL.1 hKL.2.2.2.1 hKL.2.2.2.2 hsdN hN
+            (hownN.mpr (by rw [hcc, hsd]; rfl))
+          rw [hcurN, hcol] at hne
+          have : (((litCap S.B c k ρ).colAt o).getD []).length =
+              (actualKeys (litCap S.B c k ρ) o).length := by simp [actualKeys]
+          omega
+        have hpreN : (actualKeys (litCap S.B c k ρ) o).take e₁.idx =
+            (actualKeys S.A o).take e₁.idx := by rw [he]; exact hKt
+        exact cursor_eq_of_take_eq (hpreN.trans hpreO.symm) hrunN hrunO
+
+-- T3.8lr (txt:576-582): closed side targets with fixed root
+theorem closed_side (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hroute : ¬ OnHoleRoute S.sd a)
+    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
+    (hρ : ρ ≤ S.sd.r) (hold : Success (litCap S.A a k ρ) (localSuffix S.A a)) :
+    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
+
+-- T3.8ls (txt:583-605): direct body targets with fixed root (remainders (4), delayed change)
+theorem direct_body (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
+    (hroute : OnHoleRoute S.sd a) (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ))
+    (hend : capPos S.B c k < mu S.B) (hρ : ρ ≤ S.sd.r)
+    (hold : Success (litCap S.A a k ρ) (localSuffix S.A a)) :
+    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
 
 -- D7: the parents of the stopping column are at least `r` (H, ending in `(r, ∅)`)
 theorem sdcol_parent_ge_D7 (S : OrdStep) {v q : Nat} (h : (parents S.A S.sd.col)[v]? = some q) :
