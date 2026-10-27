@@ -1808,10 +1808,154 @@ def SetupClauses (P : Prims.{u}) (S : ScanSetup.{u}) : Prop :=
     (∀ x ∈ setupBank S, S.bankNm x ≠ S.stopNm ∧ S.bankNm x ∉ S.aux.vars ∧
       ∀ y ∈ setupEPrefix S, S.bankNm x ≠ S.ePre y))
 
+/-- L8.5h (helper): `takeWhile (· != y)` stops no later than `takeWhile (· != z)` when `y`
+occurs before `z`. -/
+theorem mem_rolesBefore_trans_D4 {l : List Role} {x y z : Role}
+    (hx : x ∈ l.takeWhile (· != y)) (hy : y ∈ l.takeWhile (· != z)) :
+    x ∈ l.takeWhile (· != z) := by
+  induction l with
+  | nil => simp at hx
+  | cons a l ih =>
+    by_cases hay : a = y
+    · subst hay; simp at hx
+    · by_cases haz : a = z
+      · subst haz; simp at hy
+      · simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, hay, haz, not_false_eq_true,
+          if_true, List.mem_cons] at hx hy ⊢
+        rcases hx with rfl | hx
+        · exact Or.inl rfl
+        · rcases hy with rfl | hy
+          · exact absurd rfl hay
+          · exact Or.inr (ih hx hy)
+
+/-- L8.5h (helper): a role before `y` is not `y`. -/
+theorem ne_of_mem_rolesBefore_D4 {E : Forest} {x y : Role} (h : x ∈ rolesBefore E y) : x ≠ y := by
+  have := List.all_eq_true.1 List.all_takeWhile x h
+  simpa using this
+
+/-- L8.5h (helper): the root column precedes the stopping column in reading order: it lies on
+the visible stack of `T`, hence before the closing slot, and it is neither `T` nor in the query. -/
+theorem root_before_stop_D4 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
+    (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd) :
+    Role.ord rd.col ∈ rolesBefore H (.ord sd.col) := by
+  obtain ⟨hres, -, -, hpre, -⟩ := Scan.rootData_path hsd hrd
+  obtain ⟨-, -, -, hN, -, qs, hroles, hqs⟩ := Scan.stopData_roles hsd
+  obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col rd.col sd.r).1 hres
+  obtain ⟨pre, post, hr, -, -, hstk, -⟩ :=
+    Tree.roles_decomp sd.col.path H sd.col.col sd.Q.length sd.r Tree.empty hN
+  have h1 := Tree.prefixRoles_of_decomp hr
+  have h2 : prefixRoles H ⟨⟨sd.col.path, sd.col.col⟩, sd.Q.length⟩ =
+      rolesBefore H (.ord sd.col) ++ .ord sd.col :: qs := by
+    refine Tree.prefixRoles_of_decomp (rest := []) ?_
+    rw [hroles]
+    simp [Scan.closingSlot]
+  have hR := hstk rd.col hon
+  rw [← h1, h2] at hR
+  rcases List.mem_append.1 hR with h | h
+  · exact h
+  · rcases List.mem_cons.1 h with h | h
+    · have := ColAddr.num_lt_of_onStack 0 hon
+      rw [Role.ord.inj h] at this
+      exact absurd this (lt_irrefl _)
+    · have hq := hqs _ h
+      simp only [inQueryRegion, List.any_eq_true, List.mem_range] at hq
+      obtain ⟨j, -, hj⟩ := hq
+      rcases (inEntry_iff _ _).1 hj with h | h
+      · cases h
+      · have h3 := h.length_le
+        have h4 := hpre.length_le
+        simp [EntryAddr.heightPath, Role.path] at h3
+        omega
+
+/-- L8.5h (helper): pre-root roles are pre-stop roles. -/
+theorem preRoot_sub_preStop_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    (hrd : Scan.rootData S.H = some S.rd) {x : Role} (hx : x ∈ setupPreRoot S) :
+    x ∈ S.preStop :=
+  mem_rolesBefore_trans_D4 hx (root_before_stop_D4 hsd hrd)
+
+/-- L8.5h (helper): the root ordinary role is not a bank role. -/
+theorem root_not_mem_bank_D4 (S : ScanSetup.{u}) : Role.ord S.rd.col ∉ setupBank S := by
+  intro h
+  obtain ⟨-, h⟩ := List.mem_filter.1 h
+  simp only [List.any_eq_true] at h
+  obtain ⟨i, -, hi⟩ := h
+  rcases (inEntry_iff _ _).1 hi with h | h
+  · cases h
+  · have := h.length_le
+    simp [EntryAddr.heightPath, Role.path] at this
+
+/-- L8.5h (helper): variables of a restricted diagram lie in the restricting set. -/
+theorem mem_of_restrictTo_D4 {D : List (BaseAtom Role)} {S : List Role} {a : BaseAtom Role}
+    (ha : a ∈ restrictTo D S) {v : Role} (hv : v ∈ a.vars) : v ∈ S := by
+  have := (List.mem_filter.1 ha).2
+  simpa using List.all_eq_true.1 this v hv
+
+/-- L8.5h (helper): the `E`-prefix of the spine's clause S2 is `setupEPrefix`. -/
+theorem pe_eq_D4 (S : ScanSetup.{u}) (hL : Scan.InL S.H) (hsd : Scan.stopData S.H = some S.sd) :
+    S.PE = setupEPrefix S := by
+  obtain ⟨T', hT', -⟩ := Closure.anchorOrigin_prefix (E := S.E) (cap := S.cap) hL hsd
+  simp only [ScanSetup.PE, ScanSetup.TE, ScanSetup.chi, anchorD, setupEPrefix, ePrefix, hT',
+    Option.getD_some]
+
+/-- L8.5h (helper): clause S5 of the spine reads the same graph at values agreeing on its
+variables. -/
+theorem bank_congr_D4 (P : Prims.{u}) (S : ScanSetup.{u}) (hL : Scan.InL S.H)
+    (hsd : Scan.stopData S.H = some S.sd) (hrd : Scan.rootData S.H = some S.rd) :
+    BaseHolds P S.bankGraph S.bankVal ↔ BaseHolds P (setupBankGraph S) (setupBankVal S) := by
+  have hG : S.bankGraph = setupBankGraph S := by
+    simp only [ScanSetup.bankGraph, setupBankGraph, ScanSetup.preRoot, setupPreRoot,
+      ScanSetup.R, ScanSetup.bankRoles, setupBank]
+    congr 1
+    funext a
+    congr 1
+    funext v
+    exact decide_eq_decide.2 List.mem_cons
+  rw [hG]
+  obtain ⟨T', -, -, horig⟩ := Closure.anchorOrigin_prefix (E := S.E) (cap := S.cap) hL hsd
+  refine baseHolds_congr P _ _ _ fun x hx => ?_
+  obtain ⟨a, ha, hxa⟩ := List.mem_flatMap.1 hx
+  have hxS := mem_of_restrictTo_D4 (List.mem_filter.1 ha).1 hxa
+  have hRb := root_not_mem_bank_D4 S
+  by_cases hb : x ∈ setupBank S
+  · have hxR : x ≠ S.R := fun h => hRb (by rw [h] at hb; exact hb)
+    have hb' : x ∈ S.bankRoles := hb
+    simp only [ScanSetup.bankVal, setupBankVal, hxR, if_false, hb, hb', if_true]
+  · by_cases hxR : x = .ord S.rd.col
+    · subst hxR
+      simp only [ScanSetup.bankVal, setupBankVal, hb, if_false, ScanSetup.R, if_true]
+    · have hpre : x ∈ setupPreRoot S := by
+        simp only [List.mem_append, List.mem_singleton] at hxS
+        rcases hxS with (h | h) | h
+        · exact h
+        · exact absurd h hxR
+        · exact absurd h hb
+      have hps := preRoot_sub_preStop_D4 hsd hrd hpre
+      obtain ⟨y, hy, -⟩ := horig x hps
+      have hxT : x ≠ .ord S.sd.col := ne_of_mem_rolesBefore_D4 hps
+      have hxR' : x ≠ S.R := hxR
+      have hb' : x ∉ S.bankRoles := hb
+      simp only [ScanSetup.bankVal, setupBankVal, hxR', hb', hb, hxR, if_false, ScanSetup.baseVal,
+        hxT, hy, Option.map_some, Option.getD_some, ScanSetup.chi, anchorD]
+
 /-- L8.5h (formerly the stub `Req.valid_iff`, U5 R24): the spine's `ScanSetup.Valid` (body
 `ScanSetup.ValidDef`, U3 D7.2b) is equivalent to the clauses `SetupClauses` written out by U5. -/
 theorem valid_iff {P : Prims.{u}} (S : ScanSetup.{u}) : S.Valid P ↔ SetupClauses P S := by
-  sorry
+  change S.ValidDef P ↔ _
+  unfold ScanSetup.ValidDef SetupClauses
+  refine and_congr_right fun h1 => ?_
+  have hPE : S.PE = setupEPrefix S := pe_eq_D4 S h1.2.1 h1.2.2.2.1
+  have h5 := bank_congr_D4 P S h1.2.1 h1.2.2.2.1 h1.2.2.2.2.1
+  rw [hPE, baseHolds_map']
+  refine and_congr Iff.rfl (and_congr Iff.rfl (and_congr Iff.rfl (and_congr h5 ?_)))
+  simp only [List.mem_map, not_exists, not_and]
+  constructor
+  · rintro ⟨i1, i2, hqb, hq, hb⟩
+    exact ⟨i1, i2, fun x hx => ⟨(hq x hx).2.1, (hq x hx).2.2, fun y hy h => (hq x hx).1 y hy h.symm,
+      hqb x hx⟩, fun x hx => ⟨(hb x hx).2.1, (hb x hx).2.2, fun y hy h => (hb x hx).1 y hy h.symm⟩⟩
+  · rintro ⟨i1, i2, hq, hb⟩
+    exact ⟨i1, i2, fun x hx => (hq x hx).2.2.2, fun x hx => ⟨fun y hy h => (hq x hx).2.2.1 y hy h.symm,
+      (hq x hx).1, (hq x hx).2.1⟩, fun x hx => ⟨fun y hy h => (hb x hx).2.2 y hy h.symm,
+      (hb x hx).1, (hb x hx).2.1⟩⟩
 
 /-- L8.5b: the scan invariant (17) at state `(i, j)`. -/
 def ScanInv (P : Prims.{u}) (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordinal.{u}) : Prop :=
