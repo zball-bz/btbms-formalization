@@ -5297,8 +5297,339 @@ theorem condS_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = s
     rcases spx_mem_special hx with hx | rfl
     · exact spxAll_height hS hcolA x (List.mem_append_left _ hx)
     · exact spxAll_dropLast (spxAll_height hS hcolA (p, Fl) (by simp))
+
+/-! T3.2t helpers (branch E2): the P correspondence. -/
+
+/-- The profile condition of P. -/
+def psiP_E2 (_m : Nat) (J : Forest) (_n : Nat) (H : Forest) : Prop := profile J < profile H
+
+/-- The P relation between a new and an old return height. -/
+def relP_E2 (J' J : Forest) : Prop := profile J' ≤ profile J
+
+/-- The P correspondence between a new and an old height: the profile does not increase, entries
+correspond with nonincreasing profiles, and either the profile is unchanged or every entry of the
+new height has a smaller profile (the shortened pure tower). -/
+def corrP_E2 (h' h : Forest) : Prop :=
+  h'.cols ≠ [] ∧ profile h' ≤ profile h ∧ entCorr_E2 relP_E2 h' h ∧
+    (profile h' = profile h ∨ allEnt_E2 (fun J => profile J < profile h') h')
+
+theorem condP_iff_ret_E2 (E : Forest) : CondP E ↔ spxAll (retAll_E2 psiP_E2) 0 E :=
+  spx_ret_iff_E2 psiP_E2 E
+
+theorem allEnt_refl_E2 {Rel : Forest → Forest → Prop} (hR : ∀ J, Rel J J) (T : Forest) :
+    allEnt_E2 (fun J => Rel J J) T := fun _ _ _ y _ => hR y.2
+
+theorem retIn_of_corrP_E2 {h' h : Forest} {n : Nat} (hC : corrP_E2 h' h)
+    (hR : retIn_E2 psiP_E2 n h) : retIn_E2 psiP_E2 n h' := by
+  obtain ⟨-, -, hE, heq | htw⟩ := hC
+  · exact retIn_of_entCorr_E2 hE
+      (fun m J' J hr hl => by unfold psiP_E2 at hl ⊢; rw [heq]; exact lt_of_le_of_lt hr hl) hR
+  · exact retIn_of_allEnt_E2 (fun c col hc y hy m => htw c col hc y hy)
+
+theorem profile_some_E2 {F : Forest} (h : F.cols ≠ []) :
+    profile F = ((profileAux 0 F : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  rw [spx_eta F, spx_profile_node h]
+
+theorem profile_nil_E2 {F : Forest} (h : F.cols = []) : profile F = ⊥ := by
+  rw [spx_eta F, h]; rfl
+
+theorem profileAux_first_E2 (d : Nat) (c : Column) (r1 r2 : List Column) :
+    profileAux d (Tree.node (c :: r1)) = profileAux d (Tree.node (c :: r2)) := by
+  cases c with
+  | nil => simp [profileAux]
+  | cons x rest => obtain ⟨p, ⟨hc⟩⟩ := x; cases hc <;> simp [profileAux]
+
+theorem profile_first_E2 (c : Column) (r1 r2 : List Column) :
+    profile (Tree.node (c :: r1)) = profile (Tree.node (c :: r2)) := by
+  rw [spx_profile_node (by simp), spx_profile_node (by simp), profileAux_first_E2 0 c r1 r2]
+
+theorem takeWhile_fst_E2 (p : Nat) : ∀ (r1 r2 : Column), r1.map Prod.fst = r2.map Prod.fst →
+    (r1.takeWhile fun x => x.1 == p).length = (r2.takeWhile fun x => x.1 == p).length
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp at h
+  | _ :: _, [], h => by simp at h
+  | x :: xs, y :: ys, h => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    simp only [List.takeWhile_cons, h.1]
+    split_ifs
+    · simp only [List.length_cons]; rw [takeWhile_fst_E2 p xs ys h.2]
+    · rfl
+
+theorem profileAux_parents_E2 (d p0 : Nat) (h0 : Forest) {r1 r2 : Column}
+    (hr : r1.map Prod.fst = r2.map Prod.fst) (t1 t2 : List Column) :
+    profileAux d (Tree.node (((p0, h0) :: r1) :: t1)) =
+      profileAux d (Tree.node (((p0, h0) :: r2) :: t2)) := by
+  obtain ⟨hc⟩ := h0
+  cases hc with
+  | nil => simp only [profileAux]; rw [takeWhile_fst_E2 p0 r1 r2 hr]
+  | cons y ys => simp [profileAux]
+
+theorem profile_single_E2 (q : Nat) {X : Forest} (hX : X.cols ≠ []) :
+    profile (Tree.node [[(q, X)]]) =
+      ((toLex ((ofLex (profileAux 0 X)).1 + 1, (ofLex (profileAux 0 X)).2) : Nat ×ₗ Nat) :
+        WithBot (Nat ×ₗ Nat)) := by
+  rw [spx_profile_node (by simp), spx_profileAux_cons 0 q hX, spx_profileAux_one]
+
+theorem lex_shift_le_E2 {u v : Nat ×ₗ Nat} (h : u ≤ v) :
+    (toLex ((ofLex u).1 + 1, (ofLex u).2) : Nat ×ₗ Nat) ≤ toLex ((ofLex v).1 + 1, (ofLex v).2) := by
+  rw [Prod.Lex.le_iff] at h
+  rw [Prod.Lex.toLex_le_toLex]
+  rcases h with h | ⟨h1, h2⟩
+  · left; simp only; omega
+  · right; exact ⟨by simp only; omega, h2⟩
+
+theorem lex_lt_shift_E2 (u : Nat ×ₗ Nat) :
+    u < (toLex ((ofLex u).1 + 1, (ofLex u).2) : Nat ×ₗ Nat) := by
+  rw [Prod.Lex.lt_iff]; left; simp
+
+theorem allEnt_single_E2 {Q : Forest → Prop} {q : Nat} {h : Forest} (hh : Q h)
+    (hA : allEnt_E2 Q h) : allEnt_E2 Q (Tree.node [[(q, h)]]) := by
+  intro c col hc y hy
+  obtain ⟨P, j⟩ := c
+  cases P with
+  | nil =>
+    rw [colAt_nil_E2] at hc
+    cases j with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at hc
+      subst hc
+      simp only [List.mem_singleton] at hy; subst hy; exact hh
+    | succ j => simp at hc
+  | cons s ρ =>
+    obtain ⟨a, b⟩ := s
+    rw [colAt_cons_E2, Option.bind_eq_some_iff] at hc
+    obtain ⟨x, hx, hcx⟩ := hc
+    have : x = (q, h) := by
+      unfold getEnt_E2 at hx
+      cases a with
+      | zero =>
+        cases b with
+        | zero => simpa using hx.symm
+        | succ b => simp at hx
+      | succ a => simp at hx
+    subst this
+    exact hA _ _ hcx y hy
+
+theorem corrP_snoc_E2 (ys : List Column) (zs : Column) (q : Nat) (h h' : Forest)
+    (hC : corrP_E2 h' h) :
+    corrP_E2 (Tree.node (ys ++ [zs ++ [(q, h')]])) (Tree.node (ys ++ [zs ++ [(q, h)]])) := by
+  obtain ⟨hne, hle, hE, hdisj⟩ := hC
+  have hhne : h.cols ≠ [] := by
+    intro h0
+    rw [profile_nil_E2 h0, profile_some_E2 hne] at hle
+    exact absurd hle (not_le.2 (WithBot.bot_lt_coe _))
+  have hEc : entCorr_E2 relP_E2 (Tree.node (ys ++ [zs ++ [(q, h')]]))
+      (Tree.node (ys ++ [zs ++ [(q, h)]])) :=
+    entCorr_snoc_E2 hE (fun _ _ h => h) hle (allEnt_refl_E2 (fun J => le_refl (profile J)) _)
+  have hsame : ¬ (ys = [] ∧ zs = []) → profile (Tree.node (ys ++ [zs ++ [(q, h')]])) =
+      profile (Tree.node (ys ++ [zs ++ [(q, h)]])) := by
+    intro hyz
+    cases ys with
+    | cons y ys => exact profile_first_E2 y _ _
+    | nil =>
+      cases zs with
+      | nil => exact absurd ⟨rfl, rfl⟩ hyz
+      | cons z zs =>
+        obtain ⟨p0, h0⟩ := z
+        simp only [List.nil_append, List.cons_append]
+        rw [spx_profile_node (by simp), spx_profile_node (by simp),
+          profileAux_parents_E2 0 p0 h0 (r1 := zs ++ [(q, h')]) (r2 := zs ++ [(q, h)]) (by simp)]
+  refine ⟨by simp [Tree.cols], ?_, hEc, ?_⟩
+  · by_cases hyz : ys = [] ∧ zs = []
+    · obtain ⟨rfl, rfl⟩ := hyz
+      simp only [List.nil_append]
+      rw [profile_single_E2 q hne, profile_single_E2 q hhne, WithBot.coe_le_coe]
+      rw [profile_some_E2 hne, profile_some_E2 hhne, WithBot.coe_le_coe] at hle
+      exact lex_shift_le_E2 hle
+    · rw [hsame hyz]
+  · by_cases hyz : ys = [] ∧ zs = []
+    · obtain ⟨rfl, rfl⟩ := hyz
+      simp only [List.nil_append]
+      rcases hdisj with heq | htw
+      · left
+        rw [profile_some_E2 hne, profile_some_E2 hhne, WithBot.coe_inj] at heq
+        rw [profile_single_E2 q hne, profile_single_E2 q hhne, heq]
+      · right
+        have hlt : profile h' < profile (Tree.node [[(q, h')]]) := by
+          rw [profile_single_E2 q hne, profile_some_E2 hne, WithBot.coe_lt_coe]
+          exact lex_lt_shift_E2 _
+        refine allEnt_single_E2 hlt ?_
+        intro c col hc y hy
+        exact lt_trans (htw c col hc y hy) hlt
+    · left; exact hsame hyz
+
+theorem dropLast_first_E2 {l : List Column} (h : l.dropLast ≠ []) :
+    ∃ c0 r1 r2, l = c0 :: r1 ∧ l.dropLast = c0 :: r2 := by
+  cases l with
+  | nil => simp at h
+  | cons c0 r1 =>
+    cases r1 with
+    | nil => simp at h
+    | cons x xs => exact ⟨c0, x :: xs, (x :: xs).dropLast, rfl, List.dropLast_cons_of_ne_nil (by simp)⟩
+
+theorem profile_dropLast_E2 {F : Forest} (h : F.cols.dropLast ≠ []) :
+    profile (Tree.node F.cols.dropLast) = profile F := by
+  obtain ⟨c0, r1, r2, h1, h2⟩ := dropLast_first_E2 h
+  rw [h2, spx_eta F, h1]
+  exact profile_first_E2 c0 r2 r1
+
+theorem profile_dropLast_le_E2 (F : Forest) : profile (Tree.node F.cols.dropLast) ≤ profile F := by
+  by_cases h : F.cols.dropLast = []
+  · rw [profile_nil_E2 (show (Tree.node F.cols.dropLast).cols = [] from h)]; exact bot_le
+  · rw [profile_dropLast_E2 h]
+
+theorem retIn_copyP_E2 {F : Forest} {n : Nat} (hR : retIn_E2 psiP_E2 n F) :
+    retIn_E2 psiP_E2 n (Tree.node F.cols.dropLast) := by
+  by_cases h : F.cols.dropLast = []
+  · intro c col hc
+    rw [h, show (Tree.node [] : Forest) = Tree.empty from rfl, spx_colAt_empty] at hc
+    cases hc
+  · refine retIn_of_entCorr_E2 (entCorr_dropLast_E2 (allEnt_refl_E2 (Rel := relP_E2)
+      (fun J => le_refl (profile J)) _)) (fun m J' J hr hl => ?_) hR
+    unfold psiP_E2 at hl ⊢
+    rw [profile_dropLast_E2 h]
+    exact lt_of_le_of_lt hr hl
+
+theorem corrP_top_E2 (cs : List Column) {P : Column} {p N : Nat} {Fl : Forest}
+    (hFl : Fl.cols ≠ []) (hN : P = [] → 1 ≤ N) (hnon : spxNoninc (P ++ [(p, Fl)])) :
+    corrP_E2 (Tree.node (cs ++ [P ++ List.replicate N (p, Tree.node Fl.cols.dropLast)]))
+      (Tree.node (cs ++ [P ++ [(p, Fl)]])) := by
+  set C : Forest := Tree.node Fl.cols.dropLast with hC
+  have hEc := entCorr_top_E2 (Rel := relP_E2) (cs := cs) (P := P) (p := p) (N := N) (Fl := Fl)
+    (allEnt_refl_E2 (fun J => le_refl (profile J)) _)
+    (fun _ => allEnt_refl_E2 (fun J => le_refl (profile J)) _)
+    (fun _ => profile_dropLast_le_E2 Fl)
+  -- the profile is unchanged, or the tower case
+  have key : profile (Tree.node (cs ++ [P ++ List.replicate N (p, C)])) =
+      profile (Tree.node (cs ++ [P ++ [(p, Fl)]])) ∨
+      (profile (Tree.node (cs ++ [P ++ List.replicate N (p, C)])) <
+        profile (Tree.node (cs ++ [P ++ [(p, Fl)]])) ∧
+        allEnt_E2 (fun J => profile J < profile (Tree.node (cs ++ [P ++ List.replicate N (p, C)])))
+          (Tree.node (cs ++ [P ++ List.replicate N (p, C)]))) := by
+    cases cs with
+    | cons c0 cs => left; exact profile_first_E2 c0 _ _
+    | nil =>
+      simp only [List.nil_append]
+      cases P with
+      | cons x Pt =>
+        left
+        obtain ⟨p0, h0⟩ := x
+        by_cases h0e : h0.cols = []
+        · have h0E : h0 = Tree.node [] := by rw [spx_eta h0, h0e]
+          subst h0E
+          simp only [List.cons_append]
+          rw [spx_profile_node (by simp), spx_profile_node (by simp)]
+          congr 1
+          simp only [profileAux]
+          congr 3
+          rw [List.takeWhile_append, List.takeWhile_append]
+          split_ifs with hall
+          · have hpp : p ≠ p0 := by
+              intro hpp
+              have hrun := spx_run_empty p0 (Pt ++ [(p, Fl)]) hnon
+              have hmem : (p, Fl) ∈ (Pt ++ [(p, Fl)]).takeWhile (fun x => x.1 == p0) := by
+                rw [List.takeWhile_append, if_pos hall]; simp [hpp]
+              have := hrun _ hmem
+              simp only [Prod.mk.injEq] at this
+              exact hFl (by rw [this.2]; rfl)
+            have e1 : ([(p, Fl)] : Column).takeWhile (fun x => x.1 == p0) = [] := by simp [hpp]
+            have e2 : (List.replicate N (p, C)).takeWhile (fun x => x.1 == p0) = [] := by
+              cases N with
+              | zero => rfl
+              | succ N => simp [List.replicate_succ, hpp]
+            rw [e1, e2]
+          · rfl
+        · rw [spx_profile_node (by simp), spx_profile_node (by simp)]
+          simp only [List.cons_append]
+          rw [spx_profileAux_cons 0 p0 h0e, spx_profileAux_cons 0 p0 h0e]
+      | nil =>
+        obtain ⟨N', rfl⟩ : ∃ N', N = N' + 1 := ⟨N - 1, by have := hN rfl; omega⟩
+        simp only [List.nil_append, List.replicate_succ]
+        rw [profile_single_E2 p hFl]
+        by_cases hCe : C.cols = []
+        · right
+          have hC0 : C = Tree.node [] := by rw [spx_eta C, hCe]
+          rw [spx_profile_node (by simp)]
+          have hlt : ((profileAux 0 (Tree.node [(p, C) :: List.replicate N' (p, C)]) : Nat ×ₗ Nat) :
+              WithBot (Nat ×ₗ Nat)) <
+              ((toLex ((ofLex (profileAux 0 Fl)).1 + 1, (ofLex (profileAux 0 Fl)).2) : Nat ×ₗ Nat) :
+                WithBot (Nat ×ₗ Nat)) := by
+            rw [WithBot.coe_lt_coe, hC0]
+            simp only [profileAux]
+            rw [Prod.Lex.lt_iff]; left; simp
+          refine ⟨hlt, ?_⟩
+          intro c col hc y hy
+          obtain ⟨Pa, j⟩ := c
+          cases Pa with
+          | nil =>
+            rw [colAt_nil_E2] at hc
+            cases j with
+            | zero =>
+              simp only [List.getElem?_cons_zero, Option.some.injEq] at hc
+              subst hc
+              have hy' : y = (p, C) := by
+                rcases List.mem_cons.1 hy with h | h
+                · exact h
+                · exact List.eq_of_mem_replicate h
+              rw [hy', profile_nil_E2 hCe]
+              exact WithBot.bot_lt_coe _
+            | succ j => simp at hc
+          | cons s ρ =>
+            obtain ⟨a, b⟩ := s
+            rw [colAt_cons_E2, Option.bind_eq_some_iff] at hc
+            obtain ⟨x, hx, hcx⟩ := hc
+            have hx2 : x.2 = C := by
+              unfold getEnt_E2 at hx
+              cases a with
+              | zero =>
+                simp only [List.getElem?_cons_zero, Option.bind_some] at hx
+                have := List.mem_of_getElem? hx
+                rcases List.mem_cons.1 this with h | h
+                · rw [h]
+                · rw [List.eq_of_mem_replicate h]
+              | succ a => simp at hx
+            rw [hx2, hC0, show (Tree.node [] : Forest) = Tree.empty from rfl, spx_colAt_empty] at hcx
+            cases hcx
+        · left
+          rw [spx_profile_node (by simp), spx_profileAux_cons 0 p hCe, spx_profileAux_one]
+          obtain ⟨c0, r1, r2, h1, h2⟩ := dropLast_first_E2 (l := Fl.cols) hCe
+          have : profileAux 0 C = profileAux 0 Fl := by
+            rw [hC, h2, spx_eta Fl, h1]; exact profileAux_first_E2 0 c0 r2 r1
+          rw [this]
+  refine ⟨by simp [Tree.cols], ?_, hEc, ?_⟩
+  · rcases key with h | ⟨h, -⟩
+    · rw [h]
+    · exact le_of_lt h
+  · rcases key with h | ⟨-, h⟩
+    · left; exact h
+    · right; exact h
+
+theorem retAll_corrP_E2 (n : Nat) (zs : Column) (q : Nat) (h h' : Forest) (hC : corrP_E2 h' h)
+    (hφ : retAll_E2 psiP_E2 n (zs ++ [(q, h)])) : retAll_E2 psiP_E2 n (zs ++ [(q, h')]) := by
+  intro x hx
+  rcases List.mem_append.1 hx with hx | hx
+  · exact hφ x (List.mem_append_left _ hx)
+  · simp only [List.mem_singleton] at hx; subst hx
+    exact retIn_of_corrP_E2 hC (hφ (q, h) (by simp))
+
 theorem condP_special {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
-    (hk : stepKind A = some .special) (hB : expand A n = some B) : CondP B := by sorry
+    (hk : stepKind A = some .special) (hB : expand A n = some B) : CondP B := by
+  obtain ⟨π, G, cs, P, p, Fl, N, hrp, hG, hGc, hFl, hN, rfl⟩ := spx_special_shape hL hk hB
+  have hcolA : A.colAt ⟨π, cs.length⟩ = some (P ++ [(p, Fl)]) := by
+    simp [Tree.colAt, hG, hGc]
+  have hnon : spxNoninc (P ++ [(p, Fl)]) := spx_condH_col hL.2.2.1 hcolA
+  rw [condP_iff_ret_E2] at hP ⊢
+  refine (spxAll_replace (φ := retAll_E2 psiP_E2) corrP_E2
+    (fun cs' => corrP_top_E2 cs' hFl hN hnon)
+    corrP_snoc_E2 retAll_corrP_E2 π A G cs 0 hrp hG hGc hP ?_ ?_).1
+  · intro x hx
+    rcases spx_mem_special hx with hx | rfl
+    · exact hP _ _ hcolA x (List.mem_append_left _ hx)
+    · exact retIn_copyP_E2 (hP _ _ hcolA (p, Fl) (by simp))
+  · intro x hx
+    rcases spx_mem_special hx with hx | rfl
+    · exact spxAll_height hP hcolA x (List.mem_append_left _ hx)
+    · exact spxAll_dropLast (spxAll_height hP hcolA (p, Fl) (by simp))
 
 -- T3.2u (txt:410-412): special outputs satisfy A
 theorem condA_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
