@@ -56,6 +56,11 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
   - Only the 1Y import closure is prebuilt (891 of the Mathlib modules).
   - `Mathlib/SetTheory/Cardinal/Cofinality/Club.lean` is present in the source but not built.
   - Do not write into the 1Y tree.
+- **D-4 (user, open):** which hierarchy to use for the main-theorem route.
+  - Part B is the paper's J-hierarchy: about 18k–37k LOC.
+  - Part C is the reflection hierarchy, S-7 / P-U4-1: about 2.5k–5k LOC. No statement changes,
+    but §5 itself would go uncertified.
+  - Root recommends Part C.
 
 ## Conventions
 - Only root edits `tracker/ledger.json`, `tracker/CURRENT.md`, and (later) the Lean root and
@@ -68,12 +73,6 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
   - Exception, recorded as "non-blind" in the gap entry: an explicit counterexample or a
     one-line argument checked directly.
 - One commit per integration step.
-
-- **D-4 (user, open):** which hierarchy to use for the main-theorem route.
-  - Part B is the paper's J-hierarchy: about 18k–37k LOC.
-  - Part C is the reflection hierarchy, S-7 / P-U4-1: about 2.5k–5k LOC. No statement changes,
-    but §5 itself would go uncertified.
-  - Root recommends Part C.
 
 ## Next
 1. T-017 (Codex, running): blind review of the blueprint, brief
