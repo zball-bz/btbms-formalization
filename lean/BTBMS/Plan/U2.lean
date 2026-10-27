@@ -19881,12 +19881,180 @@ theorem List.take_take_of_le_G3 {α : Type} {l : List α} {k m : Nat} (h : k ≤
 
 
 
+-- the hole region is closed upward along stacks
+theorem kerUnder_of_onStack_G3 {h c o : ColAddr} (hs : c.OnStack o) (hu : KerUnder h o) :
+    KerUnder h c := by
+  rcases hs with ⟨k, ck, ik, hk, hop, hle⟩ | ⟨hop, hlt⟩
+  · have hk' : k < c.path.length := (List.getElem?_eq_some_iff.1 hk).1
+    have hck : c.path[k] = (ck, ik) := (List.getElem?_eq_some_iff.1 hk).2
+    have hcp : c.path = c.path.take k ++ (ck, ik) :: c.path.drop (k + 1) := by
+      conv_lhs => rw [← List.take_append_drop k c.path]
+      rw [List.drop_eq_getElem_cons hk', hck]
+    rcases hu with ⟨h1, h2⟩ | ⟨c0, e0, rest, h1, h2⟩
+    · right
+      refine ⟨ck, ik, c.path.drop (k + 1), ?_, by omega⟩
+      conv_lhs => rw [hcp]
+      rw [← hop, h1]
+    · right
+      refine ⟨c0, e0, rest ++ (ck, ik) :: c.path.drop (k + 1), ?_, h2⟩
+      conv_lhs => rw [hcp]
+      rw [← hop, h1]
+      simp
+  · rcases hu with ⟨h1, h2⟩ | ⟨c0, e0, rest, h1, h2⟩
+    · left; exact ⟨by rw [← hop, h1], by omega⟩
+    · right; exact ⟨c0, e0, rest, by rw [← hop, h1], h2⟩
+
+-- a column of `A` outside the hole reads alike in every context: the same parents, and the same
+-- keys before the entry containing the stopping column (all keys if there is none)
+theorem ctx_rel_G3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) (Z : Forest)
+    {o : ColAddr} (hu : ¬ KerUnder sd.col o) (ho : o ∈ A.colAddrs) :
+    parents (context A sd Z) o = parents A o ∧
+      (∀ e, o.container sd.col = some e →
+        (actualKeys (context A sd Z) o).take e.idx = (actualKeys A o).take e.idx) ∧
+      (o.container sd.col = none → actualKeys (context A sd Z) o = actualKeys A o) := by
+  cases hcs : o.container sd.col with
+  | some e =>
+    have hst : sd.col.OnStack o := onStack_of_container_G3 hcs
+    obtain ⟨hpar, htake, -⟩ := colAt_context_onStack_G3 hsd Z hst
+    refine ⟨hpar, fun e' he' => ?_, fun h => by cases h⟩
+    cases he'
+    have h1 := htake e hcs
+    simp only [actualKeys, ← List.map_take]
+    congr 1
+    cases hBo : (context A sd Z).colAt o with
+    | none =>
+      cases hAo : A.colAt o with
+      | none => rfl
+      | some _ => rw [hBo, hAo] at h1; cases h1
+    | some C1 =>
+      cases hAo : A.colAt o with
+      | none => rw [hBo, hAo] at h1; cases h1
+      | some C2 =>
+        rw [hBo, hAo] at h1
+        simpa using h1
+  | none =>
+    have hne : o ≠ sd.col := fun h => hu (by rw [h]; exact Or.inl ⟨rfl, le_rfl⟩)
+    have hin : sd.col.container o = none := by
+      cases h : sd.col.container o with
+      | none => rfl
+      | some e =>
+        exfalso
+        apply hu
+        obtain ⟨hecol, rest, hrest⟩ := (ColAddr.container_spec _ _ _).1 h
+        right
+        refine ⟨sd.col.col, e.idx, rest, ?_, le_rfl⟩
+        rw [← hrest, EntryAddr.heightPath, hecol]
+        simp
+    have heq := colAt_context_of_not_route_G3 hsd Z ho hne hin hcs
+    refine ⟨by simp [parents, heq], fun e he => ?_, fun _ => by simp [actualKeys, heq]⟩
+    cases he
+
 /-- T3.2r (G3), class (a): tests of a context column (its stack is context, and its active key
 lists are the old ones). -/
 theorem aAt_ctx_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs)
     (hctx : c ∈ (context S.A S.sd Tree.empty).colAddrs) (i : Nat) :
     AAt S.B (activeKeys_D7_G3 S.B c) c i := by
-  sorry
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hR, hH⟩ := ker_stop_hole S.hsd
+  -- `c` lies outside the hole, hence so does its whole stack
+  have hu : ¬ KerUnder S.sd.col c := by
+    intro hu
+    have hu' : KerUnder (kerHoleAt S.sd.depth S.A) c := by rw [hH]; exact hu
+    obtain ⟨y, hy, -⟩ := ker_under_exhaust Tree.empty hR hu' hctx
+    rw [Tree.mem_colAddrs_iff] at hy
+    unfold Tree.colAt at hy
+    cases hp : y.path with
+    | nil => rw [hp] at hy; simp [Tree.forestAt, Tree.empty, Tree.cols] at hy
+    | cons x rest =>
+      obtain ⟨c0, e0⟩ := x
+      rw [hp, ker_forestAt_cons] at hy
+      simp [Tree.empty, Tree.cols] at hy
+  have hcA : c ∈ S.A.colAddrs := by
+    have := ker_off_isSome Z S.sd.depth S.A hR c (by rw [hH]; exact hu)
+    rw [Tree.mem_colAddrs_iff] at hc ⊢
+    rw [← this]
+    rw [hB] at hc
+    exact hc
+  have hsdR : S.sd.col ∈ routeCols S.A := (stopData_spec S.hsd).2.2.2.1
+  -- the columns of the stack read alike
+  have hstack : ∀ z o, c.resolve 0 z = some o → o ∈ S.A.colAddrs →
+      parents S.B o = parents S.A o ∧
+        activeKeys_D7_G3 S.B c o = activeKeys_D7_G3 S.A c o := by
+    intro z o hres ho
+    have hst : c.OnStack o := ((ColAddr.resolve_spec 0 c o z).1 hres).1
+    have huo : ¬ KerUnder S.sd.col o := fun h => hu (kerUnder_of_onStack_G3 hst h)
+    obtain ⟨hpar, htk, hnc⟩ := ctx_rel_G3 S.hsd Z huo ho
+    rw [← hB] at hpar htk hnc
+    refine ⟨hpar, ?_⟩
+    unfold activeKeys_D7_G3
+    cases hoc : o.container c with
+    | some e' =>
+      simp only
+      congr 1
+      obtain ⟨he'col, he'c⟩ := (ColAddr.container_spec o c e').1 hoc
+      have he'mem : e' ∈ S.A.entryAddrs := mem_entryAddrs_of_contains hcA he'c
+      have he'lt := idx_lt_of_mem_entryAddrs he'mem
+      rw [he'col] at he'lt
+      cases hos : o.container S.sd.col with
+      | none => rw [hnc hos]
+      | some e =>
+        have hl := container_sdcol_last_G3 S hos
+        have hlen : (parents S.A o).length = ((S.A.colAt o).getD []).length := by
+          simp [parents]
+        rw [← List.take_take_of_le_G3 (m := e.idx) (by omega),
+          ← List.take_take_of_le_G3 (l := actualKeys S.A o) (m := e.idx) (by omega), htk e hos]
+    | none =>
+      simp only
+      cases hos : o.container S.sd.col with
+      | none => rw [hnc hos]
+      | some e =>
+        exfalso
+        have hor := container_mem_routeCols_D7_G3 hsdR hos
+        obtain ⟨v, -, hvc⟩ := routeCols_visible hcA hor hres
+        have : o.container c = some ⟨o, v⟩ := (ColAddr.container_spec o c _).2 ⟨rfl, hvc⟩
+        rw [hoc] at this
+        cases this
+  -- the test of `c` is the old test
+  intro p hp
+  rw [activeKeys_self_G3]
+  have huc := hu
+  obtain ⟨hparc, htkc, hncc⟩ := ctx_rel_G3 S.hsd Z huc hcA
+  rw [← hB] at hparc htkc hncc
+  rw [hparc] at hp
+  have hiA : i < (parents S.A c).length := (List.getElem?_eq_some_iff.1 hp).1
+  have hW : cutQuery (actualKeys S.B c) i = cutQuery (actualKeys S.A c) i := by
+    unfold cutQuery
+    congr 1
+    cases hos : c.container S.sd.col with
+    | none => rw [hncc hos]
+    | some e =>
+      have hl := container_sdcol_last_G3 S hos
+      rw [← List.take_take_of_le_G3 (m := e.idx) (by omega),
+        ← List.take_take_of_le_G3 (l := actualKeys S.A c) (m := e.idx) (by omega), htkc e hos]
+  have hst : cutStart S.B c i = cutStart S.A c i := by
+    unfold cutStart; rw [hparc]
+  have hA := aAt_active_of_inL_G3 S.inL hcA i p hp
+  rw [activeKeys_self_G3] at hA
+  rw [hW, hst]
+  clear hW hst hp
+  induction hA with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ hzy ih =>
+    obtain ⟨o, ho, hr⟩ := hzy
+    rw [resp_eq_parents] at hr
+    have hoA : o ∈ S.A.colAddrs := mem_colAddrs_of_parents hr
+    obtain ⟨h1, h2⟩ := hstack _ o ho hoA
+    refine ih.tail ⟨o, ho, ?_⟩
+    rw [resp_eq_parents, h1, h2]
+    exact hr
 
 /-- T3.2r (G3), classes (b), (c): tests of a phase copy of a template column. -/
 theorem aAt_tmpl_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
