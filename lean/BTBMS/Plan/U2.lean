@@ -1915,11 +1915,100 @@ theorem container_kerCol (S : OrdStep) {x x' o o' : ColAddr} (hx : kerCol S.sd S
             container_cons_ne _ _ _ _ _ _ (by simp; omega)]
           rfl
 
+-- G9 (helper): Q-material, explicitly
+theorem isQMat_spec (sd : StopData) {a : ColAddr} (h : isQMat sd a = true) :
+    ∃ j rest, a.path = sd.col.path ++ (sd.col.col, j) :: rest ∧ j < sd.Q.length := by
+  unfold isQMat at h
+  cases hd : a.path.drop sd.col.path.length with
+  | nil => simp [hd] at h
+  | cons p rest =>
+    obtain ⟨ci, j⟩ := p
+    simp only [hd, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
+    obtain ⟨htk, hci, hj⟩ := h
+    refine ⟨j, rest, ?_, hj⟩
+    rw [← List.take_append_drop sd.col.path.length a.path, htk, hd, hci]
+
+-- G9 (helper)
+theorem isQMat_of_spec (sd : StopData) {a : ColAddr} {j : Nat} {rest : List (Nat × Nat)}
+    (hp : a.path = sd.col.path ++ (sd.col.col, j) :: rest) (hj : j < sd.Q.length) :
+    isQMat sd a = true := by
+  unfold isQMat
+  rw [hp, List.take_left, List.drop_left]
+  simp [hj]
+
+-- G9 (helper): the template map on Q-material
+theorem kerCol_qmat (S : OrdStep) {a : ColAddr} (h : isQMat S.sd a = true) {j : Nat}
+    {rest : List (Nat × Nat)} (hp : a.path = S.sd.col.path ++ (S.sd.col.col, j) :: rest) :
+    kerCol S.sd S.rd a = some ⟨(0, j) :: rest, a.col⟩ := by
+  unfold kerCol
+  simp only [h, if_true, hp, List.drop_left]
+
 -- G9.4s5: the stack of Q-material images: the head and Q-material images only
 theorem onStack_kerCol_qmat (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (hxq : isQMat S.sd x = true) (o' : ColAddr) :
     x'.OnStack o' ↔ o' = ⟨[], 0⟩ ∨ ∃ o, x.OnStack o ∧ isQMat S.sd o = true ∧
-      kerCol S.sd S.rd o = some o' := by sorry
+      kerCol S.sd S.rd o = some o' := by
+  obtain ⟨j, rest, hxp, hj⟩ := isQMat_spec S.sd hxq
+  rw [kerCol_qmat S hxq hxp, Option.some.injEq] at hx
+  subst hx
+  obtain ⟨op, oc⟩ := o'
+  constructor
+  · rintro (⟨l, ck, ik, hl, hp, hle⟩ | ⟨hp, hlt⟩)
+    · simp only at hp hle hl
+      cases l with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hl
+        simp only [List.take_zero] at hp
+        left
+        rw [hp, show oc = 0 by omega]
+      | succ l =>
+        simp only [List.getElem?_cons_succ] at hl
+        simp only [List.take_succ_cons] at hp
+        right
+        refine ⟨⟨S.sd.col.path ++ (S.sd.col.col, j) :: rest.take l, oc⟩, ?_, ?_, ?_⟩
+        · refine Or.inl ⟨S.sd.col.path.length + (l + 1), ck, ik, ?_, ?_, hle⟩
+          · rw [hxp, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
+            simpa using hl
+          · rw [hxp, List.take_length_add_append]; rfl
+        · exact isQMat_of_spec S.sd (rest := rest.take l) rfl hj
+        · rw [kerCol_qmat S (isQMat_of_spec S.sd (rest := rest.take l) rfl hj) rfl, hp]
+    · simp only at hp hlt
+      right
+      refine ⟨⟨x.path, oc⟩, Or.inr ⟨rfl, hlt⟩, isQMat_of_spec S.sd hxp hj, ?_⟩
+      have hq : isQMat S.sd ⟨x.path, oc⟩ = true := isQMat_of_spec S.sd hxp hj
+      rw [kerCol_qmat S hq (show (⟨x.path, oc⟩ : ColAddr).path = _ from hxp), hp]
+  · rintro (h0 | ⟨⟨op₀, oc₀⟩, hst, hq, hk⟩)
+    · rw [h0]
+      exact Or.inl ⟨0, 0, j, rfl, rfl, le_rfl⟩
+    · obtain ⟨j', rest_o, hop, hj'⟩ := isQMat_spec S.sd hq
+      rw [kerCol_qmat S hq hop, Option.some.injEq] at hk
+      simp only at hop
+      rw [← hk]
+      rcases hst with ⟨k, ck, ik, hk', hp, hle⟩ | ⟨hp, hlt⟩
+      · simp only at hp hle
+        have hklen : k = S.sd.col.path.length + 1 + rest_o.length := by
+          have := congrArg List.length hp
+          have hkl : k < x.path.length := (List.getElem?_eq_some_iff.mp hk').1
+          rw [hop, List.length_take, List.length_append, List.length_cons,
+            Nat.min_eq_left hkl.le] at this
+          omega
+        rw [hxp, hklen, show S.sd.col.path.length + 1 + rest_o.length = S.sd.col.path.length + (rest_o.length + 1) by omega,
+          List.take_length_add_append, List.take_succ_cons, hop] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq, true_and] at hp'
+        obtain ⟨rfl, hrest⟩ := hp'
+        rw [hxp, hklen, show S.sd.col.path.length + 1 + rest_o.length = S.sd.col.path.length + (rest_o.length + 1) by omega,
+          List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk'
+        simp only [List.getElem?_cons_succ] at hk'
+        refine Or.inl ⟨rest_o.length + 1, ck, ik, ?_, ?_, hle⟩
+        · simpa using hk'
+        · show (0, j) :: rest_o = ((0, j) :: rest).take (rest_o.length + 1)
+      · simp only at hp hlt
+        rw [hop, hxp] at hp
+        have hp' := List.append_cancel_left hp
+        simp only [List.cons.injEq, Prod.mk.injEq, true_and] at hp'
+        obtain ⟨rfl, rfl⟩ := hp'
+        exact Or.inr ⟨rfl, hlt⟩
 
 -- G9 (helper): columns of a forest below a step `(ci, ei)`
 theorem colAt_cons (cols : List Column) (ci ei : Nat) (π : List (Nat × Nat)) (col : Nat) :
