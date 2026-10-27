@@ -27,10 +27,17 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
   - Best O base: KP1Y/YesMetaZFC.
 - **Running:** T-010, Codex packaging all bounded checks into `checks/`.
 
-## Waiting on the user
-- **D-1:** host-Lean semantic theorem, or object-theory derivation ZFC + Mahlo ⊢ WO(Std) as in KP1Y?
-- **D-2:** keep the paper's n-Mahlo hypothesis, or prove the stronger weakly-n-Mahlo version (S-1)?
-- T-008 (library survey on the pinned revision) is blocked on D-1.
+## Decisions
+- **D-1 = H** (user, 2026-10-27): a host-Lean theorem
+  `(∀ n, ∃ κ, n-Mahlo κ) → WellFounded (<) on Std`, with the hypothesis stated in the same
+  universe as the J-hierarchy.
+- **D-2** (root default, user may override): the main theorem uses weakly n-Mahlo cardinals,
+  and the paper's version is a corollary.
+- Pinned base (from T-007): Mathlib eba3d887 + CU 7f5a7d0, as vendored in
+  `1Y-Well-Ordering-Lean/vendor`, at Lean 4.33.1.
+  - Only the 1Y import closure is prebuilt (891 of the Mathlib modules).
+  - `Mathlib/SetTheory/Cardinal/Cofinality/Club.lean` is present in the source but not built.
+  - Do not write into the 1Y tree.
 
 ## Conventions
 - Only root edits `tracker/ledger.json`, `tracker/CURRENT.md`, and (later) the Lean root and
@@ -46,5 +53,5 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 
 ## Next
 1. Integrate T-010.
-2. Record the user's answers to D-1/D-2.
-3. After D-1/D-2: P2 repairs, a simplified-proof write-up, then gate G1.
+2. T-008 library survey on the pinned revisions, then T-012 project setup.
+3. P2: repaired and simplified proof write-up (G-002, G-003, G-006 lemmas, S-1, S-2, S-4), then gate G1.

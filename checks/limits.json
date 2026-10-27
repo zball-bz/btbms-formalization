@@ -1,0 +1,122 @@
+{
+  "quick": {
+    "reference-diff": {
+      "max_seed": 5,
+      "seed_tests_max": 9,
+      "max_parameter": 4,
+      "max_size": 60,
+      "max_states": 3000,
+      "max_processed": 1000,
+      "targeted_max_parameter": 3
+    },
+    "occurrence-graph": {
+      "max_parameter": 3,
+      "max_states": 3000,
+      "fixture_max_parameter": 4
+    },
+    "finite-invariants": {
+      "max_seed": 4,
+      "max_param": 2,
+      "generation_depth": 4,
+      "expansion_mu_cutoff": 12,
+      "state_limit": 2000,
+      "cap_target_mu_cutoff": 9,
+      "word_pair_samples": 2000,
+      "cofinality_pair_attempts": 1000,
+      "cofinality_target_mu_cutoff": 12,
+      "cofinality_upper_mu_cutoff": 24,
+      "random_seed": 4
+    },
+    "finite-words": {
+      "alphabet_size": 3,
+      "max_word_length": 4
+    },
+    "capping": {
+      "attempts": 3000,
+      "random_seed": 31,
+      "max_columns": 3,
+      "max_entries": 3,
+      "max_depth": 2,
+      "height_probability": 0.4
+    },
+    "general-l": {
+      "attempts": 3000,
+      "random_seed": 83,
+      "max_columns": 3,
+      "max_entries": 3,
+      "max_depth": 2,
+      "height_probability": 0.25,
+      "max_param": 3
+    },
+    "hypothesis-counterexample": {},
+    "claude-cofinality": {
+      "max_seed": 3,
+      "max_parameter": 2,
+      "size_cutoff": 24,
+      "max_states": 500,
+      "max_processed": 500,
+      "max_pairs": 2500,
+      "cache_entries": 256
+    }
+  },
+  "full": {
+    "reference-diff": {
+      "max_seed": 5,
+      "seed_tests_max": 9,
+      "max_parameter": 4,
+      "max_size": 80,
+      "max_states": 30000,
+      "max_processed": 12000,
+      "targeted_max_parameter": 3
+    },
+    "occurrence-graph": {
+      "max_parameter": 3,
+      "max_states": 30000,
+      "fixture_max_parameter": 4
+    },
+    "finite-invariants": {
+      "max_seed": 6,
+      "max_param": 3,
+      "generation_depth": 6,
+      "expansion_mu_cutoff": 60,
+      "state_limit": 10000,
+      "cap_target_mu_cutoff": 25,
+      "word_pair_samples": 20000,
+      "cofinality_pair_attempts": 5000,
+      "cofinality_target_mu_cutoff": 15,
+      "cofinality_upper_mu_cutoff": 30,
+      "random_seed": 4
+    },
+    "finite-words": {
+      "alphabet_size": 3,
+      "max_word_length": 4
+    },
+    "capping": {
+      "attempts": 30000,
+      "random_seed": 31,
+      "max_columns": 3,
+      "max_entries": 3,
+      "max_depth": 2,
+      "height_probability": 0.4
+    },
+    "general-l": {
+      "attempts": 30000,
+      "random_seed": 83,
+      "max_columns": 3,
+      "max_entries": 3,
+      "max_depth": 2,
+      "height_probability": 0.25,
+      "max_param": 3
+    },
+    "hypothesis-counterexample": {},
+    "claude-cofinality": {
+      "max_seed": 4,
+      "max_parameter": 3,
+      "size_cutoff": 65,
+      "max_states": 5000,
+      "max_processed": 5000,
+      "max_pairs": 50000,
+      "cache_entries": 256
+    }
+  }
+}

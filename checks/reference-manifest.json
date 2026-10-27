@@ -1,0 +1,10 @@
+{
+  "repository": "SmileLee-lyx/ne-rewritten",
+  "revision": "88df7989e270fe6eb447d7fd174d1c06ffc53cf0",
+  "files": {
+    "src/utils.ts": "c615c0876bf47f4402b2d31052f1b68e59323fb2a3559588fe97817ed1af4027",
+    "src/notation-definition.ts": "ebf309561bf567197f5c5acc91ea6717b7a7826ecdd38a19fbdbf9055173f0aa",
+    "src/notations/notation_utils.ts": "2a73292fc12ae6f2b09484a76c0c8b88a973ba022adb2c02a688b4602721e5d4",
+    "src/notations/BM-like/BTBM.ts": "272076ae4e7ca2d38d9bc32a99f88ef586c04a83834d971ae35fe8d8da33a45b"
+  }
+}

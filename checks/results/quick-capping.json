@@ -1,0 +1,67 @@
+{
+  "check": "capping",
+  "counts": {
+    "independent_cappings": 4614,
+    "qualifying_vs_inputs": 2938,
+    "qualifying_with_a": 2327,
+    "qualifying_with_cap_route": 1072,
+    "qualifying_without_a": 611,
+    "random_attempts": 3000
+  },
+  "exit_code": 0,
+  "failure_count": 0,
+  "failures": [],
+  "input_sha256s": {
+    "checks/claude/btbm.py": "c9a1c0c77fe6373ac58aa70c162e58ad086ae3e97308a0f20aaf3d7ac3e3009e",
+    "checks/claude/cofinality_test.py": "6b9824ceb12704983923d7be89326898f8ddc20e262d72e1045ad1f0e4ed77ef",
+    "checks/js/fixtures.mjs": "402a9652686226061d770ec5507deda2565f3d4042f5d1374393469472c2a473",
+    "checks/js/occurrence-graph.mjs": "f771f0a29c04103e1a80750194725bccda41bf4f6b8381ffaf4788727ddbdf18",
+    "checks/js/ref-loader.mjs": "75da9a29d675cab839d4eefe58ab7e16cddd8a61ef79fab608d6ac1518bba535",
+    "checks/js/ref-paper.mjs": "2f439e73a8e37042c3bef2e4a01efb4b1b9a6e5d6203f3e3d2499bb12782c983",
+    "checks/js/run_checks.mjs": "13079ce5040562cfe68e8c2099398c12e17b59b49eb676b602fc5ceec255a669",
+    "checks/limits.json": "08e2ee7934b3b2302128ddd1dc1c7630d87ccf8808ad70dd14cd2c7dd310fd97",
+    "checks/python/finite_model.py": "c1ffaa532d778fd85e3b06200564e9b0d54de3c6f11a4111c3d3f0ea542c4c64",
+    "checks/python/run_checks.py": "5689c310646b45ffe9534e8e2381e0391b1bf2deb86c58b2d1ed38d4e878cee6",
+    "checks/reference-manifest.json": "43cb02fea92254390578086b4329900e215a561417ec0cae2c4e09c78d59ce7c",
+    "checks/run.py": "2cf667907f85e82707555ffffe68618f6222acd2950f27fe65656f5a6d6dfc2b",
+    "checks/run.sh": "0f6ee349cc0f11b857406043df75e45c9ab18532f9f386cc41079902c05a0ba5",
+    "checks/source-provenance.json": "12d72e12b75a51822fd791abce3bd2d851a843faad0d33096847b324817bb834",
+    "paper/BTBMS_Independent_Reconstruction_20261027.pdf": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
+    "paper/paper.txt": "e8c139ca21108d9f242609fbc7962a8defe470ddec3fc95688554be1f58d14d9",
+    "reference/ne-rewritten/src/notation-definition.ts": "ebf309561bf567197f5c5acc91ea6717b7a7826ecdd38a19fbdbf9055173f0aa",
+    "reference/ne-rewritten/src/notations/BM-like/BTBM.ts": "272076ae4e7ca2d38d9bc32a99f88ef586c04a83834d971ae35fe8d8da33a45b",
+    "reference/ne-rewritten/src/notations/notation_utils.ts": "2a73292fc12ae6f2b09484a76c0c8b88a973ba022adb2c02a688b4602721e5d4",
+    "reference/ne-rewritten/src/utils.ts": "c615c0876bf47f4402b2d31052f1b68e59323fb2a3559588fe97817ed1af4027",
+    "scripts/fetch-reference.sh": "45c1cc37dd1b87a09ac5a933fd15745bf42ccd2694f1e9be99bc93bfe550ec3e"
+  },
+  "ledger_nodes": [
+    "L2.4"
+  ],
+  "limits": {
+    "attempts": 3000,
+    "height_probability": 0.4,
+    "max_columns": 3,
+    "max_depth": 2,
+    "max_entries": 3,
+    "random_seed": 31,
+    "runner_timeout_seconds": 180
+  },
+  "log": "checks/.build/quick/logs/capping.log",
+  "mode": "quick",
+  "observations": {
+    "fail_fast": true,
+    "sampling": "attempts, not distinct expressions; V,S filter only (A,I,H not assumed)"
+  },
+  "passing_is_not_proof": true,
+  "raw_report": "checks/.build/quick/raw/capping.json",
+  "reference": {
+    "repository": "SmileLee-lyx/ne-rewritten",
+    "revision": "88df7989e270fe6eb447d7fd174d1c06ffc53cf0"
+  },
+  "runtime": {
+    "node": "v26.1.0",
+    "python": "3.14.4"
+  },
+  "schema_version": 1,
+  "status": "pass"
+}

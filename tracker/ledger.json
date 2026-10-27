@@ -5,7 +5,7 @@
   "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
   "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
   "root": "claude",
-  "phase": "P1 Review",
+  "phase": "P2 Repair & simplify",
   "phases": [
    {
     "id": "P1",
@@ -130,12 +130,10 @@
    "id": "T-008",
    "phase": "P1",
    "owner": "claude",
-   "status": "blocked",
+   "status": "todo",
    "title": "Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals",
-   "deps": [
-    "T-011"
-   ],
-   "note": "Mathlib or not depends on D-1. Codex reports Mathlib has Cardinal.Cofinality.Club (IsClub, IsStationary); verify on the pinned revision."
+   "deps": [],
+   "note": "Survey the pinned Mathlib (eba3d887) and CU (7f5a7d0) used by 1Y at Lean 4.33.1: ordinals, ZFSet, regular/inaccessible, IsClub/IsStationary (Club.lean present in source but not yet built), collapse, L, satisfaction."
   },
   {
    "id": "T-009",
@@ -162,8 +160,22 @@
    "id": "T-011",
    "phase": "P1",
    "owner": "user",
+   "status": "done",
+   "title": "Decide D-1 (host Lean vs object theory) and D-2 (hypothesis strength)",
+   "evidence": [
+    "tracker/ledger.json"
+   ],
+   "note": "D-1 answered by the user (H); D-2 defaulted to delivering both versions."
+  },
+  {
+   "id": "T-012",
+   "phase": "P3",
+   "owner": "claude",
    "status": "todo",
-   "title": "Decide D-1 (host Lean vs object theory) and D-2 (hypothesis strength)"
+   "title": "Set up the Lean 4.33.1 project with pinned Mathlib + narrow CU imports (no edits to the 1Y vendor tree)",
+   "deps": [
+    "T-008"
+   ]
   }
  ],
  "nodes": [
@@ -1286,22 +1298,24 @@
   {
    "id": "D-1",
    "owner": "user",
-   "status": "open",
+   "status": "decided",
    "question": "Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y?",
    "refs": [
     "claude C-09",
     "codex risks"
    ],
-   "impact": "Reuse audit (T-007) estimates: H (host Lean, Mathlib + the Apache-2.0 CU constructible-universe library vendored in 1Y-Well-Ordering-Lean) 40k-90k new/adapted LOC; O (object theory on KP1Y/YesMetaZFC) 110k-250k. Neither route can import a finished BTBMS piece; the finite calculus §1-§4 and the packet induction §7-§8 are new either way. If O: the axiom must be the single internal sentence ∀n∈ω ∃κ M_n(κ), not the external schema, because the seed argument is uniform in internal n."
+   "impact": "Reuse audit (T-007) estimates: H (host Lean, Mathlib + the Apache-2.0 CU constructible-universe library vendored in 1Y-Well-Ordering-Lean) 40k-90k new/adapted LOC; O (object theory on KP1Y/YesMetaZFC) 110k-250k. Neither route can import a finished BTBMS piece; the finite calculus §1-§4 and the packet induction §7-§8 are new either way. If O: the axiom must be the single internal sentence ∀n∈ω ∃κ M_n(κ), not the external schema, because the seed argument is uniform in internal n.",
+   "answer": "H: host-Lean theorem. Hypothesis \"for every n an n-Mahlo cardinal exists\" is an explicit premise (Lean cannot prove even one Mahlo cardinal exists), stated in the same universe as the J-hierarchy. Decided by the user 2026-10-27."
   },
   {
    "id": "D-2",
-   "owner": "user",
-   "status": "open",
+   "owner": "claude",
+   "status": "decided",
    "question": "Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)?",
    "refs": [
     "S-1"
-   ]
+   ],
+   "answer": "Default, user may override: main theorem with weakly n-Mahlo cardinals (stronger theorem, simpler definition); the paper's n-Mahlo version as a corollary. This delivers both statements."
   },
   {
    "id": "D-3",

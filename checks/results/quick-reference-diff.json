@@ -1,0 +1,223 @@
+{
+  "check": "reference-diff",
+  "counts": {
+    "basic_operation_comparisons": 7,
+    "empty_states_skipped": 1,
+    "expected_domain_checks": 4,
+    "failures_total": 0,
+    "generated_deletion_inputs": 5,
+    "generated_operation_comparisons": 4995,
+    "generated_ordinary_inputs": 807,
+    "generated_special_inputs": 187,
+    "processed_states": 1000,
+    "queued_states": 2000,
+    "relative_key_comparisons": 3000,
+    "seed_comparisons": 10,
+    "stored_states": 3000,
+    "strict_decreases": 5051,
+    "syntax_order_comparisons": 3000,
+    "targeted_operation_comparisons": 28,
+    "witness_operation_comparisons": 21,
+    "word_order_comparisons": 3000
+  },
+  "exit_code": 0,
+  "failures": [],
+  "input_sha256s": {
+    "checks/claude/btbm.py": "c9a1c0c77fe6373ac58aa70c162e58ad086ae3e97308a0f20aaf3d7ac3e3009e",
+    "checks/claude/cofinality_test.py": "6b9824ceb12704983923d7be89326898f8ddc20e262d72e1045ad1f0e4ed77ef",
+    "checks/js/fixtures.mjs": "402a9652686226061d770ec5507deda2565f3d4042f5d1374393469472c2a473",
+    "checks/js/occurrence-graph.mjs": "f771f0a29c04103e1a80750194725bccda41bf4f6b8381ffaf4788727ddbdf18",
+    "checks/js/ref-loader.mjs": "75da9a29d675cab839d4eefe58ab7e16cddd8a61ef79fab608d6ac1518bba535",
+    "checks/js/ref-paper.mjs": "2f439e73a8e37042c3bef2e4a01efb4b1b9a6e5d6203f3e3d2499bb12782c983",
+    "checks/js/run_checks.mjs": "13079ce5040562cfe68e8c2099398c12e17b59b49eb676b602fc5ceec255a669",
+    "checks/limits.json": "08e2ee7934b3b2302128ddd1dc1c7630d87ccf8808ad70dd14cd2c7dd310fd97",
+    "checks/python/finite_model.py": "c1ffaa532d778fd85e3b06200564e9b0d54de3c6f11a4111c3d3f0ea542c4c64",
+    "checks/python/run_checks.py": "5689c310646b45ffe9534e8e2381e0391b1bf2deb86c58b2d1ed38d4e878cee6",
+    "checks/reference-manifest.json": "43cb02fea92254390578086b4329900e215a561417ec0cae2c4e09c78d59ce7c",
+    "checks/run.py": "2cf667907f85e82707555ffffe68618f6222acd2950f27fe65656f5a6d6dfc2b",
+    "checks/run.sh": "0f6ee349cc0f11b857406043df75e45c9ab18532f9f386cc41079902c05a0ba5",
+    "checks/source-provenance.json": "12d72e12b75a51822fd791abce3bd2d851a843faad0d33096847b324817bb834",
+    "paper/BTBMS_Independent_Reconstruction_20261027.pdf": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
+    "paper/paper.txt": "e8c139ca21108d9f242609fbc7962a8defe470ddec3fc95688554be1f58d14d9",
+    "reference/ne-rewritten/src/notation-definition.ts": "ebf309561bf567197f5c5acc91ea6717b7a7826ecdd38a19fbdbf9055173f0aa",
+    "reference/ne-rewritten/src/notations/BM-like/BTBM.ts": "272076ae4e7ca2d38d9bc32a99f88ef586c04a83834d971ae35fe8d8da33a45b",
+    "reference/ne-rewritten/src/notations/notation_utils.ts": "2a73292fc12ae6f2b09484a76c0c8b88a973ba022adb2c02a688b4602721e5d4",
+    "reference/ne-rewritten/src/utils.ts": "c615c0876bf47f4402b2d31052f1b68e59323fb2a3559588fe97817ed1af4027",
+    "scripts/fetch-reference.sh": "45c1cc37dd1b87a09ac5a933fd15745bf42ccd2694f1e9be99bc93bfe550ec3e"
+  },
+  "ledger_nodes": [
+    "D1.1",
+    "D1.4",
+    "D1.5",
+    "D1.6",
+    "D1.7",
+    "C1.8",
+    "T3.2"
+  ],
+  "limits": {
+    "max_parameter": 4,
+    "max_processed": 1000,
+    "max_seed": 5,
+    "max_size": 60,
+    "max_states": 3000,
+    "runner_timeout_seconds": 180,
+    "seed_tests_max": 9,
+    "targeted_max_parameter": 3
+  },
+  "log": "checks/.build/quick/logs/reference-diff.log",
+  "mode": "quick",
+  "observations": {
+    "expected_domain_differences": [
+      {
+        "case": "empty n=0",
+        "passed": true
+      },
+      {
+        "case": "empty n=2",
+        "passed": true
+      },
+      {
+        "case": "internal empty column n=0",
+        "passed": true
+      },
+      {
+        "case": "internal empty column n=1",
+        "passed": true
+      }
+    ],
+    "generated_states_sha256": "9c83454bb9d410f0d98e17ea274a4d0532e6371754f93990be085bc961658f14",
+    "seeds": [
+      {
+        "equal": true,
+        "m": 0
+      },
+      {
+        "equal": true,
+        "m": 1
+      },
+      {
+        "equal": true,
+        "m": 2
+      },
+      {
+        "equal": true,
+        "m": 3
+      },
+      {
+        "equal": true,
+        "m": 4
+      },
+      {
+        "equal": true,
+        "m": 5
+      },
+      {
+        "equal": true,
+        "m": 6
+      },
+      {
+        "equal": true,
+        "m": 7
+      },
+      {
+        "equal": true,
+        "m": 8
+      },
+      {
+        "equal": true,
+        "m": 9
+      }
+    ],
+    "targeted_cases": [
+      {
+        "covered": true,
+        "name": "nonempty-terminal-query-zero",
+        "property": "nonempty_query",
+        "witness": [
+          2,
+          1
+        ]
+      },
+      {
+        "covered": true,
+        "name": "owner-root-ordinary",
+        "property": "owner_root",
+        "witness": [
+          3,
+          1
+        ]
+      },
+      {
+        "covered": true,
+        "name": "equal-key-scan",
+        "property": "equal_key",
+        "witness": [
+          2,
+          2,
+          2
+        ]
+      },
+      {
+        "covered": true,
+        "name": "source-exhausted-nonowner-root",
+        "property": "exhausted_nonowner",
+        "witness": [
+          3,
+          1,
+          1,
+          2,
+          0,
+          1
+        ]
+      },
+      {
+        "covered": true,
+        "name": "standard-special-nonempty-P",
+        "property": "special_nonempty_prefix",
+        "witness": [
+          3,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "covered": true,
+        "name": "source-only-scan-advance",
+        "property": "source_only",
+        "witness": [
+          3,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "covered": true,
+        "name": "query-only-scan-advance",
+        "property": "query_only",
+        "witness": [
+          3,
+          1
+        ]
+      }
+    ]
+  },
+  "passing_is_not_proof": true,
+  "raw_report": "checks/.build/quick/raw/reference-diff.json",
+  "reference": {
+    "repository": "SmileLee-lyx/ne-rewritten",
+    "revision": "88df7989e270fe6eb447d7fd174d1c06ffc53cf0"
+  },
+  "runtime": {
+    "node": "v26.1.0",
+    "python": "3.14.4"
+  },
+  "schema_version": 1,
+  "status": "pass"
+}

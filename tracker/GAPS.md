@@ -69,8 +69,8 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 | ID | Owner | Status | Question | Answer / impact |
 |---|---|---|---|---|
-| D-1 | user | open | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | Reuse audit (T-007) estimates: H (host Lean, Mathlib + the Apache-2.0 CU constructible-universe library vendored in 1Y-Well-Ordering-Lean) 40k-90k new/adapted LOC; O (object theory on KP1Y/YesMetaZFC) 110k-250k. Neither route can import a finished BTBMS piece; the finite calculus §1-§4 and the packet induction §7-§8 are new either way. If O: the axiom must be the single internal sentence ∀n∈ω ∃κ M_n(κ), not the external schema, because the seed argument is uniform in internal n. |
-| D-2 | user | open | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? |  |
+| D-1 | user | decided | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | H: host-Lean theorem. Hypothesis "for every n an n-Mahlo cardinal exists" is an explicit premise (Lean cannot prove even one Mahlo cardinal exists), stated in the same universe as the J-hierarchy. Decided by the user 2026-10-27. |
+| D-2 | claude | decided | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? | Default, user may override: main theorem with weakly n-Mahlo cardinals (stronger theorem, simpler definition); the paper's n-Mahlo version as a corollary. This delivers both statements. |
 | D-3 | claude | decided | Operation domain in Lean | Total FS mirroring BTBM.FS, with an agreement lemma on nonempty V∧I inputs (G-001). |
 
 # Simplifications

@@ -1,0 +1,23 @@
+{
+  "description": "T-010 packaging of existing reviewer-authored bounded experiments. Original paths are provenance, not runtime dependencies. No upstream TypeScript is included here.",
+  "original_sha256s": {
+    "scratch/codex/ref-paper.mjs": "2f439e73a8e37042c3bef2e4a01efb4b1b9a6e5d6203f3e3d2499bb12782c983",
+    "scratch/codex/ref-loader.mjs": "732665ab00a7467f161a35d67580d15cccece1001afcfd34b9da05e849db6314",
+    "scratch/codex/ref-tests.mjs": "a9406197b3bcc33b0faeca32e89587e2690d8f332e67b88838a692430ca2ef0c",
+    "scratch/codex/ref-targeted.mjs": "a15cf7d279a54f8b6af0d430254a6c3a5181f48a4f32ccb08b1e1731144b5120",
+    "scratch/codex/ref-graph-check.mjs": "32a20f93da12896530440b0a6fc8add40e63bad8c430760e924a13a35bfdd44c",
+    "scratch/codex/ref-graph-fixtures.mjs": "65aeb810b446b2e4898748ee39efb8c31ae887a6d0d6d237902a66f5578e7144",
+    "scratch/codex/finite_model.py": "6669dc8a8cc4b88de5016724ca714ad13ad99086a9f6f50d67f40351eec7fde5",
+    "scratch/codex/finite_quick.py": "6ed773df5a01c5565c86ceb77617ea1a76df0879781f875933d9b902eb08e978",
+    "scratch/codex/capping_test.py": "24dc2881c6fd9b168dd3d4eb7dea4e84f85bb697862fcc688ffde826debb09b2",
+    "scratch/codex/general_l_test.py": "733202eedd75fde89c38b1bbb06c0f49a2cd2bb2c5ce63599cfd59baa901aa3c",
+    "scratch/codex/hypothesis_counterexample.py": "1273d81052b12a22953edf35b5686c0decc15726c4a12f298d5e9391f23d5c67",
+    "scratch/claude/btbm.py": "c9a1c0c77fe6373ac58aa70c162e58ad086ae3e97308a0f20aaf3d7ac3e3009e",
+    "scratch/claude/cofinality_test.py": "fb218cd25ad2061c58e32a72a18df6aa8c969256d20df4dce4a0a1825b3d0cd6"
+  },
+  "changes": [
+    "Added one entry point, explicit quick/full limits, deterministic bounded samples and nonzero failure exits.",
+    "Separated temporary large artifacts/reference copies from compact result metadata.",
+    "Preserved independent paper models and Claude BTBM port; refactored their harnesses for the common runner."
+  ]
+}
