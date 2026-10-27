@@ -6266,6 +6266,7 @@ theorem case_cap (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n) (pk : Sou
   have hbE : pk.rk.b ∈ pk.rk.E.entryAddrs := hadm.2.1
   have hlowu : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
   obtain ⟨hhostlow, -, -, hownlow⟩ := lowNames_spec pk hadm hv
+  obtain ⟨o, v, hov, -, -⟩ := hv.2.2.2.2.2.1
   have hTlow : ∀ x ∈ prefixRoles pk.rk.E pk.rk.b, pk.tgtChart x ∈ pk.lowNames := fun x hx =>
     List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inl (List.mem_map_of_mem hx))))
   have hframe_low : ∀ w x, pk.tgtFrame.toFr w = some x → x ∈ pk.lowNames :=
@@ -6303,7 +6304,7 @@ theorem case_cap (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n) (pk : Sou
   have hpreF' : prefixRoles (H'.truncAfter a') a' = prefixRoles cd.w.H a' := by
     rw [prefixRoles_truncAfter_F4 ha'H', prefixRoles_persist_F4 hpersist hslotT]
   -- the label (24)-(25)
-  obtain ⟨T', hT', -, -⟩ := Closure.anchorOrigin_prefix (cap := some cd.w) hHL cd.stop
+  obtain ⟨T', hT', -, horig⟩ := Closure.anchorOrigin_prefix (cap := some cd.w) hHL cd.stop
   have hEP : ePrefix pk.rk.E (some cd.w) cd.sd = rolesBefore pk.rk.E T' := by
     unfold ePrefix; rw [hT']
   let bv : Option Name → Ordinal.{u} := fun z => z.elim Ls cd.asg'
@@ -6404,7 +6405,298 @@ theorem case_cap (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n) (pk : Sou
     hΛ hΛW (fun _ _ h => h.elim) k' H' hH'
   obtain ⟨⟨⟨hΛ1', hΛ2'⟩, hΛ3'⟩, hΛ4'⟩ := (holds_append_E4 _ _ _ _).1 hΛ' |>.imp_left
     fun h => (holds_append_E4 _ _ _ _).1 h |>.imp_left fun h => (holds_append_E4 _ _ _ _).1 h
-  sorry
+  have hRH : Role.ord cd.rd.col ∈ cd.w.H.roles :=
+    (List.takeWhile_sublist _).subset (root_before_stop_D4 cd.stop cd.root)
+  have hrp := root_position hHL.1 cd.stop cd.root ha'H hTin
+  by_cases hRin : (Role.ord cd.rd.col).inEntry a' = true
+  · -- `p > ρ`: the root is inside `a'`; readmission by a second capture (L8.8c)
+    have hbefR := Tree.prefix_slot_before_inEntry ha'H hRH hRin (by intro h; cases h)
+    have hγP : ∀ x ∈ prefixRoles cd.w.H a', γ x = (cd.asg' ∘ cd.nmH) x := fun x hx =>
+      hroot x (hbefR.subset (List.mem_append_left _ hx))
+    have hγS : γ (.slot a') = pk.asg pk.owner := by
+      rw [hroot _ (hbefR.subset (List.mem_append_right _ (List.mem_singleton_self _))), hαown]
+    have hfreshN : ∀ x, Name.role (tagBound (pk.lowNames ++ [pk.owner])) x ∉ pk.lowNames ∧
+        Name.role (tagBound (pk.lowNames ++ [pk.owner])) x ≠ pk.owner := by
+      intro x
+      have h := tagBound_fresh (pk.lowNames ++ [pk.owner]) x
+      simp only [List.mem_append, List.mem_singleton, not_or] at h
+      exact h
+    let srcChart' : Role → Name := fun x =>
+      if x ∈ prefixRoles cd.w.H a' ∨ x = .slot a' then cd.nmH x
+      else Name.role (tagBound (pk.lowNames ++ [pk.owner])) x
+    have hold : ∀ x, x ∈ prefixRoles cd.w.H a' ∨ x = .slot a' → srcChart' x = cd.nmH x :=
+      fun x hx => if_pos hx
+    have hnew : ∀ x, ¬ (x ∈ prefixRoles cd.w.H a' ∨ x = .slot a') →
+        srcChart' x = Name.role (tagBound (pk.lowNames ++ [pk.owner])) x := fun x hx => if_neg hx
+    have hmemH : ∀ x, x ∈ prefixRoles cd.w.H a' ∨ x = .slot a' → x ∈ cd.w.H.roles := by
+      rintro x (hx | rfl)
+      · exact prefixRoles_sub hx
+      · exact slot_mem_roles ha'H
+    have hlowown : ∀ x, x ∈ prefixRoles cd.w.H a' ∨ x = .slot a' →
+        ∀ y, cd.nmH x ≠ Name.role (tagBound (pk.lowNames ++ [pk.owner])) y := by
+      rintro x (hx | rfl) y h
+      · exact (hfreshN y).1 (h ▸ hpreLow x hx)
+      · rw [hnmH_own] at h; exact (hfreshN y).2 h.symm
+    have hinj : Set.InjOn srcChart' {x | x ∈ (H'.truncAfter a').roles} := by
+      intro x _ y _ hxy
+      by_cases hxo : x ∈ prefixRoles cd.w.H a' ∨ x = .slot a' <;>
+        by_cases hyo : y ∈ prefixRoles cd.w.H a' ∨ y = .slot a'
+      · rw [hold x hxo, hold y hyo] at hxy
+        exact cd.nmH_inj (hmemH x hxo) (hmemH y hyo) hxy
+      · rw [hold x hxo, hnew y hyo] at hxy; exact absurd hxy (hlowown x hxo y)
+      · rw [hnew x hxo, hold y hyo] at hxy; exact absurd hxy.symm (hlowown y hyo x)
+      · rw [hnew x hxo, hnew y hyo] at hxy; exact (Name.role.inj hxy).2
+    have hframe : ((frameOf a').map srcChart').reps.take (a'.col.num 0) =
+        pk.tgtFrame.reps.take (a'.col.num 0) := by
+      rw [← hmframe]
+      congr 1
+      simp only [Frame.map, frameOf]
+      refine List.map_congr_left fun ov hov => ?_
+      obtain ⟨h1, h2⟩ := (frameOf_mem_prefix ha'H).2 ov hov
+      rw [hold _ (Or.inl h1), hold _ (Or.inl h2)]
+    have hel := owner_path_elem_config I hHL.1 hHL.2.1 cd.config ha'H hTH hTin
+    rw [hαown] at hel
+    obtain ⟨pk', hrk, hv', hhost', hLs', hlt', hT'⟩ := readmit_capture I pk hv hLs hlow h23
+      (SrcRecord.mk pk.rk.E pk.rk.b (H'.truncAfter a') a' (.repair cd.w.moves)) hadm' rfl rfl
+      srcChart' hinj (by rw [hold _ (Or.inl hcolP)]; exact hnmH_host)
+      (by rw [hold _ (Or.inr rfl)]; exact hnmH_own) hframe
+      (fun x hx => by
+        change x ∈ prefixRoles (H'.truncAfter a') a' at hx
+        rw [hpreF'] at hx
+        rw [hold x (Or.inl hx)]; exact hpreLow x hx)
+      (fun x _ hxp hxs => by
+        change x ∉ prefixRoles (H'.truncAfter a') a' at hxp
+        rw [hpreF'] at hxp
+        rw [hnew x (by rintro (h | h); exact hxp h; exact hxs h)]
+        exact hfreshN x)
+      (config_of_sub hgF' hγ)
+      (fun x hx => by
+        change x ∈ prefixRoles (H'.truncAfter a') a' at hx
+        rw [hpreF'] at hx
+        rw [hγP x hx, hold x (Or.inl hx)]
+        exact cd.asg_old _ (Or.inl (hpreLow x hx)))
+      hγS hel (fun x hx => hγW x (hrF' x hx))
+    refine ⟨pk', Ls, ⟨hrk ▸ hadm', hv', by rw [hrk]; exact hsize, hLs', hT'⟩, ?_⟩
+    show toLex (pk'.asg pk'.host, pk'.asg pk'.owner) < toLex (pk.asg pk.host, pk.asg pk.owner)
+    rw [Prod.Lex.toLex_lt_toLex]
+    exact Or.inr ⟨hhost', hlt'⟩
+  · -- `p ≤ ρ`: the moving clause lowers the host
+    have hRpos : cd.rd.col = a'.col ∨ Role.ord cd.rd.col ∈ rolesBefore cd.w.H (.ord a'.col) := by
+      rcases hrp with h | h | h
+      · exact absurd h hRin
+      · exact Or.inl h
+      · exact Or.inr h
+    have hcolH : Role.ord a'.col ∈ cd.w.H.roles := prefixRoles_sub hcolP
+    have hle : (cd.asg' ∘ cd.nmH) (.ord cd.rd.col) ≤ (cd.asg' ∘ cd.nmH) (.ord a'.col) := by
+      rcases hRpos with h | h
+      · rw [h]
+      · exact (config_lt_of_before cd.config hcolH h).le
+    have hnotb : Role.ord a'.col ∉ rolesBefore cd.w.H (.ord cd.rd.col) := by
+      intro hb
+      rcases hRpos with h | h
+      · rw [h] at hb; exact ne_of_mem_rolesBefore_D4 hb rfl
+      · exact lt_asymm (config_lt_of_before cd.config hcolH h) (config_lt_of_before cd.config hRH hb)
+    have hρ' : γ (.ord a'.col) < pk.asg pk.host := by
+      have := hmove (by omega) _ hcolT hnotb (fun h => h)
+      rw [← hαhost]; exact this.trans_le hle
+    -- fresh names
+    obtain ⟨names, hnames⟩ : ∃ names : List Name, names = cd.w.H.roles.map cd.nmH ++
+        (ePrefix pk.rk.E (some cd.w) cd.sd).map cd.nm ++ pk.lowNames ++ [pk.owner] := ⟨_, rfl⟩
+    have hnmH_names : ∀ x ∈ cd.w.H.roles, cd.nmH x ∈ names := fun x hx => by
+      rw [hnames]
+      exact List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
+        (List.mem_map_of_mem hx)))
+    have hnm_names : ∀ y ∈ ePrefix pk.rk.E (some cd.w) cd.sd, cd.nm y ∈ names := fun y hy => by
+      rw [hnames]
+      exact List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _
+        (List.mem_map_of_mem hy)))
+    have hlow_names : ∀ x ∈ pk.lowNames, x ∈ names := fun x hx => by
+      rw [hnames]
+      exact List.mem_append_left _ (List.mem_append_right _ hx)
+    have hown_names : pk.owner ∈ names := by
+      rw [hnames]
+      exact List.mem_append_right _ (List.mem_singleton_self _)
+    have hfr : ∀ x, Name.role (tagBound names) x ∉ names := tagBound_fresh names
+    let asg'' : Name → Ordinal.{u} := fun n =>
+      if h : ∃ x, n = Name.role (tagBound names) x then γ (Classical.choose h) else b' (some n)
+    have hasg_f : ∀ x, asg'' (Name.role (tagBound names) x) = γ x := by
+      intro x
+      have h : ∃ y, Name.role (tagBound names) x = Name.role (tagBound names) y := ⟨x, rfl⟩
+      simp only [asg'', dif_pos h]
+      rw [← (Name.role.inj (Classical.choose_spec h)).2]
+    have hasg_nf : ∀ n ∈ names, asg'' n = b' (some n) := by
+      intro n hn
+      have h : ¬ ∃ x, n = Name.role (tagBound names) x := by
+        rintro ⟨x, rfl⟩; exact hfr x hn
+      simp only [asg'', dif_neg h]
+    let srcChart'' : Role → Name := fun x =>
+      if x ∈ rolesBefore cd.w.H (.ord cd.sd.col) then cd.nmH x else Name.role (tagBound names) x
+    have hsrcP : ∀ x ∈ rolesBefore cd.w.H (.ord cd.sd.col), srcChart'' x = cd.nmH x :=
+      fun x hx => if_pos hx
+    have hsrcN : ∀ x, x ∉ rolesBefore cd.w.H (.ord cd.sd.col) →
+        srcChart'' x = Name.role (tagBound names) x := fun x hx => if_neg hx
+    have hrbH : ∀ x ∈ rolesBefore cd.w.H (.ord cd.sd.col), x ∈ cd.w.H.roles :=
+      fun x hx => (List.takeWhile_sublist _).subset hx
+    have hsrc_own : srcChart'' (.slot a') = pk.owner := by rw [hsrcP _ hslotT, hnmH_own]
+    have hsrc_host : srcChart'' (.ord a'.col) = pk.host := by rw [hsrcP _ hcolT, hnmH_host]
+    -- facts from the transported label
+    rw [holds_ofBase, baseHolds_map'] at hΛ1'
+    have hΛ3'' := hΛ3'
+    rw [holds_ofBase] at hΛ3''
+    have hL'u' : b' none < b' (some pk.owner) := hΛ3'' _ List.mem_cons_self
+    have hlowL' : ∀ x ∈ pk.lowNames, b' (some x) < b' none := fun x hx =>
+      hΛ3'' _ (List.mem_cons_of_mem _ (List.mem_map_of_mem (f := fun x => BaseAtom.lt (some x) none) hx))
+    have hno : ¬ BlockAbove I.toPrims (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+        (fun x => ((pk.tgtFrame.map some).toFr x).map b') (b' none) (b' (some pk.owner)) :=
+      hΛ2' _ (List.mem_singleton_self _)
+    rw [holds_map_E4] at hΛ4'
+    have hhostb : b' (some pk.host) = γ (.ord a'.col) := by
+      have := hbind' _ hcolT; rw [hnmH_host] at this; exact this
+    -- the target heads are edges of `U_b` inside the `E`-prefix
+    obtain ⟨⟨p₀, B⟩, hentb⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 hbE)
+    have hsel : pk.rk.tgtSel = p₀ := by simp [SrcRecord.tgtSel, hentb]
+    obtain ⟨o₀, v₀, hrep, ho₀, hv₀⟩ : ∃ o₀ v₀, pk.rk.b.col.rep 0 pk.rk.tgtSel = some (o₀, v₀) ∧
+        pk.tgtChart o₀ = o ∧ pk.tgtChart v₀ = v := by
+      have h := hov
+      simp only [SourcePacket.tgtFrame, Frame.map, frameOf, List.getElem?_map, reps0_getElem?] at h
+      obtain ⟨⟨o₁, v₁⟩, h1, h2⟩ := Option.map_eq_some_iff.1 h
+      simp only [Prod.mk.injEq] at h2
+      exact ⟨o₁, v₁, h1, h2.1, h2.2⟩
+    obtain ⟨ho₀P, hv₀P⟩ := rep_mem_prefix hbE hrep
+    have hbcolP : Role.ord pk.rk.b.col ∈ prefixRoles pk.rk.E pk.rk.b := (frameOf_mem_prefix hbE).1
+    have hslotb : Role.slot pk.rk.b ∈ ePrefix pk.rk.E (some cd.w) cd.sd := by
+      obtain ⟨y, hy, hyE, -⟩ := horig _ hslotT
+      change cd.w.origin _ = _ at hy
+      rw [hmslot] at hy; cases hy
+      rw [hEP]; exact hyE
+    have hedge : ∀ z, z = o₀ ∨ z = v₀ → I.Edge (b' (some pk.owner)) (b' (some pk.host))
+        (b' (some (pk.tgtChart z))) := by
+      rintro z hz
+      have hA : BaseAtom.edge (Role.slot pk.rk.b) (.ord pk.rk.b.col) z ∈
+          restrictTo (graph pk.rk.E) (ePrefix pk.rk.E (some cd.w) cd.sd) := by
+        refine List.mem_filter.2 ⟨(mem_graph_iff _ _).2 (Or.inr (Or.inr (Or.inr
+          ⟨pk.rk.b, pk.rk.tgtSel, o₀, v₀, by rw [hentb, hsel]; rfl, hrep, ?_⟩))), ?_⟩
+        · rcases hz with rfl | rfl
+          · exact Or.inl rfl
+          · exact Or.inr rfl
+        · simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+            decide_eq_true_eq]
+          refine ⟨hslotb, cd.pre_sub _ hbcolP, cd.pre_sub _ ?_⟩
+          rcases hz with rfl | rfl
+          · exact ho₀P
+          · exact hv₀P
+      have h1 := hΛ1' _ hA
+      have hzP : z ∈ prefixRoles pk.rk.E pk.rk.b := by rcases hz with rfl | rfl; exacts [ho₀P, hv₀P]
+      simp only [Function.comp, BaseAtom.Holds] at h1
+      rw [cd.nm_owner, cd.nm_tgt _ hbcolP, cd.nm_tgt _ hzP, hv.2.2.1] at h1
+      exact h1
+    -- the new packet
+    have hlowb : ∀ x ∈ pk.lowNames, asg'' x < b' (some pk.owner) := fun x hx => by
+      rw [hasg_nf x (hlow_names x hx)]; exact (hlowL' x hx).trans hL'u'
+    refine ⟨⟨SrcRecord.mk pk.rk.E pk.rk.b (H'.truncAfter a') a' (.repair cd.w.moves),
+      pk.tgtChart, srcChart'', pk.aux, asg''⟩, b' none, ⟨hadm', ⟨hv.1, ?_, ?_, ?_, ?_, ?_, ?_⟩,
+      hsize, ?_, ?_⟩, ?_⟩
+    · -- (1) injectivity of the new source chart
+      intro x _ y _ hxy
+      change srcChart'' x = srcChart'' y at hxy
+      by_cases hxT : x ∈ rolesBefore cd.w.H (.ord cd.sd.col) <;>
+        by_cases hyT : y ∈ rolesBefore cd.w.H (.ord cd.sd.col)
+      · rw [hsrcP x hxT, hsrcP y hyT] at hxy
+        exact cd.nmH_inj (hrbH x hxT) (hrbH y hyT) hxy
+      · rw [hsrcP x hxT, hsrcN y hyT] at hxy
+        exact absurd (hxy ▸ hnmH_names x (hrbH x hxT)) (hfr y)
+      · rw [hsrcN x hxT, hsrcP y hyT] at hxy
+        exact absurd (hxy.symm ▸ hnmH_names y (hrbH y hyT)) (hfr x)
+      · rw [hsrcN x hxT, hsrcN y hyT] at hxy; exact (Name.role.inj hxy).2
+    · -- (2) the hosts
+      show pk.tgtChart (.ord pk.rk.b.col) = srcChart'' (.ord a'.col)
+      rw [hsrc_host]; exact hv.2.2.1
+    · -- (3) the frame
+      show ((frameOf a').map srcChart'').reps.take (a'.col.num 0) =
+        ((frameOf pk.rk.b).map pk.tgtChart).reps.take (a'.col.num 0)
+      have : ((frameOf a').map srcChart'').reps = ((frameOf a').map cd.nmH).reps := by
+        simp only [Frame.map, frameOf]
+        refine List.map_congr_left fun ov hov => ?_
+        obtain ⟨h1, h2⟩ := (frameOf_mem_prefix ha'H).2 ov hov
+        rw [hsrcP _ (hpreT _ h1), hsrcP _ (hpreT _ h2)]
+      rw [this, hmframe]; rfl
+    · -- (4) the joint diagram
+      have hj1 : (Diagram.ofBase ((prefixGraph pk.rk.E pk.rk.b).map
+          (BaseAtom.map pk.tgtChart))).Holds I.toPrims asg'' := by
+        rw [holds_ofBase, baseHolds_map']
+        intro A hA
+        have hA' : A ∈ restrictTo (graph pk.rk.E) (ePrefix pk.rk.E (some cd.w) cd.sd) :=
+          List.mem_filter.2 ⟨(List.mem_filter.1 hA).1, List.all_eq_true.2 fun y hy =>
+            decide_eq_true (cd.pre_sub y (mem_of_restrictTo_D4 hA hy))⟩
+        refine (BaseAtom.holds_congr _ A _ _ fun y hy => ?_).2 (hΛ1' A hA')
+        have hyP := mem_of_restrictTo_D4 hA hy
+        show asg'' (pk.tgtChart y) = b' (some (cd.nm y))
+        rw [cd.nm_tgt y hyP, hasg_nf _ (hlow_names _ (hTlow y hyP))]
+      have hj2 : (Diagram.ofBase ((graph (H'.truncAfter a')).map
+          (BaseAtom.map srcChart''))).Holds I.toPrims asg'' := by
+        rw [holds_ofBase, baseHolds_map']
+        intro A hA
+        refine (BaseAtom.holds_congr _ A _ γ fun x hx => ?_).2 (hγ A (hgF' A hA))
+        show asg'' (srcChart'' x) = γ x
+        by_cases hxT : x ∈ rolesBefore cd.w.H (.ord cd.sd.col)
+        · rw [hsrcP x hxT, hasg_nf _ (hnmH_names x (hrbH x hxT))]
+          exact hbind' x hxT
+        · rw [hsrcN x hxT, hasg_f]
+      have hj3 : pk.aux.Holds I.toPrims asg'' := by
+        refine (Diagram.holds_congr _ _ _ _ fun n hn => ?_).2 hΛ4'
+        exact hasg_nf n (hlow_names n (List.mem_append_right _ hn))
+      intro A hA
+      rcases List.mem_append.1 hA with hA | hA
+      · rcases List.mem_append.1 hA with hA | hA
+        · exact hj1 A hA
+        · exact hj2 A hA
+      · exact hj3 A hA
+    · -- (5) the target heads
+      refine ⟨o, v, hov, ?_, ?_⟩
+      · show I.Edge (asg'' (srcChart'' (.slot a'))) (asg'' (srcChart'' (.ord a'.col))) (asg'' o)
+        rw [hsrc_own, hsrc_host, hasg_nf _ hown_names, hasg_nf _ (hlow_names _ hhostlow),
+          hasg_nf _ (hlow_names _ (hframe_low (.ord pk.rk.tgtSel) o (by simp [Frame.toFr, hov]))),
+          ← ho₀]
+        exact hedge o₀ (Or.inl rfl)
+      · show I.Edge (asg'' (srcChart'' (.slot a'))) (asg'' (srcChart'' (.ord a'.col))) (asg'' v)
+        rw [hsrc_own, hsrc_host, hasg_nf _ hown_names, hasg_nf _ (hlow_names _ hhostlow),
+          hasg_nf _ (hlow_names _ (hframe_low (.cur pk.rk.tgtSel) v (by simp [Frame.toFr, hov]))),
+          ← hv₀]
+        exact hedge v₀ (Or.inr rfl)
+    · -- (6) the low certificate
+      intro x hx
+      change x ∈ (prefixRoles pk.rk.E pk.rk.b).map pk.tgtChart ++
+        (prefixRoles (H'.truncAfter a') a').map srcChart'' ++ pk.aux.vars at hx
+      show asg'' x < asg'' (srcChart'' (.slot a'))
+      rw [hsrc_own, hasg_nf _ hown_names]
+      simp only [List.mem_append, List.mem_map] at hx
+      rcases hx with (⟨y, hy, rfl⟩ | ⟨y, hy, rfl⟩) | hx
+      · exact hlowb _ (hTlow y hy)
+      · rw [hpreF'] at hy
+        rw [hsrcP y (hpreT y hy)]
+        exact hlowb _ (hpreLow y hy)
+      · exact hlowb x (List.mem_append_right _ hx)
+    · -- the floor is below the new owner
+      show b' none < asg'' (srcChart'' (.slot a'))
+      rw [hsrc_own, hasg_nf _ hown_names]; exact hL'u'
+    · -- failure at the floor `L' = b' none`
+      intro hT
+      have hB := blockAbove_of_targetAbove _ hT
+      change BlockAbove I.toPrims (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+        (fun w => (pk.tgtFrame.toFr w).map asg'') (b' none) (asg'' (srcChart'' (.slot a'))) at hB
+      rw [hsrc_own, hasg_nf _ hown_names] at hB
+      refine hno ((blockAbove_congr_frame _ _ _ _ _ _ fun w _ => ?_).1 hB)
+      rw [toFr_map]
+      cases hf : pk.tgtFrame.toFr w with
+      | none => rfl
+      | some x =>
+        simp only [Option.map_some]
+        exact congrArg some (hasg_nf x (hlow_names x (hframe_low w x hf)))
+    · -- the host-owner pair decreases in its first coordinate
+      show toLex (asg'' (srcChart'' (.ord a'.col)), asg'' (srcChart'' (.slot a'))) <
+        toLex (pk.asg pk.host, pk.asg pk.owner)
+      rw [Prod.Lex.toLex_lt_toLex, hsrc_host, hasg_nf _ (hlow_names _ hhostlow), hhostb]
+      exact Or.inl hρ'
 
 /-- L8.8g: the least-failure argument (txt:1349-1352): if every failure has a failure with a
 lexicographically smaller host-owner pair, there is none. -/
