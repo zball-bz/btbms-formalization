@@ -486,22 +486,64 @@ noncomputable def hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
   haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
   Substructure.elementarySkolem₁Reduct (Substructure.closure (lang.sum lang.skolem₁) s)
 
+/-- N4.7 (helper): the carrier of the hull is the carrier of the Skolem closure. -/
+theorem coe_hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
+    (hull w hw s : Set (M w)) =
+      (haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+       (Substructure.closure (lang.sum lang.skolem₁) s : Set (M w))) := rfl
+
 /-- N4.7: generators lie in the hull. -/
 theorem subset_hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
-    s ⊆ (hull w hw s : Set (M w)) := by sorry
+    s ⊆ (hull w hw s : Set (M w)) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  rw [coe_hull]
+  exact Substructure.subset_closure
 
 /-- N4.7: monotonicity. -/
 theorem hull_mono (w : Ordinal.{u}) (hw : 0 < w) {s t : Set (M w)} (h : s ⊆ t) :
-    (hull w hw s : Set (M w)) ⊆ hull w hw t := by sorry
+    (hull w hw s : Set (M w)) ⊆ hull w hw t := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  rw [coe_hull, coe_hull]
+  exact Substructure.closure_mono h
 
 /-- N4.7: continuity on directed unions. -/
 theorem hull_iUnion (w : Ordinal.{u}) (hw : 0 < w) {ι : Type*} [Nonempty ι]
     {s : ι → Set (M w)} (hs : Directed (· ⊆ ·) s) :
-    (hull w hw (⋃ i, s i) : Set (M w)) = ⋃ i, (hull w hw (s i) : Set (M w)) := by sorry
+    (hull w hw (⋃ i, s i) : Set (M w)) = ⋃ i, (hull w hw (s i) : Set (M w)) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  simp only [coe_hull]
+  rw [Substructure.closure_iUnion]
+  ext x
+  rw [SetLike.mem_coe, Substructure.mem_iSup_of_directed, Set.mem_iUnion]
+  · rfl
+  · exact hs.mono_comp _ (fun a b h => Substructure.closure_mono h)
+
+/-- N4.7 (helper): each arity has countably many relation symbols. -/
+instance (n : Nat) : Countable (Rel n) := by
+  refine Function.Injective.countable (f := fun r : Rel n => match r with
+    | .lt => (0 : Fin 3) | .elem => 1 | .edge => 2) ?_
+  intro a b h
+  cases a <;> cases b <;> first | rfl | (simp at h)
+
+/-- N4.7 (helper): the language is countable. -/
+theorem lang_card_le : lang.card ≤ ℵ₀ := by
+  have : Countable lang.Symbols := by
+    change Countable ((Σ l, Empty) ⊕ (Σ l, Rel l))
+    infer_instance
+  exact Cardinal.mk_le_aleph0
 
 /-- N4.7: the size bound `|hull s| ≤ max(ℵ₀, |s|)`. -/
 theorem card_hull_le (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
-    Cardinal.mk (hull w hw s) ≤ max ℵ₀ (Cardinal.mk s) := by sorry
+    Cardinal.mk (hull w hw s) ≤ max ℵ₀ (Cardinal.mk s) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  have h1 := Substructure.lift_card_closure_le (L := lang.sum lang.skolem₁) (s := s)
+  have h2 : #(Σ n, (lang.sum lang.skolem₁).Functions n) ≤ ℵ₀ :=
+    card_functions_sum_skolem₁_le.trans (max_le le_rfl lang_card_le)
+  change #(Substructure.closure (lang.sum lang.skolem₁) s) ≤ _
+  simp only [Cardinal.lift_uzero] at h1
+  refine h1.trans (max_le (le_max_left _ _) ?_)
+  refine (Cardinal.add_le_max _ _).trans (max_le (max_le (le_max_right _ _) ?_) (le_max_left _ _))
+  refine ((Cardinal.lift_le.2 h2).trans (by simp)).trans (le_max_left _ _)
 
 /-- N4.7 (condensation for reflection structures): the order collapse of an elementary
 substructure of `M_w` is an isomorphism onto the *genuine* `M_ν`, for some `ν ≤ w`; it fixes
