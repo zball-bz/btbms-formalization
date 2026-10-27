@@ -5762,7 +5762,197 @@ theorem readmit_capture (I : Interface.{u}) (pk : SourcePacket.{u}) (hv : pk.Val
     ∃ pk' : SourcePacket.{u}, pk'.rk = rk' ∧ pk'.Valid I.toPrims ∧
       pk'.asg pk'.host = pk.asg pk.host ∧ Ls < pk'.asg pk'.owner ∧
       pk'.asg pk'.owner < pk.asg pk.owner ∧ ¬ pk'.TargetAbove I.toPrims Ls := by
-  sorry
+  classical
+  have hbE : pk.rk.b ∈ pk.rk.E.entryAddrs := by
+    have := hadm'.2.1; rw [hE, hb] at this; exact this
+  have ha' : rk'.a ∈ rk'.F.entryAddrs := hadm'.2.2.1
+  have hlowu : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
+  obtain ⟨o, v, hov, heo, hev⟩ := hv.2.2.2.2.2.1
+  have hTlow : ∀ x ∈ prefixRoles pk.rk.E pk.rk.b, pk.tgtChart x ∈ pk.lowNames := fun x hx =>
+    List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inl (List.mem_map_of_mem hx))))
+  have hframe_low : ∀ w x, pk.tgtFrame.toFr w = some x → x ∈ pk.lowNames := by
+    intro w x hx
+    rw [SourcePacket.tgtFrame, toFr_map] at hx
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+    obtain ⟨hhost, hreps⟩ := frameOf_mem_prefix hbE
+    rcases toFr_frameOf_D4 hy with rfl | ⟨ov, hov, rfl | rfl⟩
+    · exact hTlow _ hhost
+    · exact hTlow _ (hreps ov hov).1
+    · exact hTlow _ (hreps ov hov).2
+  have holow : o ∈ pk.lowNames := hframe_low (.ord pk.rk.tgtSel) o (by simp [Frame.toFr, hov])
+  have hvlow : v ∈ pk.lowNames := hframe_low (.cur pk.rk.tgtSel) v (by simp [Frame.toFr, hov])
+  have hhostlow : pk.host ∈ pk.lowNames := hhost ▸ hpre _ (frameOf_mem_prefix ha').1
+  have hownlow : pk.owner ∉ pk.lowNames := fun h => lt_irrefl _ (hlowu _ h)
+  -- the capture problem over `Option Name` (`none` is the floor)
+  let D : Diagram (Option Name) := Diagram.ofBase ((graph rk'.F).map (BaseAtom.map (some ∘ srcChart')) ++
+    [BaseAtom.edge (some pk.owner) (some pk.host) (some o),
+      BaseAtom.edge (some pk.owner) (some pk.host) (some v), BaseAtom.lt none (some pk.owner)])
+  let Fx : Option Name → Prop := fun z => z = none ∨ ∃ n ∈ pk.lowNames, z = some n
+  let σ : Option Name → Ordinal.{u} := fun z => z.elim Ls pk.asg
+  let a₀ : Option Name → Ordinal.{u} := fun z => z.elim Ls fun n =>
+    if h : ∃ x ∈ rk'.F.roles, srcChart' x = n then γ (Classical.choose h) else pk.asg n
+  have ha₀F : ∀ x ∈ rk'.F.roles, a₀ (some (srcChart' x)) = γ x := by
+    intro x hx
+    have h : ∃ y ∈ rk'.F.roles, srcChart' y = srcChart' x := ⟨x, hx, rfl⟩
+    simp only [a₀, Option.elim_some, dif_pos h]
+    obtain ⟨h1, h2⟩ := Classical.choose_spec h
+    rw [hinj h1 hx h2]
+  have ha₀low : ∀ n ∈ pk.lowNames, a₀ (some n) = pk.asg n := by
+    intro n hn
+    by_cases h : ∃ x ∈ rk'.F.roles, srcChart' x = n
+    · obtain ⟨x, hx, rfl⟩ := h
+      rw [ha₀F x hx]
+      by_cases hxp : x ∈ prefixRoles rk'.F rk'.a
+      · exact hγpre x hxp
+      · by_cases hxs : x = .slot rk'.a
+        · subst hxs; rw [hown] at hn; exact absurd hn hownlow
+        · exact absurd hn (hfresh x hx hxp hxs).1
+    · simp only [a₀, Option.elim_some, dif_neg h]
+  have hown0 : a₀ (some pk.owner) = pk.asg pk.owner := by
+    have := ha₀F _ (slot_mem_roles ha'); rw [hown] at this; rw [this, hγown]
+  have huW : pk.asg pk.owner ≤ W := I.elem_le hW
+  have hDvars : ∀ z ∈ D.vars, z = none ∨ z = some pk.owner ∨ (∃ n ∈ pk.lowNames, z = some n) ∨
+      ∃ x ∈ rk'.F.roles, z = some (srcChart' x) := by
+    intro z hz
+    simp only [D, ofBase_vars, baseVars, List.flatMap_append, List.mem_append] at hz
+    rcases hz with hz | hz
+    · rw [← baseVars, baseVars_map] at hz
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+      exact Or.inr (Or.inr (Or.inr ⟨x, List.mem_flatMap.1 hx |>.elim fun b hb =>
+        graph_vars_roles _ b hb.1 x hb.2, rfl⟩))
+    · simp only [List.flatMap_cons, List.flatMap_nil, BaseAtom.vars, List.cons_append,
+        List.nil_append, List.append_nil, List.mem_cons, List.mem_nil_iff, or_false] at hz
+      rcases hz with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+      · exact Or.inr (Or.inl rfl)
+      · exact Or.inr (Or.inr (Or.inl ⟨_, hhostlow, rfl⟩))
+      · exact Or.inr (Or.inr (Or.inl ⟨_, holow, rfl⟩))
+      · exact Or.inr (Or.inl rfl)
+      · exact Or.inr (Or.inr (Or.inl ⟨_, hhostlow, rfl⟩))
+      · exact Or.inr (Or.inr (Or.inl ⟨_, hvlow, rfl⟩))
+      · exact Or.inl rfl
+      · exact Or.inr (Or.inl rfl)
+  have hreal : D.RealizableBelow I.toPrims Fx σ W := by
+    refine ⟨a₀, ?_, fun z hz => ?_, ?_⟩
+    · rintro z (rfl | ⟨n, hn, rfl⟩)
+      · rfl
+      · exact ha₀low n hn
+    · rcases hDvars z hz with rfl | rfl | ⟨n, hn, rfl⟩ | ⟨x, hx, rfl⟩
+      · exact hLs.trans_le huW
+      · rw [hown0, ← hγown]; exact hγW _ (slot_mem_roles ha')
+      · rw [ha₀low n hn]; exact ((hlow n hn).trans hLs).trans_le huW
+      · rw [ha₀F x hx]; exact hγW x hx
+    · rw [holds_ofBase]
+      intro b hb
+      rcases List.mem_append.1 hb with hb | hb
+      · obtain ⟨b0, hb0, rfl⟩ := List.mem_map.1 hb
+        refine (baseAtom_holds_map' _ _ _ _).2 ?_
+        refine (BaseAtom.holds_congr _ b0 _ γ fun y hy => ?_).2 (hγ b0 hb0)
+        exact ha₀F y (graph_vars_roles _ b0 hb0 y hy)
+      · simp only [List.mem_cons, List.mem_nil_iff, or_false] at hb
+        rcases hb with rfl | rfl | rfl
+        · show I.Edge (a₀ (some pk.owner)) (a₀ (some pk.host)) (a₀ (some o))
+          rw [hown0, ha₀low _ hhostlow, ha₀low _ holow]; exact heo
+        · show I.Edge (a₀ (some pk.owner)) (a₀ (some pk.host)) (a₀ (some v))
+          rw [hown0, ha₀low _ hhostlow, ha₀low _ hvlow]; exact hev
+        · show Ls < a₀ (some pk.owner)
+          rw [hown0]; exact hLs
+  have hfixlt : ∀ z ∈ D.vars, Fx z → σ z < pk.asg pk.owner := by
+    rintro z - (rfl | ⟨n, hn, rfl⟩)
+    · exact hLs
+    · exact hlowu n hn
+  obtain ⟨a, hafix, halt, hahold⟩ := I.capture D Fx σ hW hfixlt hreal
+  have hanone : a none = Ls := hafix none (Or.inl rfl)
+  have halow : ∀ n ∈ pk.lowNames, a (some n) = pk.asg n := fun n hn =>
+    hafix (some n) (Or.inr ⟨n, hn, rfl⟩)
+  have hmemD : ∀ b ∈ [BaseAtom.edge (some pk.owner) (some pk.host) (some o),
+      BaseAtom.edge (some pk.owner) (some pk.host) (some v), BaseAtom.lt none (some pk.owner)],
+      Atom.base b ∈ D := fun b hb => List.mem_map_of_mem (List.mem_append_right _ hb)
+  have haF : BaseHolds I.toPrims (graph rk'.F) ((fun n => a (some n)) ∘ srcChart') := by
+    intro b0 hb0
+    exact (baseAtom_holds_map' _ (some ∘ srcChart') a b0).1
+      (hahold _ (List.mem_map_of_mem (List.mem_append_left _ (List.mem_map_of_mem hb0))))
+  have haeo : I.Edge (a (some pk.owner)) (a (some pk.host)) (a (some o)) :=
+    hahold (.base (.edge (some pk.owner) (some pk.host) (some o))) (hmemD _ (by simp))
+  have haev : I.Edge (a (some pk.owner)) (a (some pk.host)) (a (some v)) :=
+    hahold (.base (.edge (some pk.owner) (some pk.host) (some v))) (hmemD _ (by simp))
+  have halt' : a none < a (some pk.owner) :=
+    hahold (.base (.lt none (some pk.owner))) (hmemD _ (by simp))
+  have haown : a (some pk.owner) < pk.asg pk.owner :=
+    halt _ (List.mem_flatMap.2 ⟨_, hmemD (BaseAtom.lt none (some pk.owner)) (by simp),
+      by simp [Atom.vars, BaseAtom.vars]⟩)
+  have hk1 : rk'.tgtKey = pk.rk.tgtKey := by simp only [SrcRecord.tgtKey, SrcRecord.tgtHeight, hE, hb]
+  have hk2 : rk'.tgtSel = pk.rk.tgtSel := by simp only [SrcRecord.tgtSel, hE, hb]
+  have hlow' : ∀ x ∈ (prefixRoles rk'.E rk'.b).map pk.tgtChart ++
+      (prefixRoles rk'.F rk'.a).map srcChart' ++ pk.aux.vars, x ∈ pk.lowNames := by
+    intro x hx
+    simp only [List.mem_append, List.mem_map] at hx
+    rcases hx with (⟨y, hy, rfl⟩ | ⟨y, hy, rfl⟩) | hx
+    · rw [hE, hb] at hy; exact hTlow y hy
+    · exact hpre y hy
+    · exact List.mem_append_right _ hx
+  refine ⟨⟨rk', pk.tgtChart, srcChart', pk.aux, fun n => a (some n)⟩, rfl, ⟨?_, hinj, ?_, ?_, ?_,
+    ?_, ?_⟩, ?_, ?_, ?_, ?_⟩
+  · show Set.InjOn pk.tgtChart {x | x ∈ prefixRoles rk'.E rk'.b}
+    rw [hE, hb]; exact hv.1
+  · show pk.tgtChart (.ord rk'.b.col) = srcChart' (.ord rk'.a.col)
+    rw [hb, hhost]; exact hv.2.2.1
+  · show ((frameOf rk'.a).map srcChart').reps.take (rk'.a.col.num 0) =
+      ((frameOf rk'.b).map pk.tgtChart).reps.take (rk'.a.col.num 0)
+    rw [hb]; exact hframe
+  · have hj1 : (Diagram.ofBase ((prefixGraph rk'.E rk'.b).map (BaseAtom.map pk.tgtChart))).Holds
+        I.toPrims (fun n => a (some n)) := by
+      rw [holds_ofBase, baseHolds_map', hE, hb]
+      refine (baseHolds_congr _ _ _ _ fun y hy => ?_).2 (valid_tgt_prefix pk hv)
+      obtain ⟨b0, hb0, hy0⟩ := List.mem_flatMap.1 hy
+      exact halow _ (hTlow y (mem_of_restrictTo_D4 hb0 hy0))
+    have hj2 : (Diagram.ofBase ((graph rk'.F).map (BaseAtom.map srcChart'))).Holds I.toPrims
+        (fun n => a (some n)) := by
+      rw [holds_ofBase, baseHolds_map']; exact haF
+    have hj3 : pk.aux.Holds I.toPrims (fun n => a (some n)) := by
+      refine (Diagram.holds_congr _ _ _ _ fun n hn => ?_).2 (valid_aux pk hv)
+      exact halow n (List.mem_append_right _ hn)
+    intro A hA
+    rcases List.mem_append.1 hA with hA | hA
+    · rcases List.mem_append.1 hA with hA | hA
+      · exact hj1 A hA
+      · exact hj2 A hA
+    · exact hj3 A hA
+  · refine ⟨o, v, ?_, ?_, ?_⟩
+    · show ((frameOf rk'.b).map pk.tgtChart).reps[rk'.tgtSel]? = some (o, v)
+      rw [hb, hk2]; exact hov
+    · show I.Edge (a (some (srcChart' (.slot rk'.a)))) (a (some (srcChart' (.ord rk'.a.col))))
+        (a (some o))
+      rw [hown, hhost]; exact haeo
+    · show I.Edge (a (some (srcChart' (.slot rk'.a)))) (a (some (srcChart' (.ord rk'.a.col))))
+        (a (some v))
+      rw [hown, hhost]; exact haev
+  · intro x hx
+    have hxl := hlow' x hx
+    show a (some x) < a (some (srcChart' (.slot rk'.a)))
+    rw [hown, halow x hxl]
+    exact (hlow x hxl).trans (hanone ▸ halt')
+  · show a (some (srcChart' (.ord rk'.a.col))) = pk.asg pk.host
+    rw [hhost]; exact halow _ hhostlow
+  · show Ls < a (some (srcChart' (.slot rk'.a)))
+    rw [hown]; exact hanone ▸ halt'
+  · show a (some (srcChart' (.slot rk'.a))) < pk.asg pk.owner
+    rw [hown]; exact haown
+  · intro hT
+    have hB := blockAbove_of_targetAbove _ hT
+    change BlockAbove I.toPrims (posBlock rk'.tgtKey rk'.tgtSel)
+      (fun w => (((frameOf rk'.b).map pk.tgtChart).toFr w).map (fun n => a (some n))) Ls
+      (a (some (srcChart' (.slot rk'.a)))) at hB
+    rw [hown, hk1, hk2, hb] at hB
+    have hfeq : ∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel),
+        (((frameOf pk.rk.b).map pk.tgtChart).toFr w).map (fun n => a (some n)) =
+          (pk.tgtFrame.toFr w).map pk.asg := by
+      intro w _
+      show (pk.tgtFrame.toFr w).map _ = _
+      cases hf : pk.tgtFrame.toFr w with
+      | none => rfl
+      | some x => simp [halow x (hframe_low w x hf)]
+    have hB2 := (blockAbove_congr_frame _ _ _ _ _ _ hfeq).1 hB
+    exact h23 (blockAbove_mono le_rfl haown.le hB2)
 
 /-- L8.8d: Case 2, a proper child forest ends first: a smaller failure (txt:1364-1381). -/
 theorem case_childEnds (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n)
