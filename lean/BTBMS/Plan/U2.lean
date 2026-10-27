@@ -1014,15 +1014,7 @@ theorem restored_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 1 
     (hold : Success (litCap S.A S.rd.col (S.rd.cursor + (k - S.m)) ρ) (localSuffix S.A S.rd.col)) :
     Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
 
--- T3.8li (txt:520-541): projection of a material cut to an old cap
-theorem projection (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
-    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
-    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
-    (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
-    let K' := litCap S.A a k (S.proj (phaseOff S.sd i a) ρ)
-    IsUpward S.A a k (S.proj (phaseOff S.sd i a) ρ) ∧ CondV K' ∧ CondI K' ∧
-      CondAK K' (capKeys K' (routeCols K')) := by sorry
+-- T3.8li (`projection`) moved below the G-009 block, to the G-010 (D7) section (brief rule 5).
 
 -- T3.8lj (txt:542-546): proper current root `ρ > s_φ`: conjugate kernels, downward success
 theorem root_current (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -4535,6 +4527,227 @@ theorem direct_body (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1
     (hend : capPos S.B c k < mu S.B) (hρ : ρ ≤ S.sd.r)
     (hold : Success (litCap S.A a k ρ) (localSuffix S.A a)) :
     Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
+
+/-! ## G-010 (D7) — the projection to an old cap (T3.8li) and the old terminal cap (T3.8lb)
+
+From `blueprint/repairs/G-010.md` and `blueprint/repairs/lean/G010.lean`; names carry the branch
+suffix `_D7`, and the statements are specialized to an ordinary step `S : OrdStep`. The draft's
+`kappaQ` (D-G010.2) is the G-009 `kappaQ` above, its `phaseProj` is `OrdStep.proj` and its
+complete query `Z` is `OrdStep.termZ`. -/
+
+/-- D-G010.1 (txt:531-541, "cap all strict active ancestors"): the key system of `E` capped at
+the active containers of `c`: in a column `o` whose entry `e` contains `c`, key `e.idx` becomes `⊤`
+and the later keys are dropped; every other column keeps its actual keys. -/
+def activeKeys_D7 (E : Forest) (c : ColAddr) : KeySys := fun o =>
+  match o.container c with
+  | some e => (actualKeys E o).take e.idx ++ [⊤]
+  | none => actualKeys E o
+
+/-- D-G010.3: `(a, c, φ)` is a phase pair of layer `j`: a template column with its phase copy
+(`φ = phaseOff j a`), or the stopping column with the head of layer `j` (`φ = j − 1`). -/
+def PhasePair_D7 (S : OrdStep) (j : Nat) (a c : ColAddr) (φ : Nat) : Prop :=
+  (IsTmplCol S.A S.sd S.rd a ∧ phaseCol S.sd S.rd j a = some c ∧ φ = phaseOff S.sd j a) ∨
+    (a = S.sd.col ∧ phaseCol S.sd S.rd j S.rd.col = some c ∧ φ = j - 1)
+
+/-! ### Generic facts about literal caps -/
+
+-- L-G010.21b (D7): cut queries of actual keys are `⊤`-free
+theorem ne_top_of_mem_cutQuery_D7 (E : Forest) (o : ColAddr) (k : Nat) :
+    ∀ w ∈ cutQuery (actualKeys E o) k, w ≠ ⊤ := by sorry
+
+-- D7: upwardness in terms of parents
+theorem isUpward_iff_parents_D7 {E : Forest} {c : ColAddr} {k p : Nat} :
+    IsUpward E c k p ↔ c ∈ E.colAddrs ∧ k ≤ (parents E c).length ∧
+      ∀ q, (parents E c)[k]? = some q → q < p := by sorry
+
+-- T3.8li step 3 (D7, generic): V of a literal cap whose closing parent is visible
+theorem condV_litCap_D7 {E : Forest} (hV : CondV E) {c : ColAddr} {k p : Nat}
+    (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length) (hp : p < c.num 0) :
+    CondV (litCap E c k p) := by sorry
+
+-- T3.8li step 4 (D7, generic): I of a literal cap; the only new I-constraint is a column-start
+-- cap (`k = 0`) inside a height, whose closing parent must be at least the host
+theorem condI_litCap_D7 {E : Forest} (hI : CondI E) {c : ColAddr} {k p : Nat}
+    (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length)
+    (hp : k = 0 → ∀ π ci ei, c.path = π ++ [(ci, ei)] → (⟨π, ci⟩ : ColAddr).num 0 ≤ p) :
+    CondI (litCap E c k p) := by sorry
+
+-- T3.8li step 5, retained tests (D7, generic; L2.3 barrier and L2.4b capping): every A-test of
+-- a literal cap of an `L`-expression other than its final test holds in the cap's decorated
+-- system
+theorem litCap_retained_D7 {E : Forest} (hL : InL E) {c : ColAddr} {k p : Nat}
+    (hc : c ∈ E.colAddrs) (hk : k ≤ (parents E c).length) {c' : ColAddr}
+    (hc' : c' ∈ (litCap E c k p).colAddrs) {i : Nat} (hi : c' = c → i ≠ k) :
+    AAt (litCap E c k p) (capKeys (litCap E c k p) (routeCols (litCap E c k p))) c' i := by sorry
+
+-- L-G010.1 (D7, bridge): on the stack of the cap column, the decorated system of a literal cap
+-- is `activeKeys` of the capped expression (every `⊤`-free query)
+theorem path_litCap_activeKeys_D7 {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
+    (hk : k ≤ (parents E c).length) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) (x y : Nat) :
+    Path (litCap E c k p) (capKeys (litCap E c k p) (routeCols (litCap E c k p))) c W x y ↔
+      Path E (activeKeys_D7 E c) c W x y := by sorry
+
+-- L-G010.19/20 steps 2 and 6 (D7): the final test of an upward literal cap, read in `E`
+theorem aAt_litCap_final_D7 {E : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward E c k p) :
+    AAt (litCap E c k p) (capKeys (litCap E c k p) (routeCols (litCap E c k p))) c k ↔
+      Path E (activeKeys_D7 E c) c (cutQuery (actualKeys E c) k) (cutStart E c k) p := by sorry
+
+-- T3.8li step 5 (D7): decorated A of an upward literal cap of an `L`-expression is its final
+-- test
+theorem condAK_litCap_D7 {E : Forest} (hL : InL E) {c : ColAddr} {k p : Nat}
+    (hup : IsUpward E c k p)
+    (hfin : Path E (activeKeys_D7 E c) c (cutQuery (actualKeys E c) k) (cutStart E c k) p) :
+    CondAK (litCap E c k p) (capKeys (litCap E c k p) (routeCols (litCap E c k p))) := by
+  obtain ⟨hc, hk, -⟩ := isUpward_iff_parents_D7.mp hup
+  rw [condAK_iff]
+  intro c' hc' i
+  by_cases h : c' = c ∧ i = k
+  · obtain ⟨rfl, rfl⟩ := h
+    exact (aAt_litCap_final_D7 hup).mpr hfin
+  · exact litCap_retained_D7 hL hc hk hc' fun h1 h2 => h ⟨h1, h2⟩
+
+/-! ### Phase pairs: numbers, parents, cut queries, cut starts -/
+
+-- T3.2i (D7): the parents of a template copy are the shifted parents of its template column
+theorem parents_phaseCol_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
+    parents S.B c = (parents S.A a).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by sorry
+
+-- L-G010.17 (D7): the query part of a head is the phase-`(i−1)` copy of the old terminal's
+theorem headQuery_prefix_D7 (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) :
+    S.m ≤ (parents S.B c).length ∧
+      (parents S.B c).take S.m =
+        ((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((i - 1) * S.d)) ∧
+      (actualKeys S.B c).take S.m =
+        kappaQ S.sd.r S.d (i - 1) ((actualKeys S.A S.sd.col).take S.m) := by sorry
+
+-- D7: numbers of a phase pair
+theorem phasePair_num_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) : S.sd.r < a.num 0 ∧ c.num 0 = a.num 0 + φ * S.d := by sorry
+
+-- L-G010.18 (D7): the start of a pure phase-`φ` cut lies outside `[r, s_φ)` and projects to the
+-- old start
+theorem cutStart_phase_D7 (S : OrdStep) {φ : Nat} {a c : ColAddr} {k : Nat}
+    (ha : S.sd.r < a.num 0) (hnum : c.num 0 = a.num 0 + φ * S.d) (hk : k ≤ (parents S.A a).length)
+    (hpre : (parents S.B c).take k = ((parents S.A a).take k).map (shiftVal S.sd.r (φ * S.d))) :
+    (cutStart S.B c k < S.sd.r ∨ S.s φ ≤ cutStart S.B c k) ∧
+      S.proj φ (cutStart S.B c k) = cutStart S.A a k := by sorry
+
+/-! ### The decorated head path (L-G010.10) -/
+
+-- L-G010.10 (D7; T3.2q.3, G-010): paths in the system capped at the active containers of the
+-- copy `c` project to paths in the system capped at the active containers of `a`, for every
+-- reduced `⊤`-free query, from every start outside `[r, s_φ)` to every end outside `(r, s_φ)`
+theorem head_path_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ)
+    {W : List (WithTop Key)} (hW : Noninc W) (hT : ∀ w ∈ W, w ≠ ⊤)
+    {x y : Nat} (hx : x < S.sd.r ∨ S.s φ ≤ x) (hy : y ≤ S.sd.r ∨ S.s φ ≤ y)
+    (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x y) :
+    Path S.A (activeKeys_D7 S.A a) a W (S.proj φ x) (S.proj φ y) := by sorry
+
+-- L-G010.19/20 (D7): the final test of a pure phase-`φ` cut projects to the old final test
+theorem phase_finalTest_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {k ρ : Nat}
+    (hkA : k ≤ (parents S.A a).length)
+    (hpre : (parents S.B c).take k = ((parents S.A a).take k).map (shiftVal S.sd.r (φ * S.d)))
+    (hQ : cutQuery (actualKeys S.B c) k = kappaQ S.sd.r S.d φ (cutQuery (actualKeys S.A a) k))
+    (hρ : ρ ≤ S.sd.r ∨ S.s φ ≤ ρ)
+    (hK : Path S.B (activeKeys_D7 S.B c) c (cutQuery (actualKeys S.B c) k) (cutStart S.B c k) ρ) :
+    Path S.A (activeKeys_D7 S.A a) a (cutQuery (actualKeys S.A a) k) (cutStart S.A a k)
+      (S.proj φ ρ) := by
+  obtain ⟨hra, hnum⟩ := phasePair_num_D7 S hj hp
+  obtain ⟨hx, hproj⟩ := cutStart_phase_D7 S hra hnum hkA hpre
+  rw [hQ] at hK
+  have := head_path_active_D7 S hj hp hφ (cutQuery_noninc _ _) (ne_top_of_mem_cutQuery_D7 _ _ _)
+    hx hρ hK
+  rwa [hproj] at this
+
+/-! ### T3.8li -/
+
+-- T3.8li step 1 (D7): the phase of a template copy with `i ≥ 2` for Q-material is at least `1`
+theorem phaseOff_pos_D7 {sd : StopData} {i : Nat} {a : ColAddr} (hi : 1 ≤ i)
+    (hq : isQMat sd a = true → 2 ≤ i) : 1 ≤ phaseOff sd i a := by
+  unfold phaseOff
+  split_ifs with h
+  · have := hq h; omega
+  · exact hi
+
+-- T3.8li step 2 (D7): upwardness of the projected cap
+theorem projection_upward_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
+    (hup : IsUpward S.B c k ρ) (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
+    IsUpward S.A a k (S.proj (phaseOff S.sd i a) ρ) := by sorry
+
+-- T3.8li step 3 (D7): the projected closing parent is visible
+theorem projection_lt_num_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
+    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ))
+    (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
+    S.proj (phaseOff S.sd i a) ρ < a.num 0 := by sorry
+
+-- T3.8li step 4 (D7; VERIFY-U2 F7): the host bound of a column-start projection inside a height
+theorem projection_host_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c 0 ρ)
+    (hKL : InL (litCap S.B c 0 ρ)) (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ)
+    {π : List (Nat × Nat)} {ci ei : Nat} (hpa : a.path = π ++ [(ci, ei)]) :
+    (⟨π, ci⟩ : ColAddr).num 0 ≤ S.proj (phaseOff S.sd i a) ρ := by sorry
+
+-- L-G010.19 (D7; T3.8li step 5, final test): the final test of the projected cap, read in `A`
+theorem projection_finalTest_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
+    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
+    (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
+    Path S.A (activeKeys_D7 S.A a) a (cutQuery (actualKeys S.A a) k) (cutStart S.A a k)
+      (S.proj (phaseOff S.sd i a) ρ) := by
+  have hφ := phaseOff_pos_D7 hi.1 hq
+  have hpar := parents_phaseCol_D7 S hi ha hc
+  obtain ⟨-, hkB, -⟩ := isUpward_iff_parents_D7.mp hup
+  have hkA : k ≤ (parents S.A a).length := by
+    rw [hpar, List.length_map] at hkB; exact hkB
+  have hpre : (parents S.B c).take k =
+      ((parents S.A a).take k).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by
+    rw [hpar, List.map_take]
+  -- the cut query of `c` is `κ_φ` of the old one
+  have hQ : cutQuery (actualKeys S.B c) k =
+      kappaQ S.sd.r S.d (phaseOff S.sd i a) (cutQuery (actualKeys S.A a) k) := by
+    rw [← capQ_eq_kappaQ S hi ha hq hc hup hend]
+    obtain ⟨hKcol, hKlen⟩ := litCap_colAt_self hup
+    unfold OrdStep.capQ cutQuery
+    congr 1
+    simp only [actualKeys, hKcol, Option.getD_some, List.map_append]
+    rw [List.take_left' (by rw [List.length_map, hKlen]), ← List.map_take]
+  -- `K`'s decorated final test, read in `B`
+  have hKA := capping_forward hKL.1 hKL.2.2.2.1 hKL.2.2.2.2 (sel := routeCols (litCap S.B c k ρ))
+    (fun _ h => h)
+  obtain ⟨hcK, hlenK⟩ := litCap_parents_self hup
+  have hfin : AAt (litCap S.B c k ρ) (capKeys (litCap S.B c k ρ) (routeCols (litCap S.B c k ρ)))
+      c k := (condAK_iff _ _).mp hKA c hcK k
+  have hB := (aAt_litCap_final_D7 hup).mp hfin
+  exact phase_finalTest_D7 S hi (Or.inl ⟨ha, hc, rfl⟩) hφ hkA hpre hQ hρ hB
+
+-- T3.8li (txt:520-541): projection of a material cut to an old cap (moved here from before
+-- T3.8lj, brief rule 5: its proof uses the G-009 and G-010 helpers)
+theorem projection (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
+    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
+    (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
+    let K' := litCap S.A a k (S.proj (phaseOff S.sd i a) ρ)
+    IsUpward S.A a k (S.proj (phaseOff S.sd i a) ρ) ∧ CondV K' ∧ CondI K' ∧
+      CondAK K' (capKeys K' (routeCols K')) := by
+  intro K'
+  have hup' := projection_upward_D7 S hi ha hc hup hρ
+  obtain ⟨hca, hka, -⟩ := isUpward_iff_parents_D7.mp hup'
+  refine ⟨hup', ?_, ?_, ?_⟩
+  · exact condV_litCap_D7 S.inL.1 hca hka (projection_lt_num_D7 S hi ha hc hup hKL hρ)
+  · refine condI_litCap_D7 S.inL.2.1 hca hka ?_
+    intro hk0 π ci ei hpa
+    subst hk0
+    exact projection_host_D7 S hi ha hq hc hup hKL hρ hpa
+  · exact condAK_litCap_D7 S.inL hup' (projection_finalTest_D7 S hi ha hq hc hup hKL hend hρ)
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by sorry
