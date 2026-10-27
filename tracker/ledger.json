@@ -3450,9 +3450,9 @@
    "review": {},
    "lean_decls": [
     "BTBMS.Closure.OrdStep",
-    "BTBMS.Closure.OrdStep.d",
-    "BTBMS.Closure.OrdStep.s",
-    "BTBMS.Closure.OrdStep.m",
+    "BTBMS.Closure.OrdData.d",
+    "BTBMS.Closure.OrdData.s",
+    "BTBMS.Closure.OrdData.m",
     "BTBMS.Closure.OrdStep.tau",
     "BTBMS.Closure.OrdStep.proj",
     "BTBMS.Closure.KS_ordinary"
