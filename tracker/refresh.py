@@ -21,6 +21,8 @@ LEDGER = HERE / 'ledger.json'
 TASK_STATUSES = ['todo', 'doing', 'blocked', 'review', 'done']
 GAP_STATUSES = ['suspected', 'confirmed', 'disputed', 'refuted', 'repaired', 'closed']
 SEVERITIES = ['fatal', 'repairable', 'exposition', 'unknown']
+SIMPLIFICATION_STATUSES = ['proposed', 'agreed', 'rejected', 'applied']
+DECISION_STATUSES = ['open', 'decided']
 PEOPLE = {'claude', 'codex', 'user'}
 
 
@@ -53,6 +55,19 @@ def check(ledger):
             checker, author = g.get('fix_checked_by'), g.get('fix_by')
             if not checker or checker == author:
                 errors.append(f"{g['id']}: closed needs a fix check by someone other than {author}")
+    gap_ids = {g['id'] for g in ledger['gaps']}
+    for n in ledger['nodes']:
+        for g in n.get('gaps', []):
+            if g not in gap_ids:
+                errors.append(f"{n['id']}: unknown gap {g}")
+    for s in ledger.get('simplifications', []):
+        if s['status'] not in SIMPLIFICATION_STATUSES:
+            errors.append(f"{s['id']}: unknown status {s['status']}")
+    for d in ledger.get('decisions', []):
+        if d['status'] not in DECISION_STATUSES:
+            errors.append(f"{d['id']}: unknown status {d['status']}")
+        if d['status'] == 'decided' and not d.get('answer'):
+            errors.append(f"{d['id']}: decided without an answer")
     return errors
 
 
@@ -82,6 +97,15 @@ def gaps_md(ledger):
                 val = g[key] if isinstance(g[key], str) else ', '.join(g[key])
                 lines.append(f'**{key.capitalize()}:** {val}')
                 lines.append('')
+    lines += ['', '# Decisions', '', '| ID | Owner | Status | Question | Answer / impact |', '|---|---|---|---|---|']
+    for d in ledger.get('decisions', []):
+        lines.append(f"| {d['id']} | {d['owner']} | {d['status']} | {d['question']} | {d.get('answer') or d.get('impact', '')} |")
+    lines += ['', '# Simplifications', '', '| ID | Status | Summary | Found by |', '|---|---|---|---|']
+    for s in ledger.get('simplifications', []):
+        lines.append(f"| {s['id']} | {s['status']} | {s['summary']} | {', '.join(s.get('found_by', []))} |")
+    lines += ['', '# Risks', '', '| ID | Risk | Mitigation |', '|---|---|---|']
+    for r in ledger.get('risks', []):
+        lines.append(f"| {r['id']} | {r['summary']} | {r.get('mitigation', '')} |")
     return '\n'.join(lines) + '\n'
 
 
@@ -109,6 +133,7 @@ def main():
         'head': git_head() or 'uncommitted',
         'tasks': {s: sum(t['status'] == s for t in ledger['tasks']) for s in TASK_STATUSES},
         'gaps': {s: sum(g['status'] == s for g in ledger['gaps']) for s in GAP_STATUSES},
+        'open_user_decisions': sum(d['status'] == 'open' and d['owner'] == 'user' for d in ledger.get('decisions', [])),
     }
     payload = json.dumps({'ledger': ledger, 'stats': stats}, ensure_ascii=False)
     html = (HERE / 'template.html').read_text().replace('/*DATA*/null', payload.replace('</', '<\\/'))

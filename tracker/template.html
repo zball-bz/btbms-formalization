@@ -14,7 +14,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
 .shell{max-width:1400px;margin:auto;padding:24px 16px}
 h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
-.muted{color:var(--muted)}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.muted{color:var(--muted)}.small{font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
 .phases{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
 .phase{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 10px;font-size:12px}
 .phase.on{border-color:var(--accent);color:var(--accent);font-weight:600}
@@ -64,6 +64,7 @@ document.getElementById('metrics').innerHTML = [
   [gapsOpen, 'open gaps'],
   [L.gaps.filter(g => g.severity==='fatal' && g.status!=='refuted' && g.status!=='closed').length, 'open fatal gaps'],
   [L.nodes.length, 'claims inventoried'],
+  [S.open_user_decisions, 'decisions waiting on you'],
 ].map(([b,s]) => `<div class="metric"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
 const views = {
   Board() {
@@ -80,13 +81,22 @@ const views = {
     return `<div class="wrap"><table><tr><th>ID</th><th>Status</th><th>Severity</th><th>Location</th><th>Summary</th><th>Found / confirmed</th></tr>${
       L.gaps.map(g => `<tr><td class="mono">${esc(g.id)}</td><td>${esc(g.status)}</td>
         <td class="sev" style="color:var(--${esc(g.severity)})">${esc(g.severity)}</td><td class="mono">${esc(g.loc)}</td>
-        <td>${esc(g.summary)}</td><td>${esc((g.found_by||[]).join(', '))}${g.confirmed_by?.length?' / '+esc(g.confirmed_by.join(', ')):''}</td></tr>`).join('')}</table></div>`;
+        <td>${esc(g.summary)}${g.fix?`<div class="muted small">Fix: ${esc(g.fix)}</div>`:''}</td><td>${esc((g.found_by||[]).join(', '))}${g.confirmed_by?.length?' / '+esc(g.confirmed_by.join(', ')):''}</td></tr>`).join('')}</table></div>`;
   },
   Claims() {
     if (!L.nodes.length) return `<div class="empty">The claim inventory is built from the two reviews in T-004.</div>`;
-    return `<div class="wrap"><table><tr><th>ID</th><th>Kind</th><th>Location</th><th>Claim</th><th>Claude</th><th>Codex</th><th>Lean</th></tr>${
+    return `<p class="muted">Review columns are each reviewer's verdict for the claim's section.</p><div class="wrap"><table><tr><th>ID</th><th>Kind</th><th>Location</th><th>Claim</th><th>Gaps</th><th>Claude</th><th>Codex</th><th>Lean</th></tr>${
       L.nodes.map(n => `<tr><td class="mono">${esc(n.id)}</td><td>${esc(n.kind)}</td><td class="mono">${esc(n.loc)}</td><td>${esc(n.title)}</td>
-        <td>${esc(n.review?.claude)}</td><td>${esc(n.review?.codex)}</td><td>${esc(n.lean?.status || '—')}</td></tr>`).join('')}</table></div>`;
+        <td class="mono">${esc((n.gaps||[]).join(' '))}</td><td>${esc(n.review?.claude)}</td><td>${esc(n.review?.codex)}</td><td>${esc(n.lean?.status || '—')}</td></tr>`).join('')}</table></div>`;
+  },
+  'Decisions & risks'() {
+    const D = L.decisions || [], Sm = L.simplifications || [], R = L.risks || [];
+    return `<h3>Decisions</h3><div class="wrap"><table><tr><th>ID</th><th>Owner</th><th>Status</th><th>Question</th><th>Answer / impact</th></tr>${
+      D.map(d => `<tr><td class="mono">${esc(d.id)}</td><td>${esc(d.owner)}</td><td>${esc(d.status)}</td><td>${esc(d.question)}</td><td>${esc(d.answer || d.impact)}</td></tr>`).join('')}</table></div>
+      <h3 style="margin-top:20px">Simplifications</h3><div class="wrap"><table><tr><th>ID</th><th>Status</th><th>Summary</th><th>Found by</th></tr>${
+      Sm.map(s => `<tr><td class="mono">${esc(s.id)}</td><td>${esc(s.status)}</td><td>${esc(s.summary)}${s.note?`<div class="muted">${esc(s.note)}</div>`:''}</td><td>${esc((s.found_by||[]).join(', '))}</td></tr>`).join('')}</table></div>
+      <h3 style="margin-top:20px">Risks</h3><div class="wrap"><table><tr><th>ID</th><th>Risk</th><th>Mitigation</th></tr>${
+      R.map(r => `<tr><td class="mono">${esc(r.id)}</td><td>${esc(r.summary)}</td><td>${esc(r.mitigation)}</td></tr>`).join('')}</table></div>`;
   },
   Lean() {
     return `<div class="empty">No Lean code yet. From P3 on, this view is computed from the sources: declarations per claim, sorry count, axiom audit, locked-statement fingerprints.</div>`;
