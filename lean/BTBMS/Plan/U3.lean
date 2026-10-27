@@ -7450,11 +7450,6 @@ theorem setHeight_lt_iff_E1 {F : Forest} {a : EntryAddr} (ha : a ∈ F.entryAddr
   rw [← Scan.word_lt_iff, word_setHeight_E1 ha htr X, word_setHeight_E1 ha htr Y,
     Scan.list_append_lt_append_left, wordAt_lt_iff_E1]
 
--- provides: U3, L4.3c (the internal cap already satisfies H, so repairs are outside `B`)
-theorem repair_moves_outside {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
-    (hfd : rk.firstDiff = .capAt c k p) (w : Closure.AdmCap rk.E)
-    (hw : w.col = c ∧ w.cut = k ∧ w.par = p) : Closure.MovesOutside w.moves rk.b := by sorry
-
 /-- L4.3b helper: what follows a column's entry and its forest's later columns starts shallow. -/
 theorem head_later_cols_E1 (d : Nat) (es : Column) (cs : List Column) :
     ∀ y ∈ (Scan.wordLater d es ++ Scan.wordCols d cs).head?, (ofLex y).1 ≤ 2 * d + 1 := by
@@ -7872,6 +7867,580 @@ theorem marked_step_E1 {E : Forest} (hH : Scan.CondH E) {bq : EntryAddr}
     have hT := common_of_litCap_E1 hcrelE hcrelI hbc hcapeq.symm
     exact height_le_of_common_E1 hXY (mem_entryAddrs_of_container_E1 hcrelE hbc)
       (mem_entryAddrs_of_container_E1 hcrelI hbc) hT
+
+/-! ### L4.3c helpers (F1) -/
+
+/-- L4.3c helper: the literal cap recursion on trees of any label type. -/
+def capT_F1 {α : Type} (k : Nat) (l : α) : List (Nat × Nat) → Nat → Tree α → Tree α
+  | [], j, .node cols => .node (cols.take j ++ [(cols.getD j []).take k ++ [(l, Tree.empty)]])
+  | (ci, ei) :: rest, j, .node cols =>
+    match (cols.getD ci [])[ei]? with
+    | some (q, h) => .node (cols.take ci ++ [(cols.getD ci []).take ei ++ [(q, capT_F1 k l rest j h)]])
+    | none => .node cols
+
+theorem litCapAux_eq_capT_F1 (k p : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (X : Forest), Closure.litCapAux k p ρ j X = capT_F1 k p ρ j X
+  | [], j, .node cols => rfl
+  | (ci, ei) :: rest, j, .node cols => by
+    simp only [Closure.litCapAux, capT_F1]
+    cases (cols.getD ci [])[ei]? with
+    | none => rfl
+    | some x => obtain ⟨q, h⟩ := x; simp only [litCapAux_eq_capT_F1 k p rest j h]
+
+theorem capT_map_F1 {α β : Type} (f : α → β) (k : Nat) (l : α) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (X : Tree α),
+      Tree.map f (capT_F1 k l ρ j X) = capT_F1 k (f l) ρ j (Tree.map f X)
+  | [], j, .node cols => by
+    simp only [capT_F1, Tree.map, Scan.treeMapCols_eq_map, Scan.treeMapCol_eq_map, List.map_append,
+      List.map_take, List.map_cons, List.map_nil, List.getD_eq_getElem?_getD, List.getElem?_map]
+    cases cols[j]? <;> simp [Tree.empty, Tree.map, Tree.mapCols, Scan.treeMapCol_eq_map]
+  | (ci, ei) :: rest, j, .node cols => by
+    simp only [capT_F1, Tree.map, Scan.treeMapCols_eq_map, List.getD_eq_getElem?_getD,
+      List.getElem?_map]
+    cases hc : cols[ci]? with
+    | none =>
+      simp only [Option.map_none, Option.getD_none, List.getElem?_nil]
+      simp [Tree.map, Scan.treeMapCols_eq_map]
+    | some col =>
+      simp only [Option.map_some, Option.getD_some, Scan.treeMapCol_eq_map, List.getElem?_map]
+      cases he : col[ei]? with
+      | none => simp [Tree.map, Scan.treeMapCols_eq_map]
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        simp only [Option.map_some, Tree.map, Scan.treeMapCols_eq_map, List.map_append,
+          List.map_take, List.map_cons, List.map_nil, Scan.treeMapCol_eq_map,
+          capT_map_F1 f k l rest j h]
+
+
+theorem capT_cut_F1 {α : Type} (k : Nat) (l : α) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (X Y : Tree α),
+      (X.colAt ⟨ρ, j⟩).isSome → (Y.colAt ⟨ρ, j⟩).isSome →
+      cutBefore ρ j (some k) X = cutBefore ρ j (some k) Y →
+      capT_F1 k l ρ j X = capT_F1 k l ρ j Y
+  | [], j, .node xs, .node ys, hx, hy, hcut => by
+    have hjx : j < xs.length := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hx
+    have hjy : j < ys.length := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hy
+    simp only [cutBefore, Tree.node.injEq] at hcut
+    obtain ⟨h1, h2⟩ := List.append_inj hcut (by simp; omega)
+    simp only [List.cons.injEq, and_true] at h2
+    simp only [capT_F1, List.getD_eq_getElem?_getD, h1, h2]
+  | (ci, ii) :: rest, j, .node xs, .node ys, hx, hy, hcut => by
+    rw [Tree.colAt_cons] at hx hy
+    simp only [Tree.cols] at hx hy
+    cases hxc : xs[ci]? with
+    | none => rw [hxc] at hx; simp at hx
+    | some colx =>
+      cases hyc : ys[ci]? with
+      | none => rw [hyc] at hy; simp at hy
+      | some coly =>
+        rw [hxc, Option.bind_some] at hx
+        rw [hyc, Option.bind_some] at hy
+        cases hxe : colx[ii]? with
+        | none => rw [hxe] at hx; simp at hx
+        | some ex =>
+          cases hye : coly[ii]? with
+          | none => rw [hye] at hy; simp at hy
+          | some ey =>
+            obtain ⟨lx, hX⟩ := ex
+            obtain ⟨ly, hY⟩ := ey
+            rw [hxe, Option.bind_some] at hx
+            rw [hye, Option.bind_some] at hy
+            simp only [cutBefore, hxc, hyc, hxe, hye, Tree.node.injEq] at hcut
+            have hcx : ci < xs.length := (List.getElem?_eq_some_iff.1 hxc).1
+            have hcy : ci < ys.length := (List.getElem?_eq_some_iff.1 hyc).1
+            have hex : ii < colx.length := (List.getElem?_eq_some_iff.1 hxe).1
+            have hey : ii < coly.length := (List.getElem?_eq_some_iff.1 hye).1
+            obtain ⟨h1, h2⟩ := List.append_inj hcut (by simp; omega)
+            simp only [List.cons.injEq, and_true] at h2
+            obtain ⟨h3, h4⟩ := List.append_inj h2 (by simp; omega)
+            simp only [List.cons.injEq, and_true, Prod.mk.injEq] at h4
+            obtain ⟨rfl, h5⟩ := h4
+            simp only [capT_F1, List.getD_eq_getElem?_getD, hxc, hyc, Option.getD_some, hxe, hye,
+              h1, h3, capT_cut_F1 k l rest j hX hY hx hy h5]
+
+
+/-- L4.3c helper: H holds inside every height of an H-forest. -/
+theorem condH_sub_F1 {T H : Forest} {e : EntryAddr} (hT : Scan.CondH T) (hH : T.heightAt e = some H) :
+    Scan.CondH H := by
+  intro c hc i x y hx hy
+  have hcol := Tree.colAt_under hH c.path c.col
+  have hc' : (⟨e.heightPath ++ c.path, c.col⟩ : ColAddr) ∈ T.colAddrs := by
+    rw [Tree.mem_colAddrs_iff, hcol]; exact (Tree.mem_colAddrs_iff _ _).1 hc
+  refine hT _ hc' i x y ?_ ?_
+  · rw [hcol]; exact hx
+  · rw [hcol]; exact hy
+
+/-- L4.3c helper: label order through `relLabel`. -/
+theorem relLabel_lt_iff_F1 {t r a b a' b' : Nat} (ha : relLabel t a = relLabel r a')
+    (hb : relLabel t b = relLabel r b') : a < b ↔ a' < b' := by
+  have h1 := keyLabelCmp_relLabel t a b
+  have h2 := keyLabelCmp_relLabel r a' b'
+  rw [ha, hb, h2] at h1
+  rw [← Nat.compare_eq_lt, ← Nat.compare_eq_lt, h1]
+
+theorem relLabel_eq_iff_F1 {t r a b a' b' : Nat} (ha : relLabel t a = relLabel r a')
+    (hb : relLabel t b = relLabel r b') : a = b ↔ a' = b' := by
+  have h1 := keyLabelCmp_relLabel t a b
+  have h2 := keyLabelCmp_relLabel r a' b'
+  rw [ha, hb, h2] at h1
+  rw [← Nat.compare_eq_eq, ← Nat.compare_eq_eq, h1]
+
+theorem relKey_le_iff_F1 {t r : Nat} {X Y X' Y' : Forest} (hX : relKey t X = relKey r X')
+    (hY : relKey t Y = relKey r Y') : X ≤ Y ↔ X' ≤ Y' := by
+  rw [← not_lt, ← not_lt, ← relKey_lt_iff t, ← relKey_lt_iff r, hX, hY]
+
+/-- L4.3c helper: H transfers along equal relative keys. -/
+theorem condH_relKey_F1 {t r : Nat} {X Y : Forest} (hXY : relKey t X = relKey r Y)
+    (hY : Scan.CondH Y) : Scan.CondH X := by
+  intro c hc i x y hx hy
+  have hcX := congrArg (fun T => T.colAt c) hXY
+  simp only [relKey_eq_map, colAt_map_D8] at hcX
+  obtain ⟨colX, hcolX⟩ : ∃ col, X.colAt c = some col := by
+    have := (Tree.mem_colAddrs_iff _ _).1 hc
+    exact Option.isSome_iff_exists.1 this
+  rw [hcolX] at hcX hx hy
+  simp only [Option.getD_some] at hx hy
+  obtain ⟨colY, hcolY, hmap⟩ : ∃ colY, Y.colAt c = some colY ∧
+      Tree.mapCol (relLabel r) colY = Tree.mapCol (relLabel t) colX := by
+    cases hcy : Y.colAt c with
+    | none => rw [hcy] at hcX; simp at hcX
+    | some colY => rw [hcy] at hcX; exact ⟨colY, rfl, (Option.some.inj hcX).symm⟩
+  rw [Scan.treeMapCol_eq_map, Scan.treeMapCol_eq_map] at hmap
+  have hcY : c ∈ Y.colAddrs := by rw [Tree.mem_colAddrs_iff, hcolY]; rfl
+  have hget : ∀ (n : Nat) (z : Nat × Forest), colX[n]? = some z → ∃ z' : Nat × Forest, colY[n]? = some z' ∧
+      relLabel t z.1 = relLabel r z'.1 ∧ relKey t z.2 = relKey r z'.2 := by
+    intro n z hz
+    have := congrArg (·[n]?) hmap
+    simp only [List.getElem?_map, hz, Option.map_some] at this
+    cases hz' : colY[n]? with
+    | none => rw [hz'] at this; simp at this
+    | some z' =>
+      rw [hz'] at this
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at this
+      exact ⟨z', rfl, this.1.symm, this.2.symm⟩
+  obtain ⟨x', hx', hx1, hx2⟩ := hget i x hx
+  obtain ⟨y', hy', hy1, hy2⟩ := hget (i + 1) y hy
+  have hle := hY c hcY i x' y' (by rw [hcolY]; exact hx') (by rw [hcolY]; exact hy')
+  unfold Scan.EntryLe at hle ⊢
+  rw [relLabel_lt_iff_F1 hy1 hx1, relLabel_eq_iff_F1 hy1 hx1, relKey_le_iff_F1 hy2 hx2]
+  exact hle
+
+
+/-- L4.3c helper: a word atom squeezed between two consecutive cap atoms is the smaller one. -/
+theorem capAtom_squeeze_F1 (c : ColAddr) (k p : Nat) (y : Scan.WordAtom)
+    (h1 : Closure.capAtom c k p ≤ y) (h2 : y < Closure.capAtom c k (p + 1)) :
+    y = Closure.capAtom c k p := by
+  have e : y = toLex ((ofLex y).1, toLex ((ofLex (ofLex y).2).1, (ofLex (ofLex y).2).2)) := rfl
+  generalize (ofLex y).1 = a at e
+  generalize (ofLex (ofLex y).2).1 = b at e
+  generalize (ofLex (ofLex y).2).2 = d at e
+  subst e
+  unfold Closure.capAtom at h1 h2 ⊢
+  split_ifs at h1 h2 ⊢ <;>
+  · simp only [Prod.Lex.toLex_le_toLex, Prod.Lex.toLex_lt_toLex] at h1 h2
+    simp only [EmbeddingLike.apply_eq_iff_eq, Prod.mk.injEq]
+    omega
+
+/-- L4.3c helper: cutting a column before an existing entry and appending that entry's parent
+with an empty height is a safe prefix. -/
+theorem litCap_safePrefix_F1 {F : Forest} {c : ColAddr} {col : Column} {k p : Nat} {hs : Forest}
+    (hcol : F.colAt c = some col) (hk : col[k]? = some (p, hs)) :
+    ∃ n, Closure.litCap F c k p = Scan.safePrefix F n := by
+  have hc : c ∈ F.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  have hkl : k < col.length := (List.getElem?_eq_some_iff.1 hk).1
+  have hk' : k ≤ ((F.colAt c).getD []).length := by rw [hcol]; simp; omega
+  have hup1 : Closure.IsUpward F c k (p + 1) := by
+    unfold Closure.IsUpward; rw [hcol]; simp [hk]
+  have hnup : ¬ Closure.IsUpward F c k p := by
+    unfold Closure.IsUpward; rw [hcol]; simp [hk]
+  rw [Closure.isUpward_iff_atom hc hk'] at hup1 hnup
+  push Not at hnup
+  obtain ⟨y, hy, hge⟩ := hnup
+  have hy' := capAtom_squeeze_F1 c k p y hge (hup1 y hy)
+  refine ⟨Closure.capPos F c k + 1, Scan.word_injective ?_⟩
+  rw [Closure.word_litCap hc hk' p, Scan.word_safePrefix, List.take_add_one, hy, ← hy']
+  rfl
+
+/-- L4.3c helper: the route from a forest only reads the column indices of its address prefix
+(the entry indices are relabelled). -/
+theorem stopF_reloc_F1 : ∀ (n : Nat) (F : Forest), sizeOf F = n → ∀ (π π' : List (Nat × Nat))
+    (sd : Scan.StopData), Scan.stopF π F = some sd → π.map Prod.fst = π'.map Prod.fst →
+    ∃ R, sd.col.path = π ++ R ∧
+      Scan.stopF π' F = some { sd with col := ⟨π' ++ R, sd.col.col⟩ } := by
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+  intro F hn π π' sd hs hπ
+  have hlen : π.length = π'.length := by
+    have := congrArg List.length hπ; simpa using this
+  rw [Scan.stopF_eq] at hs ⊢
+  rcases hc : F.cols.getLast? with _ | col
+  · simp [hc] at hs
+  rcases he : col.getLast? with _ | ⟨p, h⟩
+  · simp [hc, he] at hs
+  simp only [hc, he] at hs ⊢
+  by_cases hh : h.cols.isEmpty
+  · simp only [hh, if_true, Option.some.injEq] at hs ⊢
+    subst hs
+    refine ⟨[], by simp, ?_⟩
+    simp only [List.append_nil]
+    congr 1
+    · exact hlen.symm
+    · have : π.map (·.1 + 1) = π'.map (·.1 + 1) := by
+        have := congrArg (List.map (· + 1)) hπ
+        simp only [List.map_map] at this
+        exact this
+      simp only [ColAddr.num, this]
+  · simp only [hh, Bool.false_eq_true, if_false] at hs ⊢
+    have hlt : sizeOf h < n := hn ▸ Scan.sizeOf_lt_of_last hc he
+    obtain ⟨R, hR, hs'⟩ := ih (sizeOf h) hlt h rfl _ (π' ++ [(F.cols.length - 1, col.length - 1)])
+      sd hs (by simp [hπ])
+    exact ⟨(F.cols.length - 1, col.length - 1) :: R, by rw [hR]; simp, by simpa using hs'⟩
+
+
+theorem modifyColAux_cols_length_F1 (f : Column → Column) :
+    ∀ (P : List (Nat × Nat)) (cc : Nat) (G : Forest),
+      (Closure.modifyColAux f P cc G).cols.length = G.cols.length
+  | [], cc, .node cols => by simp [Closure.modifyColAux, Tree.cols]
+  | (c₀, e₀) :: P, cc, .node cols => by simp [Closure.modifyColAux, Tree.cols]
+
+theorem getLast?_modify_last_F1 {β : Type} (l : List β) (g : β → β) (x : β)
+    (h : l.getLast? = some x) : (l.modify (l.length - 1) g).getLast? = some (g x) := by
+  rw [List.getLast?_eq_getElem?, List.length_modify, List.getElem?_modify,
+    ← List.getLast?_eq_getElem?, h]
+  simp
+
+/-- L4.3c helper: modifying a route column whose last entry is kept relocates the stop. -/
+theorem stopF_modifyColAux_F1 (f : Column → Column) :
+    ∀ (P : List (Nat × Nat)) (cc : Nat) (G : Forest) (π : List (Nat × Nat)) (sd : Scan.StopData)
+      (j : Nat) (R : List (Nat × Nat)) (col : Column),
+    Scan.stopF π G = some sd → sd.col.path = π ++ P ++ (cc, j) :: R → G.colAt ⟨P, cc⟩ = some col →
+    j + 1 = col.length → (f col).getLast? = col.getLast? →
+    Scan.stopF π (Closure.modifyColAux f P cc G) =
+      some { sd with col := ⟨π ++ P ++ (cc, (f col).length - 1) :: R, sd.col.col⟩ }
+  | [], cc, .node cols, π, sd, j, R, col, hs, hp, hcol, hj, hf => by
+    rw [Scan.stopF_eq, show (Tree.node cols).cols = cols from rfl] at hs
+    rcases hc : cols.getLast? with _ | colL
+    · simp [hc] at hs
+    rcases he : colL.getLast? with _ | ⟨q, h⟩
+    · simp [hc, he] at hs
+    simp only [hc, he] at hs
+    by_cases hh : h.cols.isEmpty
+    · simp only [hh, if_true, Option.some.injEq] at hs
+      subst hs
+      have := congrArg List.length hp
+      simp at this
+    simp only [hh, Bool.false_eq_true, if_false] at hs
+    obtain ⟨R', hR', hs'⟩ := stopF_reloc_F1 _ h rfl _ (π ++ [(cols.length - 1, (f col).length - 1)])
+      sd hs (by simp)
+    rw [hp] at hR'
+    simp only [List.append_nil, List.append_assoc, List.singleton_append, List.append_cancel_left_eq,
+      List.cons.injEq, Prod.mk.injEq] at hR'
+    obtain ⟨⟨hcc, hjj⟩, rfl⟩ := hR'
+    have hcolL : col = colL := by
+      have h1 : cols[cc]? = some col := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hcol
+      rw [List.getLast?_eq_getElem?, ← hcc, h1] at hc
+      exact Option.some.inj hc
+    subst hcolL
+    rw [show Closure.modifyColAux f [] cc (Tree.node cols) = Tree.node (cols.modify cc f) from rfl,
+      Scan.stopF_eq, show (Tree.node (cols.modify cc f)).cols = cols.modify cc f from rfl, hcc,
+      getLast?_modify_last_F1 _ _ _ hc]
+    dsimp only
+    rw [hf, he]
+    dsimp only
+    rw [if_neg hh, List.length_modify, hs']
+    simp
+  | (c₀, e₀) :: P, cc, .node cols, π, sd, j, R, col, hs, hp, hcol, hj, hf => by
+    rw [Scan.stopF_eq, show (Tree.node cols).cols = cols from rfl] at hs
+    rcases hc : cols.getLast? with _ | colL
+    · simp [hc] at hs
+    rcases he : colL.getLast? with _ | ⟨q, h⟩
+    · simp [hc, he] at hs
+    simp only [hc, he] at hs
+    by_cases hh : h.cols.isEmpty
+    · simp only [hh, if_true, Option.some.injEq] at hs
+      subst hs
+      have := congrArg List.length hp
+      simp at this
+    simp only [hh, Bool.false_eq_true, if_false] at hs
+    obtain ⟨R', hR', -⟩ := stopF_reloc_F1 _ h rfl _ (π ++ [(cols.length - 1, colL.length - 1)])
+      sd hs rfl
+    rw [hp] at hR'
+    simp only [List.append_assoc, List.cons_append,
+      List.append_cancel_left_eq, List.cons.injEq, Prod.mk.injEq] at hR'
+    obtain ⟨⟨hc0, he0⟩, -⟩ := hR'
+    subst hc0 he0
+    have hcL : cols[cols.length - 1]? = some colL := by rw [← List.getLast?_eq_getElem?]; exact hc
+    have heL : colL[colL.length - 1]? = some (q, h) := by rw [← List.getLast?_eq_getElem?]; exact he
+    have hcolh : h.colAt ⟨P, cc⟩ = some col := by
+      rw [Tree.colAt_cons] at hcol
+      simpa [Tree.cols, hcL, heL] using hcol
+    have hp' : sd.col.path = (π ++ [(cols.length - 1, colL.length - 1)]) ++ P ++ (cc, j) :: R := by
+      rw [hp]; simp
+    have ih := stopF_modifyColAux_F1 f P cc h _ sd j R col hs hp' hcolh hj hf
+    have hne : ¬ (Closure.modifyColAux f P cc h).cols.isEmpty := by
+      rw [List.isEmpty_iff, ← List.length_eq_zero_iff, modifyColAux_cols_length_F1,
+        List.length_eq_zero_iff, ← List.isEmpty_iff]
+      exact hh
+    rw [show Closure.modifyColAux f ((cols.length - 1, colL.length - 1) :: P) cc (Tree.node cols) =
+      Tree.node (cols.modify (cols.length - 1) fun col => col.modify (colL.length - 1)
+        fun x => (x.1, Closure.modifyColAux f P cc x.2)) from rfl,
+      Scan.stopF_eq, show ∀ cs : List Column, (Tree.node cs).cols = cs from fun _ => rfl,
+      getLast?_modify_last_F1 _ _ _ hc]
+    dsimp only
+    rw [getLast?_modify_last_F1 _ _ _ he]
+    dsimp only
+    rw [if_neg hne, List.length_modify, List.length_modify, ih]
+    simp
+
+
+/-- L4.3c helper: a legal move relocates the stopping column through the moved entry. -/
+theorem stopData_applyMove_F1 {X : Forest} {m : Closure.Move} {col : Column} {sd : Scan.StopData}
+    (hcol : X.colAt m.col = some col) (hsd : Scan.stopData X = some sd) (hj : m.j + 1 = col.length)
+    (hij : m.i < m.j) (hin : (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: sd.col.path) :
+    ∃ sd', Scan.stopData (Closure.applyMove X m) = some sd' ∧
+      sd'.col = ⟨m.mapPath m.fwdIdx sd.col.path, sd.col.col⟩ := by
+  obtain ⟨R, hR⟩ := hin
+  have hp : sd.col.path = [] ++ m.col.path ++ (m.col.col, m.j) :: R := by
+    rw [← hR]; simp [EntryAddr.heightPath]
+  have hA : Closure.applyMove X m = Closure.modifyColAux (fun col => col.take m.i ++ col.drop m.j)
+      m.col.path m.col.col X := by
+    show Closure.applyMoveBody X m = _
+    unfold Closure.applyMoveBody
+    rw [hcol]
+    simp only
+    rw [if_pos ⟨hij, by omega⟩]
+    rfl
+  have hdrop : col.drop m.j = [col[m.j]'(by omega)] := by
+    rw [List.drop_eq_getElem_cons (by omega), List.drop_eq_nil_of_le (by omega)]
+  have hf : (col.take m.i ++ col.drop m.j).getLast? = col.getLast? := by
+    rw [hdrop, List.getLast?_append, List.getLast?_singleton]
+    simp only [Option.some_or]
+    rw [List.getLast?_eq_getElem?, show col.length - 1 = m.j by omega,
+      List.getElem?_eq_getElem (by omega)]
+  have hlen : (col.take m.i ++ col.drop m.j).length - 1 = m.i := by
+    rw [hdrop]; simp; omega
+  have := stopF_modifyColAux_F1 (fun col => col.take m.i ++ col.drop m.j) m.col.path m.col.col X []
+    sd m.j R col hsd hp hcol hj hf
+  rw [hlen] at this
+  refine ⟨_, by rw [hA]; exact this, ?_⟩
+  have hfw : m.fwdIdx m.j = m.i := by simp [Closure.Move.fwdIdx]; omega
+  have hpp : sd.col.path = m.col.path ++ (m.col.col, m.j) :: R := by simpa using hp
+  simp only [hpp, mapPath_through_E1, hfw, List.nil_append]
+
+/-- L4.3c helper: a move outside the marked height keeps the marked entry on the route. -/
+theorem mapEntry_route_F1 (g : Nat → Nat) (m : Closure.Move) (b : EntryAddr)
+    (π : List (Nat × Nat)) (hb : b.heightPath <+: π)
+    (hm : (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: π) (hout : ¬ b.heightPath <+: m.col.path) :
+    (m.mapEntry g b).heightPath <+: m.mapPath g π ∧
+      (b = ⟨m.col, m.j⟩ ∨ (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: b.col.path) := by
+  have hbq_of : b.heightPath = (⟨m.col, m.j⟩ : EntryAddr).heightPath → b = ⟨m.col, m.j⟩ := by
+    intro hbeq
+    obtain ⟨h1, h2⟩ := List.append_inj' hbeq rfl
+    simp only [List.cons.injEq, Prod.mk.injEq, and_true] at h2
+    obtain ⟨⟨a, b⟩, i⟩ := b
+    simp only at h1 h2
+    obtain ⟨rfl, rfl⟩ := h2
+    subst h1
+    rfl
+  have hcaseA : b = ⟨m.col, m.j⟩ → (m.mapEntry g b).heightPath <+: m.mapPath g π := by
+    intro hbq
+    subst hbq
+    have hme : m.mapEntry g ⟨m.col, m.j⟩ = ⟨m.col, g m.j⟩ := by
+      unfold Closure.Move.mapEntry
+      dsimp only
+      rw [mapPath_self_E1, if_pos rfl]
+    rw [hme]
+    obtain ⟨τ, hτ⟩ := hm
+    rw [← hτ]
+    simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append, mapPath_through_E1]
+    exact ⟨τ, by simp⟩
+  rcases List.prefix_or_prefix_of_prefix hb hm with h1 | h1
+  · -- `b` is the moved entry itself
+    simp only [EntryAddr.heightPath] at h1
+    rcases List.prefix_concat_iff.1 h1 with h2 | h2
+    · have hb' := hbq_of h2
+      exact ⟨hcaseA hb', Or.inl hb'⟩
+    · exact absurd h2 hout
+  · rcases List.prefix_concat_iff.1 (show (⟨m.col, m.j⟩ : EntryAddr).heightPath <+:
+        b.col.path ++ [(b.col.col, b.idx)] from h1) with h2 | h2
+    · have hb' := hbq_of h2.symm
+      exact ⟨hcaseA hb', Or.inl hb'⟩
+    · refine ⟨?_, Or.inr h2⟩
+      obtain ⟨σ, hσ⟩ := h2
+      obtain ⟨τ, hτ⟩ := hb
+      have hbc : b.col.path = m.col.path ++ (m.col.col, m.j) :: σ := by
+        rw [← hσ]; simp [EntryAddr.heightPath]
+      have hme : m.mapEntry g b = ⟨⟨m.col.path ++ (m.col.col, g m.j) :: σ, b.col.col⟩, b.idx⟩ := by
+        unfold Closure.Move.mapEntry
+        dsimp only
+        rw [hbc, mapPath_through_E1, if_neg]
+        intro h
+        have := congrArg (fun c : ColAddr => c.path.length) h
+        simp at this
+      rw [hme, ← hτ]
+      simp only [EntryAddr.heightPath, hbc, List.append_assoc, List.cons_append,
+        mapPath_through_E1]
+      simp
+
+
+/-- L4.3c helper: `relLabel` at the target host of σ of a source parent is its source label. -/
+theorem relLabel_sigma_F1 {r t : Nat} (hrt : r ≤ t) (q : Nat) :
+    relLabel t (sigmaNum_D8 r t q) = relLabel r q := by
+  unfold relLabel sigmaNum_D8
+  by_cases hq : q < r
+  · simp [hq, show q < t by omega]
+  · simp only [hq, if_false, show ¬ q + (t - r) < t by omega]
+    congr 1; omega
+
+/-- L4.3c (step 3–5): the internal cap of a first-difference cap satisfies H: its relative key is
+that of the reindexed safe source prefix. -/
+theorem internal_cap_condH_F1 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) :
+    ∃ BK, (Closure.litCap rk.E c k p).heightAt rk.b = some BK ∧ Scan.CondH BK := by
+  obtain ⟨ρ, colB, colA, hρ, hsrc, hcolB, hcolA, -, hkB, ⟨q', H', hAk, hp⟩, -, -⟩ :=
+    capSetup_D8 h hfd
+  obtain ⟨-, -, hcap⟩ := firstDiff_spec h
+  obtain ⟨ρ', hρ', hcut, htcol, -⟩ := hcap c k p hfd
+  obtain rfl : ρ = ρ' := by rw [hρ] at hρ'; exact List.append_cancel_left hρ'
+  set t := rk.b.col.num 0 with ht
+  set r := rk.a.col.num 0 with hr
+  have hrt : r ≤ t := (admitted_hosts h).1
+  have hb : rk.E.heightAt rk.b = some rk.tgtHeight := by
+    have hb := h.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at hb
+    obtain ⟨x, hx⟩ := hb
+    simp [SrcRecord.tgtHeight, Tree.heightAt, hx]
+  have ha : rk.F.heightAt rk.a = some rk.srcHeight := by
+    have ha := h.2.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at ha
+    obtain ⟨x, hx⟩ := ha
+    simp [SrcRecord.srcHeight, Tree.heightAt, hx]
+  obtain ⟨hbc, hcE⟩ := capAt_col_D8 h hfd
+  -- the internal cap
+  have hKe := litCap_eq_setHeight_E1 hcE hbc k p
+  have hdrop : c.path.drop rk.b.heightPath.length = ρ := by rw [hρ]; simp
+  rw [hdrop, hb, Option.getD_some] at hKe
+  have hbT : rk.b ∈ (rk.E.truncAfter rk.b).entryAddrs := (Tree.truncAfter_spec _ _ h.2.1).2.1
+  refine ⟨Closure.litCapAux k p ρ c.col rk.tgtHeight, ?_, ?_⟩
+  · rw [hKe]; exact (Tree.setHeight_basic _ _ _ hbT).2.1
+  -- the reindexed safe source prefix
+  set c'' := srcCol_D8 rk c with hc''
+  have hc''F : c'' ∈ rk.F.colAddrs := by rw [Tree.mem_colAddrs_iff, hcolA]; rfl
+  have hac : rk.a.heightPath <+: c''.path := by rw [hsrc]; exact List.prefix_append _ _
+  obtain ⟨n, hn⟩ := litCap_safePrefix_F1 hcolA hAk
+  have hSL : Scan.InL (Closure.litCap rk.F c'' k q') := by
+    rw [hn]; exact Closure.inL_safePrefix h.2.2.2.1 n
+  have hSe := litCap_eq_setHeight_E1 hc''F hac k q'
+  have hdrop' : c''.path.drop rk.a.heightPath.length = ρ := by rw [hsrc]; simp
+  have hcc : c''.col = c.col := by rw [hsrc]
+  rw [hdrop', hcc, ha, Option.getD_some] at hSe
+  have haT : rk.a ∈ (rk.F.truncAfter rk.a).entryAddrs := (Tree.truncAfter_spec _ _ h.2.2.1).2.1
+  have hSa : (Closure.litCap rk.F c'' k q').heightAt rk.a =
+      some (Closure.litCapAux k q' ρ c.col rk.srcHeight) := by
+    rw [hSe]; exact (Tree.setHeight_basic _ _ _ haT).2.1
+  have hSH : Scan.CondH (Closure.litCapAux k q' ρ c.col rk.srcHeight) :=
+    condH_sub_F1 hSL.2.2.1 hSa
+  refine condH_relKey_F1 (t := t) (r := r) ?_ hSH
+  rw [relKey_eq_map, relKey_eq_map, litCapAux_eq_capT_F1, litCapAux_eq_capT_F1, capT_map_F1,
+    capT_map_F1, ← relKey_eq_map, ← relKey_eq_map]
+  have hlab : relLabel t p = relLabel r q' := by
+    rw [hp, labelAbs_relLabel_D8 hrt, relLabel_sigma_F1 hrt]
+  rw [hlab]
+  have hsk : (rk.srcKey.colAt ⟨ρ, c.col⟩).isSome := by
+    rw [SrcRecord.srcKey, relKey_eq_map, colAt_map_D8, ← colAt_heightPath_D8 ha, ← hsrc, hcolA]
+    rfl
+  exact capT_cut_F1 k _ ρ c.col _ _ htcol hsk hcut
+
+-- provides: U3, L4.3c (the internal cap already satisfies H, so repairs are outside `B`)
+-- Moved down from after `setHeight_lt_iff_E1` (brief rule 5; unchanged statement): the proof
+-- uses the L4.3b helpers `mapPath_through_E1`, `mapPath_self_E1`, `condH_run_E1`.
+theorem repair_moves_outside {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) (w : Closure.AdmCap rk.E)
+    (hw : w.col = c ∧ w.cut = k ∧ w.par = p) : Closure.MovesOutside w.moves rk.b := by
+  obtain ⟨BK, hKb, hBKH⟩ := internal_cap_condH_F1 h hfd
+  obtain ⟨hbc, -, hup, -⟩ := firstDiff_cap h hfd
+  obtain ⟨hwc, hwk, hwp⟩ := hw
+  subst hwc hwk hwp
+  set K := Closure.litCap rk.E w.col w.cut w.par with hK
+  have hvalid : ∀ q (hq : q < w.moves.length),
+      Closure.MoveOK (Closure.applyMoves K (w.moves.take q)) w.moves[q] := w.movesValid
+  have hX : ∀ q (hq : q < w.moves.length), Closure.applyMoves K (w.moves.take (q + 1)) =
+      Closure.applyMove (Closure.applyMoves K (w.moves.take q)) w.moves[q] := by
+    intro q hq
+    rw [List.take_add_one, List.getElem?_eq_getElem hq]
+    simp only [Closure.applyMoves, List.foldl_append, Option.toList_some, List.foldl_cons,
+      List.foldl_nil]
+  have hB : ∀ q (hq : q < w.moves.length), Closure.moveAddr (w.moves.take (q + 1)) rk.b =
+      w.moves[q].mapEntry w.moves[q].fwdIdx (Closure.moveAddr (w.moves.take q) rk.b) := by
+    intro q hq
+    rw [List.take_add_one, List.getElem?_eq_getElem hq]
+    simp only [Closure.moveAddr, Closure.moveAddrBody, Option.toList_some, List.foldl_append,
+      List.foldl_cons, List.foldl_nil]
+  intro n0 hn0
+  by_contra hbad0
+  classical
+  have hex : ∃ n, ∃ hn : n < w.moves.length,
+      (Closure.moveAddr (w.moves.take n) rk.b).heightPath <+: (w.moves[n]).col.path :=
+    ⟨n0, hn0, hbad0⟩
+  obtain ⟨hn, hnbad⟩ := Nat.find_spec hex
+  set n := Nat.find hex with hndef
+  have hmin : ∀ q (hq : q < n), ¬ (Closure.moveAddr (w.moves.take q) rk.b).heightPath <+:
+      (w.moves[q]'(by omega)).col.path := by
+    intro q hq hc; exact Nat.find_min hex hq ⟨_, hc⟩
+  -- the stopping column stays inside the marked height before the first bad move
+  have inv : ∀ q, q ≤ n → ∃ sd, Scan.stopData (Closure.applyMoves K (w.moves.take q)) = some sd ∧
+      (Closure.moveAddr (w.moves.take q) rk.b).heightPath <+: sd.col.path := by
+    intro q
+    induction q with
+    | zero =>
+      intro _
+      refine ⟨_, Closure.stopData_litCap hup, ?_⟩
+      simpa [Closure.moveAddr, Closure.moveAddrBody] using hbc
+    | succ q ih =>
+      intro hq
+      obtain ⟨sd, hsd, hbsd⟩ := ih (by omega)
+      obtain ⟨col, sd', hcol, hsd', hj, hij, hin, -, -, -⟩ := hvalid q (by omega)
+      rw [hsd] at hsd'; obtain rfl := Option.some.inj hsd'
+      obtain ⟨sd'', hsd'', hcol''⟩ := stopData_applyMove_F1 hcol hsd hj hij hin
+      refine ⟨sd'', by rw [hX q (by omega)]; exact hsd'', ?_⟩
+      rw [hB q (by omega), hcol'']
+      exact (mapEntry_route_F1 _ _ _ _ hbsd hin (hmin q (by omega))).1
+  -- the earlier moves form a repair list for `b`
+  have hstep : ∀ q (hq : q < n), Closure.RepairStepOK (Closure.applyMoves K (w.moves.take q))
+      (Closure.moveAddr (w.moves.take q) rk.b) (w.moves[q]'(by omega)) := by
+    intro q hq
+    obtain ⟨sd, hsd, hbsd⟩ := inv q hq.le
+    obtain ⟨col, sd', hcol, hsd', hj, hij, hin, hpar, -, -⟩ := hvalid q (by omega)
+    rw [hsd] at hsd'; obtain rfl := Option.some.inj hsd'
+    have hr := (mapEntry_route_F1 (w.moves[q]'(by omega)).fwdIdx _ _ _ hbsd hin (hmin q hq)).2
+    refine ⟨col, hcol, hij, by omega, ?_, hpar, ?_⟩
+    · rcases hr with hr | hr
+      · left; rw [hr]
+      · right; exact ⟨_, hr⟩
+    · rcases hr with hr | hr
+      · left; exact hr.symm
+      · right; exact hr
+  have hRL : Closure.RepairList K rk.b (w.moves.take n) := by
+    show Closure.RepairListBody K rk.b (w.moves.take n)
+    intro q hq
+    have hqn : q < n := by simp at hq; omega
+    rw [List.take_take, Nat.min_eq_left hqn.le, List.getElem_take]
+    exact hstep q hqn
+  have hheight := Closure.repairList_height hRL
+  rw [hKb] at hheight
+  -- the first bad move contradicts H inside the marked height
+  obtain ⟨col, sd, hcol, hsd, hj, hij, hin, hpar, hlt, -⟩ := hvalid n hn
+  obtain ⟨σ, hσ⟩ := hnbad
+  have hcolB : BK.colAt ⟨σ, (w.moves[n]).col.col⟩ = some col := by
+    rw [← Tree.colAt_under hheight σ, hσ]; exact hcol
+  have hpar' : ∀ x, (w.moves[n]).i ≤ x → x ≤ (w.moves[n]).j →
+      (col[x]?).map Prod.fst = some (col.getD (w.moves[n]).j (0, Tree.empty)).1 := by
+    intro x h1 h2
+    rw [← hpar x h1 h2, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]
+    rfl
+  have hrun := condH_run_E1 hBKH hcolB hpar' (by omega) (w.moves[n]).i le_rfl hij.le
+  exact absurd hlt (not_lt.mpr hrun)
 
 -- provides: U3, L4.3b ((6): the old target at the moved address is at least `B`)
 -- [Changed in verification] adds the literal-cap form of the repaired cap (item 1), which
