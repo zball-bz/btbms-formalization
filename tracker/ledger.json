@@ -146,7 +146,7 @@
    "title": "Gate G1: sign off the repaired, simplified proof (the blueprint)",
    "deps": [
     "T-017",
-    "T-020"
+    "T-021"
    ]
   },
   {
@@ -262,13 +262,16 @@
    "id": "T-017",
    "phase": "P2",
    "owner": "codex",
-   "status": "doing",
+   "status": "done",
    "title": "Blind review of the blueprint (statements and proofs, without the verification notes)",
    "deps": [
     "T-016"
    ],
    "deliverable": "tracker/review/codex-blueprint-review.md",
-   "note": "Blind: Codex does not read blueprint/verification/, INTEGRATION.md §2 or scratch/blueprint/*-verify/. Also checks the repairs of G-001..G-005 so they can be closed."
+   "note": "Blind: Codex does not read blueprint/verification/, INTEGRATION.md §2 or scratch/blueprint/*-verify/. Also checks the repairs of G-001..G-005 so they can be closed. Result: HOLD G1 at 133f5d8. Assembly and Part C sound; five false helper statements (BP-01..05), two provider gaps (BP-08/09), two open cofinality arguments (BP-06 = G-010, BP-07 = G-009). G-001, G-002, G-004, G-005 fixed; G-003 partial.",
+   "evidence": [
+    "tracker/review/codex-blueprint-review.md"
+   ]
   },
   {
    "id": "T-018",
@@ -299,13 +302,24 @@
    "id": "T-020",
    "phase": "P2",
    "owner": "claude",
-   "status": "doing",
+   "status": "blocked",
    "title": "Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements",
    "deps": [
     "T-016"
    ],
    "deliverable": "blueprint/repairs/",
-   "note": "Written outside the reviewed snapshot; Codex checks it after T-017."
+   "note": "Stopped 2026-10-28 by root after the user objected to unbounded verification runs. Drafts for G-009..G-012 and TESTS are kept in blueprint/repairs/ as UNVERIFIED drafts (their verifiers were stopped). Under the new verification policy they are checked by Lean, not by another informal round."
+  },
+  {
+   "id": "T-021",
+   "phase": "P2",
+   "owner": "claude",
+   "status": "todo",
+   "deps": [
+    "T-017"
+   ],
+   "title": "Correct the false statements BP-01..BP-05 and provider gaps BP-08/BP-09; rerun Codex's counterexample files against the amended skeleton",
+   "deliverable": "blueprint/ (amended), regression log"
   }
  ],
  "nodes": [
@@ -2281,7 +2295,10 @@
     "L3.1c"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-015",
+    "G-018"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Closure.origin_spec_full",
@@ -2313,7 +2330,9 @@
     "L3.1h"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-016"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Closure.litCap_spec",
@@ -2396,7 +2415,9 @@
     "N1.4"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-013"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Closure.word_context",
@@ -2508,7 +2529,9 @@
     "T3.2h"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-014"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Closure.underCol",
@@ -4570,7 +4593,9 @@
     "T3.2"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-016"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Packet.repair_moves_outside"
@@ -4626,7 +4651,9 @@
     "T3.8"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-019"
+   ],
    "review": {
     "claude": "not evaluated",
     "codex": "repairable"
@@ -4656,7 +4683,9 @@
     "L4.3a"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-019"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Packet.ChildData",
@@ -4835,7 +4864,9 @@
     "D3.1e"
    ],
    "testable": true,
-   "gaps": [],
+   "gaps": [
+    "G-016"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Packet.capRole",
@@ -7021,7 +7052,9 @@
     "N5.4"
    ],
    "testable": false,
-   "gaps": [],
+   "gaps": [
+    "G-018"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Descent.DLabHyps",
@@ -7327,7 +7360,9 @@
     "L7.3"
    ],
    "testable": false,
-   "gaps": [],
+   "gaps": [
+    "G-017"
+   ],
    "review": {},
    "lean_decls": [
     "BTBMS.Descent.failure_floor"
@@ -7719,7 +7754,7 @@
  "gaps": [
   {
    "id": "G-001",
-   "status": "repaired",
+   "status": "closed",
    "severity": "exposition",
    "loc": "§1.2 txt:95-101",
    "summary": "Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there",
@@ -7735,11 +7770,12 @@
    "detail": "Agree on nonempty V∧I inputs, hence on L ⊇ Std. Instance: E=[[],[(0,[[]])]] (violates I): paper route stuck; reference FS(E,0)=[[]].",
    "fix": "Root decision: total Lean FS mirroring BTBM.FS, plus an agreement lemma with the paper operation on nonempty V∧I inputs; all decrease statements explicitly nonempty.",
    "fix_by": "claude",
-   "repair": "blueprint D1.6a (Scan.paperOp from §1.2, expand_eq_paperOp on nonempty V∧I), T3.2a isStd_iff_paper; decrease statements carry ≠ ∅"
+   "repair": "blueprint D1.6a (Scan.paperOp from §1.2, expand_eq_paperOp on nonempty V∧I), T3.2a isStd_iff_paper; decrease statements carry ≠ ∅",
+   "fix_checked_by": "codex"
   },
   {
    "id": "G-002",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "§3.1 txt:263-268",
    "summary": "\"P implies S\" is false without V, I, H",
@@ -7755,7 +7791,8 @@
    "detail": "E=[[],[(0,H)]], H=[[(0,K)],[(1,J)]], K=[[(2,∅)]], J=[[(3,∅)]]: V, H, P hold, I fails at H's first column, and h_3(J)=(1,0)… > h_1(H)=(0,0)…, so S fails. Claude re-derived π(H)=(1,1), π(J)=(0,1) and the S comparison by hand (non-blind: done after reading X-03). The proof uses I to make first-entry branches pure towers; the intended V∧I∧H version is the one used later.",
    "fix": "State V∧I∧H∧P ⇒ S; make V, I, H standing hypotheses of the profile construction.",
    "fix_by": "claude",
-   "repair": "blueprint L3.1a Closure.condS_of_condP with V, I, H"
+   "repair": "blueprint L3.1a Closure.condS_of_condP with V, I, H",
+   "fix_checked_by": "codex"
   },
   {
    "id": "G-003",
@@ -7771,14 +7808,14 @@
     "claude C-05",
     "codex X-04"
    ],
-   "detail": "Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so \"confined\" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement.",
+   "detail": "Records need explicit occurrence maps, actual scan indices, retained marked-entry/pre-entry equations, repair lists with surviving-role injections. Packets need a fixed grammar for auxiliary diagrams and labels, closed under factorization, joint cap, joint repair, the §7.3 extension and the readmission in §8.5 Cases 2-3. Boundary instance (codex): in L_2 a special step at parameter 1 replaces the marked outer entry, so \"confined\" must require survival of the marked occurrence. Neither reviewer found a counterexample to the intended statement. Codex T-017: repair partial; closure providers BP-03..BP-05, BP-08, BP-09 need correction.",
    "fix": "Define records and packets as explicit finite structures (constructors with occurrence/projection fields) and prove the closure lemmas before stating S_n in Lean.",
    "fix_by": "claude",
    "repair": "blueprint D4.1a SrcRecord/Admitted, D7.2a SourcePacket.Valid, D7.2b ScanSetup.Valid; SStrict quantifies over them"
   },
   {
    "id": "G-004",
-   "status": "repaired",
+   "status": "closed",
    "severity": "exposition",
    "loc": "§5.2 txt:864-866",
    "summary": "\"The hull contains the whole J_b\" must mean J_b ∈ H, not J_b ⊆ H",
@@ -7794,11 +7831,12 @@
    "detail": "J_b ⊆ H would give H ∩ J_b = J_b ≠ J_a, contradicting (10). Claude checked the one-line argument (non-blind).",
    "fix": "Write J_b ∈ H, then relativized Tarski-Vaught.",
    "fix_by": "claude",
-   "repair": "blueprint D5.7a (J route only); does not arise under P-U4-1"
+   "repair": "blueprint D5.7a (J route only); does not arise under P-U4-1",
+   "fix_checked_by": "codex"
   },
   {
    "id": "G-005",
-   "status": "repaired",
+   "status": "closed",
    "severity": "exposition",
    "loc": "§10 txt:1516-1534",
    "summary": "The \"accompanying Python programs\" of §10 are not supplied",
@@ -7814,7 +7852,8 @@
    "detail": "Only the PDF was provided. §10 is not used as evidence by either review.",
    "fix": "Ask the author for the programs, or ignore §10.",
    "fix_by": "claude",
-   "repair": "§10 is used nowhere in the blueprint"
+   "repair": "§10 is used nowhere in the blueprint",
+   "fix_checked_by": "codex"
   },
   {
    "id": "G-006",
@@ -7879,31 +7918,37 @@
   },
   {
    "id": "G-009",
-   "status": "suspected",
+   "status": "confirmed",
    "severity": "unknown",
    "loc": "§3 txt:553-560",
    "summary": "Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour",
    "found_by": [
     "claude"
    ],
-   "confirmed_by": [],
+   "confirmed_by": [
+    "codex"
+   ],
    "refs": [
-    "blueprint/INTEGRATION.md §2.2"
+    "blueprint/INTEGRATION.md §2.2",
+    "codex-blueprint-review.md BP-07"
    ],
    "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written."
   },
   {
    "id": "G-010",
-   "status": "suspected",
+   "status": "confirmed",
    "severity": "unknown",
    "loc": "§3 txt:520-541",
    "summary": "Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix",
    "found_by": [
     "claude"
    ],
-   "confirmed_by": [],
+   "confirmed_by": [
+    "codex"
+   ],
    "refs": [
-    "blueprint/INTEGRATION.md §2.2"
+    "blueprint/INTEGRATION.md §2.2",
+    "codex-blueprint-review.md BP-06"
    ],
    "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases."
   },
@@ -7936,6 +7981,124 @@
     "blueprint/INTEGRATION.md §2.2-2.3"
    ],
    "detail": "Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field."
+  },
+  {
+   "id": "G-013",
+   "status": "suspected",
+   "severity": "repairable",
+   "loc": "blueprint D3.3b",
+   "summary": "word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [],
+   "refs": [
+    "codex-blueprint-review.md BP-01"
+   ],
+   "fix": "Add KernelDefined E rd and discharge it at consumers.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+  },
+  {
+   "id": "G-014",
+   "status": "suspected",
+   "severity": "repairable",
+   "loc": "blueprint T3.2i",
+   "summary": "num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [],
+   "refs": [
+    "codex-blueprint-review.md BP-02"
+   ],
+   "fix": "Require actual-data/coherence hypotheses; recheck every application.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+  },
+  {
+   "id": "G-015",
+   "status": "suspected",
+   "severity": "repairable",
+   "loc": "blueprint D3.1d",
+   "summary": "origin_spec_full claims parent lookup is preserved at slots that do not exist in the output",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [],
+   "refs": [
+    "codex-blueprint-review.md BP-03"
+   ],
+   "fix": "Restrict the slot clause to actual output entries/roles.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+  },
+  {
+   "id": "G-016",
+   "status": "confirmed",
+   "severity": "repairable",
+   "loc": "blueprint D3.1e, L4.3c, L7.5a",
+   "summary": "moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false",
+   "found_by": [
+    "codex",
+    "claude"
+   ],
+   "confirmed_by": [
+    "claude"
+   ],
+   "refs": [
+    "codex-blueprint-review.md BP-04"
+   ],
+   "fix": "State the exclusion at every current moveAddr (moves.take i) b (MovesOutside); U3 supplies it; propagate through the cap/readmission chain.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5)."
+  },
+  {
+   "id": "G-017",
+   "status": "suspected",
+   "severity": "repairable",
+   "loc": "blueprint L8.8a",
+   "summary": "failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [],
+   "refs": [
+    "codex-blueprint-review.md BP-05"
+   ],
+   "fix": "Add Admitted or source-entry membership and pass it to factorization.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+  },
+  {
+   "id": "G-018",
+   "status": "suspected",
+   "severity": "exposition",
+   "loc": "blueprint D3.1d, L8.6a",
+   "summary": "anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap)",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [],
+   "refs": [
+    "codex-blueprint-review.md BP-08"
+   ],
+   "fix": "Supply the structural origin-prefix lemma without InL E.",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+  },
+  {
+   "id": "G-019",
+   "status": "confirmed",
+   "severity": "exposition",
+   "loc": "blueprint L4.3, L4.3d",
+   "summary": "childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export",
+   "found_by": [
+    "codex",
+    "claude"
+   ],
+   "confirmed_by": [
+    "claude"
+   ],
+   "refs": [
+    "codex-blueprint-review.md BP-09"
+   ],
+   "fix": "Export (setHeight a A1).roles <+: F.roles and graph subset (bounded-tested in blueprint/repairs/TESTS.md).",
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3)."
   }
  ],
  "simplifications": [
@@ -8115,7 +8278,7 @@
    "owner": "user",
    "status": "open",
    "question": "Hierarchy for the main-theorem route: the paper's J-hierarchy (§5, blueprint Part B) or the reflection hierarchy (S-7 / P-U4-1, Part C)?",
-   "impact": "Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement."
+   "impact": "Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement. Codex (T-017, blind) also recommends Part C: the interface is sufficient and the construction sound at proof-plan level."
   }
  ]
 }

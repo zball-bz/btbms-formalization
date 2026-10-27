@@ -1,19 +1,19 @@
 # Status snapshot
 
-Generated 2026-10-27T12:49:55+00:00 at commit `133f5d8`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T14:44:41+00:00 at commit `216f887`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P2 Repair & simplify (blueprint)**
 
-## todo (3)
+## todo (4)
 - T-008 [claude] Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals
 - T-009 [user] Gate G1: sign off the repaired, simplified proof (the blueprint)
 - T-018 [claude] Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations
+- T-021 [claude] Correct the false statements BP-01..BP-05 and provider gaps BP-08/BP-09; rerun Codex's counterexample files against the amended skeleton
 
-## doing (2)
-- T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
+## blocked (1)
 - T-020 [claude] Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements
 
-## done (15)
+## done (16)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker
 - T-002 [claude] Blind review of the paper (Claude)
 - T-003 [codex] Blind review of the paper (Codex)
@@ -28,4 +28,5 @@ Phase: **P2 Repair & simplify (blueprint)**
 - T-014 [codex] Independent statement-fidelity review of the Lean statement
 - T-015 [user] Gate G2: sign off the Lean statement; then it is locked
 - T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
+- T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
 - T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)

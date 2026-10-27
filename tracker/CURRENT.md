@@ -62,6 +62,20 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
     but §5 itself would go uncertified.
   - Root recommends Part C.
 
+## Verification policy (from 2026-10-28)
+- **Lean is the verifier of proofs.** A lemma counts as verified only when its Lean proof
+  compiles with no `sorry` and no new axiom; `refresh.py` derives this. Proof plans get no
+  further informal verification rounds: three layers of drafter, adversarial checker and
+  reviewer kept growing without converging.
+- **Bounded tests screen statements for falsity only.**
+  - Run them once, when a statement is new or changed, on one shared corpus.
+  - Hard budget per batch: at most 4 processes and 10 minutes.
+  - No open-ended "as large as feasible" pools. Every counterexample found so far had size ≤ 18.
+- **Codex reviews statement changes (diffs), not proofs**, with one round per change.
+- **Risky nodes are formalized first**, so that an open argument shows up as a precise stuck
+  goal rather than as another informal write-up.
+- **Workflows:** at most about 8 agents, and every agent prompt carries the compute cap.
+
 ## Conventions
 - Only root edits `tracker/ledger.json`, `tracker/CURRENT.md`, and (later) the Lean root and
   integration scripts. Workers write only the files their task names.
@@ -75,10 +89,16 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Next
-1. T-017 (Codex, running): blind review of the blueprint, brief
-   `tracker/review/BLUEPRINT-BRIEF.md`. It does not read `blueprint/verification/`,
-   INTEGRATION.md §2 or `blueprint/repairs/`.
-2. T-020 (Claude, running): close G-009…G-012 and bounded-test the integration statements that
-   are still untested, in `blueprint/repairs/`. Codex checks this after T-017.
-3. Gate G1 (user): sign off the blueprint and decide D-4.
-4. T-018: move the skeleton into `lean/`, then prove in parallel, leaf first (Plan tab).
+1. T-017 done: `tracker/review/codex-blueprint-review.md`.
+   - Codex says to hold G1 at 133f5d8. The assembly and Part C are sound, and Codex recommends
+     Part C.
+   - It found five false helper statements (G-013…G-017, BP-01…05) and two provider gaps
+     (G-018, G-019).
+   - G-009 and G-010 are confirmed open.
+2. T-020 stopped. Its drafts for G-009…G-012 are in `blueprint/repairs/`, unverified. They feed
+   T-018 as proof plans, and Lean checks them.
+3. T-021: correct the false statements. Then rerun Codex's counterexample files and a capped
+   corpus screen against the amended skeleton.
+4. Gate G1 (user): sign off the corrected blueprint, and decide D-4.
+5. T-018: move the skeleton into `lean/`. Formalize the risky nodes (T3.8lo, T3.8li, L4.2c,
+   L7.5d) and the leaves first.
