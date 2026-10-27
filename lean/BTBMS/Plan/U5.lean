@@ -1044,12 +1044,143 @@ theorem step_slot_child {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) {e 
     (Tree.mem_entryAddrs_iff E _).2 (by rw [hx]; rfl)
   exact (edge_mem_graph he₀ hx (rep_inside e ⟨e.heightPath, 0⟩ (List.prefix_refl _)).2.1).2
 
+/-- L8.2b (helper): `inEntry` unfolded. -/
+theorem inEntry_iff (x : Role) (e : EntryAddr) :
+    x.inEntry e = true ↔ x = .slot e ∨ e.heightPath <+: x.path := by
+  simp [Role.inEntry]
+
+/-- L8.2b (helper): a structural atom of `Γ(E)` reading a role inside `e` touches `e`. -/
+theorem mem_localStruct {E : Forest} {e : EntryAddr} {a : BaseAtom Role} (ha : a ∈ graph E)
+    (hs : isStruct a = true) {v : Role} (hv : v ∈ a.vars) (hin : v.inEntry e = true) :
+    a ∈ localStruct E e :=
+  List.mem_filter.2 ⟨ha, by simp only [hs, Bool.true_and, List.any_eq_true]; exact ⟨v, hv, hin⟩⟩
+
+/-- L8.2b (helper): atoms touching an entry inside `e` touch `e`. -/
+theorem localStruct_mono {E : Forest} {e e' : EntryAddr} (h : e.heightPath <+: e'.col.path) :
+    ∀ a ∈ localStruct E e', a ∈ localStruct E e := by
+  intro a ha
+  obtain ⟨hg, hs⟩ := List.mem_filter.1 ha
+  simp only [Bool.and_eq_true, List.any_eq_true] at hs
+  obtain ⟨hst, v, hv, hin⟩ := hs
+  refine mem_localStruct hg hst hv ((inEntry_iff v e).2 (Or.inr ?_))
+  rcases (inEntry_iff v e').1 hin with rfl | hp
+  · exact h
+  · exact h.trans ((List.prefix_append _ _).trans hp)
+
+/-- L8.2b (helper): the forest at the height path of an entry is its height. -/
+theorem forestAt_isSome_entry {α : Type} {t : Tree α} {e : EntryAddr}
+    (h : (t.forestAt e.heightPath).isSome) : (t.entryAt e).isSome := by
+  rw [Tree.forestAt_heightPath] at h
+  unfold Tree.heightAt at h
+  cases he : t.entryAt e with
+  | none => rw [he] at h; simp at h
+  | some _ => rfl
+
+/-- L8.2b (helper): a column is reachable along its path. -/
+theorem forestAt_isSome_of_colAt {α : Type} {t : Tree α} {c : ColAddr}
+    (h : (t.colAt c).isSome) : (t.forestAt c.path).isSome := by
+  unfold Tree.colAt at h
+  cases hf : t.forestAt c.path with
+  | none => rw [hf] at h; simp at h
+  | some _ => rfl
+
+/-- L8.2b (helper): from `U_e` to every column `A_⟨hp, k⟩` of the height of `e`. -/
+theorem chain_height_col {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) {e : EntryAddr}
+    (he : e ∈ E.entryAddrs) : ∀ k, (E.colAt ⟨e.heightPath, k⟩).isSome →
+      Relation.ReflTransGen (ElemStep (localStruct E e)) (.slot e) (.ord ⟨e.heightPath, k⟩) := by
+  have hinc : ∀ k, (Role.ord ⟨e.heightPath, k⟩).inEntry e = true := fun k =>
+    (inEntry_iff _ e).2 (Or.inr (List.prefix_refl _))
+  intro k
+  induction k with
+  | zero =>
+    intro hk
+    obtain ⟨⟨p, h⟩, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff E e).1 he)
+    have hh : E.heightAt e = some h := by simp [Tree.heightAt, hx]
+    have hne : h ≠ Tree.empty := by
+      rintro rfl
+      simp [Tree.colAt, Tree.forestAt_heightPath, hh, Tree.empty, Tree.cols] at hk
+    refine Relation.ReflTransGen.single (Or.inr (Or.inr ⟨.slot ⟨⟨e.heightPath, 0⟩, 0⟩, ?_⟩))
+    exact mem_localStruct (v := .ord ⟨e.heightPath, 0⟩) (step_slot_child hV hI he hh hne) rfl
+      (by simp [BaseAtom.vars]) (hinc 0)
+  | succ k ih =>
+    intro hk
+    have hk' : (E.colAt ⟨e.heightPath, k⟩).isSome := by
+      unfold Tree.colAt at hk ⊢
+      cases hf : E.forestAt e.heightPath with
+      | none => rw [hf] at hk; simp at hk
+      | some f =>
+        rw [hf] at hk
+        simp only [Option.bind_some, Option.isSome_iff_exists, List.getElem?_eq_some_iff] at hk ⊢
+        obtain ⟨_, hlt, -⟩ := hk
+        exact ⟨_, by omega, rfl⟩
+    refine (ih hk').tail (Or.inl ?_)
+    exact mem_localStruct (elem_col_succ ((Tree.mem_colAddrs_iff E _).2 hk') hk) rfl
+      (by simp [BaseAtom.vars]) (hinc k)
+
+/-- L8.2b (helper): from `U_e` to every column inside the height of `e`, by induction on the
+depth below `e`. -/
+theorem chain_inside_col {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) :
+    ∀ (n : Nat) (e : EntryAddr), e ∈ E.entryAddrs → ∀ (c : ColAddr) (rest : List (Nat × Nat)),
+      c.path = e.heightPath ++ rest → rest.length = n → (E.colAt c).isSome →
+      Relation.ReflTransGen (ElemStep (localStruct E e)) (.slot e) (.ord c) := by
+  intro n
+  induction n with
+  | zero =>
+    intro e he c rest hc hn hcs
+    obtain rfl : rest = [] := List.eq_nil_of_length_eq_zero hn
+    obtain ⟨cp, cc⟩ := c
+    simp only [List.append_nil] at hc
+    subst hc
+    exact chain_height_col hV hI he cc hcs
+  | succ n ih =>
+    intro e he c rest hc hn hcs
+    obtain ⟨⟨ci, ii⟩, rest', rfl⟩ : ∃ x rest', rest = x :: rest' := by
+      cases rest with
+      | nil => simp at hn
+      | cons x rest' => exact ⟨x, rest', rfl⟩
+    let e' : EntryAddr := ⟨⟨e.heightPath, ci⟩, ii⟩
+    have hc' : c.path = e'.heightPath ++ rest' := by
+      simp [e', EntryAddr.heightPath, hc]
+    have he'x : (E.entryAt e').isSome := by
+      refine forestAt_isSome_entry (forestAt_isSome_of_prefix ⟨rest', hc'.symm⟩ ?_)
+      exact forestAt_isSome_of_colAt hcs
+    have he' : e' ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff E e').2 he'x
+    have hcol : (E.colAt ⟨e.heightPath, ci⟩).isSome := by
+      obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 he'x
+      obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hx
+      show (E.colAt e'.col).isSome
+      rw [hcol]; rfl
+    have h1 := chain_height_col hV hI he ci hcol
+    obtain ⟨o, ho⟩ := step_col_slot hV he'
+    have h2 : ElemStep (localStruct E e) (.ord ⟨e.heightPath, ci⟩) (.slot e') :=
+      Or.inr (Or.inl ⟨o, mem_localStruct (v := .ord ⟨e.heightPath, ci⟩) ho rfl
+        (by simp [BaseAtom.vars, e']) ((inEntry_iff _ e).2 (Or.inr (List.prefix_refl _)))⟩)
+    have h3 := ih e' he' c rest' hc' (by simpa using hn) hcs
+    exact (h1.tail h2).trans (steps_mono (localStruct_mono (List.prefix_refl _)) h3)
+
 /-- L8.2b: the owner path (txt:1194-1200), syntactically: every role inside the height of `e`
 is reached from `U_e` by elementarity steps touching `e`. -/
 theorem graph_chain {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {z : Role} (hz : z ∈ E.roles) (hin : z.inEntry e = true) :
     Relation.ReflTransGen (ElemStep (localStruct E e)) (.slot e) z := by
-  sorry
+  rcases (inEntry_iff z e).1 hin with rfl | ⟨rest, hrest⟩
+  · exact Relation.ReflTransGen.refl
+  · cases z with
+    | ord c =>
+      exact chain_inside_col hV hI rest.length e he c rest hrest.symm rfl
+        ((Tree.mem_roles_iff E (.ord c)).1 hz)
+    | slot e'' =>
+      have hx : (E.entryAt e'').isSome := (Tree.mem_roles_iff E (.slot e'')).1 hz
+      have he'' : e'' ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff E e'').2 hx
+      have hcol : (E.colAt e''.col).isSome := by
+        obtain ⟨x, hx'⟩ := Option.isSome_iff_exists.1 hx
+        obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hx'
+        rw [hcol]; rfl
+      have h1 := chain_inside_col hV hI rest.length e he e''.col rest hrest.symm rfl hcol
+      obtain ⟨o, ho⟩ := step_col_slot hV he''
+      refine h1.tail (Or.inr (Or.inl ⟨o, mem_localStruct (v := .ord e''.col) ho rfl
+        (by simp [BaseAtom.vars]) ((inEntry_iff _ e).2 (Or.inr ?_))⟩))
+      exact ⟨rest, hrest⟩
 
 /-- L8.2c: the atoms touching `e` read only `e`'s slot and height and `e`'s frame. -/
 theorem localStruct_vars {E : Forest} (hV : Scan.CondV E) {e : EntryAddr}
