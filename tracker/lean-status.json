@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "095c68bcdd771c8678cdd5586f25c0cdf2ef14701c511848b37776769d0db215",
+ "fingerprint": "a415b6bd101c53df78b9938f64c9ff10860e4529175e52109f6042ea0a480ae3",
  "decls": [
   {
    "axioms": [
@@ -3860,30 +3860,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Hier.add_omega_le"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Hier.isLim_ord"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
    "name": "BTBMS.Packet.factorization"
   },
   {
@@ -6908,102 +6884,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Diagram.holds_congr"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Diagram.holds_congr_below"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Diagram.realizableBelow_congr_below"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Diagram.realizableBelow_congr_fixed"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Diagram.realizableBelow_mono"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.IsLim.add_one_lt"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.IsLim.isSuccLimit"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.IsLim.omega0_lt"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.capture"
   },
   {
@@ -7425,126 +7305,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.transport"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.add_omega_le_of_isSuccLimit"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.baseHolds_congr"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.blockAbove_congr_frame"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.isLim_add_omega0"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.isLim_iSup_nat"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.isLim_of_isLUB"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.IsClub.exists_gt_ord"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.IsWeaklyMahlo.stationary_pred"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.IsWeaklyMahlo.uncountable_regular"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.StationaryIn.exists_mem_club"
   },
   {
    "axioms": [
@@ -9240,6 +9000,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.Spine",
+   "name": "BTBMS.Hier.add_omega_le"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.Spine",
+   "name": "BTBMS.Hier.isLim_ord"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.Spine",
    "name": "BTBMS.Scan.cursor.eq_def"
   },
   {
@@ -9307,6 +9089,138 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.mapEntry_bwd_fwd"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Atom.holds_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Atom.holds_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.BaseAtom.holds_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.BaseAtom.holds_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Diagram.holds_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Diagram.holds_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Diagram.realizableBelow_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Diagram.realizableBelow_congr_fixed"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Diagram.realizableBelow_mono"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.IsLim.add_one_lt"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.IsLim.isSuccLimit"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.IsLim.omega0_lt"
   },
   {
    "axioms": [
@@ -9406,6 +9320,138 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.instFiniteNewVars"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.add_omega_le_of_isSuccLimit"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.baseHolds_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.baseHolds_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.blockAbove_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.blockAbove_congr_frame"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.isLim_add_omega0"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.isLim_iSup_nat"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.isLim_of_isLUB"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.IsClub.exists_gt_ord"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.IsWeaklyMahlo.stationary_pred"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.IsWeaklyMahlo.uncountable_regular"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.StationaryIn.exists_mem_club"
   },
   {
    "axioms": [
@@ -15917,6 +15963,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T15:05:11+00:00",
- "head": "3788f0d"
+ "generated": "2026-10-27T15:06:21+00:00",
+ "head": "e9ee7d4"
 }
