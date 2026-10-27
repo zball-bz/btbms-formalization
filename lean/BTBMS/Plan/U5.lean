@@ -2346,6 +2346,213 @@ theorem bank_entry_lt_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses 
   have hy2 := mem_rolesCol_take_D4 (m := S.rd.cursor + 1) hy1 hyl (by omega)
   exact rolesCol_split_lt_D4 (List.pairwise_cons.1 hpw).2 hx2 hxk hy2 hyl hkl
 
+/-- L8.5 (helper): the variables of `Γ(E)` are roles of `E`. -/
+theorem graph_vars_roles_D4 {E : Forest} {a : BaseAtom Role} (ha : a ∈ graph E) :
+    ∀ v ∈ a.vars, v ∈ E.roles := by
+  simp only [graph, List.mem_append, List.mem_map, List.mem_filterMap, List.mem_flatMap] at ha
+  rcases ha with (((⟨x, hx, rfl⟩ | ⟨xy, hxy, rfl⟩) | ⟨c, hc, hca⟩) | ⟨e, he, hea⟩)
+  · simpa [BaseAtom.vars] using hx
+  · have := List.of_mem_zip hxy
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false]
+    rintro v (rfl | rfl)
+    · exact this.1
+    · exact List.mem_of_mem_tail this.2
+  · split_ifs at hca with hs
+    cases hca
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false]
+    rintro v (rfl | rfl)
+    · exact (Tree.mem_roles_iff E (.ord c)).2 ((Tree.mem_colAddrs_iff E c).1 hc)
+    · exact (Tree.mem_roles_iff E (.ord _)).2 hs
+  · cases hx : E.entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some ph =>
+      obtain ⟨p, h⟩ := ph
+      rw [hx] at hea
+      simp only at hea
+      cases hr : e.col.rep 0 p with
+      | none => rw [hr] at hea; simp at hea
+      | some ov =>
+        obtain ⟨o, v'⟩ := ov
+        rw [hr] at hea
+        have hcol : (E.colAt e.col).isSome := by
+          obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hx
+          rw [hcol]; rfl
+        obtain ⟨ho, hv'⟩ := rep_mem_roles hcol hr
+        have hs := slot_mem_roles he
+        have hc := (Tree.mem_roles_iff E (.ord e.col)).2 hcol
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;>
+          simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] <;>
+          rintro v (rfl | rfl | rfl) <;> assumption
+
+/-- L8.5 (helper): both representatives seen from a column with a first entry come before the
+column in reading order (stack columns and containing slots, D1.2e). -/
+theorem rep_before_D4 {t : Forest} {c : ColAddr} {x : Nat × Forest} {col : Column}
+    (hc : t.colAt c = some (x :: col)) {q : Nat} {o v : Role} (hr : c.rep 0 q = some (o, v)) :
+    o ∈ rolesBefore t (.ord c) ∧ v ∈ rolesBefore t (.ord c) := by
+  obtain ⟨pre', post', hr'⟩ := roles_col_D4 c.path t c.col (x :: col) hc
+  obtain ⟨p, h⟩ := x
+  have hent : t.entryAt ⟨⟨c.path, c.col⟩, 0⟩ = some (p, h) := by simp [Tree.entryAt, hc]
+  obtain ⟨pre, post, hd, -, -, hstk, hcont⟩ := Tree.roles_decomp c.path t c.col 0 p h hent
+  have h1 := Tree.prefixRoles_of_decomp hd
+  have h2 : prefixRoles t ⟨⟨c.path, c.col⟩, 0⟩ = pre' ++ [.ord c] :=
+    Tree.prefixRoles_of_decomp (rest := Tree.rolesF (c.path ++ [(c.col, 0)]) h ++
+      Tree.rolesCol c.path c.col 1 col ++ post') (by rw [hr']; simp [Tree.rolesCol])
+  have hbef : rolesBefore t (.ord c) = pre' := rolesBefore_of_decomp_D4 hr'
+  unfold ColAddr.rep at hr
+  cases hres : c.resolve 0 q with
+  | none => rw [hres] at hr; simp at hr
+  | some o' =>
+    rw [hres] at hr
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+    obtain ⟨rfl, hv⟩ := hr
+    have hon := ((ColAddr.resolve_spec 0 c o' q).1 hres).1
+    have hne : o' ≠ c := by
+      rintro rfl; exact absurd (ColAddr.num_lt_of_onStack 0 hon) (lt_irrefl _)
+    have hmem : ∀ y, y ∈ pre → y ≠ .ord c → y ∈ rolesBefore t (.ord c) := by
+      intro y hy hyc
+      rw [← h1, h2] at hy
+      rw [hbef]
+      rcases List.mem_append.1 hy with hy | hy
+      · exact hy
+      · simp only [List.mem_singleton] at hy; exact absurd hy hyc
+    have ho : Role.ord o' ∈ rolesBefore t (.ord c) :=
+      hmem _ (hstk o' hon) (fun h => hne (Role.ord.inj h))
+    refine ⟨ho, ?_⟩
+    revert hv
+    cases hct : o'.container c with
+    | none => intro hv; rw [← hv]; exact ho
+    | some e3 =>
+      intro hv
+      rw [← hv]
+      obtain ⟨-, hp⟩ := (ColAddr.container_spec o' c e3).1 hct
+      exact hmem _ (hcont e3 hp) (by simp)
+
+/-- L8.5 (helper): the stopping column has a first entry. -/
+theorem stop_col_cons_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) :
+    ∃ x col, S.H.colAt S.sd.col = some (x :: col) := by
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  cases hQ : S.sd.Q with
+  | nil => exact ⟨_, [], by rw [hcol, hQ]; rfl⟩
+  | cons q Q' => exact ⟨q, Q' ++ [(S.sd.r, Tree.empty)], by rw [hcol, hQ]; rfl⟩
+
+/-- L8.5 (helper): the representatives seen from the stopping column are pre-stop roles. -/
+theorem rep_preStop_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) {q : Nat}
+    {o v : Role} (hr : S.sd.col.rep 0 q = some (o, v)) : o ∈ S.preStop ∧ v ∈ S.preStop := by
+  obtain ⟨x, col, hc⟩ := stop_col_cons_D4 hsd
+  exact rep_before_D4 hc hr
+
+/-- L8.5 (helper): the frame roles of the stopping column are pre-stop roles. -/
+theorem reps0_preStop_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    {ov : Role × Role} (hov : ov ∈ S.sd.col.reps0) : ov.1 ∈ S.preStop ∧ ov.2 ∈ S.preStop := by
+  obtain ⟨q, -, hq⟩ := List.mem_filterMap.1 hov
+  exact rep_preStop_D4 hsd hq
+
+/-- L8.5 (helper): the query entry `j < |Q|`. -/
+theorem query_entry_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) {j : Nat}
+    (hj : j < S.sd.Q.length) : ∃ p Jh, S.sd.Q[j]? = some (p, Jh) ∧
+      S.H.entryAt ⟨S.sd.col, j⟩ = some (p, Jh) ∧ (⟨S.sd.col, j⟩ : EntryAddr) ∈ S.H.entryAddrs := by
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨⟨p, Jh⟩, hq⟩ : ∃ y, S.sd.Q[j]? = some y := ⟨_, List.getElem?_eq_getElem hj⟩
+  have hent : S.H.entryAt ⟨S.sd.col, j⟩ = some (p, Jh) := by
+    simp [Tree.entryAt, hcol, List.getElem?_append_left hj, hq]
+  exact ⟨p, Jh, hq, hent, (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl)⟩
+
+/-- L8.5 (helper, L8.2c): the structural atoms touching query entry `j` lie in the query graph. -/
+theorem localStruct_query_D4 {S : ScanSetup.{u}} (hL : Scan.InL S.H)
+    (hsd : Scan.stopData S.H = some S.sd) {j : Nat} (hj : j < S.sd.Q.length) :
+    ∀ a ∈ localStruct S.H ⟨S.sd.col, j⟩, a ∈ S.queryGraph := by
+  intro a ha
+  obtain ⟨_, _, _, _, he⟩ := query_entry_D4 hsd hj
+  have hvars := localStruct_vars hL.1 he a ha
+  obtain ⟨hg, hs⟩ := List.mem_filter.1 ha
+  simp only [Bool.and_eq_true, List.any_eq_true] at hs
+  obtain ⟨-, w, hw, hwin⟩ := hs
+  have hq : ∀ v ∈ a.vars, v.inEntry ⟨S.sd.col, j⟩ = true → v ∈ S.queryRoles := fun v hv hin =>
+    (mem_queryRoles_iff_D4 hsd).2 ⟨graph_vars_roles_D4 hg v hv, j, hj, hin⟩
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, List.all_eq_true.2 fun v hv => ?_⟩, ?_⟩
+  · simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq]
+    rcases hvars v hv with hin | rfl | ⟨ov, hov, h⟩
+    · exact Or.inr (hq v hv hin)
+    · exact Or.inl (Or.inr rfl)
+    · have := reps0_preStop_D4 hsd hov
+      rcases h with rfl | rfl
+      · exact Or.inl (Or.inl this.1)
+      · exact Or.inl (Or.inl this.2)
+  · exact List.any_eq_true.2 ⟨w, hw, by simp [hq w hw hwin]⟩
+
+/-- L8.5 (helper): the positive heads of query entry `j` at `h_j` (S4, D7.1 frame of entry `j`). -/
+theorem query_heads_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    ∃ p o v, (S.sd.Q[j]?).map Prod.fst = some p ∧
+      (frameOf ⟨S.sd.col, j⟩).reps[p]? = some (o, v) ∧ o ∈ S.preStop ∧ v ∈ S.preStop ∧
+      P.Edge (queryOwnerVal S j) (S.asg S.stopNm) (S.fitVal β o) ∧
+      P.Edge (queryOwnerVal S j) (S.asg S.stopNm) (S.fitVal β v) := by
+  have hsd := hS.1.2.2.2.1
+  have hV := hS.1.2.1.1
+  obtain ⟨p, Jh, hq, hent, he⟩ := query_entry_D4 hsd hj
+  obtain ⟨⟨o, v⟩, hr⟩ := Option.isSome_iff_exists.1 (show (S.sd.col.rep 0 p).isSome by
+    simp only [ColAddr.rep, Option.isSome_map]; exact hV _ he p Jh hent)
+  obtain ⟨ho, hv⟩ := rep_preStop_D4 hsd hr
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := not_query_D4 hsd (Or.inr rfl)
+  have hoq : o ∉ S.queryRoles := not_query_D4 hsd (Or.inl ho)
+  have hvq : v ∉ S.queryRoles := not_query_D4 hsd (Or.inl hv)
+  have hsq : Role.slot ⟨S.sd.col, j⟩ ∈ S.queryRoles :=
+    (mem_queryRoles_iff_D4 hsd).2 ⟨slot_mem_roles he, j, hj, by simp [Role.inEntry]⟩
+  obtain ⟨he1, he2⟩ := edge_mem_graph he hent hr
+  have hin : ∀ w, w = o ∨ w = v → w ∈ S.preStop → BaseAtom.edge (.slot ⟨S.sd.col, j⟩)
+      (.ord S.sd.col) w ∈ graph S.H → BaseAtom.edge (.slot ⟨S.sd.col, j⟩) (.ord S.sd.col) w ∈
+        S.queryGraph := by
+    intro w _ hw hg
+    refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, ?_⟩, ?_⟩
+    · simp [BaseAtom.vars, hsq, hw]
+    · simp [BaseAtom.vars]
+  have h4 := hS.2.2.2.1
+  have hbT : S.baseVal (.ord S.sd.col) = S.asg S.stopNm := by simp [ScanSetup.baseVal]
+  refine ⟨p, o, v, by simp [hq], ?_, ho, hv, ?_, ?_⟩
+  · show S.sd.col.reps0[p]? = some (o, v)
+    rw [reps0_getElem?]; exact hr
+  · have := h4 _ (hin o (Or.inl rfl) ho he1)
+    simpa [BaseAtom.Holds, setupPosVal, ScanSetup.fitVal, hsq, hTq, hoq, hbT, queryOwnerVal]
+      using this
+  · have := h4 _ (hin v (Or.inr rfl) hv he2)
+    simpa [BaseAtom.Holds, setupPosVal, ScanSetup.fitVal, hsq, hTq, hvq, hbT, queryOwnerVal]
+      using this
+
+/-- L8.5 (helper): bank roles have limit values (S5). -/
+theorem bank_lim_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {x : Role}
+    (hx : x ∈ setupBank S) : IsLim (setupBankVal S x) := by
+  have hxr := ((mem_bank_iff_D4 S).1 hx).1
+  have hg : BaseAtom.lim x ∈ graph S.H := by
+    simp only [graph, List.mem_append]; exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hxr)))
+  refine hS.2.2.2.2.1 (BaseAtom.lim x) (List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, ?_⟩, ?_⟩)
+  · simp [BaseAtom.vars, hx]
+  · simp [BaseAtom.vars, hx]
+
+/-- L8.5 (helper): the slot of query entry `j < |Q|` is a role of entry `j`. -/
+theorem slot_entryRoles_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) {j : Nat}
+    (hj : j < S.sd.Q.length) : Role.slot ⟨S.sd.col, j⟩ ∈ S.entryRoles j := by
+  obtain ⟨_, _, _, _, he⟩ := query_entry_D4 hsd hj
+  refine List.mem_filter.2 ⟨(mem_queryRoles_iff_D4 hsd).2 ⟨slot_mem_roles he, j, hj, ?_⟩, ?_⟩ <;>
+    simp [Role.inEntry]
+
+/-- L8.5 (helper): `c_0` is attained at a role of query entry `j`. -/
+theorem queryBlockMax_attained_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    {j : Nat} (hj : j < S.sd.Q.length) :
+    ∃ z ∈ S.entryRoles j, queryBlockMax S j = S.asg (S.qNm z) := by
+  have hmem := slot_entryRoles_D4 hsd hj
+  unfold queryBlockMax
+  generalize S.entryRoles j = l at hmem ⊢
+  cases l with
+  | nil => simp at hmem
+  | cons z0 l =>
+    have h := foldr_max_mem (S.asg (S.qNm z0)) (l.map fun x => S.asg (S.qNm x))
+    rw [List.map_cons]
+    rcases List.mem_cons.1 h with h | h
+    · exact ⟨z0, List.mem_cons_self, h⟩
+    · obtain ⟨z, hz, hzv⟩ := List.mem_map.1 h
+      exact ⟨z, List.mem_cons_of_mem _ hz, hzv.symm ▸ rfl⟩
+
 /-- L8.5b: the scan invariant (17) at state `(i, j)`. -/
 def ScanInv (P : Prims.{u}) (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordinal.{u}) : Prop :=
   S.Fitted P j β ∧ S.Lmax j β < S.ownerVal i ∧ S.Lmax j β ≤ S.Cmax j
@@ -2384,7 +2591,32 @@ theorem heads_at_owner (I : Interface.{u}) (S : ScanSetup.{u}) (hS : SetupClause
     {i j : Nat} (hj : j < S.sd.Q.length) (hi : i ≤ S.rd.cursor) (β : Role → Ordinal.{u})
     (hc0 : S.ownerVal i ≤ queryBlockMax S j) (hL : S.Lmax j β < S.ownerVal i) :
     S.HeadsAt I.toPrims j i β := by
-  sorry
+  have hsd := hS.1.2.2.2.1
+  have hL' := hS.1.2.1
+  obtain ⟨p, o, v, hp, hov, -, -, heo, hev⟩ := query_heads_D4 hS hj β
+  have hlim : IsLim (S.ownerVal i) := by
+    have := bank_lim_D4 hS (slot_mem_bank_D4 S hS hi)
+    rwa [setupBankVal_slot_D4 S hS hi] at this
+  have hρ : S.asg S.stopNm < S.ownerVal i := (le_foldr_max_init_D4 _ _).trans_lt hL
+  suffices H : ∀ w, I.Edge (queryOwnerVal S j) (S.asg S.stopNm) w →
+      I.Edge (S.ownerVal i) (S.asg S.stopNm) w from ⟨p, o, v, hp, hov, H _ heo, H _ hev⟩
+  intro w hw
+  by_cases hle : S.ownerVal i ≤ queryOwnerVal S j
+  · exact I.edge_restrict hw hlim hρ hle
+  · push Not at hle
+    obtain ⟨_, Jh, _, hent, he⟩ := query_entry_D4 hsd hj
+    have hsq : Role.slot ⟨S.sd.col, j⟩ ∈ S.queryRoles :=
+      (mem_queryRoles_iff_D4 hsd).2 ⟨slot_mem_roles he, j, hj, by simp [Role.inEntry]⟩
+    obtain ⟨z, hz, hzc⟩ := queryBlockMax_attained_D4 hsd hj
+    obtain ⟨hzq, hzin⟩ := List.mem_filter.1 hz
+    have hzr := ((mem_queryRoles_iff_D4 hsd).1 hzq).1
+    have hlh : IsLim (setupPosVal S (.slot ⟨S.sd.col, j⟩)) := by
+      simpa [setupPosVal, ScanSetup.fitVal, hsq, queryOwnerVal] using (I.edge_lim hw).2.2
+    have hel := owner_path_elem I hL'.1 hL'.2.1 he (localStruct_query_D4 hL' hsd hj)
+      hS.2.2.2.1 hlh hzr hzin
+    have hel' : I.Elem (queryOwnerVal S j) (queryBlockMax S j) := by
+      simpa [setupPosVal, ScanSetup.fitVal, hsq, hzq, queryOwnerVal, hzc] using hel
+    exact I.edge_extend hw (I.elem_mid hel' hle.le hc0 hlim)
 
 /-- L8.5e: `x_i > y_j`: reuse the positive block below `u_i`, or call `S_{N(J_j)}` on the scan
 packet (txt:1227-1234). -/
