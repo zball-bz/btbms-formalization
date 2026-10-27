@@ -6263,6 +6263,157 @@ theorem cutStart_phase_D7 (S : OrdStep) {φ : Nat} {a c : ColAddr} {k : Nat}
 
 /-! ### The decorated head path (L-G010.10) -/
 
+-- D7 (helper): the root column is on the stack of both members of a phase pair, below them in
+-- path order; the copy is placed under the stopping column
+theorem phasePair_root_D7 (S : OrdStep) {j φ : Nat} {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) :
+    a.resolve 0 S.sd.r = some S.rd.col ∧ c.resolve 0 S.sd.r = some S.rd.col ∧
+      S.rd.col.path <+: a.path ∧ ∃ b, c = underCol S.sd.col b := by
+  obtain ⟨hres, hrnum, -, hpre, -⟩ := rootData_path S.hsd S.hrd
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  obtain ⟨b, hb⟩ : ∃ b, c = underCol S.sd.col b := by
+    rcases hp with ⟨-, hc, -⟩ | ⟨-, hc, -⟩
+    · unfold phaseCol at hc; obtain ⟨a', -, ha'⟩ := Option.map_eq_some_iff.mp hc; exact ⟨_, ha'.symm⟩
+    · unfold phaseCol at hc; obtain ⟨a', -, ha'⟩ := Option.map_eq_some_iff.mp hc; exact ⟨_, ha'.symm⟩
+  have hcR : c.resolve 0 S.sd.r = some S.rd.col := by
+    rw [hb]
+    exact (ColAddr.resolve_spec 0 _ _ _).mpr ⟨(onStack_underCol _ _ _).mpr (Or.inl hsdR), hrnum⟩
+  refine ⟨?_, hcR, ?_, b, hb⟩
+  · rcases hp with ⟨ha, -, -⟩ | ⟨rfl, -, -⟩
+    · by_cases haq : isQMat S.sd a = true
+      · obtain ⟨q, rest, hq, -⟩ := isQMat_spec S.sd haq
+        have hsa : a.OnStack S.sd.col := by
+          refine onStack_of_container (e := ⟨S.sd.col, q⟩) ?_
+          rw [ColAddr.container_spec]
+          exact ⟨rfl, rest, by simp [EntryAddr.heightPath, hq]⟩
+        have := (ColAddr.onStack_iff_of_onStack 0 hsa (by rw [hrnum, ← ht]; exact hrt)).mp hsdR
+        exact (ColAddr.resolve_spec 0 _ _ _).mpr ⟨this, hrnum⟩
+      · obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+        exact (ColAddr.resolve_spec 0 _ _ _).mpr
+          ⟨onStack_rdcol S ha' (by simpa using haq) ha.2.2.1, hrnum⟩
+    · exact hres
+  · rcases hp with ⟨ha, -, -⟩ | ⟨rfl, -, -⟩
+    · by_cases haq : isQMat S.sd a = true
+      · obtain ⟨q, rest, hq, -⟩ := isQMat_spec S.sd haq
+        rw [hq]; exact hpre.trans (List.prefix_append _ _)
+      · obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+        obtain ⟨suf, hsuf, -⟩ := kerCol_tail_spec S ha' (by simpa using haq)
+        rw [hsuf]; exact List.prefix_append _ _
+    · exact hpre
+
+-- D7 (helper): keys normalized at or below `r`, capped or not, are `κ`-fixed
+theorem kappaQ_fix_D7 (r d φ : Nat) (E : Forest) {o : ColAddr} (ho : o.num 0 ≤ r) :
+    kappaQ r d φ (actualKeys E o) = actualKeys E o ∧
+      ∀ v, kappaQ r d φ ((actualKeys E o).take v ++ [⊤]) = (actualKeys E o).take v ++ [⊤] := by
+  have h1 : kappaQ r d φ (actualKeys E o) = actualKeys E o := by
+    unfold kappaQ actualKeys
+    rw [List.map_map]
+    congr 1
+    funext x
+    simp only [Function.comp_apply, WithTop.map_coe, kappa_fix r d φ _ ho]
+  refine ⟨h1, fun v => ?_⟩
+  unfold kappaQ at h1 ⊢
+  rw [List.map_append, List.map_take, h1]
+  rfl
+
+-- L-G010.4, fixed region (D7; L-G010.4c): below `r` both stacks are the root's, and the
+-- decorated responses agree
+theorem respEdge_fixed_D7 (S : OrdStep) {j φ : Nat} {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) {x : Nat}
+    (hx : x < S.sd.r) :
+    respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x =
+      respEdge S.A (activeKeys_D7 S.A a) a W x := by
+  obtain ⟨hRa, hRc, hpa, b, hb⟩ := phasePair_root_D7 S hp
+  obtain ⟨hres, hrnum, -, hpre, -⟩ := rootData_path S.hsd S.hrd
+  have hpc : S.rd.col.path <+: c.path := by
+    rw [hb]
+    refine hpre.trans ?_
+    obtain ⟨bp, bc⟩ := b
+    cases bp with
+    | nil => exact List.prefix_refl _
+    | cons y ys => obtain ⟨y1, y2⟩ := y; exact List.prefix_append _ _
+  unfold respEdge
+  rw [← ColAddr.resolve_of_resolve_lt hRc hx, ← ColAddr.resolve_of_resolve_lt hRa hx]
+  cases ho : S.rd.col.resolve 0 x with
+  | none => rfl
+  | some o =>
+    simp only [Option.bind_some]
+    have hon : o.num 0 = x := ColAddr.resolve_num ho
+    have hsdo : S.sd.col.OnStack o := by
+      have := ColAddr.resolve_of_resolve_lt hres hx
+      rw [ho] at this
+      exact ((ColAddr.resolve_spec 0 _ _ _).mp this.symm).1
+    -- the containers at `o` of `a`, `c` and the stopping column are those of the root
+    have hcont : ∀ X : ColAddr, X.resolve 0 S.sd.r = some S.rd.col → S.rd.col.path <+: X.path →
+        o.container X = o.container S.rd.col := by
+      intro X hX hpX
+      apply Option.ext; intro e
+      rw [ColAddr.container_spec, ColAddr.container_spec]
+      constructor
+      · rintro ⟨h1, h2⟩
+        exact ⟨h1, EntryAddr.contains_of_resolve h2 hX (by rw [h1]; omega)⟩
+      · rintro ⟨h1, h2⟩; exact ⟨h1, h2.trans hpX⟩
+    have hca := hcont a hRa hpa
+    have hcc := hcont c hRc hpc
+    have hcs := hcont S.sd.col hres hpre
+    -- the column of `o` in `B` is its context column
+    have hE : S.A ≠ Tree.empty := by
+      intro h
+      have := S.hsd
+      rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+      cases this
+    obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+      have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+      rw [S.out] at this
+      exact ⟨_, Option.some.inj this⟩
+    obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack S.hsd Z hsdo
+    rw [← hB] at hpar htake hnone
+    have hfix := kappaQ_fix_D7 S.sd.r S.d φ S.A (o := o) (by omega)
+    have hks : activeKeys_D7 S.B c o = activeKeys_D7 S.A a o ∧
+        kappaQ S.sd.r S.d φ (activeKeys_D7 S.A a o) = activeKeys_D7 S.A a o := by
+      cases hce : o.container S.rd.col with
+      | none =>
+        have hBo := hnone (hcs.trans hce)
+        refine ⟨?_, ?_⟩
+        · simp only [activeKeys_D7, hca, hcc, hce, actualKeys, hBo]
+        · simp only [activeKeys_D7, hca, hce]; exact hfix.1
+      | some e =>
+        have h1 := htake e (hcs.trans hce)
+        have h2 : (actualKeys S.B o).take e.idx = (actualKeys S.A o).take e.idx := by
+          simp only [actualKeys, ← List.map_take]
+          congr 1
+          cases hBo : S.B.colAt o with
+          | none =>
+            cases hAo : S.A.colAt o with
+            | none => rfl
+            | some _ => rw [hBo, hAo] at h1; cases h1
+          | some C1 =>
+            cases hAo : S.A.colAt o with
+            | none => rw [hBo, hAo] at h1; cases h1
+            | some C2 =>
+              rw [hBo, hAo] at h1
+              simpa using h1
+        refine ⟨?_, ?_⟩
+        · simp only [activeKeys_D7, hca, hcc, hce, h2]
+        · simp only [activeKeys_D7, hca, hce]; exact hfix.2 _
+    have hc : cursor (activeKeys_D7 S.A a o) (kappaQ S.sd.r S.d φ W) =
+        cursor (activeKeys_D7 S.A a o) W := by
+      have := cursor_map (kappaQry_strictMono S.sd.r S.d φ) (activeKeys_D7 S.A a o) W
+      have h2 := hks.2
+      unfold kappaQ at h2 ⊢
+      rw [h2] at this
+      exact this
+    rw [resp_eq_parents, resp_eq_parents, hks.1, hpar, hc]
+
+-- L-G010.4, phase region (D7; L-G010.4b): above `r`, phase-`φ` material is copied edge by edge
+theorem respEdge_phase_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) {x : Nat}
+    (hx : S.sd.r < x) :
+    respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (x + φ * S.d) =
+      (respEdge S.A (activeKeys_D7 S.A a) a W x).map (shiftVal S.sd.r (φ * S.d)) := by sorry
+
 -- L-G010.4 (D7; T3.2q step 1, txt:524-530): phase-`φ` material is copied edge by edge, and the
 -- fixed region below `r` is shared, for every `⊤`-free query
 theorem respEdge_phase_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
@@ -6270,7 +6421,8 @@ theorem respEdge_phase_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j 
     (S.sd.r < x → respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (x + φ * S.d) =
       (respEdge S.A (activeKeys_D7 S.A a) a W x).map (shiftVal S.sd.r (φ * S.d))) ∧
     (x < S.sd.r → respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x =
-      respEdge S.A (activeKeys_D7 S.A a) a W x) := by sorry
+      respEdge S.A (activeKeys_D7 S.A a) a W x) :=
+  ⟨fun h => respEdge_phase_D7 S hj hp hT h, fun h => respEdge_fixed_D7 S hp hT h⟩
 
 -- L-G010.14 (D7; T3.2q step 2, high case, txt:390-391): a high scan at the head `s_φ` returns the
 -- old root response at `W`
