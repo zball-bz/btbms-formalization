@@ -922,32 +922,248 @@ theorem stopF_core (π : List (Nat × Nat)) (F : Forest) (sd : StopData) (hs : s
         rw [List.getLast?_cons_cons]; exact e3
 
 
+/-- D1.6b (helper): `stopF_core` at the outer forest; the route forests are `skipLayers E k`. -/
+theorem stopData_core {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    sd.col.col + 1 = (skipLayers E sd.depth).cols.length ∧
+    sd.depth = sd.col.path.length ∧ sd.t = sd.col.num 0 ∧
+    (skipLayers E sd.depth).cols.getLast? = some (sd.Q ++ [(sd.r, Tree.empty)]) ∧
+    (∀ k < sd.depth, ∃ col p, (skipLayers E k).cols.getLast? = some col ∧
+        col.getLast? = some (p, skipLayers E (k + 1)) ∧ (skipLayers E (k + 1)).cols ≠ [] ∧
+        sd.col.path[k]? = some ((skipLayers E k).cols.length - 1, col.length - 1)) ∧
+    tailLayer E = sd.depth ∧
+    (sd.col.path.map (·.1 + 1)).sum = leftCount E sd.depth ∧
+    (∀ k ≤ sd.depth, E.forestAt (sd.col.path.take k) = some (skipLayers E k)) ∧
+    sd.depth + 1 ≤ E.size ∧
+    (∀ m, ∃ L, routeColsAux (m + sd.depth + 1) E [] = L ∧ L.length = sd.depth + 1 ∧
+      L.getLast? = some sd.col) := by
+  obtain ⟨ρ, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10⟩ := stopF_core [] E sd h
+  have hp : sd.col.path = ρ := by rw [h1]; simp
+  have hd : sd.depth = ρ.length := by rw [h2]; simp
+  have hc : sd.col.col = (skipLayers E ρ.length).cols.length - 1 := by rw [h1]
+  rw [hp, hd]
+  refine ⟨?_, rfl, h3, h4, h5, h6, h7, h8, ?_, ?_⟩
+  · have : (skipLayers E ρ.length).cols ≠ [] := by intro h0; simp [h0] at h4
+    have := List.length_pos_of_ne_nil this
+    omega
+  · simpa [Tree.size, Tree.roles] using h9 []
+  · intro m; simpa using h10 m
+
+/-- D1.6b (helper): the stopping forest is the forest at the stopping column's path. -/
+theorem forestAt_stopPath {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    E.forestAt sd.col.path = some (skipLayers E sd.depth) := by
+  obtain ⟨-, hd, -, -, -, -, -, hfa, -⟩ := stopData_core h
+  have h1 := hfa sd.depth le_rfl
+  have h2 : sd.col.path.take sd.depth = sd.col.path := by rw [hd, List.take_length]
+  rwa [h2] at h1
+
+/-- D1.6b (helper): a stop has a nonempty last outer column. -/
+theorem lastCol_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    ∃ x xs, E.cols.getLast? = some (x :: xs) := by
+  have h' : stopF [] E = some sd := h
+  rw [stopF_eq] at h'
+  rcases hc : E.cols.getLast? with _ | _ | ⟨x, xs⟩
+  · simp [hc] at h'
+  · simp [hc] at h'
+  · exact ⟨x, xs, rfl⟩
+
 /-- D1.6b (`stopData_spec`†): the stopping column `Q ⌢ [(r, ∅)]` is the last route column. -/
 theorem stopData_spec {E : Forest} {sd : StopData} (h : stopData E = some sd) :
     E.colAt sd.col = some (sd.Q ++ [(sd.r, Tree.empty)]) ∧ sd.depth = sd.col.path.length ∧
       sd.t = sd.col.num 0 ∧ sd.col ∈ routeCols E ∧ (routeCols E).getLast? = some sd.col ∧
-      (routeCols E).length = sd.depth + 1 := by sorry
+      (routeCols E).length = sd.depth + 1 := by
+  obtain ⟨hcc, hd, ht, hlast, -, -, -, -, hsz, hroute⟩ := stopData_core h
+  have hfp := forestAt_stopPath h
+  obtain ⟨L, e1, e2, e3⟩ := hroute (E.size - sd.depth)
+  have hrc : routeCols E = L := by
+    have : routeCols E = routeColsAux (E.size - sd.depth + sd.depth + 1) E [] := by
+      rw [routeCols]; congr 1; omega
+    rw [this, e1]
+  refine ⟨?_, hd, ht, ?_, ?_, ?_⟩
+  · simp only [Tree.colAt, hfp, Option.bind_some]
+    rw [show sd.col.col = (skipLayers E sd.depth).cols.length - 1 by omega,
+      ← List.getLast?_eq_getElem?]
+    exact hlast
+  · rw [hrc]; exact List.mem_of_getLast? e3
+  · rw [hrc]; exact e3
+  · rw [hrc]; exact e2
+
+/-- D1.6b (helper): under I the route from a forest of `E` with a nonempty last column stops. -/
+theorem stopF_isSome {E : Forest} (hI : CondI E) (F : Forest) (π : List (Nat × Nat))
+    (hF : E.forestAt π = some F) {col : Column} (hc : F.cols.getLast? = some col)
+    (hne : col ≠ []) : (stopF π F).isSome := by
+  induction hn : sizeOf F using Nat.strong_induction_on generalizing π F col with
+  | _ n ih =>
+  obtain ⟨⟨p, h⟩, he⟩ : ∃ x, col.getLast? = some x := by
+    cases hcl : col.getLast? with
+    | none => simp at hcl; exact absurd hcl hne
+    | some x => exact ⟨x, rfl⟩
+  rw [stopF_eq]
+  simp only [hc, he]
+  by_cases hh : h.cols.isEmpty
+  · simp [hh]
+  · simp only [hh, Bool.false_eq_true, if_false]
+    have hcl : F.cols[F.cols.length - 1]? = some col := by
+      rw [← List.getLast?_eq_getElem?]; exact hc
+    have hel : col[col.length - 1]? = some (p, h) := by
+      rw [← List.getLast?_eq_getElem?]; exact he
+    have hfa : E.forestAt (π ++ [(F.cols.length - 1, col.length - 1)]) = some h := by
+      rw [Tree.forestAt_append, hF]
+      simp [Tree.forestAt, hcl, hel]
+    have hent : E.entryAt ⟨⟨π, F.cols.length - 1⟩, col.length - 1⟩ = some (p, h) := by
+      simp [Tree.entryAt, Tree.colAt, hF, hcl, hel]
+    have hmem : (⟨⟨π, F.cols.length - 1⟩, col.length - 1⟩ : EntryAddr) ∈ E.entryAddrs :=
+      (Tree.mem_entryAddrs_iff E _).mpr (by rw [hent]; rfl)
+    have hhc : h.cols ≠ [] := by intro h0; simp [h0] at hh
+    have hhne : h ≠ Tree.empty := by
+      intro h0; subst h0; exact hhc rfl
+    obtain ⟨col', hc'⟩ : ∃ c, h.cols.getLast? = some c := by
+      cases hx : h.cols.getLast? with
+      | none => simp at hx; exact absurd hx hhc
+      | some c => exact ⟨c, rfl⟩
+    have hne' : col' ≠ [] := by
+      obtain ⟨q, H, rest, hq, -⟩ := hI _ hmem p h hent hhne col' (List.mem_of_getLast? hc')
+      rw [hq]; simp
+    exact ih _ (hn ▸ sizeOf_lt_of_last hc he) h _ hfa hc' hne' rfl
 
 /-- D1.6b: under I the route is never stuck (X-02 cannot happen). -/
 theorem stopData_isSome {E : Forest} (hI : CondI E) {col : Column}
-    (hlast : E.cols.getLast? = some col) (hne : col ≠ []) : (stopData E).isSome := by sorry
+    (hlast : E.cols.getLast? = some col) (hne : col ≠ []) : (stopData E).isSome :=
+  stopF_isSome hI E [] (by simp [Tree.forestAt]) hlast hne
 
 /-- D1.6b: `stopData` is `none` on `∅` and on a last outer column that is empty. -/
 theorem stopData_eq_none_of_lastCol {E : Forest} (h : E.cols.getLast? = none ∨ E.cols.getLast? = some []) :
-    stopData E = none := by sorry
+    stopData E = none := by
+  show stopF [] E = none
+  rw [stopF_eq]
+  rcases h with h | h <;> simp [h]
+
+/-- D1.6b (helper): the branch of a stop. -/
+theorem stepKind_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    stepKind E = if specialStop sd then some .special
+      else if (sd.col.resolve 0 sd.r).isSome then some .ordinary else none := by
+  obtain ⟨x, xs, hc⟩ := lastCol_of_stopData h
+  have h' : stopDataBody E = some sd := h
+  simp only [stepKind, stepKindBody, hc, h']
+
+/-- D1.6b (helper): without a stop, the branch is deletion or undefined. -/
+theorem stepKind_of_stopData_none {E : Forest} (h : stopData E = none) :
+    stepKind E = if E.cols.getLast? = some [] then some .deletion else none := by
+  have h' : stopDataBody E = none := h
+  simp only [stepKind, stepKindBody]
+  rcases hc : E.cols.getLast? with _ | _ | ⟨x, xs⟩ <;> simp [h']
 
 /-- D1.6b: the deletion branch is exactly an empty last outer column. -/
 theorem stepKind_deletion_iff (E : Forest) : stepKind E = some .deletion ↔ E.cols.getLast? = some [] := by
-  sorry
+  rcases hs : stopData E with _ | sd
+  · rw [stepKind_of_stopData_none hs]; split_ifs with h <;> simp [h]
+  · rw [stepKind_of_stopData hs]
+    obtain ⟨x, xs, hc⟩ := lastCol_of_stopData hs
+    rw [hc]; split_ifs <;> simp
 
 /-- D1.6b: the special branch is exactly `specialStop`. -/
 theorem stepKind_special_iff (E : Forest) :
-    stepKind E = some .special ↔ ∃ sd, stopData E = some sd ∧ specialStop sd = true := by sorry
+    stepKind E = some .special ↔ ∃ sd, stopData E = some sd ∧ specialStop sd = true := by
+  rcases hs : stopData E with _ | sd
+  · rw [stepKind_of_stopData_none hs]; split_ifs <;> simp
+  · rw [stepKind_of_stopData hs]; split_ifs with h1 h2 <;> simp [h1]
 
 /-- D1.6b: the ordinary branch: a stop that is not special with a visible root. -/
 theorem stepKind_ordinary_iff (E : Forest) :
     stepKind E = some .ordinary ↔ ∃ sd o, stopData E = some sd ∧ specialStop sd = false ∧
-      sd.col.resolve 0 sd.r = some o := by sorry
+      sd.col.resolve 0 sd.r = some o := by
+  rcases hs : stopData E with _ | sd
+  · rw [stepKind_of_stopData_none hs]; split_ifs <;> simp
+  · rw [stepKind_of_stopData hs]
+    split_ifs with h1 h2
+    · simp [h1]
+    · simp only [Option.some.injEq, true_iff]
+      obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp h2
+      exact ⟨sd, o, rfl, by simpa using h1, ho⟩
+    · simp only [false_iff, not_exists, not_and]
+      intro sd' o h' _ ho
+      cases h'
+      simp [ho] at h2
+
+/-- D1.6b (helper): the root data built from a visible root `o` (the body of `rootDataBody`). -/
+def rootOf (E : Forest) (sd : StopData) (o : ColAddr) : RootData :=
+  { layer := o.path.length, idx := o.col, col := o,
+    owner := o.col + 1 == ((E.forestAt o.path).getD Tree.empty).cols.length,
+    cursor := cursor (((((E.forestAt o.path).getD Tree.empty).cols[o.col]?).getD []).map
+      fun x => relKey (o.num 0) x.2) (sd.Q.map fun x => relKey sd.t x.2) }
+
+/-- D1.6b (helper): `rootData` unfolded at a stop. -/
+theorem rootData_eq_of_stopData {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    rootData E = if stepKind E = some .ordinary then (sd.col.resolve 0 sd.r).map (rootOf E sd)
+      else none := by
+  have h' : stopDataBody E = some sd := h
+  rcases hk : stepKind E with _ | _ | _ | _
+  · have hk' : stepKindBody E = none := hk
+    simp [rootData, rootDataBody, h', hk']
+  · have hk' : stepKindBody E = some .deletion := hk
+    simp [rootData, rootDataBody, h', hk']
+  · have hk' : stepKindBody E = some .special := hk
+    simp [rootData, rootDataBody, h', hk']
+  · have hk' : stepKindBody E = some .ordinary := hk
+    simp only [rootData, rootDataBody, h', hk', if_true]
+    rcases sd.col.resolve 0 sd.r with _ | o <;> rfl
+
+/-- D1.6b (helper): root data come from a visible root. -/
+theorem rootData_unpack {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
+    (hrd : rootData E = some rd) :
+    stepKind E = some .ordinary ∧ ∃ o, sd.col.resolve 0 sd.r = some o ∧ rd = rootOf E sd o := by
+  rw [rootData_eq_of_stopData hsd] at hrd
+  split_ifs at hrd with hk
+  · refine ⟨hk, ?_⟩
+    rcases ho : sd.col.resolve 0 sd.r with _ | o
+    · simp [ho] at hrd
+    · simp only [ho, Option.map_some, Option.some.injEq] at hrd
+      exact ⟨o, rfl, hrd.symm⟩
+
+/-- D1.6b (helper): a stack occurrence of the stopping column is a column of a route forest; it
+is the last column of its forest exactly when it contains the stopping column, and then the
+containing entry is its last entry. -/
+theorem onStack_route {E : Forest} {sd : StopData} {o : ColAddr} (h : stopData E = some sd)
+    (hon : sd.col.OnStack o) :
+    ∃ F, E.forestAt o.path = some F ∧ o.col < F.cols.length ∧ o.path <+: sd.col.path ∧
+      (o.col + 1 = F.cols.length ↔ ∃ u, o.path ++ [(o.col, u)] <+: sd.col.path) ∧
+      (∀ u, o.path ++ [(o.col, u)] <+: sd.col.path →
+        u + 1 = ((F.cols[o.col]?).getD []).length) := by
+  obtain ⟨hcc, hd, -, -, hcont, -, -, hfa, -⟩ := stopData_core h
+  rcases hon with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · have hkl : k < sd.depth := by
+      rw [hd]; exact (List.getElem?_eq_some_iff.mp hk).1
+    obtain ⟨col, p, a1, a2, -, a4⟩ := hcont k hkl
+    rw [hk, Option.some.injEq, Prod.mk.injEq] at a4
+    obtain ⟨rfl, rfl⟩ := a4
+    have hFne : (skipLayers E k).cols ≠ [] := by intro h0; simp [h0] at a1
+    have hFpos := List.length_pos_of_ne_nil hFne
+    have hcolne : col ≠ [] := by intro h0; simp [h0] at a2
+    have hcolpos := List.length_pos_of_ne_nil hcolne
+    have hlastc : (skipLayers E k).cols[(skipLayers E k).cols.length - 1]? = some col := by
+      rw [← List.getLast?_eq_getElem?]; exact a1
+    have htake : sd.col.path.take (k + 1) = sd.col.path.take k ++
+        [((skipLayers E k).cols.length - 1, col.length - 1)] := by
+      rw [List.take_add_one, hk]; rfl
+    have hpre_iff : ∀ u, o.path ++ [(o.col, u)] <+: sd.col.path →
+        o.col = (skipLayers E k).cols.length - 1 ∧ u = col.length - 1 := by
+      intro u hu
+      have hl : (o.path ++ [(o.col, u)]).length = k + 1 := by
+        simp [hp]; exact Nat.le_of_lt (by rw [← hd]; exact hkl)
+      rw [List.prefix_iff_eq_take, hl, htake, hp] at hu
+      simpa using hu
+    refine ⟨skipLayers E k, by rw [hp]; exact hfa k (Nat.le_of_lt hkl), by omega,
+      by rw [hp]; exact List.take_prefix _ _, ⟨fun ho => ?_, fun ⟨u, hu⟩ => ?_⟩, ?_⟩
+    · refine ⟨col.length - 1, ?_⟩
+      rw [hp, show o.col = (skipLayers E k).cols.length - 1 by omega, ← htake]
+      exact List.take_prefix _ _
+    · have := (hpre_iff u hu).1; omega
+    · intro u hu
+      obtain ⟨h1, h2⟩ := hpre_iff u hu
+      rw [h1, hlastc]; simp; omega
+  · refine ⟨skipLayers E sd.depth, by rw [hp]; exact forestAt_stopPath h, by omega,
+      by rw [hp], ⟨fun ho => by omega, fun ⟨u, hu⟩ => ?_⟩, fun u hu => ?_⟩
+    · have := hu.length_le; simp [hp] at this
+    · have := hu.length_le; simp [hp] at this
 
 /-- D1.6b (`rootData_spec`†). -/
 theorem rootData_spec {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
@@ -956,21 +1172,84 @@ theorem rootData_spec {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopDa
       rd.col.num 0 = sd.r ∧ sd.r < sd.t ∧ rd.col ∈ E.colAddrs ∧
       rd.cursor = cursor (rootKeys E rd) (queryKeys sd) ∧
       (rd.owner = true ↔ ∃ F, E.forestAt rd.col.path = some F ∧ rd.col.col + 1 = F.cols.length) := by
-  sorry
+  obtain ⟨-, o, ho, rfl⟩ := rootData_unpack hsd hrd
+  obtain ⟨hon, hnum⟩ := (ColAddr.resolve_spec 0 sd.col o sd.r).mp ho
+  obtain ⟨F, hF, hlt, -⟩ := onStack_route hsd hon
+  obtain ⟨-, -, ht, -⟩ := stopData_core hsd
+  refine ⟨ho, rfl, rfl, hnum, ?_, ?_, ?_, ?_⟩
+  · rw [ht]; exact ColAddr.resolve_lt ho
+  · exact (Tree.mem_colAddrs_iff E o).mpr (by simp [Tree.colAt, hF, hlt])
+  · simp [rootOf, rootKeys, queryKeys, Tree.colAt, hF]
+  · simp [rootOf, hF]
 
 /-- D1.6b: the root is an owner iff it contains the stopping column; then the containing entry is
 its last entry (the active root entry `u`). -/
 theorem rootData_owner_iff {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
     (hrd : rootData E = some rd) :
     rd.owner = true ↔ ∃ u, (⟨rd.col, u⟩ : EntryAddr).Contains sd.col ∧
-      u + 1 = ((E.colAt rd.col).getD []).length := by sorry
+      u + 1 = ((E.colAt rd.col).getD []).length := by
+  obtain ⟨-, o, ho, rfl⟩ := rootData_unpack hsd hrd
+  obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col o sd.r).mp ho
+  obtain ⟨F, hF, -, -, hiff, hlen⟩ := onStack_route hsd hon
+  simp only [rootOf, hF, Option.getD_some, beq_iff_eq, EntryAddr.Contains, EntryAddr.heightPath,
+    Tree.colAt, Option.bind_some]
+  constructor
+  · intro hown
+    obtain ⟨u, hu⟩ := hiff.mp hown
+    exact ⟨u, hu, hlen u hu⟩
+  · rintro ⟨u, hu, -⟩
+    exact hiff.mpr ⟨u, hu⟩
 
 /-- D1.6b: in the owner case the root layer is strictly above the stopping depth. -/
 theorem rootData_layer_lt {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
-    (hrd : rootData E = some rd) (ho : rd.owner = true) : rd.layer < sd.depth := by sorry
+    (hrd : rootData E = some rd) (ho : rd.owner = true) : rd.layer < sd.depth := by
+  obtain ⟨u, hu, -⟩ := (rootData_owner_iff hsd hrd).mp ho
+  obtain ⟨-, hlay, -⟩ := rootData_spec hsd hrd
+  obtain ⟨-, hd, -⟩ := stopData_core hsd
+  have := hu.length_le
+  simp [EntryAddr.heightPath] at this
+  omega
 
 theorem rootData_layer_le {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
-    (hrd : rootData E = some rd) : rd.layer ≤ sd.depth := by sorry
+    (hrd : rootData E = some rd) : rd.layer ≤ sd.depth := by
+  obtain ⟨-, o, ho, rfl⟩ := rootData_unpack hsd hrd
+  obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col o sd.r).mp ho
+  obtain ⟨F, -, -, hpre, -⟩ := onStack_route hsd hon
+  obtain ⟨-, hd, -⟩ := stopData_core hsd
+  have := hpre.length_le
+  simp only [rootOf]
+  omega
+
+/-- D1.6b (helper): the owner entry of a stop at positive depth: the last entry of the last
+column of the route forest above. -/
+theorem ownerEntry_data {E : Forest} {sd : StopData} (h : stopData E = some sd)
+    (hpos : 0 < sd.depth) :
+    ∃ oe col p, sd.ownerEntry = some oe ∧ oe.heightPath = sd.col.path ∧
+      E.colAt oe.col = some col ∧ (skipLayers E (sd.depth - 1)).cols.getLast? = some col ∧
+      col.getLast? = some (p, skipLayers E sd.depth) ∧ oe.idx + 1 = col.length ∧
+      oe.col.num 0 + 1 + sd.col.col = sd.t := by
+  obtain ⟨-, hd, ht, -, hcont, -, -, hfa, -⟩ := stopData_core h
+  obtain ⟨col, p, a1, a2, -, a4⟩ := hcont (sd.depth - 1) (by omega)
+  rw [show sd.depth - 1 + 1 = sd.depth by omega] at a2
+  have hpl : sd.col.path.getLast? = some ((skipLayers E (sd.depth - 1)).cols.length - 1,
+      col.length - 1) := by
+    rw [List.getLast?_eq_getElem?, ← hd]; exact a4
+  have hdl := List.dropLast_append_getLast? _ hpl
+  have hcolne : col ≠ [] := by intro h0; simp [h0] at a2
+  have hcolpos := List.length_pos_of_ne_nil hcolne
+  have hlastc : (skipLayers E (sd.depth - 1)).cols[(skipLayers E (sd.depth - 1)).cols.length - 1]? =
+      some col := by
+    rw [← List.getLast?_eq_getElem?]; exact a1
+  have hfd : E.forestAt sd.col.path.dropLast = some (skipLayers E (sd.depth - 1)) := by
+    rw [List.dropLast_eq_take, ← hd]; exact hfa _ (by omega)
+  refine ⟨⟨⟨sd.col.path.dropLast, (skipLayers E (sd.depth - 1)).cols.length - 1⟩, col.length - 1⟩,
+    col, p, by simp [StopData.ownerEntry, hpl], by simpa [EntryAddr.heightPath] using hdl, ?_, a1,
+    a2, by simp; omega, ?_⟩
+  · simp [Tree.colAt, hfd, hlastc]
+  · rw [ht]
+    conv_rhs => rw [ColAddr.num, ← hdl]
+    simp [ColAddr.num]
+    omega
 
 /-- D1.6b: the special owner entry is the last entry of the owner column, its height is the
 stopping forest, which ends in the single-entry column `[(r, ∅)]`. -/
@@ -978,11 +1257,22 @@ theorem ownerEntry_spec {E : Forest} {sd : StopData} {oe : EntryAddr}
     (hk : stepKind E = some .special) (hsd : stopData E = some sd) (hoe : sd.ownerEntry = some oe) :
     oe.Contains sd.col ∧ oe.heightPath = sd.col.path ∧ oe.col.num 0 = sd.r ∧
       ∃ col p Fl, E.colAt oe.col = some col ∧ col.getLast? = some (p, Fl) ∧
-        oe.idx + 1 = col.length ∧ Fl.cols.getLast? = some [(sd.r, Tree.empty)] := by sorry
+        oe.idx + 1 = col.length ∧ Fl.cols.getLast? = some [(sd.r, Tree.empty)] := by
+  obtain ⟨sd', hsd', hs⟩ := (stepKind_special_iff E).mp hk
+  rw [hsd] at hsd'; cases hsd'
+  simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff, beq_iff_eq] at hs
+  obtain ⟨⟨hpos, hQ⟩, hr⟩ := hs
+  obtain ⟨oe', col, p, hoe', hhp, hcol, -, hlast, hidx, hnum⟩ := ownerEntry_data hsd hpos
+  rw [hoe] at hoe'; cases hoe'
+  obtain ⟨-, -, -, hF, -⟩ := stopData_core hsd
+  refine ⟨by rw [EntryAddr.Contains, hhp], hhp, by omega, col, p, _, hcol, hlast, hidx, ?_⟩
+  rw [hF, hQ]; rfl
 
 /-- D1.6b (`paperOp_deletion`). -/
 theorem paperOp_deletion {E : Forest} (h : stepKind E = some .deletion) (n : Nat) :
-    paperOp E n = some (.node E.cols.dropLast) := by sorry
+    paperOp E n = some (.node E.cols.dropLast) := by
+  have h' : stepKindBody E = some .deletion := h
+  simp only [paperOp, paperOpBody, h']
 
 /-- D1.6b (`paperOp_special`†): the special output, in terms of `Hole.fill`. -/
 theorem paperOp_special {E : Forest} {sd : StopData} {oe : EntryAddr} {col : Column} {p : Nat}
@@ -992,7 +1282,9 @@ theorem paperOp_special {E : Forest} {sd : StopData} {oe : EntryAddr} {col : Col
     paperOp E n = some (Hole.fill ⟨E, sd.depth - 1⟩ 0 0
       (.node [col.dropLast ++
         List.replicate (n + if col.dropLast.isEmpty then 1 else 0) (p, .node Fl.cols.dropLast)])) := by
-  sorry
+  have hk' : stepKindBody E = some .special := hk
+  have hsd' : stopDataBody E = some sd := hsd
+  simp only [paperOp, paperOpBody, hk', hsd', specialOut, hoe, hcol, hlast]
 
 /-- D1.6b (`paperOp_ordinary`†): the ordinary output, in terms of `Hole.fill` and `ordZ`. -/
 theorem paperOp_ordinary {E : Forest} {sd : StopData} {rd : RootData}
@@ -1000,11 +1292,19 @@ theorem paperOp_ordinary {E : Forest} {sd : StopData} {rd : RootData}
     (n : Nat) :
     paperOp E n =
       if rd.owner && n != 0 && (((E.colAt rd.col).getD []).drop rd.cursor).isEmpty then none
-      else some (Hole.fill ⟨E, sd.depth⟩ 0 0 (ordZ E sd rd n)) := by sorry
+      else some (Hole.fill ⟨E, sd.depth⟩ 0 0 (ordZ E sd rd n)) := by
+  have hk' : stepKindBody E = some .ordinary := hk
+  have hsd' : stopDataBody E = some sd := hsd
+  have hrd' : rootDataBody E = some rd := hrd
+  simp only [paperOp, paperOpBody, hk', hsd', hrd', ordinaryOut]
 
 /-- D1.6b: the ordinary step at parameter `0` deletes the whole stopping column (txt:132-133). -/
 theorem paperOp_ordinary_zero {E : Forest} {sd : StopData} (hk : stepKind E = some .ordinary)
-    (hsd : stopData E = some sd) : paperOp E 0 = some (Hole.put ⟨E, sd.depth⟩ Tree.empty) := by sorry
+    (hsd : stopData E = some sd) : paperOp E 0 = some (Hole.put ⟨E, sd.depth⟩ Tree.empty) := by
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  rw [paperOp_ordinary hk hsd hrd]
+  simp only [bne_self_eq_false, Bool.and_false, Bool.false_and, Bool.false_eq_true, if_false]
+  rfl
 
 /-! ### D1.6c — agreement of the locked `expand` with `paperOp` (G-001, D-3) -/
 
