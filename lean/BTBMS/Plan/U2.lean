@@ -2718,6 +2718,231 @@ theorem ker_kernel_col0 (E : Forest) (sd : StopData) (rd : RootData) (X : Forest
     rw [List.getElem?_map, hx]
     exact ⟨_, rfl, rfl, fun _ => rfl⟩
 
+/-! ### T3.2i helpers: template material of one kernel layer -/
+
+/-- helper: a forest relation at addresses gives the column and local-suffix relations. -/
+theorem ker_cl_of_forestAt {T T' : Forest} {p p' : List (Nat × Nat)} (r d c : Nat)
+    (h : T.forestAt p = (T'.forestAt p').map (shift r d)) :
+    T.colAt ⟨p, c⟩ = (T'.colAt ⟨p', c⟩).map (Tree.mapCol (shiftVal r d)) ∧
+      localSuffix T ⟨p, c⟩ = shift r d (localSuffix T' ⟨p', c⟩) := by
+  unfold Tree.colAt localSuffix
+  simp only
+  rw [h]
+  cases T'.forestAt p' with
+  | none => simp [Tree.empty, Tree.cols, shift, Tree.map, Tree.mapCols]
+  | some F =>
+    simp only [Option.map_some, Option.bind_some, Option.getD_some]
+    unfold shift
+    rw [ker_map_cols, List.getElem?_map]
+    refine ⟨rfl, ?_⟩
+    simp only [Tree.map]
+    rw [treeMapCols_eq_map, List.map_drop]
+
+theorem ker_cl_of_forestAt_eq {T T' : Forest} {p p' : List (Nat × Nat)} (c : Nat)
+    (h : T.forestAt p = T'.forestAt p') :
+    T.colAt ⟨p, c⟩ = T'.colAt ⟨p', c⟩ ∧ localSuffix T ⟨p, c⟩ = localSuffix T' ⟨p', c⟩ := by
+  unfold Tree.colAt localSuffix
+  simp only
+  rw [h]
+  exact ⟨rfl, rfl⟩
+
+/-- helper: query material of the kernel is the query material of `A`. -/
+theorem ker_kernel_qmat {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (X : Forest) {a a' : ColAddr} (hq : isQMat sd a = true) (ha' : kerCol sd rd a = some a') :
+    (kernel A sd rd X).colAt a' = A.colAt a ∧ localSuffix (kernel A sd rd X) a' = localSuffix A a := by
+  have hq' := hq
+  unfold isQMat at hq'
+  rw [Bool.and_eq_true, beq_iff_eq] at hq'
+  obtain ⟨h1, h2⟩ := hq'
+  unfold kerCol at ha'
+  rw [if_pos hq] at ha'
+  cases hd : a.path.drop sd.col.path.length with
+  | nil => rw [hd] at h2; cases h2
+  | cons x rest =>
+    obtain ⟨ci, j⟩ := x
+    rw [hd] at h2 ha'
+    simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h2
+    simp only [Option.some.injEq] at ha'
+    subst ha'
+    obtain ⟨a1, a2⟩ := a
+    simp only at h1 hd h2 ⊢
+    have hp : a1 = sd.col.path ++ (sd.col.col, j) :: rest := by
+      rw [← List.take_append_drop sd.col.path.length a1, h1, hd, h2.1]
+    subst hp
+    apply ker_cl_of_forestAt_eq
+    obtain ⟨V, hV0, -⟩ := ker_kernel_col0 A sd rd X
+    obtain ⟨G, hG, -, hGc⟩ := ker_stopForest hsd
+    unfold Tree.colAt at hV0
+    simp only [Tree.forestAt, Option.bind_some] at hV0
+    rw [ker_forestAt_cons, hV0, Option.bind_some, Tree.forestAt_append, hG, Option.bind_some,
+      ker_forestAt_cons, hGc, Option.bind_some, List.getElem?_append_left h2.2,
+      List.getElem?_append_left h2.2]
+
+/-- helper: the kernel output in explicit form (filling identity, root data unfolded). -/
+theorem ker_kernel_explicit {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (X : Forest) :
+    (context A sd X).forestAt rd.col.path =
+        some (replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd)) ∧
+      kernel A sd rd X = Tree.node ((sd.Q ++ Tree.mapCol (shiftVal sd.r (period sd))
+        ((((replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd)).cols[rd.idx]?).getD []).drop
+          rd.cursor)) ::
+        ((replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd)).cols.drop (rd.idx + 1)).map
+          (Tree.mapCol (shiftVal sd.r (period sd)))) := by
+  obtain ⟨hF, -⟩ := ker_route_rootForest hsd hrd
+  obtain ⟨hpath, hle⟩ := ker_rootPath hsd hrd
+  have hidx := (rootData_spec hsd hrd).2.2.1
+  have hC : (context A sd X).forestAt rd.col.path =
+      some (replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd)) := by
+    rw [hpath] at hF ⊢
+    rw [ker_context_forestAt hsd X rd.layer hle _ hF]
+    rfl
+  refine ⟨hC, ?_⟩
+  rw [filling_identity hV hsd hrd X]
+  unfold rootTail
+  have hDcol : (context A sd X).colAt rd.col =
+      (replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd)).cols[rd.idx]? := by
+    unfold Tree.colAt; rw [hC, Option.bind_some, hidx]
+  rw [hDcol, hC, Option.getD_some, ker_shift_node, List.map_cons]
+  rfl
+
+/-- helper: root-tail material of the kernel is that of the context, shifted by `T_d`. -/
+theorem ker_kernel_roottail {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (X : Forest) {a a' : ColAddr}
+    (hq : isQMat sd a = false) (hne : a ≠ rd.col) (ha' : kerCol sd rd a = some a') :
+    (kernel A sd rd X).colAt a' =
+        ((context A sd X).colAt a).map (Tree.mapCol (shiftVal sd.r (period sd))) ∧
+      localSuffix (kernel A sd rd X) a' =
+        shift sd.r (period sd) (localSuffix (context A sd X) a) := by
+  obtain ⟨hC, hK⟩ := ker_kernel_explicit hV hsd hrd X
+  have hidx := (rootData_spec hsd hrd).2.2.1
+  generalize replaceAt 0 0 X (holeDepth sd rd) (rootForest A rd) = FD at hC hK
+  obtain ⟨fcs⟩ := FD
+  simp only [Tree.cols] at hK
+  rw [hK]
+  unfold kerCol at ha'
+  rw [if_neg (by simp [hq])] at ha'
+  by_cases hρ : a.path.take rd.col.path.length = rd.col.path
+  swap
+  · rw [if_neg hρ] at ha'; cases ha'
+  rw [if_pos hρ] at ha'
+  obtain ⟨a1, a2⟩ := a
+  simp only at hρ ha' ⊢
+  have hsplit : a1 = rd.col.path ++ a1.drop rd.col.path.length := by
+    conv_lhs => rw [← List.take_append_drop rd.col.path.length a1, hρ]
+  cases hd : a1.drop rd.col.path.length with
+  | nil =>
+    rw [hd] at ha' hsplit
+    rw [List.append_nil] at hsplit
+    subst hsplit
+    simp only at ha'
+    split_ifs at ha' with hc1 hc2
+    · exact absurd (by rw [hc1, hidx]) hne
+    · simp only [Option.some.injEq] at ha'
+      subst ha'
+      obtain ⟨c', hc'⟩ : ∃ c', a2 - rd.idx = c' + 1 := ⟨a2 - rd.idx - 1, by omega⟩
+      have ha2 : a2 = rd.idx + 1 + c' := by omega
+      unfold Tree.colAt localSuffix
+      simp only [Tree.forestAt, Option.bind_some, Option.getD_some, hC]
+      rw [hc']
+      show (List.map _ (fcs.drop (rd.idx + 1)))[c']? = Option.map _ fcs[a2]? ∧
+        Tree.node ((List.map _ (fcs.drop (rd.idx + 1))).drop c') = shift _ _ (Tree.node (fcs.drop a2))
+      rw [List.getElem?_map, List.getElem?_drop, ← ha2, List.map_drop, List.drop_drop, ← ha2]
+      refine ⟨rfl, ?_⟩
+      unfold shift; simp only [Tree.map]; rw [treeMapCols_eq_map, List.map_drop]
+  | cons x rest =>
+    obtain ⟨ci, e⟩ := x
+    rw [hd] at ha' hsplit
+    subst hsplit
+    simp only at ha'
+    split_ifs at ha' with hc1 hc2
+    · simp only [Option.some.injEq] at ha'
+      subst ha'
+      apply ker_cl_of_forestAt
+      rw [ker_forestAt_cons, Tree.forestAt_append, hC, Option.bind_some, ker_forestAt_cons]
+      show (((sd.Q ++ _) :: _)[0]?.bind (·[sd.Q.length + (e - rd.cursor)]?)).bind _ = _
+      simp only [List.getElem?_cons_zero, Option.bind_some]
+      rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left, treeMapCol_eq_map,
+        List.getElem?_map, List.getElem?_drop, show rd.cursor + (e - rd.cursor) = e by omega,
+        hc1.1]
+      show _ = Option.map _ (((fcs[rd.idx]?).bind (·[e]?)).bind _)
+      cases fcs[rd.idx]? with
+      | none => simp
+      | some R =>
+        simp only [Option.getD_some, Option.bind_some]
+        cases R[e]? with
+        | none => rfl
+        | some y =>
+          simp only [Option.map_some, Option.bind_some]
+          exact ker_forestAt_map _ rest y.2
+    · simp only [Option.some.injEq] at ha'
+      subst ha'
+      apply ker_cl_of_forestAt
+      obtain ⟨ci', hci'⟩ : ∃ ci', ci - rd.idx = ci' + 1 := ⟨ci - rd.idx - 1, by omega⟩
+      have hci : ci = rd.idx + 1 + ci' := by omega
+      rw [hci', ker_forestAt_cons, Tree.forestAt_append, hC, Option.bind_some, ker_forestAt_cons]
+      show (((_ :: List.map _ (fcs.drop (rd.idx + 1)))[ci' + 1]?).bind (·[e]?)).bind _ =
+        Option.map _ (((fcs[ci]?).bind (·[e]?)).bind _)
+      rw [List.getElem?_cons_succ, List.getElem?_map, List.getElem?_drop, ← hci]
+      cases fcs[ci]? with
+      | none => rfl
+      | some R =>
+        simp only [Option.map_some, Option.bind_some]
+        rw [treeMapCol_eq_map, List.getElem?_map]
+        cases R[e]? with
+        | none => rfl
+        | some y =>
+          simp only [Option.map_some, Option.bind_some]
+          exact ker_forestAt_map _ rest y.2
+
+/-- helper: off the hole route, non-query template columns are unchanged by the context. -/
+theorem ker_context_offroute {A : Forest} {sd : StopData} (hsd : stopData A = some sd) (X : Forest)
+    {a : ColAddr} (ha : a ∈ A.colAddrs) (hq : isQMat sd a = false) (hroute : ¬ OnHoleRoute sd a) :
+    (context A sd X).forestAt a.path = A.forestAt a.path := by
+  rcases ker_path_cases a.path sd.col.path with hpre | ⟨x, rest, hx⟩ | ⟨j, hj1, hj2, hj3, hj4⟩
+  · exact absurd hpre hroute
+  · obtain ⟨c', e'⟩ := x
+    obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+    obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A a).1 ha)
+    unfold Tree.colAt at hcol
+    rw [hx, Tree.forestAt_append, hG, Option.bind_some, ker_forestAt_cons] at hcol
+    cases hgc : G.cols[c']? with
+    | none => rw [hgc] at hcol; cases hcol
+    | some gc =>
+      rw [hgc, Option.bind_some] at hcol
+      have hc'lt : c' < sd.col.col + 1 := by
+        rw [← hGlen]; by_contra h; rw [List.getElem?_eq_none (by omega)] at hgc; cases hgc
+      rcases Nat.lt_or_ge c' sd.col.col with hlt | hge
+      · rw [hx]; exact ker_context_forestAt_stop hsd X rest (Or.inl hlt)
+      · exfalso
+        have hc' : c' = sd.col.col := by omega
+        subst hc'
+        rw [hGc] at hgc
+        cases hgc
+        rcases Nat.lt_or_ge e' sd.Q.length with he | he
+        · -- query material
+          have : isQMat sd a = true := by
+            unfold isQMat
+            rw [hx, List.take_left' rfl, List.drop_left' rfl]
+            simp [he]
+          rw [hq] at this; cases this
+        · cases he' : (sd.Q ++ [(sd.r, Tree.empty)])[e']? with
+          | none => rw [he'] at hcol; cases hcol
+          | some y =>
+            rw [he', Option.bind_some] at hcol
+            have hy : y = (sd.r, Tree.empty) := by
+              rw [List.getElem?_append_right he] at he'
+              rcases Nat.lt_or_ge (e' - sd.Q.length) 1 with h1 | h1
+              · rw [show e' - sd.Q.length = 0 by omega] at he'
+                simp at he'; exact he'.symm
+              · rw [List.getElem?_eq_none (by simp; omega)] at he'; cases he'
+            subst hy
+            cases rest with
+            | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at hcol
+            | cons z zs =>
+              obtain ⟨z1, z2⟩ := z
+              simp [ker_forestAt_cons, Tree.empty, Tree.cols] at hcol
+  · exact ker_context_forestAt_diverge hsd X hj2 hj1 hj3 hj4
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
@@ -2758,7 +2983,37 @@ theorem colAt_phaseCol {A B : Forest} {sd : StopData} {rd : RootData} {n i : Nat
     (hL : InL A) (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd)
     (hrd : rootData A = some rd) (hB : expand A n = some B) (hi : 1 ≤ i ∧ i ≤ n)
     (ha : IsTmplCol A sd rd a) (hroute : ¬ OnHoleRoute sd a) (hc : phaseCol sd rd i a = some c) :
-    B.colAt c = (A.colAt a).map (Tree.mapCol (shiftVal sd.r (phaseOff sd i a * period sd))) := by sorry
+    B.colAt c = (A.colAt a).map (Tree.mapCol (shiftVal sd.r (phaseOff sd i a * period sd))) := by
+  have hkd := ker_kernelDefined hL hsd hrd
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨hBeq, -⟩ := ker_expand_out hV hI hk hsd hrd hB
+  subst hBeq
+  unfold phaseCol at hc
+  cases hk' : kerCol sd rd a with
+  | none => rw [hk'] at hc; cases hc
+  | some a' =>
+    rw [hk', Option.map_some, Option.some.injEq] at hc
+    subst hc
+    rw [(ker_context_law hsd _ _).1]
+    have hit := (ker_iterate_law hsd hrd hkd (i - 1) (n - (i - 1)) a').1
+    rw [show n - (i - 1) + (i - 1) = n by omega] at hit
+    rw [hit, show n - (i - 1) = (n - i) + 1 by omega, Function.iterate_succ_apply']
+    unfold phaseOff
+    by_cases hq : isQMat sd a = true
+    · rw [if_pos hq, (ker_kernel_qmat hsd _ hq hk').1]
+    · rw [if_neg hq]
+      simp only [Bool.not_eq_true] at hq
+      rw [(ker_kernel_roottail hV hsd hrd _ hq ha.2.2.1 hk').1]
+      have hoff := ker_context_offroute hsd ((kernel A sd rd)^[n - i] Tree.empty) ha.1 hq hroute
+      have hcol : (context A sd ((kernel A sd rd)^[n - i] Tree.empty)).colAt a = A.colAt a := by
+        unfold Tree.colAt; rw [hoff]
+      rw [hcol, Option.map_map]
+      congr 1
+      funext x
+      rw [Function.comp, treeMapCol_map, shiftVal_add]
+      congr 2
+      obtain ⟨i', rfl⟩ : ∃ i', i = i' + 1 := ⟨i - 1, by omega⟩
+      rw [Nat.add_sub_cancel, Nat.succ_mul, Nat.add_comm]
 
 -- T3.2i: the head column of layer `i`: `τ_{i−1}(Q)` then the restored entries of `U` with
 -- phase-`i` heights (the last one a continuation in the owner case)
@@ -2813,7 +3068,30 @@ theorem localSuffix_phase {A B A' : Forest} {sd : StopData} {rd : RootData} {n i
     (ha : IsTmplCol A sd rd a) (hc : phaseCol sd rd i a = some c)
     (hA' : expand A (n - i) = some A') :
     localSuffix B c = (if isQMat sd a then shift sd.r ((i - 1) * period sd) (localSuffix A a)
-      else shift sd.r (i * period sd) (localSuffix A' a)) := by sorry
+      else shift sd.r (i * period sd) (localSuffix A' a)) := by
+  have hkd := ker_kernelDefined hL hsd hrd
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨hBeq, -⟩ := ker_expand_out hV hI hk hsd hrd hB
+  obtain ⟨hA'eq, -⟩ := ker_expand_out hV hI hk hsd hrd hA'
+  subst hBeq hA'eq
+  unfold phaseCol at hc
+  cases hk' : kerCol sd rd a with
+  | none => rw [hk'] at hc; cases hc
+  | some a' =>
+    rw [hk', Option.map_some, Option.some.injEq] at hc
+    subst hc
+    rw [(ker_context_law hsd _ _).2]
+    have hit := (ker_iterate_law hsd hrd hkd (i - 1) (n - (i - 1)) a').2
+    rw [show n - (i - 1) + (i - 1) = n by omega] at hit
+    rw [hit, show n - (i - 1) = (n - i) + 1 by omega, Function.iterate_succ_apply']
+    by_cases hq : isQMat sd a = true
+    · rw [if_pos hq, (ker_kernel_qmat hsd _ hq hk').2]
+    · rw [if_neg hq]
+      simp only [Bool.not_eq_true] at hq
+      rw [(ker_kernel_roottail hV hsd hrd _ hq ha.2.2.1 hk').2, shift_add]
+      congr 1
+      obtain ⟨i', rfl⟩ : ∃ i', i = i' + 1 := ⟨i - 1, by omega⟩
+      rw [Nat.add_sub_cancel, Nat.succ_mul]
 
 -- T3.2i: the local suffix at the head of layer `i` is the shifted remaining iterate
 -- `τ_{i−1}(F^{n−i+1}(∅))`
