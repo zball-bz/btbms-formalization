@@ -2513,13 +2513,301 @@ theorem headCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi 
     · rw [hlenK, hKp, List.length_take]
       omega
 
+-- G9 (helper): splitting an address path at a step
+theorem path_split {π : List (Nat × Nat)} {k ck ik : Nat} (hk : π[k]? = some (ck, ik)) :
+    π = π.take k ++ (ck, ik) :: π.drop (k + 1) := by
+  have hkl : k < π.length := (List.getElem?_eq_some_iff.mp hk).1
+  have hget : π[k] = (ck, ik) := by
+    rw [List.getElem?_eq_getElem hkl] at hk
+    exact Option.some.inj hk
+  conv_lhs => rw [← List.take_append_drop k π, List.drop_eq_getElem_cons hkl, hget]
+
+-- G9 (helper): a step into an existing forest has an existing column
+theorem forestAt_cons_some {G F : Forest} {ck ik : Nat} {rest : List (Nat × Nat)}
+    (h : G.forestAt ((ck, ik) :: rest) = some F) : ck < G.cols.length := by
+  simp only [Tree.forestAt] at h
+  cases hc : G.cols[ck]? with
+  | none => rw [hc] at h; simp at h
+  | some _ => exact (List.getElem?_eq_some_iff.mp hc).1
+
+-- G9 (helper): the stack columns of a column of `E` are columns of `E`
+theorem mem_colAddrs_of_onStack {E : Forest} {c o : ColAddr} (hc : c ∈ E.colAddrs)
+    (ho : c.OnStack o) : o ∈ E.colAddrs := by
+  rw [Tree.mem_colAddrs_iff] at hc ⊢
+  unfold Tree.colAt at hc ⊢
+  cases hF : E.forestAt c.path with
+  | none => rw [hF] at hc; cases hc
+  | some F =>
+    rw [hF] at hc
+    simp only [Option.bind_some] at hc
+    rcases ho with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+    · have hsplit := path_split hk
+      rw [hsplit, Tree.forestAt_append] at hF
+      cases hG : E.forestAt (c.path.take k) with
+      | none => rw [hG] at hF; cases hF
+      | some G =>
+        rw [hG] at hF
+        simp only [Option.bind_some] at hF
+        have hck := forestAt_cons_some hF
+        rw [hp, hG]
+        simp only [Option.bind_some]
+        rw [List.getElem?_eq_getElem (by omega)]
+        rfl
+    · rw [hp, hF]
+      simp only [Option.bind_some]
+      have : c.col < F.cols.length := by
+        cases h : F.cols[c.col]? with
+        | none => rw [h] at hc; cases hc
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      rw [List.getElem?_eq_getElem (by omega)]
+      rfl
+
+-- G9 (helper): the stopping column is on the stack of no non-Q column of `A`
+theorem not_onStack_sdcol (S : OrdStep) {a : ColAddr} (ha : a ∈ S.A.colAddrs)
+    (haq : isQMat S.sd a = false) : ¬ a.OnStack S.sd.col := by
+  intro hst
+  obtain ⟨hcol, -, -, hroute, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, F, hF, hFlen⟩ := (Scan.mem_routeCols_iff _ _).mp hroute
+  have hcolF : F.cols[S.sd.col.col]? = some (S.sd.Q ++ [(S.sd.r, Tree.empty)]) := by
+    unfold Tree.colAt at hcol
+    rw [hF] at hcol
+    simpa using hcol
+  rw [Tree.mem_colAddrs_iff] at ha
+  unfold Tree.colAt at ha
+  rcases hst with ⟨k, ck, ik, hk, hp, hle⟩ | ⟨hp, hlt⟩
+  · have hsplit := path_split hk
+    have hkl : k < a.path.length := (List.getElem?_eq_some_iff.mp hk).1
+    rw [← hp] at hsplit
+    rw [hsplit, Tree.forestAt_append, hF] at ha
+    simp only [Option.bind_some] at ha
+    cases hG : F.forestAt ((ck, ik) :: a.path.drop (k + 1)) with
+    | none => rw [hG] at ha; cases ha
+    | some G =>
+      rw [hG] at ha
+      simp only [Option.bind_some] at ha
+      have hck := forestAt_cons_some hG
+      have hck' : ck = S.sd.col.col := by omega
+      subst hck'
+      simp only [Tree.forestAt, hcolF, Option.bind_some] at hG
+      rcases Nat.lt_trichotomy ik S.sd.Q.length with hik | hik | hik
+      · -- inside a query height: `a` would be Q-material
+        apply Bool.false_ne_true
+        rw [← haq]
+        unfold isQMat
+        rw [hsplit, List.take_left, List.drop_left]
+        simp [hik]
+      · -- inside the empty height of `(r, ∅)`
+        subst hik
+        rw [List.getElem?_append_right le_rfl, Nat.sub_self] at hG
+        simp only [List.getElem?_cons_zero] at hG
+        cases hrest : a.path.drop (k + 1) with
+        | nil =>
+          rw [hrest] at hG
+          simp only [Tree.forestAt, Option.some.injEq] at hG
+          subst hG
+          simp [Tree.empty, Tree.cols] at ha
+        | cons q rest =>
+          obtain ⟨c', e'⟩ := q
+          rw [hrest] at hG
+          simp [Tree.forestAt, Tree.empty, Tree.cols] at hG
+      · rw [List.getElem?_eq_none (by simp; omega)] at hG
+        simp at hG
+  · rw [← hp, hF] at ha
+    simp only [Option.bind_some] at ha
+    have : a.col < F.cols.length := by
+      cases h : F.cols[a.col]? with
+      | none => rw [h] at ha; cases ha
+      | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+    omega
+
+-- G9 (helper): the stack of an iterated placement
+theorem iterate_underCol_onStack_cases (g : ColAddr) (n : Nat) (z w : ColAddr)
+    (h : ((underCol g)^[n] z).OnStack w) :
+    (∃ j < n, ∃ w₂, g.OnStack w₂ ∧ w = (underCol g)^[j] w₂) ∨
+      (∃ w₂, z.OnStack w₂ ∧ w = (underCol g)^[n] w₂) := by
+  induction n generalizing w with
+  | zero => exact Or.inr ⟨w, h, rfl⟩
+  | succ n ih =>
+    rw [Function.iterate_succ_apply'] at h
+    rcases (onStack_underCol g _ _).mp h with h1 | ⟨w', hw', rfl⟩
+    · exact Or.inl ⟨0, by omega, w, h1, rfl⟩
+    · rcases ih w' hw' with ⟨j, hj, w₂, hw₂, rfl⟩ | ⟨w₂, hw₂, rfl⟩
+      · exact Or.inl ⟨j + 1, by omega, w₂, hw₂, by rw [Function.iterate_succ_apply']⟩
+      · exact Or.inr ⟨w₂, hw₂, by rw [Function.iterate_succ_apply']⟩
+
+-- G9 (helper): a literal cap keeps a prefix of the parents of every stack column
+theorem parents_litCap_subset {B : Forest} {c o : ColAddr} {k p : Nat} (hc : c ∈ B.colAddrs)
+    (ho : c.OnStack o) {q : Nat} (hq : q ∈ parents (litCap B c k p) o) : q ∈ parents B o := by
+  obtain ⟨h1, h2⟩ := colAt_litCap_onStack (k := k) (p := p) hc ho
+  cases hce : o.container c with
+  | none =>
+    have := h2 hce
+    simp only [parents, this] at hq ⊢
+    exact hq
+  | some e =>
+    rw [(h1 e hce).1] at hq
+    exact List.mem_of_mem_take hq
+
+-- G9 (helper): shifted parents are `< r` or `≥ r + δ`
+theorem shiftVal_dich (r δ p : Nat) : shiftVal r δ p < r ∨ r + δ ≤ shiftVal r δ p := by
+  unfold shiftVal
+  split_ifs <;> omega
+
+-- G9 (helper): every parent of a mapped column is an image
+theorem parents_of_mapCol {E : Forest} {o : ColAddr} {f : Nat → Nat} {C : Option Column}
+    (h : E.colAt o = C.map (Tree.mapCol f)) : ∀ p ∈ parents E o, ∃ p₀, p = f p₀ := by
+  intro p hp
+  simp only [parents, h] at hp
+  cases C with
+  | none => simp at hp
+  | some col =>
+    simp only [Option.map_some, Option.getD_some, mapCol_eq_map, List.map_map, List.mem_map] at hp
+    obtain ⟨x, -, rfl⟩ := hp
+    exact ⟨x.1, rfl⟩
+
 -- G9.4e: every column on the stack of `c` above `s_φ` has parents `< r` or `≥ s_φ` in `K`
 -- (generalizes T3.8ln from `c` to its stack)
 theorem stack_parent_dichotomy (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
     (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
     (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ) {x : Nat} {o : ColAddr}
     (hx : S.s (phaseOff S.sd i a) < x) (ho : c.resolve 0 x = some o) :
-    ∀ p ∈ parents (litCap S.B c k ρ) o, p < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ p := by sorry
+    ∀ p ∈ parents (litCap S.B c k ρ) o, p < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ p := by
+  obtain ⟨hst, hnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp ho
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  obtain ⟨b₀, hb₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+  have hcdef : c = underCol S.sd.col ((underCol kh)^[i - 1] b₀) := by
+    rw [phaseCol_eq_iterate S hkh hb₀] at hc
+    exact (Option.some.inj hc).symm
+  have hφ1 : 1 ≤ phaseOff S.sd i a := by
+    unfold phaseOff
+    split_ifs with hqa
+    · have := hq hqa; omega
+    · omega
+  have hφi : phaseOff S.sd i a ≤ i := by unfold phaseOff; split_ifs <;> omega
+  have hφi' : i - 1 ≤ phaseOff S.sd i a := by unfold phaseOff; split_ifs <;> omega
+  have hd : kh.num 0 = S.d := by
+    have := num_kerCol_tail S hkh hsdq
+    simp only [OrdStep.d, period]
+    omega
+  have htd : S.sd.t = S.sd.r + S.d := by simp only [OrdStep.d, period]; omega
+  have hsφ : S.s (phaseOff S.sd i a) = S.sd.r + phaseOff S.sd i a * S.d := rfl
+  intro p hp
+  have hpB := parents_litCap_subset (mem_colAddrs_of_upward hup) hst hp
+  have hshift : ∀ C : Option Column,
+      S.B.colAt o = C.map (Tree.mapCol (shiftVal S.sd.r (phaseOff S.sd i a * S.d))) →
+      p < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ p := by
+    intro C hC
+    obtain ⟨p₀, rfl⟩ := parents_of_mapCol hC p hpB
+    exact shiftVal_dich _ _ _
+  rw [hcdef] at hst
+  rcases (onStack_underCol _ _ _).mp hst with h1 | ⟨o₁, ho₁, rfl⟩
+  · -- on the stopping column's stack: below `t = s_1 ≤ s_φ`
+    exfalso
+    have h2 := ColAddr.num_lt_of_onStack 0 h1
+    have h3 : 1 * S.d ≤ phaseOff S.sd i a * S.d := Nat.mul_le_mul_right _ hφ1
+    omega
+  · rcases iterate_underCol_onStack_cases kh (i - 1) b₀ o₁ ho₁ with
+      ⟨j, hj, w₂, hw₂, rfl⟩ | ⟨w₂, hw₂, rfl⟩
+    · -- a phase-`(j+1)` copy of a column of the stopping column's stack
+      obtain ⟨o₀, ho₀, hr₀, hq₀, hk₀⟩ := (onStack_kerCol_tail S hkh hsdq w₂).mp hw₂
+      have hn₀ := ColAddr.num_lt_of_onStack 0 ho₀
+      have hnw := num_kerCol_tail S hk₀ hq₀
+      have hxeq : x = S.sd.t + j * S.d + w₂.num 0 := by
+        rw [← hnum, num_underCol, num_iterate_underCol, hd, ← ht]
+        omega
+      have hjφ : j + 1 = phaseOff S.sd i a := by
+        have hlt : phaseOff S.sd i a * S.d < (j + 2) * S.d := by
+          rw [Nat.add_mul]; omega
+        have := Nat.lt_of_mul_lt_mul_right hlt
+        omega
+      have hr₀' : S.sd.r < o₀.num 0 := by
+        rcases Nat.eq_or_lt_of_le hr₀ with h | h
+        · exfalso
+          have h5 : phaseOff S.sd i a * S.d = j * S.d + S.d := by
+            rw [← hjφ, Nat.succ_mul]
+          omega
+        · exact h
+      obtain ⟨hot, hoq⟩ := tmplCol_of_sdstack S hr₀' (by omega)
+        ((ColAddr.resolve_spec 0 _ _ _).mpr ⟨ho₀, rfl⟩)
+      obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := phaseOff S.sd i a) (by omega) hot hoq
+      have hcopy : S.copyCol (phaseOff S.sd i a) o₀ = underCol S.sd.col ((underCol kh)^[j] w₂) := by
+        simp only [OrdStep.copyCol, if_neg (show phaseOff S.sd i a ≠ 0 by omega)]
+        rw [phaseCol_eq_iterate S hkh hk₀, Option.getD_some, show phaseOff S.sd i a - 1 = j by omega]
+      rw [hcopy] at hZ
+      exact hshift _ hZ
+    · by_cases haq : isQMat S.sd a = true
+      · -- Q-material: the head of layer `i`, or a Q-material copy (phase `i − 1 = φ`)
+        have hφeq : phaseOff S.sd i a = i - 1 := by simp [phaseOff, haq]
+        rcases (onStack_kerCol_qmat S hb₀ haq w₂).mp hw₂ with rfl | ⟨o₀, ho₀, hq₀, hk₀⟩
+        · obtain ⟨col, hBcol, hlen, htake, hrest⟩ :=
+            colAt_head S.inL S.kind S.hsd S.hrd S.out hi (phaseCol_headCol S i)
+          rw [← headCol_eq S hkh] at hpB
+          simp only [parents, hBcol, Option.getD_some, List.mem_map] at hpB
+          obtain ⟨y, hy, rfl⟩ := hpB
+          obtain ⟨v, hv⟩ := List.mem_iff_getElem?.mp hy
+          by_cases hvm : v < S.sd.Q.length
+          · have h1 : (col.take S.sd.Q.length)[v]? = some y := by
+              rw [List.getElem?_take_of_lt hvm]; exact hv
+            rw [htake, mapCol_eq_map, List.getElem?_map] at h1
+            cases hQv : S.sd.Q[v]? with
+            | none => rw [hQv] at h1; cases h1
+            | some q =>
+              rw [hQv] at h1
+              simp only [Option.map_some, Option.some.injEq] at h1
+              rw [← h1, hsφ, hφeq]
+              exact shiftVal_dich _ _ _
+          · left
+            obtain ⟨v', rfl⟩ : ∃ v', v = S.sd.Q.length + v' := ⟨v - S.sd.Q.length, by omega⟩
+            have hvl : v' < (unconsumed S.A S.rd).length := by
+              have : S.sd.Q.length + v' < col.length := (List.getElem?_eq_some_iff.mp hv).1
+              omega
+            obtain ⟨y', hy', hy1, -⟩ := hrest v' _ (List.getElem?_eq_getElem hvl)
+            rw [hv, Option.some.injEq] at hy'
+            rw [hy', hy1]
+            exact unconsumed_parent_lt S (List.getElem?_eq_getElem hvl)
+        · have hot : IsTmplCol S.A S.sd S.rd o₀ := by
+            refine ⟨mem_colAddrs_of_onStack ha.1 ho₀, ?_, ?_, by rw [hk₀]; rfl⟩
+            · intro h; rw [h, hsdq] at hq₀; cases hq₀
+            · intro h; rw [h, isQMat_rdcol] at hq₀; cases hq₀
+          have hroute : ¬ OnHoleRoute S.sd o₀ := fun h => by
+            have := isQMat_of_short S.sd h.length_le
+            rw [hq₀] at this
+            cases this
+          have := colAt_phaseCol S.inL S.kind S.hsd S.hrd S.out hi hot hroute
+            (phaseCol_eq_iterate S hkh (i := i) hk₀)
+          rw [show phaseOff S.sd i o₀ = phaseOff S.sd i a by simp [phaseOff, hq₀, haq]] at this
+          exact hshift _ this
+      · -- root-tail material: a phase-`i` copy
+        have haq' : isQMat S.sd a = false := by simpa using haq
+        obtain ⟨o₀, ho₀, hr₀, hq₀, hk₀⟩ := (onStack_kerCol_tail S hb₀ haq' w₂).mp hw₂
+        have hφeq : phaseOff S.sd i a = i := by simp [phaseOff, haq']
+        have hne_rd : o₀ ≠ S.rd.col := by
+          intro h
+          rw [h, kerCol_rdcol, Option.some.injEq] at hk₀
+          subst hk₀
+          have hxeq : x = S.sd.t + (i - 1) * S.d := by
+            rw [← hnum, num_underCol, num_iterate_underCol, hd, ← ht]
+            simp [ColAddr.num]
+          have h5 : i * S.d = (i - 1) * S.d + S.d := by
+            rw [← Nat.succ_mul]; congr 1; omega
+          rw [hsφ, hφeq] at hx
+          omega
+        have hne_sd : o₀ ≠ S.sd.col := fun h => not_onStack_sdcol S ha.1 haq' (h ▸ ho₀)
+        have hot : IsTmplCol S.A S.sd S.rd o₀ :=
+          ⟨mem_colAddrs_of_onStack ha.1 ho₀, hne_sd, hne_rd, by rw [hk₀]; rfl⟩
+        obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := i) hi.2 hot hq₀
+        have hcopy : S.copyCol i o₀ = underCol S.sd.col ((underCol kh)^[i - 1] w₂) := by
+          simp only [OrdStep.copyCol, if_neg (show i ≠ 0 by omega)]
+          rw [phaseCol_eq_iterate S hkh hk₀, Option.getD_some]
+        rw [hcopy] at hZ
+        have hZ' : S.B.colAt (underCol S.sd.col ((underCol kh)^[i - 1] w₂)) =
+            ((context S.A S.sd Z).colAt o₀).map
+              (Tree.mapCol (shiftVal S.sd.r (phaseOff S.sd i a * S.d))) := by
+          rw [hφeq]; exact hZ
+        exact hshift _ hZ'
 
 /-! ## G9.5 — the invariant: low heads detour along copies of the old terminal-to-root path -/
 
