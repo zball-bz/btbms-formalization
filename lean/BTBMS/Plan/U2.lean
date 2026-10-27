@@ -2993,7 +2993,7 @@ theorem onStack_kerCol_tail_mp (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd 
 
 -- G9.4s4, backward direction
 theorem onStack_kerCol_tail_mpr (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
-    (hxq : isQMat S.sd x = false) {o o' : ColAddr} (hst : x.OnStack o) (hr : S.sd.r ≤ o.num 0)
+    (hxq : isQMat S.sd x = false) {o o' : ColAddr} (hst : x.OnStack o) (_hr : S.sd.r ≤ o.num 0)
     (hoq : isQMat S.sd o = false) (ho : kerCol S.sd S.rd o = some o') : x'.OnStack o' := by
   obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
   obtain ⟨sx, hxp, hxc⟩ := kerCol_tail_spec S hx hxq
