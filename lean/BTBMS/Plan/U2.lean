@@ -19886,7 +19886,55 @@ theorem aAt_ctx_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs)
 theorem aAt_tmpl_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
     (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd j a = some c) (i : Nat) :
     AAt S.B (activeKeys_D7_G3 S.B c) c i := by
-  sorry
+  intro p hp
+  rw [activeKeys_self_G3]
+  have hpp : PhasePair_D7_G3 S j a c (phaseOff S.sd j a) := Or.inl ⟨ha, hc, rfl⟩
+  have hpar := parents_phaseCol_D7_G3 S hj ha hc
+  rw [hpar, List.getElem?_map] at hp
+  obtain ⟨p0, hp0, rfl⟩ := Option.map_eq_some_iff.mp hp
+  have hiA : i < (parents S.A a).length := (List.getElem?_eq_some_iff.1 hp0).1
+  -- the keys before `i` are `κ_φ`-images
+  have hkeys : (actualKeys S.B c).take i =
+      kappaQ_G3 S.sd.r S.d (phaseOff S.sd j a) ((actualKeys S.A a).take i) := by
+    by_cases hroute : OnHoleRoute S.sd a
+    · have hq : isQMat S.sd a = false := by
+        cases hq : isQMat S.sd a with
+        | false => rfl
+        | true =>
+          exfalso
+          obtain ⟨q, rest, hqp, -⟩ := isQMat_spec_G3 S.sd hq
+          have := hroute.length_le
+          rw [hqp] at this
+          simp at this
+      have hφj : phaseOff S.sd j a = j := by simp [phaseOff, hq]
+      obtain ⟨-, hk⟩ := copyCol_content_F7_G3 S hj.2 ha hq (h := j)
+      have hcc : S.copyCol j a = c := by
+        simp [OrdData_G3.copyCol, show j ≠ 0 by omega, hc]
+      rw [hcc] at hk
+      rw [hφj]
+      exact hk i (fun e he => by have := container_sdcol_last_G3 S he; omega)
+    · obtain ⟨-, hk⟩ := phaseCol_content_closed_F7_G3 S hj ha hroute hc
+      rw [hk]; unfold kappaQ_G3; rw [List.map_take]
+  have hW : cutQuery (actualKeys S.B c) i =
+      kappaQ_G3 S.sd.r S.d (phaseOff S.sd j a) (cutQuery (actualKeys S.A a) i) := by
+    unfold cutQuery
+    rw [hkeys]
+    unfold kappaQ_G3
+    rw [nu_map (kappaQry_strictMono_G3 _ _ _)]
+  have hst : cutStart S.B c i =
+      shiftVal S.sd.r (phaseOff S.sd j a * S.d) (cutStart S.A a i) := by
+    obtain ⟨hra, hnum⟩ := phasePair_num_D7_G3 S hj hpp
+    unfold cutStart
+    split_ifs with hi0
+    · rw [hnum]; unfold shiftVal; rw [if_pos (by omega)]; omega
+    · rw [hpar, List.getElem?_map]
+      obtain ⟨q, hq⟩ : ∃ q, (parents S.A a)[i - 1]? = some q :=
+        ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      rw [hq]; rfl
+  have hA := aAt_active_of_inL_G3 S.inL (mem_colAddrs_of_parents hp0) i p0 hp0
+  rw [activeKeys_self_G3] at hA
+  rw [hW, hst]
+  exact phase_path_fwd_G3 S hj hpp (cutQuery_noninc _ _) (ne_top_of_mem_cutQuery_D7_G3 _ _ _) hA
 
 /-- T3.2r (G3), classes (d), (e), (f): tests of a head (query prefix: the old terminal tests;
 first restored entry: the terminal's last test and the root edge at `Z`; later restored entries:
