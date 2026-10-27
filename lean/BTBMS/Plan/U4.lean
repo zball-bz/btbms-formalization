@@ -1517,38 +1517,271 @@ theorem transfer_top {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w)
 
 /-! ## N4.9: (13) and (14) for the reflection hierarchy -/
 
+/-- N4.9a helper: the fixed values of a diagram below a coordinate `o` lie below some `m`
+with `0 < m < o`. -/
+theorem exists_bound_list {V : Type} (L : List V) (P : V → Prop) (σ : V → Ordinal.{u})
+    {o : Ordinal.{u}} (ho : IsLim o) (h : ∀ x ∈ L, P x → σ x < o) :
+    ∃ m, 0 < m ∧ m < o ∧ ∀ x ∈ L, P x → σ x < m := by
+  induction L with
+  | nil => exact ⟨1, zero_lt_one, Ordinal.one_lt_omega0.trans ho.omega0_lt, by simp⟩
+  | cons y L ih =>
+    obtain ⟨m, hm0, hmo, hm⟩ := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
+    by_cases hy : P y
+    · have hy' : σ y + 1 < o := ho.add_one_lt (h y List.mem_cons_self hy)
+      refine ⟨max m (σ y + 1), lt_max_of_lt_left hm0, max_lt hmo hy', ?_⟩
+      intro x hx hPx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact lt_max_of_lt_right (Order.lt_add_one_iff.2 le_rfl)
+      · exact lt_max_of_lt_left (hm x hx hPx)
+    · refine ⟨m, hm0, hmo, ?_⟩
+      intro x hx hPx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact absurd hPx hy
+      · exact hm x hx hPx
+
+/-- N4.9a helper: a coordinate is positive. -/
+theorem isLim_pos {o : Ordinal.{u}} (h : IsLim o) : 0 < o :=
+  Ordinal.omega0_pos.trans h.omega0_lt
+
+/-- N4.9a helper: the points of `M w` below `m` number at most `|m|`. -/
+theorem mk_setOf_val_lt_le (w m : Ordinal.{u}) :
+    Cardinal.mk {x : M w | x.val < m} ≤ Cardinal.lift.{u + 1} m.card := by
+  rw [← Cardinal.mk_Iio_ordinal]
+  refine Cardinal.mk_le_of_injective
+    (f := fun x : {x : M w | x.val < m} => (⟨x.1.val, x.2⟩ : Set.Iio m)) ?_
+  intro a b h
+  exact Subtype.ext (Carrier.ext (congrArg Subtype.val h))
+
 /-- N4.9a (13): `Elem κ w` for an uncountable cardinal `κ` and a limit `w > κ` (S-1). -/
 theorem card_elem (κ : Cardinal.{u}) (w : Ordinal.{u}) (hκ : ℵ₀ < κ) (hw : IsLim w)
-    (hκw : κ.ord < w) : prims.Elem κ.ord w := by sorry
+    (hκw : κ.ord < w) : prims.Elem κ.ord w := by
+  classical
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  refine elem_iff.2 ⟨hκl, hw, hκw.le, ?_⟩
+  intro V D F σ hσ hreal
+  obtain ⟨m, hm0, hmκ, hm⟩ := exists_bound_list D.vars F σ hκl hσ
+  have hw0 : 0 < w := isLim_pos hw
+  let S := hull w hw0 {x : M w | x.val < m}
+  have hmem : ∀ o (ho : o < m), (⟨o, ho.trans (hmκ.trans hκw)⟩ : M w) ∈ S :=
+    fun o ho => subset_hull w hw0 _ ho
+  obtain ⟨ν, π, -, -, hfix, hcard⟩ := condensation S
+  have hνκ : ν < κ.ord := by
+    rw [Cardinal.lt_ord, ← Cardinal.lift_lt.{_, u + 1}, hcard]
+    refine (card_hull_le w hw0 _).trans_lt (max_lt (Cardinal.aleph0_lt_lift.2 hκ) ?_)
+    exact (mk_setOf_val_lt_le w m).trans_lt (Cardinal.lift_lt.2 (Cardinal.lt_ord.1 hmκ))
+  have hpt : ∀ o (ho : o < m), (π ⟨⟨o, ho.trans (hmκ.trans hκw)⟩, hmem o ho⟩).val = o :=
+    fun o ho => hfix _ fun o' ho' => ⟨⟨⟨o', _⟩, hmem o' (ho'.trans ho)⟩, rfl⟩
+  let p : V → S := fun x => if h : x ∈ D.vars ∧ F x then
+      ⟨⟨σ x, (hm x h.1 h.2).trans (hmκ.trans hκw)⟩, hmem (σ x) (hm x h.1 h.2)⟩
+    else ⟨⟨0, hm0.trans (hmκ.trans hκw)⟩, hmem 0 hm0⟩
+  have hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ x := by
+    intro x hx hF
+    have h : x ∈ D.vars ∧ F x := ⟨hx, hF⟩
+    have hpx : p x = ⟨_, hmem (σ x) (hm x hx hF)⟩ := dif_pos h
+    rw [hpx]
+    exact ⟨rfl, hpt _ (hm x hx hF)⟩
+  exact Diagram.realizableBelow_mono _ _ _ _ hνκ.le (transfer_top S π D F σ σ p hp hreal)
 
 /-- N4.9b: the hulls `H_r = hull(Iio r ∪ {κ})` in `M_w`. -/
 noncomputable def hullAt (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (r : Ordinal.{u}) :
     lang.ElementarySubstructure (M w) :=
   hull w hw {x | x.val < r ∨ x.val = κ.ord}
 
+/-- N4.9b helper: for `r < κ`, the hull `H_r` has fewer than `κ` points. -/
+theorem card_hullAt_lt (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
+    {r : Ordinal.{u}} (hr : r < κ.ord) :
+    Cardinal.mk (hullAt κ w hw r) < Cardinal.lift.{u + 1} κ := by
+  have hκ' : ℵ₀ < Cardinal.lift.{u + 1} κ := Cardinal.aleph0_lt_lift.2 hκ
+  unfold hullAt
+  refine (card_hull_le w hw _).trans_lt (max_lt hκ' ?_)
+  have hs : {x : M w | x.val < r ∨ x.val = κ.ord} =
+      {x : M w | x.val < r} ∪ {x : M w | x.val = κ.ord} := Set.ofPred_or
+  rw [hs]
+  refine (Cardinal.mk_union_le _ _).trans_lt (Cardinal.add_lt_of_lt hκ'.le ?_ ?_)
+  · exact (mk_setOf_val_lt_le w r).trans_lt (Cardinal.lift_lt.2 (Cardinal.lt_ord.1 hr))
+  · refine lt_of_le_of_lt ?_ (Cardinal.one_lt_aleph0.trans hκ')
+    rw [Cardinal.le_one_iff_subsingleton]
+    exact ⟨fun a b => Subtype.ext (Carrier.ext (a.2.trans b.2.symm))⟩
+
 /-- N4.9b: for regular uncountable `κ`, `H_r ∩ κ` is bounded below `κ` when `r < κ`. -/
 theorem hullAt_bounded (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
     (hreg : κ.IsRegular) (hκw : κ.ord < w) {r : Ordinal.{u}} (hr : r < κ.ord) :
     ∃ f : Ordinal.{u}, r < f ∧ f < κ.ord ∧
-      ∀ y : hullAt κ w hw r, (y : M w).val < κ.ord → (y : M w).val < f := by sorry
+      ∀ y : hullAt κ w hw r, (y : M w).val < κ.ord → (y : M w).val < f := by
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  let T := {y : hullAt κ w hw r // (y : M w).val < κ.ord}
+  have hT : Cardinal.lift.{u} (Cardinal.mk T) < (Ordinal.lift.{u + 1} κ.ord).cof := by
+    rw [← Ordinal.lift_cof, hreg.cof_ord]
+    have := (Cardinal.mk_subtype_le (fun y : hullAt κ w hw r => (y : M w).val < κ.ord)).trans_lt
+      (card_hullAt_lt κ w hw hκ hr)
+    exact (le_of_eq (Cardinal.lift_id'.{u, u + 1} _)).trans_lt this
+  have hsup := Ordinal.lift_iSup_add_one_lt_of_lt_cof (f := fun y : T => (y.1 : M w).val) hT
+    (fun y => y.2)
+  refine ⟨max (r + 1) (⨆ y : T, (y.1 : M w).val + 1),
+    lt_max_of_lt_left (Order.lt_add_one_iff.2 le_rfl), max_lt (hκl.add_one_lt hr) hsup, ?_⟩
+  intro y hy
+  have hbdd : BddAbove (Set.range fun y : T => (y.1 : M w).val + 1) :=
+    ⟨κ.ord, by rintro _ ⟨i, rfl⟩; exact (hκl.add_one_lt i.2).le⟩
+  exact lt_max_of_lt_right
+    ((Order.lt_add_one_iff.2 le_rfl).trans_le (le_ciSup hbdd (⟨y, hy⟩ : T)))
 
 /-- N4.9b: the club of reflection points: limits `x < κ` whose hull meets `κ` exactly in `x`. -/
 def reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) : Set (Set.Iio κ.ord) :=
   {x | IsLim x.1 ∧ ∀ y : hullAt κ w hw x.1, (y : M w).val < κ.ord → (y : M w).val < x.1}
 
+/-- N4.9b helper: the generators of `H_r` grow with `r`. -/
+theorem hullAt_gen_mono (κ : Cardinal.{u}) (w : Ordinal.{u}) {r r' : Ordinal.{u}} (h : r ≤ r') :
+    {x : M w | x.val < r ∨ x.val = κ.ord} ⊆ {x : M w | x.val < r' ∨ x.val = κ.ord} :=
+  fun _ hx => hx.imp (fun h' => h'.trans_le h) id
+
 /-- N4.9b: `reflPoints` is a club. -/
 theorem isClub_reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
-    (hreg : κ.IsRegular) (hκw : κ.ord < w) : IsClub (reflPoints κ w hw) := by sorry
+    (hreg : κ.IsRegular) (hκw : κ.ord < w) : IsClub (reflPoints κ w hw) := by
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  refine ⟨?_, ?_⟩
+  · rw [dirSupClosed_iff_of_linearOrder]
+    intro d hd hne a ha
+    by_cases had : a ∈ d
+    · exact hd had
+    have hlub : IsLUB (Subtype.val '' d) a.1 := by
+      refine ⟨?_, ?_⟩
+      · rintro _ ⟨x, hx, rfl⟩
+        exact Subtype.coe_le_coe.2 (ha.1 hx)
+      · intro b hb
+        by_cases hbκ : b < κ.ord
+        · exact Subtype.coe_le_coe.2 (ha.2 (show (⟨b, hbκ⟩ : Set.Iio κ.ord) ∈ upperBounds d from
+            fun x hx => Subtype.coe_le_coe.1 (hb ⟨x, hx, rfl⟩)))
+        · exact (a.2.trans_le (not_lt.1 hbκ)).le
+    have hna : a.1 ∉ Subtype.val '' d := by
+      rintro ⟨x, hx, hxa⟩
+      exact had (Subtype.ext hxa ▸ hx)
+    have hlim : IsLim a.1 := isLim_of_isLUB
+      (by rintro _ ⟨x, hx, rfl⟩; exact (hd hx).1) (hne.image _) hlub hna
+    refine ⟨hlim, ?_⟩
+    intro y hy
+    haveI : Nonempty d := hne.to_subtype
+    let s : d → Set (M w) := fun x => {z | z.val < x.1.1 ∨ z.val = κ.ord}
+    have hdir : Directed (· ⊆ ·) s := by
+      intro i j
+      rcases le_total i.1 j.1 with h | h
+      · exact ⟨j, hullAt_gen_mono κ w (Subtype.coe_le_coe.2 h), le_rfl⟩
+      · exact ⟨i, le_rfl, hullAt_gen_mono κ w (Subtype.coe_le_coe.2 h)⟩
+    have hsub : {z : M w | z.val < a.1 ∨ z.val = κ.ord} ⊆ ⋃ i, s i := by
+      rintro z (hz | hz)
+      · obtain ⟨_, ⟨x, hx, rfl⟩, hzx⟩ := (lt_isLUB_iff hlub).1 hz
+        exact Set.mem_iUnion.2 ⟨⟨x, hx⟩, Or.inl hzx⟩
+      · exact Set.mem_iUnion.2 ⟨Classical.arbitrary d, Or.inr hz⟩
+    have hy' : (y : M w) ∈ ⋃ i, (hull w hw (s i) : Set (M w)) := by
+      rw [← hull_iUnion w hw hdir]
+      exact hull_mono w hw hsub y.2
+    obtain ⟨i, hi⟩ := Set.mem_iUnion.1 hy'
+    exact ((hd i.2).2 ⟨y, hi⟩ hy).trans_le (Subtype.coe_le_coe.2 (ha.1 i.2))
+  · intro y
+    have hbd := fun r (hr : r < κ.ord) => hullAt_bounded κ w hw hκ hreg hκw hr
+    let F : Ordinal.{u} → Ordinal.{u} := fun r =>
+      if h : r < κ.ord then Classical.choose (hbd r h) else 0
+    have hF : ∀ r (hr : r < κ.ord), F r = Classical.choose (hbd r hr) := fun r hr => dif_pos hr
+    let g : ℕ → Ordinal.{u} := fun n =>
+      Nat.rec (max y.1 Ordinal.omega0 + 1) (fun _ gn => max (gn + 1) (F gn)) n
+    have hgs : ∀ n, g (n + 1) = max (g n + 1) (F (g n)) := fun n => rfl
+    have hgκ : ∀ n, g n < κ.ord := by
+      intro n
+      induction n with
+      | zero => exact hκl.add_one_lt (max_lt y.2 hκl.omega0_lt)
+      | succ n ih =>
+        rw [hgs, hF _ ih]
+        exact max_lt (hκl.add_one_lt ih) (Classical.choose_spec (hbd _ ih)).2.1
+    have hmono : StrictMono g := strictMono_nat_of_lt_succ fun n => by
+      rw [hgs]
+      exact (Order.lt_add_one_iff.2 le_rfl).trans_le (le_max_left _ _)
+    have hω : Ordinal.omega0 ≤ g 0 := (le_max_right _ _).trans (le_self_add)
+    have hbdd : BddAbove (Set.range g) := ⟨κ.ord, by rintro _ ⟨n, rfl⟩; exact (hgκ n).le⟩
+    have haκ : (⨆ n, g n) < κ.ord := by
+      refine Ordinal.lift_iSup_lt_of_lt_cof ?_ hgκ
+      simpa [hreg.cof_ord] using hκ
+    have hlim : IsLim (⨆ n, g n) := isLim_iSup_nat hmono hω
+    refine ⟨⟨⨆ n, g n, haκ⟩, ⟨hlim, ?_⟩, ?_⟩
+    · intro z hz
+      let s : ℕ → Set (M w) := fun n => {z | z.val < g n ∨ z.val = κ.ord}
+      have hdir : Directed (· ⊆ ·) s :=
+        Monotone.directed_le fun m n h => hullAt_gen_mono κ w (hmono.monotone h)
+      have hsub : {z : M w | z.val < (⨆ n, g n) ∨ z.val = κ.ord} ⊆ ⋃ n, s n := by
+        rintro z (hz | hz)
+        · obtain ⟨n, hn⟩ := (lt_ciSup_iff hbdd).1 hz
+          exact Set.mem_iUnion.2 ⟨n, Or.inl hn⟩
+        · exact Set.mem_iUnion.2 ⟨0, Or.inr hz⟩
+      have hz' : (z : M w) ∈ ⋃ n, (hull w hw (s n) : Set (M w)) := by
+        rw [← hull_iUnion w hw hdir]
+        exact hull_mono w hw hsub z.2
+      obtain ⟨n, hn⟩ := Set.mem_iUnion.1 hz'
+      have h1 := (Classical.choose_spec (hbd _ (hgκ n))).2.2 ⟨z, hn⟩ hz
+      rw [← hF _ (hgκ n)] at h1
+      calc (z : M w).val < F (g n) := h1
+        _ ≤ g (n + 1) := (hgs n).symm ▸ le_max_right _ _
+        _ ≤ ⨆ n, g n := le_ciSup hbdd (n + 1)
+    · show y.1 ≤ ⨆ n, g n
+      exact (le_max_left _ _).trans ((le_self_add).trans (le_ciSup hbdd 0))
 
 /-- N4.9b: every reflection point carries an edge `Edge w κ x`. -/
 theorem edge_of_reflPoint (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
     (hreg : κ.IsRegular) (hwl : IsLim w) (hκw : κ.ord < w) {x : Set.Iio κ.ord}
-    (hx : x ∈ reflPoints κ w hw) : prims.Edge w κ.ord x.1 := by sorry
+    (hx : x ∈ reflPoints κ w hw) : prims.Edge w κ.ord x.1 := by
+  classical
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  have hxκ : x.1 < κ.ord := x.2
+  have hxw : x.1 < w := hxκ.trans hκw
+  let S := hullAt κ w hw x.1
+  have hmem : ∀ o (ho : o < x.1), (⟨o, ho.trans hxw⟩ : M w) ∈ S :=
+    fun o ho => subset_hull w hw _ (Or.inl ho)
+  let k : S := ⟨⟨κ.ord, hκw⟩, subset_hull w hw _ (Or.inr rfl)⟩
+  obtain ⟨ν, π, -, hπ, hfix, hcard⟩ := condensation S
+  have hνκ : ν < κ.ord := by
+    rw [Cardinal.lt_ord, ← Cardinal.lift_lt.{_, u + 1}, hcard]
+    exact card_hullAt_lt κ w hw hκ hxκ
+  have hpt : ∀ o (ho : o < x.1), (π ⟨⟨o, ho.trans hxw⟩, hmem o ho⟩).val = o :=
+    fun o ho => hfix _ fun o' ho' => ⟨⟨⟨o', _⟩, hmem o' (ho'.trans ho)⟩, rfl⟩
+  have hk : (π k).val = x.1 :=
+    collapse_eq_of_cut S π hπ k (fun y => ⟨fun hy => hx.2 y hy, fun hy => hy.trans hxκ⟩)
+      (fun o ho => ⟨⟨⟨o, _⟩, hmem o ho⟩, rfl⟩)
+  have hElem : prims.Elem x.1 κ.ord := by
+    refine elem_iff.2 ⟨hx.1, hκl, hxκ.le, ?_⟩
+    intro V D F σ hσ hreal
+    let p : V → S := fun y => if h : y ∈ D.vars ∧ F y then
+        ⟨⟨σ y, (hσ y h.1 h.2).trans hxw⟩, hmem _ (hσ y h.1 h.2)⟩ else k
+    have hp : ∀ y ∈ D.vars, F y → (p y : M w).val = σ y ∧ (π (p y)).val = σ y := by
+      intro y hy hF
+      have hpy : p y = ⟨_, hmem (σ y) (hσ y hy hF)⟩ := dif_pos ⟨hy, hF⟩
+      rw [hpy]
+      exact ⟨rfl, hpt _ (hσ y hy hF)⟩
+    have := transfer S π D F σ σ p hp k hreal
+    rwa [hk] at this
+  refine edge_iff.2 ⟨hx.1, hκl, hwl, hxκ, hκw, hElem, card_elem κ w hκ hwl hκw, ?_⟩
+  intro V _ D F σ t ht hσ hreal
+  let p : V → S := fun y => if y = t then k else if h : y ∈ D.vars ∧ F y then
+      ⟨⟨σ y, (hσ y h.1 h.2).trans hxw⟩, hmem _ (hσ y h.1 h.2)⟩ else k
+  have hp : ∀ y ∈ D.vars, (F y ∨ y = t) →
+      (p y : M w).val = Function.update σ t κ.ord y ∧
+        (π (p y)).val = Function.update σ t x.1 y := by
+    intro y hy hF
+    by_cases hyt : y = t
+    · subst hyt
+      have hpy : p y = k := if_pos rfl
+      rw [hpy, Function.update_self, Function.update_self]
+      exact ⟨rfl, hk⟩
+    · have hFy : F y := hF.resolve_right hyt
+      have hpy : p y = ⟨_, hmem (σ y) (hσ y hy hFy)⟩ := by
+        simp only [p]
+        rw [if_neg hyt, dif_pos ⟨hy, hFy⟩]
+      rw [hpy, Function.update_of_ne hyt, Function.update_of_ne hyt]
+      exact ⟨rfl, hpt _ (hσ y hy hFy)⟩
+  exact Diagram.realizableBelow_mono _ _ _ _ hνκ.le (transfer_top S π D _ _ _ p hp hreal)
 
 /-- N4.9b (14). -/
 theorem club_edge (κ : Cardinal.{u}) (w : Ordinal.{u}) (hκ : ℵ₀ < κ) (hreg : κ.IsRegular)
     (hw : IsLim w) (hκw : κ.ord < w) :
-    ∃ C : Set (Set.Iio κ.ord), IsClub C ∧ ∀ x ∈ C, prims.Edge w κ.ord x.1 := by sorry
+    ∃ C : Set (Set.Iio κ.ord), IsClub C ∧ ∀ x ∈ C, prims.Edge w κ.ord x.1 :=
+  ⟨reflPoints κ w (isLim_pos hw), isClub_reflPoints κ w _ hκ hreg hκw,
+    fun _ hx => edge_of_reflPoint κ w _ hκ hreg hw hκw hx⟩
 
 /-- N4.10 (P-U4-1): the reflection-structure instance of the S-4 interface. -/
 noncomputable def interface : Interface.{u} where
