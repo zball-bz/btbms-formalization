@@ -1467,7 +1467,7 @@ theorem expandSpecial_eq_replaceAt (n : Nat) : ∀ (k : Nat) (G : Forest),
       show skipLayers (nextLayer G) k = _; rw [hnl]
     obtain ⟨cols⟩ := G
     simp only [Tree.cols] at hc
-    simp only [expandSpecial, replaceAt, Tree.cols, hc, he, Option.getD_some]
+    simp only [expandSpecial, replaceAt, hc, he, Option.getD_some]
     rw [mapLast_eq, hc]
     simp only [Option.map_some, Option.toList_some]
     rw [mapLast_eq, he, hsk]
@@ -2205,6 +2205,188 @@ theorem lastCol_of_ordinary {E : Forest} (h : stepKind E = some .ordinary) :
   rw [(stepKind_deletion_iff E).mpr h0] at h
   cases h
 
+/-- D1.6d (helper): the roles of the last column of a column list. -/
+theorem rolesCols_last (π : List (Nat × Nat)) : ∀ (cols : List Column) (c : Nat) (col : Column),
+    cols.getLast? = some col → ∃ A, Tree.rolesCols π c cols =
+      A ++ .ord ⟨π, c + cols.length - 1⟩ :: Tree.rolesCol π (c + cols.length - 1) 0 col
+  | [], c, col, h => by simp at h
+  | [x], c, col, h => by
+    simp at h; subst h
+    exact ⟨[], by simp [Tree.rolesCols]⟩
+  | x :: y :: rest, c, col, h => by
+    have h' : (y :: rest).getLast? = some col := by simpa using h
+    obtain ⟨A, hA⟩ := rolesCols_last π (y :: rest) (c + 1) col h'
+    refine ⟨.ord ⟨π, c⟩ :: (Tree.rolesCol π c 0 x ++ A), ?_⟩
+    have e : c + (x :: y :: rest).length - 1 = c + 1 + (y :: rest).length - 1 := by simp; omega
+    rw [e, Tree.rolesCols, hA]
+    simp
+
+/-- D1.6d (helper): the roles of a column ending in a given entry. -/
+theorem rolesCol_snoc (π : List (Nat × Nat)) (c p : Nat) (h : Forest) : ∀ (P : Column) (i : Nat),
+    Tree.rolesCol π c i (P ++ [(p, h)]) = Tree.rolesCol π c i P ++
+      .slot ⟨⟨π, c⟩, i + P.length⟩ :: Tree.rolesF (π ++ [(c, i + P.length)]) h
+  | [], i => by simp [Tree.rolesCol]
+  | (a, b) :: P, i => by
+    have ih := rolesCol_snoc π c p h P (i + 1)
+    simp only [List.cons_append, Tree.rolesCol, ih, List.length_cons, List.append_assoc]
+    rw [show i + 1 + P.length = i + (P.length + 1) by omega]
+
+/-- D1.6d (helper): roles read under a prefix `π` have paths extending `π`. -/
+theorem rolesF_prefix (F : Forest) : ∀ (π : List (Nat × Nat)) (x : Role),
+    x ∈ Tree.rolesF π F → π <+: x.path := by
+  induction hn : sizeOf F using Nat.strong_induction_on generalizing F with
+  | _ n ih =>
+  intro π x hx
+  obtain ⟨cols⟩ := F
+  have hsz : ∀ col ∈ cols, ∀ e ∈ col, sizeOf e.2 < n := by
+    intro col hcol e he
+    have l1 := List.sizeOf_lt_of_mem hcol
+    have l2 := List.sizeOf_lt_of_mem he
+    obtain ⟨a, b⟩ := e
+    subst hn
+    simp only [Tree.node.sizeOf_spec, Prod.mk.sizeOf_spec] at *
+    omega
+  have key2 : ∀ (c : Nat) (es : Column), (∀ e ∈ es, sizeOf e.2 < n) → ∀ i,
+      x ∈ Tree.rolesCol π c i es → π <+: x.path := by
+    intro c es
+    induction es with
+    | nil => intro _ i h; simp [Tree.rolesCol] at h
+    | cons e rest ihe =>
+      intro hes i h
+      obtain ⟨a, hgt⟩ := e
+      simp only [Tree.rolesCol, List.mem_cons, List.mem_append] at h
+      rcases h with h | h | h
+      · subst h; exact List.prefix_refl _
+      · exact (List.prefix_append π [(c, i)]).trans
+          (ih _ (hes _ (List.mem_cons_self ..)) hgt rfl _ x h)
+      · exact ihe (fun e he => hes e (List.mem_cons_of_mem _ he)) (i + 1) h
+  have key : ∀ (cs : List Column), (∀ col ∈ cs, ∀ e ∈ col, sizeOf e.2 < n) → ∀ c,
+      x ∈ Tree.rolesCols π c cs → π <+: x.path := by
+    intro cs
+    induction cs with
+    | nil => intro _ c h; simp [Tree.rolesCols] at h
+    | cons col rest ihc =>
+      intro hcs c h
+      simp only [Tree.rolesCols, List.mem_cons, List.mem_append] at h
+      rcases h with h | h | h
+      · subst h; exact List.prefix_refl _
+      · exact key2 c col (hcs col (List.mem_cons_self ..)) 0 h
+      · exact ihc (fun col hc => hcs col (List.mem_cons_of_mem _ hc)) (c + 1) h
+  exact key cols hsz 0 hx
+
+/-- D1.6d (helper): every role of the first entries of a column lies in one of them. -/
+theorem rolesCol_inEntry (π : List (Nat × Nat)) (c : Nat) : ∀ (col : Column) (i : Nat) (x : Role),
+    x ∈ Tree.rolesCol π c i col → ∃ j, i ≤ j ∧ j < i + col.length ∧ x.inEntry ⟨⟨π, c⟩, j⟩ = true
+  | [], i, x, h => by simp [Tree.rolesCol] at h
+  | (a, hgt) :: rest, i, x, h => by
+    simp only [Tree.rolesCol, List.mem_cons, List.mem_append] at h
+    rcases h with h | h | h
+    · subst h; exact ⟨i, le_rfl, by simp, by simp [Role.inEntry]⟩
+    · refine ⟨i, le_rfl, by simp, ?_⟩
+      have := rolesF_prefix hgt _ x h
+      simp [Role.inEntry, EntryAddr.heightPath, List.isPrefixOf_iff_prefix.mpr this]
+    · obtain ⟨j, h1, h2, h3⟩ := rolesCol_inEntry π c rest (i + 1) x h
+      exact ⟨j, by omega, by simp; omega, h3⟩
+
+theorem rolesF_eq_rolesCols (π : List (Nat × Nat)) (F : Forest) :
+    Tree.rolesF π F = Tree.rolesCols π 0 F.cols := by
+  obtain ⟨cols⟩ := F; simp [Tree.rolesF, Tree.cols]
+
+/-- D1.6d (helper): along the route, the roles of each route forest end with the stopping column
+and its entries. -/
+theorem roles_route {E : Forest} {sd : StopData} (h : stopData E = some sd) : ∀ m ≤ sd.depth,
+    ∃ A, Tree.rolesF (sd.col.path.take (sd.depth - m)) (skipLayers E (sd.depth - m)) =
+      A ++ .ord sd.col :: Tree.rolesCol sd.col.path sd.col.col 0 (sd.Q ++ [(sd.r, Tree.empty)]) := by
+  obtain ⟨hcc, hd, -, hlast, hcont, -⟩ := stopData_core h
+  intro m
+  induction m with
+  | zero =>
+    intro _
+    obtain ⟨A, hA⟩ := rolesCols_last sd.col.path (skipLayers E sd.depth).cols 0 _ hlast
+    refine ⟨A, ?_⟩
+    have hcol : sd.col.col = (skipLayers E sd.depth).cols.length - 1 := by omega
+    rw [Nat.sub_zero, show sd.col.path.take sd.depth = sd.col.path by rw [hd, List.take_length],
+      rolesF_eq_rolesCols, hA, Nat.zero_add, ← hcol]
+  | succ m ih =>
+    intro hm
+    obtain ⟨A, hA⟩ := ih (by omega)
+    have hk1 : sd.depth - m = sd.depth - (m + 1) + 1 := by omega
+    rw [hk1] at hA
+    obtain ⟨col, p, a1, a2, -, a4⟩ := hcont (sd.depth - (m + 1)) (by omega)
+    obtain ⟨A1, hA1⟩ := rolesCols_last (sd.col.path.take (sd.depth - (m + 1)))
+      (skipLayers E (sd.depth - (m + 1))).cols 0 col a1
+    have hrc := rolesCol_snoc (sd.col.path.take (sd.depth - (m + 1)))
+      ((skipLayers E (sd.depth - (m + 1))).cols.length - 1) p
+      (skipLayers E (sd.depth - (m + 1) + 1)) col.dropLast 0
+    rw [List.dropLast_append_getLast? _ a2] at hrc
+    have hcl1 : col.dropLast.length = col.length - 1 := List.length_dropLast
+    have htake : sd.col.path.take (sd.depth - (m + 1)) ++
+        [((skipLayers E (sd.depth - (m + 1))).cols.length - 1, col.length - 1)] =
+        sd.col.path.take (sd.depth - (m + 1) + 1) := by
+      rw [List.take_add_one, a4]; rfl
+    simp only [Nat.zero_add] at hA1 hrc
+    rw [hcl1, htake, hA] at hrc
+    refine ⟨A1 ++ .ord ⟨sd.col.path.take (sd.depth - (m + 1)),
+        (skipLayers E (sd.depth - (m + 1))).cols.length - 1⟩ ::
+      (Tree.rolesCol (sd.col.path.take (sd.depth - (m + 1)))
+        ((skipLayers E (sd.depth - (m + 1))).cols.length - 1) 0 col.dropLast ++
+        .slot ⟨⟨sd.col.path.take (sd.depth - (m + 1)),
+          (skipLayers E (sd.depth - (m + 1))).cols.length - 1⟩, col.length - 1⟩ :: A), ?_⟩
+    rw [rolesF_eq_rolesCols, hA1, hrc]
+    simp
+
+/-- D1.6d (helper): truncation after the closing slot keeps every route forest. -/
+theorem truncAux_route {E : Forest} {sd : StopData} (h : stopData E = some sd) : ∀ m ≤ sd.depth,
+    Tree.truncAux (sd.col.path.drop (sd.depth - m)) sd.col.col sd.Q.length
+      (skipLayers E (sd.depth - m)) = skipLayers E (sd.depth - m) := by
+  obtain ⟨hcc, hd, -, hlast, hcont, -⟩ := stopData_core h
+  intro m
+  induction m with
+  | zero =>
+    intro _
+    rw [Nat.sub_zero, show sd.col.path.drop sd.depth = [] by rw [hd]; simp]
+    have hcl : (skipLayers E sd.depth).cols[sd.col.col]? = some (sd.Q ++ [(sd.r, Tree.empty)]) := by
+      rw [show sd.col.col = (skipLayers E sd.depth).cols.length - 1 by omega,
+        ← List.getLast?_eq_getElem?]; exact hlast
+    have hdl := List.dropLast_append_getLast? _ hlast
+    generalize skipLayers E sd.depth = F at hcl hdl hcc ⊢
+    obtain ⟨cols⟩ := F
+    simp only [Tree.cols] at hcl hdl hcc
+    simp only [Tree.truncAux, List.getD_eq_getElem?_getD, hcl, Option.getD_some]
+    have htk : List.take (sd.Q.length + 1) (sd.Q ++ [(sd.r, Tree.empty)]) =
+        sd.Q ++ [(sd.r, Tree.empty)] := by simp
+    have htc : List.take sd.col.col cols = cols.dropLast := by
+      rw [List.dropLast_eq_take]; congr 1; omega
+    rw [htk, htc, hdl]
+  | succ m ih =>
+    intro hm
+    have ih' := ih (by omega)
+    have hk1 : sd.depth - m = sd.depth - (m + 1) + 1 := by omega
+    rw [hk1] at ih'
+    obtain ⟨col, p, a1, a2, -, a4⟩ := hcont (sd.depth - (m + 1)) (by omega)
+    have hkl : sd.depth - (m + 1) < sd.col.path.length := by omega
+    have hdrop := List.drop_eq_getElem_cons hkl
+    rw [List.getElem?_eq_getElem hkl, Option.some.injEq] at a4
+    rw [a4] at hdrop
+    rw [hdrop]
+    have hcl : (skipLayers E (sd.depth - (m + 1))).cols[(skipLayers E (sd.depth - (m + 1))).cols.length - 1]? = some col := by
+      rw [← List.getLast?_eq_getElem?]; exact a1
+    have hel : col[col.length - 1]? = some (p, skipLayers E (sd.depth - (m + 1) + 1)) := by
+      rw [← List.getLast?_eq_getElem?]; exact a2
+    have hdl1 := List.dropLast_append_getLast? _ a1
+    have hdl2 := List.dropLast_append_getLast? _ a2
+    generalize skipLayers E (sd.depth - (m + 1) + 1) = G at hel hdl2 ih'
+    generalize skipLayers E (sd.depth - (m + 1)) = F at hcl hdl1 ⊢
+    obtain ⟨cols⟩ := F
+    simp only [Tree.cols] at hcl hdl1 ⊢
+    simp only [Tree.truncAux, List.getD_eq_getElem?_getD, hcl, Option.getD_some, hel,
+      Option.map_some, Option.toList_some, ih']
+    have hdl2' : col.take (col.length - 1) ++ [(p, G)] = col := by
+      rw [← List.dropLast_eq_take]; exact hdl2
+    have hdl1' : cols.take (cols.length - 1) ++ [col] = cols := by
+      rw [← List.dropLast_eq_take]; exact hdl1
+    rw [hdl2', hdl1']
+
 /-- D1.6d (requested by U3 R4): the stopping data in role form. -/
 theorem stopData_roles {E : Forest} {sd : StopData} (h : stopData E = some sd) :
     sd.t = sd.col.num 0 ∧ sd.depth = sd.col.path.length ∧
@@ -2212,7 +2394,38 @@ theorem stopData_roles {E : Forest} {sd : StopData} (h : stopData E = some sd) :
     E.entryAt (closingSlot sd) = some (sd.r, Tree.empty) ∧
     E.truncAfter (closingSlot sd) = E ∧
     ∃ qs : List Role, E.roles = Packet.rolesBefore E (.ord sd.col) ++ .ord sd.col ::
-      (qs ++ [.slot (closingSlot sd)]) ∧ ∀ x ∈ qs, Packet.inQueryRegion sd x = true := by sorry
+      (qs ++ [.slot (closingSlot sd)]) ∧ ∀ x ∈ qs, Packet.inQueryRegion sd x = true := by
+  obtain ⟨hcol, hd, ht, -⟩ := stopData_spec h
+  have hent : E.entryAt (closingSlot sd) = some (sd.r, Tree.empty) := by
+    simp [Tree.entryAt, closingSlot, hcol]
+  refine ⟨ht, hd, hcol, hent, ?_, ?_⟩
+  · have := truncAux_route h sd.depth le_rfl
+    simp only [Nat.sub_self, List.drop_zero, skipLayers] at this
+    show Tree.truncAfterBody E (closingSlot sd) = E
+    rw [Tree.truncAfterBody, hent]
+    simpa [closingSlot] using this
+  · obtain ⟨A, hA⟩ := roles_route h sd.depth le_rfl
+    simp only [Nat.sub_self, List.take_zero, skipLayers] at hA
+    have hrc := rolesCol_snoc sd.col.path sd.col.col sd.r Tree.empty sd.Q 0
+    have hroles : E.roles = A ++ .ord sd.col ::
+        (Tree.rolesCol sd.col.path sd.col.col 0 sd.Q ++ [.slot (closingSlot sd)]) := by
+      rw [Tree.roles, hA, hrc]
+      simp [closingSlot, Tree.empty, Tree.rolesF, Tree.rolesCols]
+    have hnd := Tree.roles_nodup E
+    rw [hroles] at hnd
+    have hnotin : Role.ord sd.col ∉ A := by
+      intro hx
+      exact (List.nodup_append.mp hnd).2.2 _ hx _ (List.mem_cons_self ..) rfl
+    refine ⟨Tree.rolesCol sd.col.path sd.col.col 0 sd.Q, ?_, ?_⟩
+    · rw [Packet.rolesBefore, hroles, List.takeWhile_append_of_pos]
+      · simp
+      · intro a ha
+        simp only [bne_iff_ne, ne_eq]
+        rintro rfl; exact hnotin ha
+    · intro x hx
+      obtain ⟨j, -, hj, hin⟩ := rolesCol_inEntry _ _ sd.Q 0 x hx
+      simp only [Packet.inQueryRegion, List.any_eq_true, List.mem_range]
+      exact ⟨j, by omega, hin⟩
 
 /-- D1.6d (requested by U3 R5): the root column lies on the stopping column's path, and the owner
 flag is containment by the root's last entry. -/
