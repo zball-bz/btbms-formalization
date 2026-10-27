@@ -19581,61 +19581,345 @@ theorem head_low_detour_F7_G3 (S : OrdData_G3) {j φ : Nat} (hj : 1 ≤ j ∧ j 
   rw [hs]
   exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hedge) hlift
 
--- T3.2r (txt:377-403): ordinary outputs satisfy A (decorated A, then uncapping by S)
-/-! ### T3.2r helpers (branch G3): decorated A of an ordinary output, class by class -/
+/-! ### T3.2r helpers (branch G3): A in the key systems capped at the active containers
 
-/-- T3.2r (G3), class (a): tests of a context column (a column outside the hole; its stack is
-context, its keys are the old ones up to a capped last key). -/
-theorem condAK_ctx_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
-    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
-    (hB : expand A n = some B) (hn : 1 ≤ n) {c : ColAddr} (hc : c ∈ B.colAddrs)
-    (hctx : c ∈ (context A sd Tree.empty).colAddrs) (i : Nat) :
-    AAt B (capKeys B (routeCols B)) c i := by
+`activeKeys_D7_G3 E c` caps, in every column containing `c`, the key of the containing entry by `⊤`
+(dropping the later keys). Along an actual cut path whose containing entries satisfy their cut
+bounds, actual and active responses agree (L2.3a), in both directions; so A of `B` follows from
+the active tests of `B` and S (the active analogue of `capping_reverse`), and the old actual tests
+of `A` are active tests (barrier of `A`). -/
+
+theorem container_self_G3 (c : ColAddr) : c.container c = none := by
+  simp [ColAddr.container]
+
+theorem activeKeys_self_G3 (E : Forest) (c : ColAddr) : activeKeys_D7_G3 E c c = actualKeys E c := by
+  simp [activeKeys_D7_G3, container_self_G3]
+
+-- two scans that agree before `u` and both stop by `u` have the same cursor
+theorem cursor_eq_take_G3 {α : Type} [LinearOrder α] {s₁ s₂ W : List α} {u : Nat}
+    (htake : s₁.take u = s₂.take u) (h₁ : cursor s₁ W ≤ u) (h₂ : cursor s₂ W ≤ u) :
+    cursor s₁ W = cursor s₂ W := by
+  have e₁ := cursor_take s₁ W u
+  have e₂ := cursor_take s₂ W u
+  rw [Nat.min_eq_right h₂] at e₂
+  rw [Nat.min_eq_right h₁, htake, e₂] at e₁
+  exact e₁.symm
+
+-- capping at `u` does not change a `⊤`-free scan that stops by `u`
+theorem cursor_active_G3 {K W : List (WithTop Key)} {u : Nat} (hu : u ≤ K.length)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hle : cursor K W ≤ u) : cursor (K.take u ++ [⊤]) W = cursor K W := by
+  have hl : (K.take u).length = u := by rw [List.length_take]; omega
+  refine cursor_eq_take_G3 (u := u) ?_ ?_ hle
+  · rw [List.take_left' hl]
+  · have := cursor_append_top_D7_G3 W (K.take u) hT
+    omega
+
+-- along an actual cut path with the cut bounds, active and actual responses agree
+theorem resp_active_eq_G3 {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
+    (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {z : Nat}
+    (hz : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) z)
+    {o : ColAddr} (ho : c.resolve 0 z = some o) :
+    resp E (activeKeys_D7_G3 E c) o (cutQuery (actualKeys E c) k) =
+      resp E (actualKeys E) o (cutQuery (actualKeys E c) k) := by
+  rw [resp_eq_parents, resp_eq_parents]
+  cases hco : o.container c with
+  | none => simp only [activeKeys_D7_G3, hco]
+  | some e =>
+    simp only [activeKeys_D7_G3, hco]
+    obtain ⟨hecol, hcont⟩ := (ColAddr.container_spec o c e).1 hco
+    have hcont' : e.Contains c := hcont
+    have he : e ∈ E.entryAddrs := mem_entryAddrs_of_contains hc hcont'
+    have hoz : o.num 0 = z := ColAddr.resolve_num ho
+    have hb := hcut e he hcont' (by rw [hecol, hoz]; exact hz)
+    rw [boundary_eq_cutQuery, hecol] at hb
+    have hvl : e.idx < (actualKeys E o).length := by
+      rw [length_actualKeys, ← hecol]; exact idx_lt_of_mem_entryAddrs he
+    have hle := cursor_le_of_lt_cutQuery (cutQuery_noninc _ _) hvl hb
+    rw [cursor_active_G3 hvl.le (ne_top_of_mem_cutQuery_D7_G3 _ _ _) hle]
+
+theorem active_path_of_actual_G3 {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
+    (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {y : Nat}
+    (h : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y) :
+    Path E (activeKeys_D7_G3 E c) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail hxz hzy ih =>
+    obtain ⟨o, ho, hr⟩ := hzy
+    exact ih.tail ⟨o, ho, (resp_active_eq_G3 hc hcut hxz ho).trans hr⟩
+
+theorem actual_path_of_active_G3 {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
+    (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {y : Nat}
+    (h : Path E (activeKeys_D7_G3 E c) c (cutQuery (actualKeys E c) k) (cutStart E c k) y) :
+    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ hzy ih =>
+    obtain ⟨o, ho, hr⟩ := hzy
+    exact ih.tail ⟨o, ho, (resp_active_eq_G3 hc hcut ih ho).symm.trans hr⟩
+
+-- the old tests of an `L`-expression are active tests (barrier, L2.3)
+theorem aAt_active_of_inL_G3 {E : Forest} (hL : InL E) {c : ColAddr} (hc : c ∈ E.colAddrs)
+    (i : Nat) : AAt E (activeKeys_D7_G3 E c) c i := by
+  intro p hp
+  rw [activeKeys_self_G3]
+  have hk : i ≤ (parents E c).length := (List.getElem?_eq_some_iff.1 hp).1.le
+  exact active_path_of_actual_G3 hc
+    (fun e he hec => (barrier_joint hL.1 hL.2.2.2.1 hL.2.2.2.2 he hc hec hk).1)
+    ((condAK_iff _ _).1 hL.2.2.2.1 c hc i p hp)
+
+-- the active analogue of `revPred_step` (L2.4a)
+theorem revPred_step_active_G3 {E : Forest} (hV : CondV E) (hS : CondS E)
+    (hA : ∀ c ∈ E.colAddrs, ∀ i, AAt E (activeKeys_D7_G3 E c) c i) {c : ColAddr}
+    (hc : c ∈ E.colAddrs) (i : Nat)
+    (ihlow : ∀ o ∈ E.colAddrs, o.num 0 < c.num 0 → ∀ v, RevPred E o v)
+    (ihprev : ∀ i' < i, RevPred E c i') : RevPred E c i := by
+  by_cases hi : i < (parents E c).length
+  · have hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c i := fun e he hec =>
+      cutBound_of_returns hV he hc hec hi.le
+        (fun o ho heo hlt v => (ihlow o ho hlt v).2 e he heo)
+        (fun k' hk' => (ihprev k' hk').2 e he hec)
+    have hAA : AAt E (actualKeys E) c i := by
+      intro p hp
+      have h := hA c hc i p hp
+      rw [activeKeys_self_G3] at h
+      exact actual_path_of_active_G3 hc hcut h
+    exact ⟨hAA, fun e he hec => returnBound_of_cutBound hS he hc hec hAA (hcut e he hec)⟩
+  · have hnone : (parents E c)[i]? = none := List.getElem?_eq_none (by omega)
+    refine ⟨fun p hp => ?_, fun e _ _ hp => ?_⟩ <;> rw [hnone] at hp <;> cases hp
+
+-- uncapping from the active systems (the active analogue of `capping_reverse`, L2.4a)
+theorem condA_of_active_G3 {E : Forest} (hV : CondV E) (hS : CondS E)
+    (hA : ∀ c ∈ E.colAddrs, ∀ i, AAt E (activeKeys_D7_G3 E c) c i) : CondA E := by
+  have H : ∀ N, ∀ c ∈ E.colAddrs, c.num 0 = N → ∀ i, RevPred E c i := by
+    intro N
+    induction N using Nat.strong_induction_on with
+    | _ N ihN =>
+      intro c hc hN i
+      induction i using Nat.strong_induction_on with
+      | _ i ihi =>
+        exact revPred_step_active_G3 hV hS hA hc i
+          (fun o ho hlt v => ihN _ (hN ▸ hlt) o ho rfl v) ihi
+  exact (condAK_iff _ _).2 fun c hc i => (H _ c hc rfl i).1
+
+/-! ### T3.2r helpers (branch G3): the forward phase path (T3.2q.2 in the active systems) -/
+
+theorem kappaQ_zero_G3 (r d : Nat) (W : List (WithTop Key)) : kappaQ_G3 r d 0 W = W := by
+  unfold kappaQ_G3
+  conv_rhs => rw [← List.map_id W]
+  congr 1
+  funext x
+  cases x with
+  | top => rfl
+  | coe k => simp [kappa_zero_E3]
+
+theorem kappaQ_ne_top_G3 (r d j : Nat) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) :
+    ∀ w ∈ kappaQ_G3 r d j W, w ≠ ⊤ := by
+  intro w hw
+  simp only [kappaQ_G3, List.mem_map] at hw
+  obtain ⟨w', hw', rfl⟩ := hw
+  have := hT w' hw'
+  cases w' with
+  | top => exact absurd rfl this
+  | coe k => simp
+
+theorem coe_list_of_ne_top_G3 :
+    ∀ (W : List (WithTop Key)), (∀ w ∈ W, w ≠ ⊤) → ∃ W₀ : List Key, W = W₀.map (↑)
+  | [], _ => ⟨[], rfl⟩
+  | w :: ws, h => by
+    obtain ⟨W₀, hW₀⟩ := coe_list_of_ne_top_G3 ws (fun x hx => h x (by simp [hx]))
+    cases w with
+    | top => exact absurd rfl (h ⊤ (by simp))
+    | coe k => exact ⟨k :: W₀, by simp [hW₀]⟩
+
+-- phase `0`: the root column of `B` reads like that of `A`
+theorem respEdge_root_zero_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j) {a c : ColAddr}
+    (hp : PhasePair_D7_G3 S j a c 0) (W : List (WithTop Key)) :
+    respEdge S.B (activeKeys_D7_G3 S.B c) c W S.sd.r =
+      respEdge S.A (activeKeys_D7_G3 S.A a) a W S.sd.r := by
+  obtain ⟨hRa, hRc, -, b, hb⟩ := phasePair_root_D7_G3 S hp
+  obtain ⟨hres, -⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack_G3 S.hsd Z hsdR
+  rw [← hB] at hpar htake hnone
+  have hcR : S.rd.col.container c = S.rd.col.container S.sd.col := by
+    rw [hb]; exact container_underCol_of_onStack_G3 hsdR b
+  have haR : S.rd.col.container a = S.rd.col.container S.sd.col := by
+    rcases hp with ⟨-, -, hφ⟩ | ⟨rfl, -, -⟩
+    · have haq : isQMat S.sd a = true := by
+        by_contra h
+        simp only [phaseOff, h, if_false] at hφ
+        omega
+      obtain ⟨q, rest, hq, -⟩ := isQMat_spec_G3 S.sd haq
+      have ha : a = underCol S.sd.col ⟨(0, q) :: rest, a.col⟩ := by
+        obtain ⟨ap, ac⟩ := a
+        simp only at hq
+        simp [underCol, hq]
+      rw [ha]; exact container_underCol_of_onStack_G3 hsdR _
+    · rfl
+  have hks : activeKeys_D7_G3 S.B c S.rd.col = activeKeys_D7_G3 S.A a S.rd.col := by
+    simp only [activeKeys_D7_G3, hcR, haR]
+    cases hRs : S.rd.col.container S.sd.col with
+    | none => simp only [actualKeys, hnone hRs]
+    | some e =>
+      simp only
+      congr 1
+      have h1 := htake e hRs
+      simp only [actualKeys, ← List.map_take]
+      congr 1
+      cases hBo : S.B.colAt S.rd.col with
+      | none =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rfl
+        | some _ => rw [hBo, hAo] at h1; cases h1
+      | some C1 =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rw [hBo, hAo] at h1; cases h1
+        | some C2 =>
+          rw [hBo, hAo] at h1
+          simpa using h1
+  unfold respEdge
+  rw [hRc, hRa]
+  simp only [Option.bind_some]
+  rw [resp_eq_parents_G3, resp_eq_parents_G3, hks, hpar]
+
+-- a low query detours through all heads `s_h, …, s_1` down to `s_0 = r` (G9.5 iterated)
+theorem low_chain_G3 (S : OrdData_G3) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7_G3 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hlow : kappaQ_G3 S.sd.r S.d 1 W < S.termZ) :
+    ∀ h, h ≤ φ →
+      Path S.B (activeKeys_D7_G3 S.B c) c (kappaQ_G3 S.sd.r S.d φ W) (S.s h) (S.s 0) := by
+  obtain ⟨W₀, rfl⟩ := coe_list_of_ne_top_G3 W hT
+  have hlow0 : kappaQ_G3 S.sd.r S.d φ (W₀.map (↑)) <
+      kappaQ_G3 S.sd.r S.d (φ - 1) S.termZ := by
+    rw [← kappaQ_lt_iff_G3 S.sd.r S.d (φ - 1)] at hlow
+    rwa [kappaQ_add_G3, show φ - 1 + 1 = φ by omega] at hlow
+  intro h
+  induction h with
+  | zero => intro _; exact Relation.ReflTransGen.refl
+  | succ h ih =>
+    intro hh
+    have hl := low_all_heads_G3 S hφ W₀ hlow0 (h := h + 1) ⟨by omega, hh⟩
+    rw [Nat.add_sub_cancel] at hl
+    have hW' : Noninc (kappaQ_G3 S.sd.r S.d (φ - h) (W₀.map (↑))) := kappaQ_noninc_G3 _ _ _ hW
+    have hT' := kappaQ_ne_top_G3 S.sd.r S.d (φ - h) hT
+    have hlow' : kappaQ_G3 S.sd.r S.d (φ - h) (W₀.map (↑)) < S.termZ := by
+      rw [← kappaQ_lt_iff_G3 S.sd.r S.d h, kappaQ_add_G3, show h + (φ - h) = φ by omega]
+      exact hl
+    have hd := head_low_detour_F7_G3 S hj hp (h := h + 1) (by omega) hh hW' hT' hlow'
+    rw [Nat.add_sub_cancel, kappaQ_add_G3, show h + (φ - h) = φ by omega] at hd
+    exact hd.trans (ih (by omega))
+
+-- T3.2q.2 (active form): an old active path of `a` is copied to a path of its phase copy `c`
+-- (high heads answer like the old root, low heads detour down to `r`)
+theorem phase_path_fwd_G3 (S : OrdData_G3) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7_G3 S j a c φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) {x y : Nat} (hpath : Path S.A (activeKeys_D7_G3 S.A a) a W x y) :
+    Path S.B (activeKeys_D7_G3 S.B c) c (kappaQ_G3 S.sd.r S.d φ W)
+      (shiftVal S.sd.r (φ * S.d) x) (shiftVal S.sd.r (φ * S.d) y) := by
+  have hVA : CondV S.A := S.inL.1
+  induction hpath using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head x x' hxx' hx'y ih =>
+    have hx'x : x' < x := edge_lt hVA hxx'
+    rw [edge_iff] at hxx'
+    rcases lt_trichotomy x S.sd.r with hxr | hxr | hxr
+    · have he := (respEdge_phase_active_D7_G3 S hj hp hT x).2 hxr
+      rw [← he] at hxx'
+      have e1 : shiftVal S.sd.r (φ * S.d) x = x := by unfold shiftVal; rw [if_neg (by omega)]
+      have e2 : shiftVal S.sd.r (φ * S.d) x' = x' := by unfold shiftVal; rw [if_neg (by omega)]
+      rw [e1]; rw [e2] at ih
+      exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') ih
+    · subst hxr
+      have e2 : shiftVal S.sd.r (φ * S.d) x' = x' := by unfold shiftVal; rw [if_neg (by omega)]
+      rw [e2] at ih
+      rcases Nat.eq_zero_or_pos φ with hφ0 | hφ
+      · subst hφ0
+        have he := respEdge_root_zero_G3 S hj.1 hp (kappaQ_G3 S.sd.r S.d 0 W)
+        rw [kappaQ_zero_G3] at he
+        rw [← he] at hxx'
+        have e1 : shiftVal S.sd.r (0 * S.d) S.sd.r = S.sd.r := by simp [shiftVal]
+        rw [e1]
+        refine Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr ?_) ih
+        rw [kappaQ_zero_G3]; exact hxx'
+      · have e1 : shiftVal S.sd.r (φ * S.d) S.sd.r = S.s φ := by
+          unfold shiftVal OrdData_G3.s; rw [if_pos le_rfl]
+        rw [e1]
+        by_cases hhigh : S.termZ ≤ kappaQ_G3 S.sd.r S.d 1 W
+        · have he := respEdge_head_high_D7_G3 S hj hp hφ hW hT hhigh
+          rw [← he] at hxx'
+          exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') ih
+        · have hlow := lt_of_not_ge hhigh
+          have hch := low_chain_G3 S hj hp hφ hW hT hlow φ le_rfl
+          obtain ⟨hB1, hA1⟩ := respEdge_root_low_F7_G3 S hj hp hφ hW hT hlow φ
+          have he : respEdge S.B (activeKeys_D7_G3 S.B c) c (kappaQ_G3 S.sd.r S.d φ W) S.sd.r =
+              some x' := by
+            rw [hB1, ← hA1]; exact hxx'
+          have hs0 : S.s 0 = S.sd.r := by simp [OrdData_G3.s]
+          rw [hs0] at hch
+          exact hch.trans (Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr he) ih)
+    · have he := (respEdge_phase_active_D7_G3 S hj hp hT x).1 hxr
+      rw [hxx', Option.map_some] at he
+      have e1 : shiftVal S.sd.r (φ * S.d) x = x + φ * S.d := by
+        unfold shiftVal; rw [if_pos hxr.le]
+      rw [e1]
+      exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr he) ih
+
+/-! ### T3.2r helpers (branch G3): the test classes -/
+
+/-- T3.2r (G3), class (a): tests of a context column (its stack is context, and its active key
+lists are the old ones). -/
+theorem aAt_ctx_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs)
+    (hctx : c ∈ (context S.A S.sd Tree.empty).colAddrs) (i : Nat) :
+    AAt S.B (activeKeys_D7_G3 S.B c) c i := by
   sorry
 
-/-- T3.2r (G3), classes (b), (c): tests of a phase copy of a template column (pure copies above
-`r`, head substitution `head_path_rev` across `r`, shared context below `r`). -/
-theorem condAK_tmpl_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
-    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
-    (hB : expand A n = some B) (hn : 1 ≤ n) {j : Nat} (hj : 1 ≤ j ∧ j ≤ n) {a c : ColAddr}
-    (ha : IsTmplCol A sd rd a) (hc : phaseCol sd rd j a = some c) (i : Nat) :
-    AAt B (capKeys B (routeCols B)) c i := by
+/-- T3.2r (G3), classes (b), (c): tests of a phase copy of a template column. -/
+theorem aAt_tmpl_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd j a = some c) (i : Nat) :
+    AAt S.B (activeKeys_D7_G3 S.B c) c i := by
   sorry
 
-/-- T3.2r (G3), classes (d), (e), (f): tests of a head (query prefix: copies of the old terminal
-tests; first restored entry: the terminal's last test, then the high root response; later restored
-entries: the old root tests at the reset boundary). -/
-theorem condAK_head_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
-    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
-    (hB : expand A n = some B) (hn : 1 ≤ n) {j : Nat} (hj : 1 ≤ j ∧ j ≤ n) {c : ColAddr}
-    (hc : phaseCol sd rd j rd.col = some c) (i : Nat) :
-    AAt B (capKeys B (routeCols B)) c i := by
+/-- T3.2r (G3), classes (d), (e), (f): tests of a head (query prefix: the old terminal tests;
+first restored entry: the terminal's last test and the root edge at `Z`; later restored entries:
+the old root tests at the reset boundary, T3.2p). -/
+theorem aAt_head_G3 (S : OrdData_G3) {j : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {c : ColAddr}
+    (hc : phaseCol S.sd S.rd j S.rd.col = some c) (i : Nat) :
+    AAt S.B (activeKeys_D7_G3 S.B c) c i := by
   sorry
 
-/-- T3.2r (G3): decorated A of an ordinary output with `n ≥ 1`, in the system capping the last
-keys of `B`'s terminal route. -/
-theorem condAK_ord_G3 {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) (hn : 1 ≤ n) : CondAK B (capKeys B (routeCols B)) := by
-  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
-  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
-  rw [condAK_iff]
-  intro c hc i
-  rcases classify_cols hL hk hsd hrd hB hc with ⟨hctx, -⟩ | ⟨j, a, hj1, hj2, ha, hca, -⟩
-  · exact condAK_ctx_G3 hL hk hsd hrd hB hn hc hctx i
+/-- T3.2r (G3): every test of an ordinary output, in its active system. -/
+theorem aAt_ord_G3 (S : OrdData_G3) {c : ColAddr} (hc : c ∈ S.B.colAddrs) (i : Nat) :
+    AAt S.B (activeKeys_D7_G3 S.B c) c i := by
+  rcases classify_cols S.inL S.kind S.hsd S.hrd S.out hc with
+    ⟨hctx, -⟩ | ⟨j, a, hj1, hj2, ha, hca, -⟩
+  · exact aAt_ctx_G3 S hc hctx i
   · rcases ha with rfl | ha
-    · exact condAK_head_G3 hL hk hsd hrd hB hn ⟨hj1, hj2⟩ hca i
-    · exact condAK_tmpl_G3 hL hk hsd hrd hB hn ⟨hj1, hj2⟩ ha hca i
+    · exact aAt_head_G3 S ⟨hj1, hj2⟩ hca i
+    · exact aAt_tmpl_G3 S ⟨hj1, hj2⟩ ha hca i
 
--- T3.2r (txt:377-403): ordinary outputs satisfy A (decorated A, then uncapping by S); at `n = 0`
--- the output is a safe prefix (T3.2g, T3.2e)
+-- T3.2r (txt:377-403): ordinary outputs satisfy A (the tests of `B` in the systems capped at their
+-- active containers, then uncapping by S); at `n = 0` the output is a safe prefix (T3.2g, T3.2e)
 theorem condA_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
     (hB : expand A n = some B) : CondA B := by
   rcases Nat.eq_zero_or_pos n with rfl | hn
   · obtain ⟨j, -, rfl⟩ := expand_safePrefix (ne_empty_of_stepKind_D3 hk) hL.1 hL.2.1
       (Or.inr ⟨hk, rfl⟩) hB
     exact safePrefix_condA hL j
-  · exact capping_reverse (condV_ord hL hk hB) (condS_ord hL hk hB) (fun _ h => h)
-      (condAK_ord_G3 hL hk hB hn)
+  · obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+    let S : OrdData_G3 := ⟨A, sd, rd, n, B, hL, hk, hsd, hrd, hn, hB⟩
+    exact condA_of_active_G3 (condV_ord hL hk hB) (condS_ord hL hk hB)
+      (fun c hc i => aAt_ord_G3 S hc i)
+
 
 /-! T3.2s helpers: column-local conditions, and replacing the last column at the end of a route. -/
 
