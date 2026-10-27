@@ -971,6 +971,25 @@ theorem seedGraph_holds (I : Interface.{u}) {m : Nat} {a v : Nat → Ordinal.{u}
         rw [seedVal_U]
         exact h2 (j + 1) (by omega) (by omega)
 
+-- provides: U5, L6.7 (seed lemma); moved here from `Plan/Spine.lean` (brief rule 5): its proof uses
+-- L6.7a–c and N5.4, declared in this file; nothing between the two places uses it.
+/-- L6.7: every seed `L_m` has a configuration, given a weakly `(m-1)`-Mahlo cardinal. -/
+theorem seed_config (I : Interface.{u}) (m : Nat)
+    (hM : ∃ κ : Cardinal.{u}, IsWeaklyMahlo (m - 1) κ) : ∃ α, IsConfig I.toPrims (seed m) α := by
+  obtain ⟨κ, hκ⟩ := hM
+  obtain ⟨hunc, -⟩ := hκ.uncountable_regular
+  cases m with
+  | zero =>
+    refine ⟨fun _ => κ.ord, fun b hb => ?_⟩
+    rw [seed_zero_graph.2, List.mem_singleton] at hb
+    subst hb
+    exact isLim_ord hunc
+  | succ m =>
+    have hκ' : IsWeaklyMahlo m κ := by simpa using hκ
+    obtain ⟨hwl, hκw⟩ := isLim_add_omega (isLim_ord hunc).2.le
+    obtain ⟨a, v, -, -, h1, h2, h3⟩ := mahlo_chain I m κ _ hκ' hwl hκw
+    exact ⟨seedVal a v, fun b hb => seedGraph_holds I h1 h2 h3 b (seed_graph_sub m b hb)⟩
+
 /-! ## D8.1 / §8.1: failures, (19), the two-candidate fact, `S_0` -/
 
 /-- D8.1b: a failure of `S_n` at floor `L`. -/

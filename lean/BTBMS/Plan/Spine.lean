@@ -2119,10 +2119,8 @@ def StrictDescent (P : Prims.{u}) : Prop :=
     IsConfig P A α → expand A k = some A' → A' ≠ Tree.empty →
     ∃ γ, IsConfig P A' γ ∧ cfgMax A' γ < cfgMax A α
 
--- provides: U5, L6.7 (seed lemma)
-theorem seed_config (I : Interface.{u}) (m : Nat)
-    (hM : ∃ κ : Cardinal.{u}, IsWeaklyMahlo (m - 1) κ) : ∃ α, IsConfig I.toPrims (seed m) α := by
-  sorry
+-- `seed_config` (provides: U5, L6.7, seed lemma) moved to `Plan/U5.lean`, after the seed lemmas
+-- L6.7a–c that its proof uses; nothing in between uses it.
 
 -- provides: U5, L8.4–L8.8 and (18)
 theorem sStrict_all (I : Interface.{u}) (n : Nat) : SStrict I.toPrims n := by sorry
