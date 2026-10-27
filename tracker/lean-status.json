@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "93f34d3b52f57bdb42f6d17c527ec682c9c1a98bfd28df121fa44c60a3b8b844",
+ "fingerprint": "c85067d017e669298d1c32f6b0f69208ac298743c25ef97da232acb40e73fe55",
  "decls": [
   {
    "axioms": [
@@ -416,6 +416,42 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bankCand_spec_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bank_congr_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.baseVal_preStop_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.chain_height_col"
   },
   {
@@ -440,7 +476,55 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.freeBlock_new_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.graph_chain"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.heads_at_owner"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.localStruct_bank_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.localStruct_query_D4"
   },
   {
    "axioms": [
@@ -500,6 +584,42 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.pe_eq_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.posCand_spec_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.query_heads_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.route_chain"
   },
   {
@@ -524,7 +644,115 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.sStrict_zero"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.scan_eq"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.scan_gt"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.scan_trace"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.src_above_owner_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.step_slot_child"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.toFr_isSome_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.toFr_tgtFrame_low_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.valid_iff"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.wFit_of_sStrict"
   },
   {
    "axioms": [
@@ -2876,18 +3104,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.heads_at_owner"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.nu_mem_vars"
   },
   {
@@ -2949,78 +3165,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.sStrict_of_dLab"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.sStrict_zero"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.scan_eq"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.scan_gt"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.scan_init"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.scan_lt"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.scan_trace"
   },
   {
    "axioms": [
@@ -3117,30 +3261,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.stage_zero_inv"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.valid_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.wFit_of_sStrict"
   },
   {
    "axioms": [
@@ -5989,6 +6109,17 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bankCand_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.blkMax"
   },
   {
@@ -6001,6 +6132,17 @@
    "kind": "def",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.failPair"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.posCand_D4"
   },
   {
    "axioms": [
@@ -12556,6 +12698,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.Cmax_lt_entry_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.DLabHyps.below"
   },
   {
@@ -12700,6 +12853,61 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.acc_of_conf"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bankVal_preRoot_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bank_entry_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bank_lim_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bank_pairwise_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.bank_root_lt_D4"
   },
   {
    "axioms": [
@@ -12886,7 +13094,40 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.fittedRoles_all_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.foldr_max_le"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.foldr_max_le_iff_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.foldr_max_lt_iff_D4"
   },
   {
    "axioms": [
@@ -12908,6 +13149,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.freeBlock_owner_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.graph_vars_roles_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.holds_ofBase"
   },
   {
@@ -12919,7 +13182,40 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.inEntry_lt_of_mem_rolesCol_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.inEntry_unique_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.inner_of_mem_freeBlock"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.inv_step_D4"
   },
   {
    "axioms": [
@@ -12985,6 +13281,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.le_foldr_max_init_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.le_foldr_max_mem_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.least_failure"
   },
   {
@@ -13007,7 +13325,183 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_bank_iff_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_fittedRoles_succ_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_queryRoles_iff_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_rolesCol_drop_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_rolesCol_of_inEntry_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_rolesCol_take_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.not_query_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.posBlock_vars"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.preRoot_not_bank_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.preRoot_sub_preStop_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.queryBlockMax_attained_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.queryBlockMax_le_Cmax_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.query_entry_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.query_entry_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.query_pairwise_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.query_stop_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.rep_before_D4"
   },
   {
    "axioms": [
@@ -13029,7 +13523,150 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.rep_preRoot_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.rep_preStop_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.rep_seed"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.reps0_preStop_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.rolesBefore_of_decomp_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.rolesCol_split_lt_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.roles_col_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.root_before_stop_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.root_col_cons_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.root_entry_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.root_not_mem_bank_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.root_roles_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.scan_init"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.scan_lt"
   },
   {
    "axioms": [
@@ -13073,6 +13710,61 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.setupBankVal_root_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.setupBankVal_slot_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.slot_entryRoles_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.slot_mem_bank_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.slot_root_mem_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.std_configured"
   },
   {
@@ -13095,6 +13787,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.stop_col_cons_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.stop_roles_D4"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.two_candidates"
   },
   {
@@ -13107,6 +13821,17 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.two_candidates_aux"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.under_mem_D4"
   },
   {
    "axioms": [
@@ -15044,6 +15769,16 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.entryAt_map_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.entryAt_mono_cols"
   },
   {
@@ -15095,6 +15830,16 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.forestAt_isSome_of_prefix"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.forestAt_map_D4"
   },
   {
    "axioms": [
@@ -15164,7 +15909,47 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.lt_chain_graph_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.mem_localStruct"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_of_restrictTo_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_zip_tail_iff_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.ne_of_mem_rolesBefore_D4"
   },
   {
    "axioms": [
@@ -15184,7 +15969,37 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.posBlock_has_new_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.posBlock_ordcur_D4"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.posBlock_prefix"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.relKey_false_lt_D4"
   },
   {
    "axioms": [
@@ -15255,6 +16070,16 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.slot_mem_roles"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.toFr_frameOf_D4"
   },
   {
    "axioms": [
@@ -18146,7 +18971,43 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.dropWhile_ne_D4"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.eq_empty_of_size_zero_D4"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.forestAt_isSome_of_colAt"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.freeBlock_empty_D4"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.mem_rolesBefore_trans_D4"
   },
   {
    "axioms": [
@@ -18201,6 +19062,15 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.tagBound_fresh"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U5",
+   "name": "BTBMS.Descent.takeWhile_ne_D4"
   },
   {
    "axioms": [
@@ -21005,6 +21875,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T16:10:26+00:00",
- "head": "88f735a"
+ "generated": "2026-10-27T16:20:21+00:00",
+ "head": "0b30aa5"
 }
