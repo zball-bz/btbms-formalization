@@ -1107,18 +1107,46 @@ variable {α : Type} [LinearOrder α]
 -- G9.1: two sources that agree before `u`, scanned by runs that both stop at or before `u`,
 -- have the same final cursor
 theorem cursor_eq_of_take_eq {s₁ s₂ W : List α} {u : Nat} (htake : s₁.take u = s₂.take u)
-    (h₁ : cursor s₁ W ≤ u) (h₂ : cursor s₂ W ≤ u) : cursor s₁ W = cursor s₂ W := by sorry
+    (h₁ : cursor s₁ W ≤ u) (h₂ : cursor s₂ W ≤ u) : cursor s₁ W = cursor s₂ W := by
+  have e₁ := cursor_take s₁ W u
+  have e₂ := cursor_take s₂ W u
+  rw [Nat.min_eq_right h₂] at e₂
+  rw [Nat.min_eq_right h₁, htake, e₂] at e₁
+  exact e₁.symm
 
 -- G9.2a: a query strictly below the full boundary of the first `m` keys stops before `m`
 theorem cursor_lt_of_lt_cutQuery {ks W : List α} (hW : Noninc W) {m : Nat} (hm : m ≤ ks.length)
-    (h : W < cutQuery ks m) : cursor ks W < m := by sorry
+    (h : W < cutQuery ks m) : cursor ks W < m := by
+  rcases m with _ | v
+  · rw [cutQuery_zero] at h
+    exact absurd h (List.not_lt_nil _)
+  · exact Nat.lt_succ_of_le (cursor_le_of_lt_cutQuery hW (by omega) h)
 
 -- G9.2b: conversely, a run that stops before `m` has its query strictly below that boundary
 theorem lt_cutQuery_of_cursor_lt {ks W : List α} (hW : Noninc W) {m : Nat} (hm : m ≤ ks.length)
-    (h : cursor ks W < m) : W < cutQuery ks m := by sorry
+    (h : cursor ks W < m) : W < cutQuery ks m := by
+  by_contra hn
+  have := le_cursor_of_cutQuery_le hW hm (not_lt.mp hn)
+  omega
 
 -- G9.2c: `ν(l)` is a sublist of `l`
-theorem nu_sublist (l : List α) : (nu l).Sublist l := by sorry
+theorem nu_sublist (l : List α) : (nu l).Sublist l := by
+  rw [nu_eq_foldl]
+  suffices H : ∀ (l acc pre : List α), acc.Sublist pre → (l.foldl nuStep acc).Sublist (pre ++ l) by
+    simpa using H l [] [] (List.Sublist.refl _)
+  intro l
+  induction l with
+  | nil => intro acc pre h; simpa using h
+  | cons x xs ih =>
+    intro acc pre h
+    rw [List.foldl_cons]
+    have hstep : (nuStep acc x).Sublist (pre ++ [x]) := by
+      unfold nuStep
+      refine List.Sublist.append ?_ (List.Sublist.refl _)
+      refine List.Sublist.trans ?_ h
+      have := (List.dropWhile_sublist (l := acc.reverse) (fun y => decide (y < x))).reverse
+      simpa using this
+    simpa using ih _ _ hstep
 
 end G9Words
 
@@ -1151,13 +1179,31 @@ theorem kappaQ_lt_iff (r d j : Nat) (W Z : List (WithTop Key)) :
 -- G9.2e: path nesting for whole paths (U1 L2.2 edgewise)
 theorem path_nesting_path {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks)
     (c : ColAddr) {W Z : List (WithTop Key)} (hW : Noninc W) (hZ : Noninc Z) (hWZ : W ≤ Z)
-    {x y : Nat} (h : Path E ks c Z x y) : Path E ks c W x y := by sorry
+    {x y : Nat} (h : Path E ks c Z x y) : Path E ks c W x y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ he ih => exact ih.trans (path_nesting hV hA c hW hZ hWZ he)
 
 -- G9.2f: paths are orbits of the partial response function: a path through `y` and a path to a
 -- lower `z` from the same start meet, so `z` is reached from `y`
 theorem path_functional {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr}
     {W : List (WithTop Key)} {x y z : Nat} (hy : Path E ks c W x y) (hz : Path E ks c W x z)
-    (hzy : z ≤ y) : Path E ks c W y z := by sorry
+    (hzy : z ≤ y) : Path E ks c W y z := by
+  induction hy using Relation.ReflTransGen.head_induction_on with
+  | refl => exact hz
+  | @head x x' hxx' hx'y ih =>
+    rcases Relation.ReflTransGen.cases_head hz with hxz | ⟨x'', hxx'', hx''z⟩
+    · subst hxz
+      have h1 := path_le hV hx'y
+      have h2 := edge_lt hV hxx'
+      omega
+    · obtain ⟨o, ho, hr⟩ := hxx'
+      obtain ⟨o', ho', hr'⟩ := hxx''
+      rw [ho] at ho'
+      cases ho'
+      rw [hr] at hr'
+      cases hr'
+      exact ih hx''z
 
 /-! ## G9.3 — the old terminal-to-root path at a low query -/
 
