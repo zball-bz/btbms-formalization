@@ -8313,6 +8313,24 @@ theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i 
       ∀ x ∈ S.entryRoles j, L < S.extendFit j β γ x ∧ S.extendFit j β γ x < S.ownerVal i := by
   sorry
 
+-- provides: U3, L7.6 (complete packets at a scan, (17))
+-- Moved here from `Plan/Spine.lean` (brief rule 5; name and statement unchanged): the proof uses
+-- L7.6a `scanPacket_spec`; nothing between the spine and this point uses it. `h17b` is not needed
+-- (blueprint L7.6).
+theorem scan_packet {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
+    (h17b : S.Lmax j β ≤ S.Cmax j) (hheads : S.HeadsAt P j i β) :
+    ∃ pk : SourcePacket.{u}, pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧
+      pk.asg pk.owner = S.ownerVal i ∧
+      ∀ L, S.Lmax j β ≤ L → pk.TargetAbove P L →
+        ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
+          ∀ x ∈ S.entryRoles j, L < β' x ∧ β' x < S.ownerVal i := by
+  obtain ⟨h1, h2, h3, h4, h5⟩ := scanPacket_spec S hS hij hfit h17a hheads
+  refine ⟨S.scanPacket i j β, h1, h2, h3, h4, fun L hL hT => ?_⟩
+  obtain ⟨γ, g1, g2, g3, g4⟩ := hT
+  exact ⟨S.extendFit j β γ, h5 L hL γ g1 g2 g3 g4⟩
+
 /-! ## Integration additions (nodes D7.1b, L6.2e, L6.2f, D7.2d, L7.6b, L4.3d, L7.5d; requested
 by U5 R10, R18, R19, R22, R23, R25–R27, R29, R30; formerly stubs in `U5.lean`) -/
 
