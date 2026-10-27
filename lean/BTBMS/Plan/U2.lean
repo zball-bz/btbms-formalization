@@ -5689,7 +5689,7 @@ theorem container_mem_routeCols_D7 {E : Forest} {c o : ColAddr} {e : EntryAddr}
     rw [← ht, List.take_left] at hF
     rw [← ht, List.getElem?_append_right le_rfl, Nat.sub_self] at hl
     obtain ⟨col, -, -, -, -, hs, -⟩ := Scan.lastStep?_eq_some hl
-    simp only [List.cons_append, List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hl
+    simp only [List.cons_append, List.getElem?_cons_zero] at hl
     simp only [Prod.mk.injEq] at hs
     refine ⟨F, hF, ?_⟩
     have : F.cols ≠ [] := by
@@ -5903,7 +5903,7 @@ theorem aAt_litCap_final_D7 {E : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpwa
       (((E.colAt c).getD []).take k).map Prod.fst ++ [p] := by
     simp [parents, hcol]
   have hpk : (parents (litCap E c k p) c)[k]? = some p := by
-    rw [hparK, List.getElem?_append_right (by simp [hlen]), List.length_map, hlen, Nat.sub_self]
+    rw [hparK, List.getElem?_append_right (by simp), List.length_map, hlen, Nat.sub_self]
     rfl
   have hQ : cutQuery (capKeys (litCap E c k p) (routeCols (litCap E c k p)) c) k =
       cutQuery (actualKeys E c) k := by
@@ -5917,7 +5917,7 @@ theorem aAt_litCap_final_D7 {E : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpwa
     unfold cutStart
     split_ifs with h0
     · rfl
-    · rw [hparK, List.getElem?_append_left (by simp [hlen]; omega), List.getElem?_map,
+    · rw [hparK, List.getElem?_append_left (by simp; omega), List.getElem?_map,
         List.getElem?_take_of_lt (by omega)]
       simp [parents, List.getElem?_map]
   have hT := ne_top_of_mem_cutQuery_D7 E c k
@@ -5988,7 +5988,7 @@ theorem litCap_retained_D7 {E : Forest} (hL : InL E) {c : ColAddr} {k p : Nat}
       · rcases Nat.eq_or_lt_of_le hiv with h1 | h1
         · rw [List.getElem?_append_right (by omega), hlen2, h1, Nat.sub_self,
             List.getElem?_eq_getElem hlt]
-          simp [List.getElem?_eq_getElem hlt]
+          simp
         · rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt h1]
     · exact ⟨colK, hcolE, rfl, rfl⟩
   have hc'E : c' ∈ E.colAddrs := by rw [Tree.mem_colAddrs_iff, hcolE]; rfl
@@ -6321,7 +6321,7 @@ theorem kappaQ_fix_D7 (r d φ : Nat) (E : Forest) {o : ColAddr} (ho : o.num 0 �
 -- L-G010.4, fixed region (D7; L-G010.4c): below `r` both stacks are the root's, and the
 -- decorated responses agree
 theorem respEdge_fixed_D7 (S : OrdStep) {j φ : Nat} {a c : ColAddr}
-    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) {x : Nat}
+    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (_hT : ∀ w ∈ W, w ≠ ⊤) {x : Nat}
     (hx : x < S.sd.r) :
     respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x =
       respEdge S.A (activeKeys_D7 S.A a) a W x := by
@@ -6433,8 +6433,8 @@ theorem respEdge_head_high_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤
       respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r := by sorry
 
 -- L-G010.14 corollary (D7): the old root response lies below `r`
-theorem respEdge_root_lt_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
-    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} {p : Nat}
+theorem respEdge_root_lt_D7 (S : OrdStep) {j φ : Nat} (_hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (_hp : PhasePair_D7 S j a c φ) (_hφ : 1 ≤ φ) {W : List (WithTop Key)} {p : Nat}
     (he : respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r = some p) : p < S.sd.r :=
   edge_lt S.inL.1 ((edge_iff _ _ _ _ _ _).mpr he)
 
