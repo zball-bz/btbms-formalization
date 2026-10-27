@@ -898,9 +898,76 @@ theorem safePrefix_condH {E : Forest} (hH : CondH E) (k : Nat) : CondH (safePref
     rw [hYy]; exact safePrefix_le Y k₂
 
 
+/-! T3.2d helpers: key order as word order, truncated keys, entries below a height. -/
+
+/-- A strict comparison survives truncating the smaller list strictly earlier. -/
+theorem spx_take_lt_take {α : Type} [LinearOrder α] :
+    ∀ (Y X : List α) (k₁ k₀ : Nat), Y < X → k₁ < k₀ → Y.take k₁ < X.take k₀
+  | _, _, _, 0, _, hk => absurd hk (Nat.not_lt_zero _)
+  | _, [], _, _ + 1, h, _ => absurd h (List.not_lt_nil _)
+  | [], x :: xs, _, k₀ + 1, _, _ => by simp
+  | _ :: _, x :: xs, 0, k₀ + 1, _, _ => by simp
+  | y :: ys, x :: xs, k₁ + 1, k₀ + 1, h, hk => by
+    rw [List.take_succ_cons, List.take_succ_cons, List.cons_lt_cons_iff]
+    rcases List.cons_lt_cons_iff.1 h with h₁ | ⟨h₁, h₂⟩
+    · exact Or.inl h₁
+    · exact Or.inr ⟨h₁, spx_take_lt_take ys xs k₁ k₀ h₂ (by omega)⟩
+
+/-- Key comparison is comparison of generic words over `Bool ×ₗ Nat`. -/
+theorem spx_key_lt_iff (X Y : Key) :
+    X < Y ↔ @gword (Lex (Bool × Nat)) X < @gword (Lex (Bool × Nat)) Y :=
+  (gword_lt_iff (α := Lex (Bool × Nat)) X Y).symm
+
+/-- The generic word of the key of a safe prefix is the truncated generic word. -/
+theorem spx_gword_relKey_safePrefix (a k : Nat) (H : Forest) :
+    @gword (Lex (Bool × Nat)) (relKey a (safePrefix H k)) =
+      (@gword (Lex (Bool × Nat)) (relKey a H)).take k := by
+  change (gword (relKey a (safePrefix H k)) : List (GAtom (Bool × Nat))) =
+      (gword (relKey a H) : List (GAtom (Bool × Nat))).take k
+  rw [relKey_eq_map, relKey_eq_map, gword_map, gword_map, gword_eq_map_word, gword_eq_map_word,
+    word_safePrefix, List.map_take, List.map_take]
+
+/-- T3.2b in key form: truncating the lower height strictly before the upper one keeps `<`. -/
+theorem spx_relKey_safePrefix_lt {a b : Nat} {H J : Forest} (h : relKey b J < relKey a H)
+    {k₁ k₀ : Nat} (hk : k₁ < k₀) : relKey b (safePrefix J k₁) < relKey a (safePrefix H k₀) := by
+  rw [spx_key_lt_iff] at h ⊢
+  rw [spx_gword_relKey_safePrefix, spx_gword_relKey_safePrefix]
+  exact spx_take_lt_take (α := GAtom (Lex (Bool × Nat))) _ _ _ _ h hk
+
+theorem spx_entryAt_append (t : Forest) (π ρ : List (Nat × Nat)) (j i : Nat) :
+    t.entryAt ⟨⟨π ++ ρ, j⟩, i⟩ = (t.forestAt π).bind fun F => F.entryAt ⟨⟨ρ, j⟩, i⟩ := by
+  simp only [Tree.entryAt, Tree.colAt, Tree.forestAt_append, Option.bind_assoc]
+
+/-- An entry inside the height of `e0` is read in that height. -/
+theorem spx_entryAt_inside (t : Forest) (e0 : EntryAddr) (ρ : List (Nat × Nat)) (j i : Nat) :
+    t.entryAt ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩ =
+      (t.heightAt e0).bind fun F => F.entryAt ⟨⟨ρ, j⟩, i⟩ := by
+  rw [spx_entryAt_append, Tree.forestAt_heightPath]
+
 -- T3.2d (txt:308-311): safe prefixes keep S (containment offsets + word fact)
 theorem safePrefix_condS {E : Forest} (hV : CondV E) (hS : CondS E) (k : Nat) :
-    CondS (safePrefix E k) := by sorry
+    CondS (safePrefix E k) := by
+  intro e0 he0 e he hret
+  obtain ⟨⟨ρ, hρ⟩, q, J', hJ', hres⟩ := hret
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  dsimp only at hρ
+  subst hρ
+  obtain ⟨x0, hx0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ e0).1 he0)
+  obtain ⟨p0, H'⟩ := x0
+  obtain ⟨H, k₀, hH, rfl, -⟩ := spx_entryAt (k := k) (T := E) hx0
+  have hJ'' := hJ'
+  rw [spx_entryAt_inside, Tree.heightAt, hx0] at hJ''
+  simp only [Option.map_some, Option.bind_some] at hJ''
+  obtain ⟨J, k₁, hJ, rfl, hk⟩ := spx_entryAt hJ''
+  have hEe : E.entryAt ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩ = some (q, J) := by
+    rw [spx_entryAt_inside, Tree.heightAt, hH]; simpa using hJ
+  have hret : IsOwnerReturn E e0 ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩ := ⟨⟨ρ, rfl⟩, q, J, hEe, hres⟩
+  have hSE := hS e0 ((Tree.mem_entryAddrs_iff E e0).2 (by rw [hH]; rfl)) _
+    ((Tree.mem_entryAddrs_iff E _).2 (by rw [hEe]; rfl)) hret
+  rw [Tree.heightAt, Tree.heightAt, hEe, hH] at hSE
+  rw [Tree.heightAt, Tree.heightAt, hJ', hx0]
+  exact spx_relKey_safePrefix_lt hSE hk
+
 
 -- T3.2e (txt:312-313): safe prefixes keep A (barrier + capping)
 theorem safePrefix_condA {E : Forest} (hL : InL E) (k : Nat) : CondA (safePrefix E k) := by sorry
