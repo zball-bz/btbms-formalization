@@ -4347,6 +4347,39 @@ theorem origin_spec_full {E : Forest} (hE : InL E) (w : AdmCap E) :
       ∃ i j : Nat, E.roles[i]? = some (Packet.anchorD E (some w) x) ∧
         E.roles[j]? = some (Packet.anchorD E (some w) y) ∧ i < j) := by sorry
 
+/-! ### D3.1d helpers: the stopping column of an admissible cap -/
+
+theorem bwd_moved_ord (m : Move) (hij : m.i ≤ m.j) (rest : List (Nat × Nat)) (cc : Nat) :
+    m.mapRole m.bwdIdx (.ord ⟨m.col.path ++ (m.col.col, m.i) :: rest, cc⟩) =
+      .ord ⟨m.col.path ++ (m.col.col, m.j) :: rest, cc⟩ := by
+  simp only [Move.mapRole, mapPath_through]
+  have hb : m.bwdIdx m.i = m.j := by unfold Move.bwdIdx; rw [if_pos le_rfl]; omega
+  rw [hb]
+
+/-- helper: the stop data of an admissible cap and the origins of its stopping column. -/
+theorem adm_stop {E : Forest} {c : ColAddr} {k p : Nat} {col : Column} (hcol : E.colAt c = some col) :
+    ∀ ms : List Move, MovesValid (litCap E c k p) ms →
+      ∃ c', stopData (applyMoves (litCap E c k p) ms) =
+          some { depth := c.path.length, col := c', t := c.num 0, r := p, Q := col.take k } ∧
+        backRole ms (.ord c') = .ord c ∧ ∀ n, backRole ms (.slot ⟨c', n⟩) = .slot ⟨c, n⟩ := by
+  intro ms
+  induction ms using List.reverseRecOn with
+  | nil => intro _; exact ⟨c, stopData_litCap' hcol k p, rfl, fun _ => rfl⟩
+  | append_singleton ms m ih =>
+    intro hv
+    obtain ⟨hv, hm⟩ := movesValid_append hv
+    obtain ⟨c', hsd, hord, hslot⟩ := ih hv
+    obtain ⟨rest, hpath, hsd'⟩ := stopData_applyMove hm hsd
+    obtain ⟨-, -, -, -, -, hij, -⟩ := hm
+    rw [applyMoves_snoc]
+    refine ⟨_, hsd', ?_, fun n => ?_⟩
+    · rw [backRole_append]
+      simp only at hpath ⊢
+      rw [bwd_moved_ord m hij.le, ← hpath]; exact hord
+    · rw [backRole_append]
+      simp only at hpath ⊢
+      rw [bwd_moved_slot m hij.le, ← hpath]; exact hslot n
+
 -- provides: U2, D3.1d (requested by U3 R15): the query of an admissible cap is the cut prefix of
 -- `E`'s column, with origins at the same indices.
 theorem admCap_query {E : Forest} (hE : InL E) (w : AdmCap E) {sd : StopData}
@@ -4354,7 +4387,16 @@ theorem admCap_query {E : Forest} (hE : InL E) (w : AdmCap E) {sd : StopData}
     sd.t = w.col.num 0 ∧ sd.r = w.par ∧ sd.Q.length = w.cut ∧
     w.origin (.ord sd.col) = some (.ord w.col) ∧
     ∀ j < w.cut, w.origin (.slot ⟨sd.col, j⟩) = some (.slot ⟨w.col, j⟩) ∧
-      (sd.Q[j]?) = ((E.colAt w.col).getD [])[j]? := by sorry
+      (sd.Q[j]?) = ((E.colAt w.col).getD [])[j]? := by
+  obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 w.upward
+  obtain ⟨c', hsd', hord, hslot⟩ := adm_stop (k := w.cut) (p := w.par) hcol w.moves w.movesValid
+  have : sd = _ := Option.some.inj (hsd.symm.trans hsd')
+  subst this
+  refine ⟨rfl, rfl, List.length_take_of_le hk, ?_, fun j hj => ⟨?_, ?_⟩⟩
+  · rw [originBody_eq]; simp only; rw [hord, if_neg (by simp)]
+  · rw [originBody_eq]; simp only; rw [hslot j, if_neg (by simp; omega)]
+  · simp only; rw [hcol, Option.getD_some, List.getElem?_take_of_lt hj]
+
 
 -- provides: U2, D3.1d (requested by U5 R16): the origin of the stopping role exists, the origin map
 -- is injective, and every pre-stop role of the anchor has an origin strictly before the origin of
