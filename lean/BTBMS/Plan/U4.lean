@@ -252,21 +252,210 @@ noncomputable def atomFml {V : Type} : Atom V → lang.Formula V
 noncomputable def diagramFml {V : Type} (D : Diagram V) : lang.Formula V :=
   (List.map atomFml D).foldr (· ⊓ ·) ⊤
 
+/-! ### N4.4 helpers: atoms, finite tuples, conjunctions -/
+
+/-- N4.4 (helper): `ltB` reads the true order. -/
+theorem realize_ltB {ν : Ordinal.{u}} {Q : Prims.{u}} {α : Type} {n : Nat}
+    (t₁ t₂ : lang.Term (α ⊕ Fin n)) (v : α → Carrier ν Q) (xs : Fin n → Carrier ν Q) :
+    (ltB t₁ t₂).Realize v xs ↔
+      (t₁.realize (Sum.elim v xs)).val < (t₂.realize (Sum.elim v xs)).val := Iff.rfl
+
+/-- N4.4 (helper): the order atom between two variables. -/
+theorem realize_lt_var {ν : Ordinal.{u}} {Q : Prims.{u}} {β : Type} (x y : β)
+    (v : β → Carrier ν Q) :
+    (Relations.formula₂ (L := lang) Rel.lt (Term.var x) (Term.var y)).Realize v ↔
+      (v x).val < (v y).val := Iff.rfl
+
+/-- N4.4 (helper): the `Elem` atom between two variables. -/
+theorem realize_elem_var {ν : Ordinal.{u}} {Q : Prims.{u}} {β : Type} (x y : β)
+    (v : β → Carrier ν Q) :
+    (Relations.formula₂ (L := lang) Rel.elem (Term.var x) (Term.var y)).Realize v ↔
+      Q.Elem (v x).val (v y).val := Iff.rfl
+
+/-- N4.4 (helper): the `Edge` atom between three variables. -/
+theorem realize_edge_var {ν : Ordinal.{u}} {Q : Prims.{u}} {β : Type} (x y z : β)
+    (v : β → Carrier ν Q) :
+    (Relations.formula (L := lang) Rel.edge ![Term.var x, Term.var y, Term.var z]).Realize
+      v ↔ Q.Edge (v x).val (v y).val (v z).val := Iff.rfl
+
+/-- N4.4 (helper): finite conjunctions of formulas. -/
+theorem realize_foldr_inf_formula {M : Type*} [lang.Structure M] {α : Type}
+    (l : List (lang.Formula α)) (v : α → M) :
+    (l.foldr (· ⊓ ·) ⊤).Realize v ↔ ∀ φ ∈ l, φ.Realize v :=
+  BoundedFormula.realize_foldr_inf l v default
+
+section snoc
+variable {M : Type*} (a b c : M)
+/-- N4.4 (helper): evaluating bound-variable tuples. -/
+theorem snoc1_0 : (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) 0 = a := rfl
+/-- N4.4 (helper). -/
+theorem snoc2_0 : (Fin.snoc (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) b : Fin 2 → M) 0 = a :=
+  rfl
+/-- N4.4 (helper). -/
+theorem snoc2_1 : (Fin.snoc (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) b : Fin 2 → M) 1 = b :=
+  rfl
+/-- N4.4 (helper). -/
+theorem snoc3_0 : (Fin.snoc (Fin.snoc (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) b :
+    Fin 2 → M) c : Fin 3 → M) 0 = a := rfl
+/-- N4.4 (helper). -/
+theorem snoc3_1 : (Fin.snoc (Fin.snoc (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) b :
+    Fin 2 → M) c : Fin 3 → M) 1 = b := rfl
+/-- N4.4 (helper). -/
+theorem snoc3_2 : (Fin.snoc (Fin.snoc (Fin.snoc (default : Fin 0 → M) a : Fin 1 → M) b :
+    Fin 2 → M) c : Fin 3 → M) 2 = c := rfl
+end snoc
+
+/-- N4.4 (helper): "nonzero and not a successor", read among the points of `M(ν, Q)`. -/
+theorem isSuccLimit_iff_carrier {ν : Ordinal.{u}} {Q : Prims.{u}} {o : Ordinal.{u}} (ho : o < ν) :
+    ((∃ a : Carrier ν Q, a.val < o) ∧
+      ∀ a : Carrier ν Q, a.val < o → ∃ b : Carrier ν Q, a.val < b.val ∧ b.val < o) ↔
+      Order.IsSuccLimit o := by
+  constructor
+  · rintro ⟨⟨a, ha⟩, h⟩
+    rw [Ordinal.isSuccLimit_iff, Order.isSuccPrelimit_iff_succ_lt]
+    refine ⟨(zero_le.trans_lt ha).ne', fun b hb => ?_⟩
+    obtain ⟨c, hbc, hco⟩ := h ⟨b, hb.trans ho⟩ hb
+    exact (Order.succ_le_of_lt hbc).trans_lt hco
+  · intro hl
+    exact ⟨⟨⟨0, hl.pos.trans ho⟩, hl.pos⟩, fun a ha =>
+      ⟨⟨Order.succ a.val, (hl.succ_lt ha).trans ho⟩, Order.lt_succ a.val, hl.succ_lt ha⟩⟩
+
 /-- N4.4: correctness of `limFml` in every `M(ν, Q)`. -/
 theorem realize_limFml {ν : Ordinal.{u}} {Q : Prims.{u}} (x : Carrier ν Q) :
-    limFml.Realize (fun _ => x) ↔ IsLim x.val := by sorry
+    limFml.Realize (fun _ => x) ↔ IsLim x.val := by
+  simp only [limFml, fv, Formula.Realize, BoundedFormula.realize_inf, BoundedFormula.realize_ex,
+    BoundedFormula.realize_all, BoundedFormula.realize_imp, realize_ltB, Term.realize_var,
+    Function.comp_apply, Sum.elim_inl, Sum.elim_inr, snoc1_0, snoc2_0, snoc2_1, snoc3_0, snoc3_1,
+    snoc3_2]
+  rw [isSuccLimit_iff_carrier x.lt]
+  have : (∃ a : Carrier ν Q, (a.val < x.val ∧ ∃ b : Carrier ν Q, b.val < a.val) ∧
+      ∀ b : Carrier ν Q, b.val < a.val → ∃ c : Carrier ν Q, b.val < c.val ∧ c.val < a.val) ↔
+      Ordinal.omega0 < x.val := by
+    constructor
+    · rintro ⟨a, ⟨hax, h₁⟩, h₂⟩
+      exact (Ordinal.omega0_le_of_isSuccLimit
+        ((isSuccLimit_iff_carrier a.lt).1 ⟨h₁, h₂⟩)).trans_lt hax
+    · intro h
+      refine ⟨⟨Ordinal.omega0, h.trans x.lt⟩, ?_⟩
+      have := (isSuccLimit_iff_carrier (Q := Q) (h.trans x.lt)).2 Ordinal.isSuccLimit_omega0
+      exact ⟨⟨h, this.1⟩, this.2⟩
+  rw [this]
+  rfl
+
+/-- N4.4 (helper): a base atom under a renaming of variables. -/
+theorem baseAtom_holds_map {W V : Type} (P : Prims.{u}) (b : BaseAtom W) (f : W → V)
+    (a : V → Ordinal.{u}) : (b.map f).Holds P a ↔ b.Holds P (fun x => a (f x)) := by
+  cases b <;> rfl
+
+/-- N4.4 (helper): a base atom reads its assignment only on its own variables. -/
+theorem baseAtom_holds_congr {V : Type} (P : Prims.{u}) (b : BaseAtom V) (a a' : V → Ordinal.{u})
+    (h : ∀ x ∈ b.vars, a x = a' x) : b.Holds P a ↔ b.Holds P a' := by
+  cases b <;> simp_all [BaseAtom.vars, BaseAtom.Holds]
+
+/-- N4.4 (helper): the translation of one base atom. -/
+theorem realize_baseFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (b : BaseAtom V)
+    (v : V → Carrier ν Q) : (baseFml b).Realize v ↔ b.Holds Q (fun x => (v x).val) := by
+  cases b with
+  | lim x =>
+    rw [baseFml, Formula.realize_relabel]
+    exact realize_limFml (v x)
+  | lt x y => exact realize_lt_var x y v
+  | le x y =>
+    rw [baseFml, Formula.realize_not, realize_lt_var]
+    exact not_lt
+  | eq x y =>
+    rw [baseFml, Formula.realize_equal]
+    exact Carrier.ext_iff
+  | elem x y => exact realize_elem_var x y v
+  | edge c b a => exact realize_edge_var c b a v
+
+/-- N4.4 (helper): `blockVar` on a new variable. -/
+theorem blockVar_new {W V : Type} (D : List (BaseAtom W)) (fr : W → Option V) (d : V) {x : W}
+    (h : x ∈ baseVars D ∧ fr x = none) : blockVar D fr d x = Sum.inr ⟨x, h⟩ := dif_pos h
+
+/-- N4.4 (helper): `blockVar` on a framed variable. -/
+theorem blockVar_some {W V : Type} (D : List (BaseAtom W)) (fr : W → Option V) (d : V) {x : W}
+    {y : V} (h : fr x = some y) : blockVar D fr d x = Sum.inl y := by
+  rw [blockVar, dif_neg (by simp [h]), h]
+  rfl
+
+/-- N4.4 (helper): the bound conjunct of one variable. -/
+theorem realize_boundFml {ν : Ordinal.{u}} {Q : Prims.{u}} {W V : Type} (D : List (BaseAtom W))
+    (fr : W → Option V) (u L : V) (x : W) (w : V ⊕ NewVars D fr → Carrier ν Q) :
+    (boundFml D fr u L x).Realize w ↔
+      ((x ∈ baseVars D ∧ fr x = none) → (w (Sum.inl L)).val < (w (blockVar D fr u x)).val) ∧
+        (w (blockVar D fr u x)).val < (w (Sum.inl u)).val := by
+  unfold boundFml
+  split_ifs with h
+  · rw [Formula.realize_inf, realize_lt_var, realize_lt_var]
+    exact ⟨fun h' => ⟨fun _ => h'.1, h'.2⟩, fun h' => ⟨h'.1 h, h'.2⟩⟩
+  · rw [realize_lt_var]
+    exact ⟨fun h' => ⟨fun h'' => absurd h'' h, h'⟩, fun h' => h'.2⟩
 
 /-- N4.4: correctness of the block translation. -/
 theorem realize_blockFml {ν : Ordinal.{u}} {Q : Prims.{u}} {W V : Type}
     (D : List (BaseAtom W)) (fr : W → Option V) (u L : V) (v : V → Carrier ν Q) :
     (blockFml D fr u L).Realize v ↔
-      BlockAbove Q D (fun x => (fr x).map (fun y => (v y).val)) (v L).val (v u).val := by sorry
+      BlockAbove Q D (fun x => (fr x).map (fun y => (v y).val)) (v L).val (v u).val := by
+  unfold blockFml
+  rw [Formula.realize_iExs]
+  simp only [Formula.realize_inf, realize_foldr_inf_formula, List.forall_mem_map]
+  constructor
+  · rintro ⟨i, hb, hd⟩
+    refine ⟨fun x => (Sum.elim v i (blockVar D fr u x)).val, ?_, ?_, ?_, ?_⟩
+    · intro x o hx
+      cases hfx : fr x with
+      | none => simp [hfx] at hx
+      | some y =>
+        simp only [hfx, Option.map_some, Option.some.injEq] at hx
+        subst hx
+        show (Sum.elim v i (blockVar D fr u x)).val = _
+        rw [blockVar_some D fr u hfx]
+        rfl
+    · intro x hx hnone
+      exact ((realize_boundFml D fr u L x _).1 (hb x hx)).1 ⟨hx, Option.map_eq_none_iff.1 hnone⟩
+    · intro x hx
+      exact ((realize_boundFml D fr u L x _).1 (hb x hx)).2
+    · intro b hbD
+      have := hd b hbD
+      rwa [realize_baseFml, baseAtom_holds_map] at this
+  · rintro ⟨β, h₁, h₂, h₃, h₄⟩
+    let i : NewVars D fr → Carrier ν Q := fun x => ⟨β x.1, (h₃ x.1 x.2.1).trans (v u).lt⟩
+    have key : ∀ x ∈ baseVars D, (Sum.elim v i (blockVar D fr u x)).val = β x := by
+      intro x hx
+      cases hfx : fr x with
+      | none => rw [blockVar_new D fr u ⟨hx, hfx⟩]; rfl
+      | some y =>
+        rw [blockVar_some D fr u hfx]
+        exact (h₁ x _ (by simp [hfx])).symm
+    refine ⟨i, fun x hx => ?_, fun b hbD => ?_⟩
+    · rw [realize_boundFml]
+      refine ⟨fun hn => ?_, ?_⟩
+      · rw [key x hx]
+        exact h₂ x hx (by simp [hn.2])
+      · rw [key x hx]
+        exact h₃ x hx
+    · rw [realize_baseFml, baseAtom_holds_map]
+      refine (baseAtom_holds_congr Q b _ _ fun x hx => ?_).1 (h₄ b hbD)
+      exact (key x (List.mem_flatMap.2 ⟨b, hbD, hx⟩)).symm
+
+/-- N4.4 (helper): the translation of one atom of the full grammar. -/
+theorem realize_atomFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (A : Atom V)
+    (v : V → Carrier ν Q) : (atomFml A).Realize v ↔ A.Holds Q (fun x => (v x).val) := by
+  cases A with
+  | base b => exact realize_baseFml b v
+  | noReal D fr u L =>
+    rw [atomFml, Formula.realize_not, realize_blockFml]
+    rfl
 
 /-- N4.4 (translation lemma): in every `M(ν, Q)`, the translation of a diagram holds exactly
 when the diagram holds for `Q`. -/
 theorem realize_diagramFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
     (v : V → Carrier ν Q) : (diagramFml D).Realize v ↔ D.Holds Q (fun x => (v x).val) := by
-  sorry
+  unfold diagramFml
+  rw [realize_foldr_inf_formula]
+  simp only [List.forall_mem_map, realize_atomFml]
+  rfl
 
 /-! ## N4.4: the reflection and transport properties, semantically and as formulas -/
 
