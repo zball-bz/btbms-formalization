@@ -630,10 +630,133 @@ theorem cursor_singleton_cons (x y : α) (V : List α) (hV : Noninc (y :: V)) :
 theorem cursor_nil_right (src : List α) : cursor src [] = 0 := by
   cases src <;> simp [cursor]
 
+/-- L2.1b helper: `ν(l)` is a sublist of `l`. -/
+theorem nu_sublist (l : List α) : (nu l).Sublist l := by
+  induction l using List.reverseRecOn with
+  | nil => exact List.Sublist.slnil
+  | append_singleton l x ih =>
+    rw [nu_append_singleton, nuStep_eq_takeWhile (nu_noninc l)]
+    exact ((List.takeWhile_sublist _).trans ih).append (List.Sublist.refl _)
+
+/-- L2.1b helper: a letter at least every later letter is kept by `ν`. -/
+theorem nu_cons_of_le {x : α} {xs : List α} (h : ∀ z ∈ xs, z ≤ x) : nu (x :: xs) = x :: nu xs := by
+  induction xs using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton xs w ih =>
+    have ih' := ih fun z hz => h z (List.mem_append_left _ hz)
+    have hw : w ≤ x := h w (List.mem_append_right _ (List.mem_singleton_self w))
+    have hn : Noninc (x :: nu xs) := ih' ▸ nu_noninc (x :: xs)
+    rw [← List.cons_append, nu_append_singleton, ih', nuStep_eq_takeWhile hn, List.takeWhile_cons,
+      if_pos (decide_eq_true hw), nu_append_singleton, nuStep_eq_takeWhile (nu_noninc xs),
+      List.cons_append]
+
+/-- L2.1b helper: a letter below some later letter is deleted by `ν`. -/
+theorem nu_cons_of_lt {x : α} {xs : List α} (h : ∃ z ∈ xs, x < z) : nu (x :: xs) = nu xs := by
+  induction xs using List.reverseRecOn with
+  | nil => simp at h
+  | append_singleton xs w ih =>
+    rw [← List.cons_append, nu_append_singleton, nu_append_singleton]
+    by_cases h' : ∃ z ∈ xs, x < z
+    · rw [ih h']
+    · push Not at h'
+      obtain ⟨z, hz, hxz⟩ := h
+      have hxw : x < w := by
+        rcases List.mem_append.1 hz with hz | hz
+        · exact absurd (h' z hz) (not_le.2 hxz)
+        · rw [List.mem_singleton] at hz; exact hz ▸ hxz
+      rw [nu_cons_of_le h', nuStep_eq_takeWhile (nu_cons_of_le h' ▸ nu_noninc (x :: xs)),
+        nuStep_eq_takeWhile (nu_noninc xs), List.takeWhile_cons,
+        if_neg (by simpa using hxw)]
+      cases hn : nu xs with
+      | nil => rfl
+      | cons a rest =>
+        have ha : a ≤ x := h' a ((nu_sublist xs).subset (hn ▸ List.mem_cons_self))
+        rw [List.takeWhile_cons, if_neg (by simpa using lt_of_le_of_lt ha hxw)]
+
+/-- L2.1b helper: the first letter of `ν(x :: xs)` is a maximum of `x :: xs`. -/
+theorem nu_head (x : α) (xs : List α) :
+    ∃ m rest, nu (x :: xs) = m :: rest ∧ x ≤ m ∧ ∀ z ∈ xs, z ≤ m := by
+  induction xs generalizing x with
+  | nil => exact ⟨x, [], rfl, le_refl x, by simp⟩
+  | cons w ws ih =>
+    by_cases hall : ∀ z ∈ w :: ws, z ≤ x
+    · exact ⟨x, _, nu_cons_of_le hall, le_refl x, hall⟩
+    · push Not at hall
+      obtain ⟨m, rest, hm, hwm, hws⟩ := ih w
+      obtain ⟨z, hz, hxz⟩ := hall
+      have hzm : ∀ z ∈ w :: ws, z ≤ m := by
+        intro z hz
+        rcases List.mem_cons.1 hz with rfl | hz
+        · exact hwm
+        · exact hws z hz
+      exact ⟨m, rest, (nu_cons_of_lt ⟨z, hz, hxz⟩).trans hm, (hxz.trans_le (hzm z hz)).le, hzm⟩
+
+/-- L2.1b helper: a list whose first letter is below `m` is below every list starting with `m`. -/
+theorem lt_cons_of_head_lt {l : List α} {m : α} (rest : List α) (h : ∀ a ∈ l.head?, a < m) :
+    l < m :: rest := by
+  cases l with
+  | nil => exact List.nil_lt_cons _ _
+  | cons a l => exact List.cons_lt_cons_iff.2 (Or.inl (h a rfl))
+
+/-- L2.1b helper: the empty list is least. -/
+theorem nil_le_list (l : List α) : ([] : List α) ≤ l := by
+  cases l with
+  | nil => exact le_refl _
+  | cons a l => exact le_of_lt (List.nil_lt_cons _ _)
+
+/-- L2.1b helper: `≤` under a common first letter. -/
+theorem cons_le_cons_iff' (a : α) (l l' : List α) : a :: l ≤ a :: l' ↔ l ≤ l' := by
+  rw [le_iff_lt_or_eq, le_iff_lt_or_eq, List.cons_lt_cons_iff, List.cons.injEq]
+  simp
+
 /-- L2.1b (txt:170-173): against a nonincreasing query, exhaustion is lexicographic comparison
 of the reduced source. -/
 theorem cursor_eq_length_iff (src : List α) {W : List α} (hW : Noninc W) :
-    cursor src W = src.length ↔ nu src ≤ W := by sorry
+    cursor src W = src.length ↔ nu src ≤ W := by
+  induction src, W using cursor.induct with
+  | case1 W => exact iff_of_true (by simp [cursor]) (nil_le_list W)
+  | case2 x xs =>
+    obtain ⟨m, rest, hm, -⟩ := nu_head x xs
+    rw [hm, cursor]
+    exact iff_of_false (by simp) (not_le.2 (List.nil_lt_cons _ _))
+  | case3 x xs y ys hxy ih =>
+    rw [cursor, if_pos hxy, List.length_cons, Nat.add_right_cancel_iff, ih hW]
+    by_cases hall : ∀ z ∈ xs, z ≤ x
+    · rw [nu_cons_of_le hall]
+      refine iff_of_true (le_of_lt (lt_cons_of_head_lt _ fun a ha => ?_))
+        (le_of_lt (List.cons_lt_cons_iff.2 (Or.inl hxy)))
+      have ha' : a ∈ nu xs := List.mem_of_mem_head? ha
+      exact lt_of_le_of_lt (hall a ((nu_sublist xs).subset ha')) hxy
+    · push Not at hall
+      rw [nu_cons_of_lt hall]
+  | case4 xs y ys hyy ih =>
+    have hys : Noninc ys := (List.pairwise_cons.1 hW).2
+    rw [cursor, if_neg hyy, if_pos rfl, List.length_cons, Nat.add_right_cancel_iff, ih hys]
+    by_cases hall : ∀ z ∈ xs, z ≤ y
+    · rw [nu_cons_of_le hall, cons_le_cons_iff']
+    · push Not at hall
+      obtain ⟨z, hz, hyz⟩ := hall
+      rw [nu_cons_of_lt ⟨z, hz, hyz⟩]
+      obtain ⟨w, ws, rfl⟩ : ∃ w ws, xs = w :: ws := List.exists_cons_of_ne_nil (List.ne_nil_of_mem hz)
+      obtain ⟨m, rest, hm, hwm, hws⟩ := nu_head w ws
+      have hym : y < m := by
+        rcases List.mem_cons.1 hz with rfl | hz
+        · exact lt_of_lt_of_le hyz hwm
+        · exact lt_of_lt_of_le hyz (hws z hz)
+      rw [hm]
+      refine iff_of_false (not_le.2 (lt_cons_of_head_lt _ fun a ha => ?_))
+        (not_le.2 (List.cons_lt_cons_iff.2 (Or.inl hym)))
+      exact lt_of_le_of_lt ((List.pairwise_cons.1 hW).1 a (List.mem_of_mem_head? ha)) hym
+  | case5 x xs y ys h1 h2 ih =>
+    have hys : Noninc ys := (List.pairwise_cons.1 hW).2
+    have hyx : y < x := lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2)
+    rw [cursor, if_neg h1, if_neg h2, ih hys]
+    obtain ⟨m, rest, hm, hxm, -⟩ := nu_head x xs
+    have hym : y < m := lt_of_lt_of_le hyx hxm
+    rw [hm]
+    refine iff_of_false (not_le.2 (lt_cons_of_head_lt _ fun a ha => ?_))
+      (not_le.2 (List.cons_lt_cons_iff.2 (Or.inl hym)))
+    exact lt_of_le_of_lt ((List.pairwise_cons.1 hW).1 a (List.mem_of_mem_head? ha)) hym
 
 -- provides: U1, L2.1 (scan boundary lemma, reduced query). Moved here from `Plan/Spine.lean`
 -- (brief rule 5): its proof needs `cursor_take` and `cursor_eq_length_iff`; nothing in between
