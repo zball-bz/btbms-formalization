@@ -10,6 +10,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | G-004 | confirmed | exposition | §5.2 txt:864-866 | "The hull contains the whole J_b" must mean J_b ∈ H, not J_b ⊆ H | codex | claude |
 | G-005 | confirmed | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
 | G-006 | closed | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude | codex |
+| G-007 | repaired | repairable | lean/BTBMS/Expansion.lean (statement port) | Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height | codex | claude |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -63,6 +64,15 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 **Fix:** Write the joint predicates C_e/R_e, the localized pre-entry-cut barrier and the first-divergence argument as explicit lemmas (codex-crosscheck-1.md, Q2).
 
 **Refs:** claude C-06, codex CROSSCHECK-1 Q2
+
+
+## G-007 — Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height
+
+**Detail:** Not a paper gap: a defect in Claude's Lean port, outside the standard domain. E.g. [[],[(2,[[]])]] at n=0: reference ∅-column deletion, Lean none.
+
+**Fix:** rootLayer searches tl+2 forests; expandExtraLayer reproduces the reference (empty query, negative offset, only the j=1 tail survives). Regression cases in checks/lean/gen-regression.mjs. fix_checked_by is pending Codex confirmation (T-014 follow-up).
+
+**Refs:** codex-statement-review.md §2
 
 
 # Decisions

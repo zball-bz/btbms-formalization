@@ -1,6 +1,6 @@
 # Status snapshot
 
-Generated 2026-10-27T06:49:07+00:00 at commit `abfb71d`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T07:29:43+00:00 at commit `3be1508`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P3 Lean outline**
 
@@ -9,11 +9,9 @@ Phase: **P3 Lean outline**
 - T-009 [user] Gate G1: sign off gap report and simplified proof
 - T-015 [user] Gate G2: sign off the Lean statement; then it is locked
 
-## doing (1)
-- T-014 [codex] Independent statement-fidelity review of the Lean statement
-
-## review (1)
+## review (2)
 - T-013 [claude] Formalize the main statement in Lean (definitions, order, operation, Std, Mahlo, theorem with sorry)
+- T-014 [codex] Independent statement-fidelity review of the Lean statement
 
 ## done (10)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker

@@ -211,13 +211,17 @@
    "id": "T-014",
    "phase": "P3",
    "owner": "codex",
-   "status": "doing",
+   "status": "review",
    "title": "Independent statement-fidelity review of the Lean statement",
    "deps": [
     "T-013"
    ],
    "deliverable": "tracker/review/codex-statement-review.md",
-   "brief": "tracker/review/STATEMENT-BRIEF.md"
+   "brief": "tracker/review/STATEMENT-BRIEF.md",
+   "evidence": [
+    "tracker/review/codex-statement-review.md"
+   ],
+   "note": "Codex: order, Std, Mahlo hierarchy, theorem faithful; one required change: expand missed the reference root lookup in the stopping entry's height on raw non-V/I inputs (negative offset). Fixed (expandExtraLayer, rootLayer fuel tl+2), docstrings corrected; raw regression + raw fuzz added (80,008 cases, 0 mismatches). Fix sent back to Codex for confirmation."
   },
   {
    "id": "T-015",
@@ -1214,6 +1218,25 @@
    ],
    "fix_by": "codex",
    "fix_checked_by": "claude"
+  },
+  {
+   "id": "G-007",
+   "status": "repaired",
+   "severity": "repairable",
+   "loc": "lean/BTBMS/Expansion.lean (statement port)",
+   "summary": "Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [
+    "claude"
+   ],
+   "fix_by": "claude",
+   "refs": [
+    "codex-statement-review.md §2"
+   ],
+   "detail": "Not a paper gap: a defect in Claude's Lean port, outside the standard domain. E.g. [[],[(2,[[]])]] at n=0: reference ∅-column deletion, Lean none.",
+   "fix": "rootLayer searches tl+2 forests; expandExtraLayer reproduces the reference (empty query, negative offset, only the j=1 tail survives). Regression cases in checks/lean/gen-regression.mjs. fix_checked_by is pending Codex confirmation (T-014 follow-up)."
   }
  ],
  "simplifications": [

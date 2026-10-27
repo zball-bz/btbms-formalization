@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Differential test of the Lean statement's definitions (lean/BTBMS/{Syntax,Expansion}.lean)
 # against the pinned reference BTBM.ts: the operation on generated standard expressions and on
-# random V-expressions (including every case where the reference throws), the order, relative
+# random V-expressions, fixed raw regression cases and random raw expressions (arbitrary
+# parents), including cases where the reference throws; the order, relative
 # keys and seeds. Passing is evidence of definitional fidelity, not a proof of anything.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,4 +17,5 @@ gen="$root/checks/lean"
 node --no-warnings "$gen/gen-cases.mjs" "$ref" "$out/standard.jsonl" 5 4 20000
 node --no-warnings "$gen/gen-random.mjs" "$ref" "$out/random.jsonl" 50000 20261027
 node --no-warnings "$gen/gen-order.mjs" "$ref" "$out/random.jsonl" "$out/order.jsonl" 200000 11
-for f in standard random order; do echo -n "$f: "; .lake/build/bin/difftest "$out/$f.jsonl"; done
+node --no-warnings "$gen/gen-regression.mjs" "$ref" "$out/raw.jsonl" 20000 5
+for f in standard random order raw; do echo -n "$f: "; .lake/build/bin/difftest "$out/$f.jsonl"; done

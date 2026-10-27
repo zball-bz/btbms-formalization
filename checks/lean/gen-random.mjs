@@ -1,5 +1,5 @@
 // Random raw expressions satisfying V (every parent a visible column below its own column),
-// I not required, for checking that the Lean operation is `none` exactly where FS throws.
+// I not required, for checking agreement, including where FS throws, on the V domain (raw cases: gen-regression).
 // Usage: node checks/lean/gen-random.mjs REFERENCE_DIR OUT_FILE COUNT SEED
 import fs from 'node:fs';
 import {loadReference} from '../js/ref-loader.mjs';

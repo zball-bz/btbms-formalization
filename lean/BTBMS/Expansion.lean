@@ -6,9 +6,13 @@ import BTBMS.Syntax
 `expand e n` is a line-by-line port of `FS` in the reference `BTBM.ts`
 (SmileLee-lyx/ne-rewritten@88df798, `src/notations/BM-like/BTBM.ts`, lines 105–289).
 It returns `none` exactly where the reference throws:
-* the owner-root branch with an exhausted root scan (`'Illegal state'`), and
-* a root that is not a visible column (the reference then crashes in `root_layer`; this cannot
-  happen when every parent is smaller than its column, condition V).
+* the owner-root branch with an exhausted root scan and `n ≥ 1` (`'Illegal state'`), and
+* a failed root lookup (`root_layer` reads past the last forest it can reach and crashes).
+
+On raw syntax outside conditions V and I the reference can also find the root one layer
+below the stopping forest, in a child forest that ends in an empty column; its column offset
+`t - r` is then negative. `expand` reproduces that case too (`expandExtraLayer`), so that it
+agrees with the reference on every natural-labelled forest, not only on admissible ones.
 
 On the empty forest it returns `some ∅`, like the reference (the paper leaves `∅[n]`
 undefined; this self-loop adds nothing to `IsStd`, see G-001 / D-3 in the tracker).
@@ -69,8 +73,10 @@ def rootAt (e : Forest) (tl : Nat) : Nat :=
   ((lastEntry? (skipLayers e tl)).map Prod.fst).getD 0
 
 /-- `root_layer`: the depth and index of column `r` on the route. The reference searches
-until it finds `r`; it can only succeed within the first `tl + 1` forests, after which it
-crashes. `none` records that crash. -/
+forest after forest until it finds `r`. It can succeed in the first `tl + 2` forests: the
+`tl + 1` forests of the route, and the height of the stopping entry, which on raw syntax can be
+a nonempty forest ending in an empty column. Reading the next forest after that crashes; `none`
+records the crash. -/
 def rootLayerAux (r : Nat) : Nat → Forest → Nat → Nat → Option (Nat × Nat)
   | 0, _, _, _ => none
   | fuel + 1, cur, left, layer =>
@@ -78,7 +84,7 @@ def rootLayerAux (r : Nat) : Nat → Forest → Nat → Nat → Option (Nat × N
     else rootLayerAux r fuel (nextLayer cur) (left + cur.cols.length) (layer + 1)
 
 def rootLayer (e : Forest) (r tl : Nat) : Option (Nat × Nat) :=
-  rootLayerAux r (tl + 1) e 0 0
+  rootLayerAux r (tl + 2) e 0 0
 
 /-! ## Shifts and replacement (paper §1.1, `T_{r,d}` and `A_{r,d,ℓ,Z}`) -/
 
@@ -91,8 +97,14 @@ def mapLast {β γ : Type} (f g : β → γ) : List β → List γ
   | [x] => [g x]
   | x :: xs@(_ :: _) => f x :: mapLast f g xs
 
+/-- Subtract `k` from a parent that is at least `r` (a negative shift; used only when the
+reference's offset `t - r` is negative, see `expandExtraLayer`). -/
+def shiftDownVal (r k p : Nat) : Nat := if r ≤ p then p - k else p
+
 /-- `A_{r,d,k,Z}`: shift every parent `≥ r` by `d` at every depth, except that the last column
-at depth `k` on the route is replaced by the columns of `Z` (which are not shifted). -/
+at depth `k` on the route is replaced by the columns of `Z` (which are not shifted). This is
+the paper's `A_{r,d,ℓ,Z}` whenever the route reaches a column at depth `k`; on a forest with no
+columns it returns `∅`, as the reference does. -/
 def replaceAt (r d : Nat) (Z : Forest) : Nat → Forest → Forest
   | 0, .node cols =>
     match cols with
@@ -161,6 +173,22 @@ def iterDown (step : Nat → Forest → Forest) : Nat → Forest → Forest
   | 0, Z => Z
   | j + 1, Z => iterDown step j (step (j + 1) Z)
 
+/-- The ordinary branch when the root lies in the height of the stopping entry (raw syntax
+only; it violates V). There the reference has stopping number `t < r`, an empty query, nothing
+consumed by the scan, and a negative continuation depth, so the tail built for `j` is never
+inserted into the tail for `j - 1`: the result is the `j = 1` tail, shifted by `t - r < 0`.
+* Root in the final (empty) column: the owner-root branch with an exhausted scan.
+* Otherwise: the head is the whole root column with heights shifted, then the later columns.
+`n = 0` deletes the stopping column in both cases. -/
+def expandExtraLayer (e eRoot : Forest) (n tl t r ri : Nat) : Option Forest :=
+  if n == 0 then some (replaceAt 0 0 .empty tl e)
+  else if ri == eRoot.cols.length - 1 then none
+  else
+    let sh := shiftDownVal r (r - t)
+    let head : Column := (eRoot.cols.getD ri []).map fun x => (x.1, Tree.map sh x.2)
+    let body := (eRoot.cols.drop (ri + 1)).map (Tree.mapCol sh)
+    some (replaceAt 0 0 (.node (head :: body)) tl e)
+
 /-- The fundamental operation `E[n]` (paper §1.2), as `FS` in `BTBM.ts`; `none` where the
 reference throws. -/
 def expand (e : Forest) (n : Nat) : Option Forest :=
@@ -177,6 +205,7 @@ def expand (e : Forest) (n : Nat) : Option Forest :=
     | none => none
     | some (rl, ri) =>
       let eRoot := skipLayers e rl
+      if tl < rl then expandExtraLayer e eRoot n tl t r ri else
       let colRoot := eRoot.cols.getD ri []
       let colTail := (skipLayers eRoot (tl - rl)).cols.getLast?.getD []
       let app := rootAppendingStart colRoot r colTail t
