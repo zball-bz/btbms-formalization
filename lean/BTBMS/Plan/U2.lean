@@ -2933,6 +2933,185 @@ theorem seed_condP (m : Nat) : CondP (seed m) := by sorry
 theorem inL_empty : InL Tree.empty := by sorry
 theorem condP_empty : CondP Tree.empty := by sorry
 
+/-! ### T3.2 — the closure theorem
+
+The six spine contracts of T3.2 below were moved here from `Plan/Spine.lean` (brief rule 5,
+branch D3): their proofs use the T3.2 sub-lemmas of this section; nothing in between used them. -/
+
+/-- The output of a loop step lies below the previous phase's stopping column (only the parents
+of `U` are used). -/
+theorem ordStep_lt_D3 {sd : StopData} {rd : RootData} {F : Forest} {U : Column} {k : Nat}
+    {Z : Forest} (hUr : ∀ x ∈ U, x.1 < sd.r) :
+    ordStep sd rd F U k Z <
+      .node [Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])] := by
+  have hmapQ : Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)]) =
+      Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q ++
+        [(shiftVal sd.r ((k - 1) * (sd.t - sd.r)) sd.r, Tree.empty)] := by
+    simp [treeMapCol_eq_map, Tree.map, Tree.mapCols, Tree.empty]
+  have hρ : sd.r ≤ shiftVal sd.r ((k - 1) * (sd.t - sd.r)) sd.r := le_shiftVal_D3 _ _ _
+  unfold ordStep
+  simp only
+  rw [hmapQ]
+  split
+  · rw [List.append_assoc]
+    refine head_lt_D3 (rest := []) (fun v hv => lt_of_lt_of_le ?_ hρ)
+    have e := mapLast_eq (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+      (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+        (k * (sd.t - sd.r)) Z)) U
+    rw [← e] at hv
+    cases hU0 : U.head? with
+    | none =>
+      cases U with
+      | nil => simp [mapLast] at hv
+      | cons _ _ => simp at hU0
+    | some u0 =>
+      obtain ⟨y, hy, hyu⟩ := head_mapLast_fst_D3
+        (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+        (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)) (fun _ => rfl) (fun _ => rfl) u0 hU0
+      rw [hy] at hv; cases hv
+      rw [hyu]; exact hUr u0 (List.mem_of_head? hU0)
+  · refine head_lt_D3 (fun v hv => lt_of_lt_of_le ?_ hρ)
+    cases U with
+    | nil => simp at hv
+    | cons u us => simp at hv; subst hv; exact hUr u (by simp)
+
+theorem ordZ_lt_D3 {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (n : Nat) :
+    ordZ A sd rd n < .node [sd.Q ++ [(sd.r, Tree.empty)]] := by
+  obtain ⟨-, -, hU, -, -⟩ := ord_vdata_D3 hV hsd hrd
+  have := ordLoop_induct_D3 (step := ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor))
+    (P := fun k Z => Z <
+      .node [Tree.mapCol (shiftVal sd.r (k * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])]) ?_ n
+    Tree.empty (Forest.empty_lt (by simp [Tree.empty]))
+  · simpa [ordZ, shiftVal_zero_fun, treeMapCol_id_fun] using this
+  · intro k Z _ _
+    exact ordStep_lt_D3 (fun x hx => (hU x hx).1)
+
+/-- The special output is below the input: the owner column `P ⌢ [(p, C ⌢ [[(a,∅)]])]` becomes
+`P ⌢ [(p, C)]^m`. -/
+theorem special_col_lt_D3 (P : Column) (p : Nat) (Fl : Forest) (hFl : Fl.cols ≠ []) (m : Nat) :
+    (Tree.node [P ++ List.replicate m (p, Tree.node Fl.cols.dropLast)] : Forest) <
+      .node [P ++ [(p, Fl)]] := by
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols, cmpCol_append_left_D3]
+  cases m with
+  | zero => rfl
+  | succ m =>
+    rw [List.replicate_succ]
+    simp only [Tree.cmpCol]
+    rw [show compare p p = Ordering.eq from compare_eq_iff_eq.2 rfl]
+    obtain ⟨fc⟩ := Fl
+    have hc : Tree.cmp compare (Tree.node fc.dropLast : Forest) (Tree.node fc) = .lt := by
+      simp only [Tree.cmp, Tree.cols] at hFl ⊢
+      conv => rhs; skip
+      have := cmpCols_append_left_D3 fc.dropLast [] [fc.getLast hFl]
+      rw [List.append_nil, List.dropLast_append_getLast hFl] at this
+      rw [this]; rfl
+    have e : (Tree.node fc).cols = fc := rfl
+    rw [e, hc]; rfl
+
+-- provides: U2, T3.2
+theorem inL_safePrefix {E : Forest} (hE : Scan.InL E) (k : Nat) :
+    Scan.InL (Scan.safePrefix E k) :=
+  ⟨safePrefix_condV hE.1 k, safePrefix_condI hE.2.1 k, safePrefix_condH hE.2.2.1 k,
+    safePrefix_condA hE k, safePrefix_condS hE.1 hE.2.2.2.2 k⟩
+
+-- provides: U2, T3.2
+theorem inL_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (h : expand E n = some E') :
+    Scan.InL E' := by
+  by_cases hE0 : E = Tree.empty
+  · subst hE0; rw [expand_empty] at h; cases h; exact inL_empty
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE0 hE.1 hE.2.1)
+  cases k with
+  | deletion =>
+    obtain ⟨j, -, rfl⟩ := expand_safePrefix hE0 hE.1 hE.2.1 (Or.inl hk) h
+    exact inL_safePrefix hE j
+  | special =>
+    obtain ⟨hV, hI, hH⟩ := condVIH_special hE hk h
+    exact ⟨hV, hI, hH, condA_special hE hk h, condS_special hE hk h⟩
+  | ordinary =>
+    exact ⟨condV_ord hE hk h, condI_ord hE hk h, condH_ord hE hk h, condA_ord hE hk h,
+      condS_ord hE hk h⟩
+
+-- provides: U2, T3.2 (P is preserved when present, S-6)
+theorem condP_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (hP : CondP E)
+    (h : expand E n = some E') : CondP E' := by
+  by_cases hE0 : E = Tree.empty
+  · subst hE0; rw [expand_empty] at h; cases h; exact condP_empty
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE0 hE.1 hE.2.1)
+  cases k with
+  | deletion =>
+    obtain ⟨j, -, rfl⟩ := expand_safePrefix hE0 hE.1 hE.2.1 (Or.inl hk) h
+    exact safePrefix_condP hE hP j
+  | special => exact condP_special hE hP hk h
+  | ordinary => exact condP_ord hE hP hk h
+
+-- provides: U2, T3.2
+theorem std_inL {E : Forest} (h : IsStd E) : Scan.InL E := by
+  induction h with
+  | seed m => exact seed_inL m
+  | expand n _ hexp ih => exact inL_expand ih hexp
+
+-- provides: U2, T3.2
+theorem std_condP {E : Forest} (h : IsStd E) : CondP E := by
+  induction h with
+  | seed m => exact seed_condP m
+  | expand n hstd hexp ih => exact condP_expand (std_inL hstd) ih hexp
+
+-- provides: U2, T3.2 (strict decrease; the paper's statement asks only V, I)
+theorem expand_lt {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV : Scan.CondV E)
+    (hI : Scan.CondI E) (h : expand E n = some E') : E' < E := by
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE hV hI)
+  cases k with
+  | deletion =>
+    rw [expand_deletion hk] at h
+    cases h
+    obtain ⟨cs, hcs⟩ := List.getLast?_eq_some_iff.1 ((stepKind_deletion_iff E).1 hk)
+    obtain ⟨cols⟩ := E
+    simp only [Tree.cols] at hcs ⊢
+    subst hcs
+    show Tree.cmp compare _ _ = .lt
+    simp only [Tree.cmp, List.dropLast_concat]
+    have := cmpCols_append_left_D3 cs [] [[]]
+    rw [List.append_nil] at this
+    rw [this]; rfl
+  | special =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+    obtain ⟨sd', hsd', hs⟩ := (stepKind_special_iff E).mp hk
+    rw [hsd] at hsd'; cases hsd'
+    have hpos : 0 < sd.depth := by
+      simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq] at hs; exact hs.1.1
+    obtain ⟨oe, col, p0, hoe, -, hcol, hlastc, -⟩ := ownerEntry_data hsd hpos
+    obtain ⟨-, -, -, col', p, Fl, hcol', hlast, -, hFl⟩ := ownerEntry_spec hk hsd hoe
+    rw [hcol] at hcol'; cases hcol'
+    rw [expand_eq_paperOp hE hV hI, paperOp_special hk hsd hoe hcol hlast] at h
+    cases h
+    obtain ⟨hR, -⟩ := stop_route_top_D3 hsd
+    have hR' : RouteOK_D3 (sd.depth - 1) E := routeOK_le_D3 _ _ _ hR (by omega)
+    have hrc : routeCol_D3 (sd.depth - 1) E = col := by simp [routeCol_D3, hlastc]
+    rw [Hole.fill_eq_put, shift_zero]
+    refine put_lt_D3 hR' ?_
+    rw [hrc]
+    obtain ⟨P, rfl⟩ := List.getLast?_eq_some_iff.1 hlast
+    rw [List.dropLast_concat]
+    exact special_col_lt_D3 P p Fl (by intro he; rw [he] at hFl; simp at hFl) _
+  | ordinary =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+    rw [expand_eq_paperOp hE hV hI, paperOp_ordinary hk hsd hrd] at h
+    split at h
+    · cases h
+    · cases h
+      obtain ⟨hR, -⟩ := stop_route_top_D3 hsd
+      obtain ⟨-, -, -, h4, -⟩ := stopData_core hsd
+      have hrc : routeCol_D3 sd.depth E = sd.Q ++ [(sd.r, Tree.empty)] := by
+        simp [routeCol_D3, h4]
+      show replaceAt 0 0 _ sd.depth E < E
+      refine put_lt_D3 hR ?_
+      rw [hrc]; exact ordZ_lt_D3 hV hsd hrd n
+
 /-! ## §T3.8 — cofinality -/
 
 /-- T3.8n: cofinality with target `B` (the statement of T3.8 for one fixed target). -/
