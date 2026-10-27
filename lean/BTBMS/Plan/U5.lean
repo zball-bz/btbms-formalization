@@ -298,23 +298,293 @@ theorem tagBound_fresh (l : List Name) (r : Role) : Name.role (tagBound l) r ∉
 
 /-! ## N5.6 Prefix monotonicity of free blocks -/
 
+/-- N5.6 (helper): roles of a concatenation of column lists. -/
+theorem rolesCols_append {α : Type} (π : List (Nat × Nat)) (cs ds : List (List (α × Tree α)))
+    (c : Nat) : Tree.rolesCols π c (cs ++ ds) =
+      Tree.rolesCols π c cs ++ Tree.rolesCols π (c + cs.length) ds := by
+  induction cs generalizing c with
+  | nil => simp [Tree.rolesCols]
+  | cons col rest ih =>
+    simp only [List.cons_append, Tree.rolesCols, ih, List.append_assoc, List.length_cons]
+    rw [show c + 1 + rest.length = c + (rest.length + 1) by omega]
+
+/-- N5.6 (helper): a forest at a nonempty path only reads the columns it passes through. -/
+theorem forestAt_cons_mono {α : Type} {cs cs' : List (List (α × Tree α))}
+    (h : ∀ (i : Nat) y, cs[i]? = some y → cs'[i]? = some y) (p : Nat × Nat)
+    (rest : List (Nat × Nat))
+    {f : Tree α} (hf : (Tree.node cs).forestAt (p :: rest) = some f) :
+    (Tree.node cs').forestAt (p :: rest) = some f := by
+  obtain ⟨ci, ii⟩ := p
+  simp only [Tree.forestAt, Tree.cols] at hf ⊢
+  cases hc : cs[ci]? with
+  | none => simp [hc] at hf
+  | some col => rw [h ci col hc]; rw [hc] at hf; exact hf
+
+/-- N5.6 (helper): columns of a tree survive appending outer columns. -/
+theorem colAt_mono_cols {α : Type} {cs cs' : List (List (α × Tree α))}
+    (h : ∀ (i : Nat) y, cs[i]? = some y → cs'[i]? = some y) (d : ColAddr) {x : List (α × Tree α)}
+    (hx : (Tree.node cs).colAt d = some x) : (Tree.node cs').colAt d = some x := by
+  unfold Tree.colAt at hx ⊢
+  cases hp : d.path with
+  | nil =>
+    rw [hp] at hx
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols] at hx ⊢
+    exact h _ _ hx
+  | cons p rest =>
+    rw [hp] at hx
+    cases hf : (Tree.node cs).forestAt (p :: rest) with
+    | none => rw [hf] at hx; simp at hx
+    | some f => rw [hf] at hx; rw [forestAt_cons_mono h p rest hf]; exact hx
+
+/-- N5.6 (helper): entries of a tree survive appending outer columns. -/
+theorem entryAt_mono_cols {α : Type} {cs cs' : List (List (α × Tree α))}
+    (h : ∀ (i : Nat) y, cs[i]? = some y → cs'[i]? = some y) (e : EntryAddr) {x : α × Tree α}
+    (hx : (Tree.node cs).entryAt e = some x) : (Tree.node cs').entryAt e = some x := by
+  unfold Tree.entryAt at hx ⊢
+  cases hc : (Tree.node cs).colAt e.col with
+  | none => rw [hc] at hx; simp at hx
+  | some col => rw [hc] at hx; rw [colAt_mono_cols h _ hc]; exact hx
+
+/-- N5.6 (helper): zips of prefixes are prefixes. -/
+theorem zip_prefix {α β : Type} {l₁ l₁' : List α} {l₂ l₂' : List β} (h₁ : l₁ <+: l₁')
+    (h₂ : l₂ <+: l₂') : l₁.zip l₂ <+: l₁'.zip l₂' := by
+  induction l₁ generalizing l₁' l₂ l₂' with
+  | nil => exact List.nil_prefix
+  | cons x xs ih =>
+    obtain ⟨t₁, rfl⟩ := h₁
+    cases l₂ with
+    | nil => exact List.nil_prefix
+    | cons y ys =>
+      obtain ⟨t₂, rfl⟩ := h₂
+      simp only [List.cons_append, List.zip_cons_cons]
+      exact (List.prefix_cons_inj _).2 (ih ⟨t₁, rfl⟩ ⟨t₂, rfl⟩)
+
 /-- N5.6: if `K` consists of the first outer columns of `K'`, every atom of `freeBlock K` is an
 atom of `freeBlock K'`, and the roles of `K` are a prefix of those of `K'`. -/
 theorem freeBlock_prefix {K K' : Key} (h : K.cols = K'.cols.take K.cols.length) :
     (∀ a ∈ freeBlock K, a ∈ freeBlock K') ∧ K.roles <+: K'.roles := by
-  sorry
+  obtain ⟨cs⟩ := K
+  obtain ⟨cs'⟩ := K'
+  simp only [Tree.cols] at h
+  have hcs : cs' = cs ++ cs'.drop cs.length := by
+    conv_lhs => rw [← List.take_append_drop cs.length cs']
+    rw [← h]
+  have hget : ∀ (i : Nat) y, cs[i]? = some y → cs'[i]? = some y := by
+    intro i y hy
+    rw [h, List.getElem?_take] at hy
+    split_ifs at hy
+    exact hy
+  have hroles : (Tree.node cs).roles <+: (Tree.node cs').roles := by
+    refine ⟨Tree.rolesCols [] (0 + cs.length) (cs'.drop cs.length), ?_⟩
+    simp only [Tree.roles, Tree.rolesF]
+    conv_rhs => rw [hcs]
+    rw [rolesCols_append]
+  refine ⟨fun a ha => ?_, hroles⟩
+  have hrs := hroles.map BlkVar.inner
+  have hcolA : ∀ c, c ∈ (Tree.node cs).colAddrs → c ∈ (Tree.node cs').colAddrs :=
+    fun c hc => (hroles.filterMap _).subset hc
+  have hentA : ∀ e, e ∈ (Tree.node cs).entryAddrs → e ∈ (Tree.node cs').entryAddrs :=
+    fun e he => (hroles.filterMap _).subset he
+  simp only [freeBlock, List.mem_append, List.mem_cons, List.mem_map, List.mem_filterMap,
+    List.mem_flatMap] at ha ⊢
+  rcases ha with ((((rfl | ⟨r, hr, rfl⟩) | ⟨xy, hxy, rfl⟩) | ⟨c, hc, hca⟩) | ⟨e, he, hea⟩)
+  · exact Or.inl (Or.inl (Or.inl (Or.inl rfl)))
+  · obtain ⟨r0, hr0, rfl⟩ := hr
+    exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, ⟨r0, hroles.subset hr0, rfl⟩, rfl⟩)))
+  · refine Or.inl (Or.inl (Or.inr ⟨xy, ?_, rfl⟩))
+    exact (zip_prefix ((List.prefix_cons_inj _).2 hrs) hrs).subset hxy
+  · refine Or.inl (Or.inr ⟨c, hcolA c hc, ?_⟩)
+    split_ifs at hca with hs
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 hs
+    rw [colAt_mono_cols hget _ hx]
+    simpa using hca
+  · refine Or.inr ⟨e, hentA e he, ?_⟩
+    cases hx : (Tree.node cs).entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x => rw [hx] at hea; rw [entryAt_mono_cols hget e hx]; exact hea
 
 /-- N5.6: the same for positive blocks with the same selector. -/
 theorem posBlock_prefix {K K' : Key} (h : K.cols = K'.cols.take K.cols.length) (sel : Nat) :
     ∀ a ∈ posBlock K sel, a ∈ posBlock K' sel := by
-  sorry
+  intro a ha
+  simp only [posBlock, List.mem_append] at ha ⊢
+  rcases ha with ha | ha
+  · exact Or.inl ((freeBlock_prefix h).1 a ha)
+  · exact Or.inr ha
+
+/-- N5.6 (helper): prefixes of a reachable path are reachable. -/
+theorem forestAt_isSome_of_prefix {α : Type} {t : Tree α} {π π' : List (Nat × Nat)}
+    (h : π' <+: π) (hs : (t.forestAt π).isSome) : (t.forestAt π').isSome := by
+  obtain ⟨r, rfl⟩ := h
+  rw [Tree.forestAt_append] at hs
+  cases hf : t.forestAt π' with
+  | none => rw [hf] at hs; simp at hs
+  | some f => rfl
+
+/-- N5.6 (helper): a forest reachable through `(ck, ik)` has a column `ck`. -/
+theorem cols_isSome_of_forestAt_cons {α : Type} {f : Tree α} {ck ik : Nat}
+    {rest : List (Nat × Nat)} (hs : (f.forestAt ((ck, ik) :: rest)).isSome) :
+    (f.cols[ck]?).isSome := by
+  simp only [Tree.forestAt] at hs
+  cases hc : f.cols[ck]? with
+  | none => rw [hc] at hs; simp at hs
+  | some _ => rfl
+
+/-- N5.6 (helper): every column on the visible stack of a column of `t` is a column of `t`. -/
+theorem colAt_isSome_of_onStack {α : Type} {t : Tree α} {c o : ColAddr}
+    (hc : (t.colAt c).isSome) (ho : c.OnStack o) : (t.colAt o).isSome := by
+  unfold Tree.colAt at hc ⊢
+  cases hf : t.forestAt c.path with
+  | none => rw [hf] at hc; simp at hc
+  | some f =>
+    rw [hf] at hc
+    simp only [Option.bind_some] at hc
+    rcases ho with ⟨k, ck, ik, hk, hop, hoc⟩ | ⟨hop, hoc⟩
+    · have hsplit : c.path = c.path.take k ++ (ck, ik) :: c.path.drop (k + 1) := by
+        obtain ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.1 hk
+        conv_lhs => rw [← List.take_append_drop k c.path]
+        rw [List.drop_eq_getElem_cons hlt, heq]
+      have hs : (t.forestAt c.path).isSome := by rw [hf]; rfl
+      rw [hsplit, Tree.forestAt_append] at hs
+      rw [hop]
+      cases hg : t.forestAt (c.path.take k) with
+      | none => rw [hg] at hs; simp at hs
+      | some g =>
+        rw [hg] at hs
+        simp only [Option.bind_some] at hs ⊢
+        have := cols_isSome_of_forestAt_cons hs
+        rw [Option.isSome_iff_exists] at this ⊢
+        obtain ⟨col, hcol⟩ := this
+        have hlt : ck < g.cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+        exact ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    · rw [hop, hf]
+      simp only [Option.bind_some]
+      rw [Option.isSome_iff_exists] at hc ⊢
+      obtain ⟨col, hcol⟩ := hc
+      have hlt : c.col < f.cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+      exact ⟨_, List.getElem?_eq_getElem (by omega)⟩
+
+/-- N5.6 (helper): both representatives of a resolved number seen from a column of `t` are
+roles of `t`. -/
+theorem rep_mem_roles {α : Type} {t : Tree α} {c : ColAddr} (hc : (t.colAt c).isSome)
+    {base q : Nat} {o w : Role} (hr : c.rep base q = some (o, w)) : o ∈ t.roles ∧ w ∈ t.roles := by
+  unfold ColAddr.rep at hr
+  cases hres : c.resolve base q with
+  | none => rw [hres] at hr; simp at hr
+  | some o' =>
+    rw [hres] at hr
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+    obtain ⟨rfl, rfl⟩ := hr
+    have hst := ((ColAddr.resolve_spec base c o' q).1 hres).1
+    have ho' : (t.colAt o').isSome := colAt_isSome_of_onStack hc hst
+    refine ⟨(Tree.mem_roles_iff t (.ord o')).2 ho', ?_⟩
+    cases hcont : o'.container c with
+    | none => exact (Tree.mem_roles_iff t (.ord o')).2 ho'
+    | some e' =>
+      obtain ⟨-, hpre⟩ := (ColAddr.container_spec o' c e').1 hcont
+      have hpath : (t.forestAt c.path).isSome := by
+        unfold Tree.colAt at hc
+        cases hf : t.forestAt c.path with
+        | none => rw [hf] at hc; simp at hc
+        | some _ => rfl
+      have hh := forestAt_isSome_of_prefix hpre hpath
+      rw [Tree.forestAt_heightPath] at hh
+      refine (Tree.mem_roles_iff t (.slot e')).2 ?_
+      show (t.entryAt e').isSome = true
+      unfold Tree.heightAt at hh
+      cases he : t.entryAt e' with
+      | none => rw [he] at hh; simp at hh
+      | some _ => rfl
 
 /-- N5.6 [V-fix, new]: the variables of a positive (hence of a free) block are the frame
 variables, the owner, and `inner r` for internal roles `r` of `K` only. -/
 theorem posBlock_vars (K : Key) (sel : Nat) :
     ∀ w ∈ baseVars (posBlock K sel), w = .host ∨ w = .owner ∨ (∃ q, w = .ord q ∨ w = .cur q) ∨
       ∃ r ∈ K.roles, w = .inner r := by
-  sorry
+  intro w hw
+  simp only [baseVars, List.mem_flatMap] at hw
+  obtain ⟨b, hb, hwb⟩ := hw
+  simp only [posBlock, freeBlock, List.mem_append, List.mem_cons, List.mem_map,
+    List.mem_filterMap, List.mem_flatMap, List.not_mem_nil] at hb
+  suffices H : ∀ x ∈ b.vars, x = .host ∨ x = .owner ∨ (∃ q, x = .ord q ∨ x = .cur q) ∨
+      ∃ r ∈ K.roles, x = .inner r from H w hwb
+  clear hwb w
+  have gI : ∀ r ∈ K.roles, BlkVar.inner r = .host ∨ BlkVar.inner r = .owner ∨
+      (∃ q, BlkVar.inner r = .ord q ∨ BlkVar.inner r = .cur q) ∨
+      ∃ r' ∈ K.roles, BlkVar.inner r = .inner r' := fun r hr => Or.inr (Or.inr (Or.inr ⟨r, hr, rfl⟩))
+  have hcolR : ∀ c, c ∈ K.colAddrs → Role.ord c ∈ K.roles := by
+    intro c hc
+    obtain ⟨x, hx, hxc⟩ := List.mem_filterMap.1 hc
+    cases x with
+    | ord d => cases hxc; exact hx
+    | slot _ => cases hxc
+  have hentR : ∀ e, e ∈ K.entryAddrs → Role.slot e ∈ K.roles := by
+    intro e he
+    obtain ⟨x, hx, hxe⟩ := List.mem_filterMap.1 he
+    cases x with
+    | slot d => cases hxe; exact hx
+    | ord _ => cases hxe
+  rcases hb with ((((rfl | ⟨_, ⟨r, hr, rfl⟩, rfl⟩) | ⟨xy, hxy, rfl⟩) | ⟨c, hc, hca⟩) |
+    ⟨e, he, hea⟩) | rfl | rfl | hF
+  · simp [BaseAtom.vars]
+  · simp only [BaseAtom.vars, List.mem_singleton, forall_eq]; exact gI r hr
+  · obtain ⟨h1, h2⟩ := List.of_mem_zip hxy
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+      forall_eq]
+    obtain ⟨r2, hr2, hr2'⟩ := List.mem_map.1 h2
+    refine ⟨?_, hr2' ▸ gI r2 hr2⟩
+    rcases List.mem_cons.1 h1 with h1 | h1
+    · exact Or.inr (Or.inl h1)
+    · obtain ⟨r1, hr1, hr1'⟩ := List.mem_map.1 h1
+      exact hr1' ▸ gI r1 hr1
+  · split_ifs at hca with hs
+    cases hca
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+      forall_eq]
+    exact ⟨gI _ (hcolR c hc), gI _ ((Tree.mem_roles_iff K (.ord _)).2 hs)⟩
+  · have hslot := hentR e he
+    cases hx : K.entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x =>
+      obtain ⟨⟨bb, q⟩, h⟩ := x
+      have hcol : Role.ord e.col ∈ K.roles := by
+        obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hx
+        exact (Tree.mem_roles_iff K (.ord e.col)).2 (show (K.colAt e.col).isSome by
+          rw [hcol]; rfl)
+      rw [hx] at hea
+      cases bb with
+      | false =>
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;>
+          simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+            forall_eq] <;>
+          exact ⟨gI _ hslot, gI _ hcol, by simp⟩
+      | true =>
+        cases q with
+        | zero =>
+          simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+          rcases hea with rfl | rfl <;>
+            simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false,
+              forall_eq_or_imp, forall_eq] <;>
+            exact ⟨gI _ hslot, gI _ hcol, by simp⟩
+        | succ v =>
+          simp only at hea
+          cases hr : e.col.rep 1 (v + 1) with
+          | none => rw [hr] at hea; simp at hea
+          | some ow =>
+            obtain ⟨o, w'⟩ := ow
+            rw [hr] at hea
+            have hcs : (K.colAt e.col).isSome := (Tree.mem_roles_iff K (.ord e.col)).1 hcol
+            obtain ⟨ho, hw'⟩ := rep_mem_roles hcs hr
+            simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+            rcases hea with rfl | rfl <;>
+              simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false,
+                forall_eq_or_imp, forall_eq]
+            · exact ⟨gI _ hslot, gI _ hcol, gI _ ho⟩
+            · exact ⟨gI _ hslot, gI _ hcol, gI _ hw'⟩
+  · simp [BaseAtom.vars]
+  · simp [BaseAtom.vars]
+  · exact hF.elim
 
 /-! ## N5.8 Projections of packet validity -/
 
