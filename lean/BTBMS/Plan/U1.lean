@@ -125,37 +125,234 @@ def OnStack (c o : ColAddr) : Prop :=
   (∃ k ck ik, c.path[k]? = some (ck, ik) ∧ o.path = c.path.take k ∧ o.col ≤ ck) ∨
     (o.path = c.path ∧ o.col < c.col)
 
+/-- D1.2b helper: `resolveAux` after `|pre|` levels, with `start` the first number of the level. -/
+theorem resolveAux_eq_some (base j q : Nat) (o : ColAddr) :
+    ∀ (rest pre : List (Nat × Nat)) (start : Nat), start = base + (pre.map (·.1 + 1)).sum →
+    (resolveAux start pre rest j q = some o ↔
+      ((∃ k ck ik, rest[k]? = some (ck, ik) ∧ o.path = pre ++ rest.take k ∧ o.col ≤ ck) ∨
+        (o.path = pre ++ rest ∧ o.col < j)) ∧ o.num base = q)
+  | [], pre, start, hs => by
+    simp only [List.sum_map_add, List.map_const', List.sum_replicate, smul_eq_mul, mul_one] at hs
+    simp only [resolveAux]
+    constructor
+    · intro h
+      split_ifs at h with hg
+      · cases h
+        refine ⟨Or.inr ⟨by simp, by simp; omega⟩, ?_⟩
+        simp [num]; omega
+    · rintro ⟨(⟨k, ck, ik, hk, -, -⟩ | ⟨hp, hc⟩), hn⟩
+      · simp at hk
+      · simp at hp
+        simp [num, hp] at hn
+        rw [if_pos (by omega)]
+        cases o
+        simp_all
+        omega
+  | (ck, ik) :: rest, pre, start, hs => by
+    have IH := resolveAux_eq_some base j q o rest (pre ++ [(ck, ik)]) (start + ck + 1)
+      (by simp [hs]; omega)
+    simp only [List.sum_map_add, List.map_const', List.sum_replicate, smul_eq_mul, mul_one] at hs
+    simp only [resolveAux]
+    split_ifs with hg
+    · constructor
+      · intro h
+        cases h
+        refine ⟨Or.inl ⟨0, ck, ik, rfl, by simp, by simp; omega⟩, ?_⟩
+        simp [num]; omega
+      · rintro ⟨h, hn⟩
+        rcases h with ⟨k, ck', ik', hk, hp, hc⟩ | ⟨hp, hc⟩
+        · cases k with
+          | zero =>
+            simp at hk; obtain ⟨rfl, rfl⟩ := hk
+            simp at hp
+            simp [num, hp] at hn
+            cases o
+            simp_all
+            omega
+          | succ k =>
+            exfalso
+            simp at hk hp
+            simp [num, hp] at hn
+            omega
+        · exfalso
+          simp [num, hp] at hn
+          omega
+    · rw [IH]
+      constructor
+      · rintro ⟨h, hn⟩
+        refine ⟨?_, hn⟩
+        rcases h with ⟨k, ck', ik', hk, hp, hc⟩ | ⟨hp, hc⟩
+        · exact Or.inl ⟨k + 1, ck', ik', by simpa using hk, by simpa using hp, hc⟩
+        · exact Or.inr ⟨by simpa using hp, hc⟩
+      · rintro ⟨h, hn⟩
+        refine ⟨?_, hn⟩
+        rcases h with ⟨k, ck', ik', hk, hp, hc⟩ | ⟨hp, hc⟩
+        · cases k with
+          | zero =>
+            exfalso
+            simp at hk; obtain ⟨rfl, rfl⟩ := hk
+            simp at hp
+            simp [num, hp] at hn
+            omega
+          | succ k => exact Or.inl ⟨k, ck', ik', by simpa using hk, by simpa using hp, hc⟩
+        · exact Or.inr ⟨by simpa using hp, hc⟩
+
 /-- D1.2b: `resolve` returns exactly the stack occurrence with the given printed number. -/
 theorem resolve_spec (base : Nat) (c o : ColAddr) (q : Nat) :
-    c.resolve base q = some o ↔ c.OnStack o ∧ o.num base = q := by sorry
+    c.resolve base q = some o ↔ c.OnStack o ∧ o.num base = q := by
+  rw [resolve, resolveAux_eq_some base c.col q o c.path [] base (by simp)]
+  simp [OnStack]
+
+/-- D1.2b helpers: prefix sums of the level widths `c_l + 1`. -/
+theorem wsum_take_succ {l : List (Nat × Nat)} {k a b : Nat} (h : l[k]? = some (a, b)) :
+    ((l.take (k + 1)).map (·.1 + 1)).sum = ((l.take k).map (·.1 + 1)).sum + (a + 1) := by
+  rw [List.take_add_one, h]
+  simp
+
+theorem wsum_take_mono (l : List (Nat × Nat)) {k k' : Nat} (h : k ≤ k') :
+    ((l.take k).map (·.1 + 1)).sum ≤ ((l.take k').map (·.1 + 1)).sum := by
+  have : l.take k = (l.take k').take k := by rw [List.take_take, Nat.min_eq_left h]
+  rw [this]
+  conv_rhs => rw [← List.take_append_drop k (l.take k')]
+  rw [List.map_append, List.sum_append]
+  exact Nat.le_add_right _ _
+
+theorem wsum_take_le (l : List (Nat × Nat)) (k : Nat) :
+    ((l.take k).map (·.1 + 1)).sum ≤ (l.map (·.1 + 1)).sum := by
+  conv_rhs => rw [← List.take_append_drop k l]
+  rw [List.map_append, List.sum_append]
+  exact Nat.le_add_right _ _
 
 /-- D1.2b: stack occurrences have smaller printed numbers. -/
 theorem num_lt_of_onStack (base : Nat) {c o : ColAddr} (h : c.OnStack o) :
-    o.num base < c.num base := by sorry
+    o.num base < c.num base := by
+  simp only [num]
+  rcases h with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · rw [hp]
+    have h1 := wsum_take_succ hk
+    have h2 := wsum_take_le c.path (k + 1)
+    omega
+  · rw [hp]; omega
+
 
 /-- D1.2b: numbers on a stack are unique (txt:69). -/
 theorem onStack_inj (base : Nat) {c o o' : ColAddr} (h : c.OnStack o) (h' : c.OnStack o')
-    (hn : o.num base = o'.num base) : o = o' := by sorry
+    (hn : o.num base = o'.num base) : o = o' := by
+  have h1 := (resolve_spec base c o (o.num base)).2 ⟨h, rfl⟩
+  have h2 := (resolve_spec base c o' (o.num base)).2 ⟨h', hn.symm⟩
+  rw [h1] at h2
+  exact Option.some.inj h2
+
 
 theorem resolve_num {base : Nat} {c o : ColAddr} {q : Nat} (h : c.resolve base q = some o) :
-    o.num base = q := by sorry
+    o.num base = q := ((resolve_spec base c o q).1 h).2
+
 
 /-- D1.2b: only numbers below `c`'s own number resolve (V makes edges decrease). -/
 theorem resolve_lt {base : Nat} {c o : ColAddr} {q : Nat} (h : c.resolve base q = some o) :
-    q < c.num base := by sorry
+    q < c.num base := by
+  obtain ⟨hs, hn⟩ := (resolve_spec base c o q).1 h
+  exact hn ▸ num_lt_of_onStack base hs
+
+
+/-- D1.2b helper: the numbers resolved by `resolveAux` form an interval. -/
+theorem resolveAux_isSome (j q : Nat) :
+    ∀ (rest pre : List (Nat × Nat)) (start : Nat),
+    (resolveAux start pre rest j q).isSome ↔ start ≤ q ∧ q < start + (rest.map (·.1 + 1)).sum + j
+  | [], pre, start => by
+    simp only [resolveAux]
+    split_ifs with h <;> simp <;> omega
+  | (ck, ik) :: rest, pre, start => by
+    simp only [resolveAux]
+    split_ifs with h
+    · simp only [Option.isSome_some, true_iff, List.map_cons, List.sum_cons]; omega
+    · rw [resolveAux_isSome j q rest]
+      simp only [List.map_cons, List.sum_cons]
+      omega
 
 /-- D1.2b: the visible stack of `c` carries exactly the numbers `base, …, c.num base - 1`. -/
 theorem resolve_isSome_iff (base : Nat) (c : ColAddr) (q : Nat) :
-    (c.resolve base q).isSome ↔ base ≤ q ∧ q < c.num base := by sorry
+    (c.resolve base q).isSome ↔ base ≤ q ∧ q < c.num base := by
+  rw [resolve, resolveAux_isSome]
+  simp only [num]
+
+
+/-- D1.2b helper: below a stack occurrence `o` of `c`, the stacks of `o` and `c` agree. -/
+theorem onStack_iff_of_onStack (base : Nat) {c o o' : ColAddr} (hs : c.OnStack o)
+    (hlt : o'.num base < o.num base) : o.OnStack o' ↔ c.OnStack o' := by
+  simp only [num] at hlt
+  rcases hs with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · constructor
+    · rintro (⟨k', ck', ik', hk', hp', hc'⟩ | ⟨hp', hc'⟩)
+      · rw [hp, List.getElem?_take] at hk'
+        split_ifs at hk' with hkk
+        refine Or.inl ⟨k', ck', ik', hk', ?_, hc'⟩
+        rw [hp', hp, List.take_take, Nat.min_eq_left (Nat.le_of_lt hkk)]
+      · exact Or.inl ⟨k, ck, ik, hk, hp' ▸ hp, by omega⟩
+    · rintro (⟨k', ck', ik', hk', hp', hc'⟩ | ⟨hp', hc'⟩)
+      · rcases Nat.lt_trichotomy k' k with hkk | rfl | hkk
+        · refine Or.inl ⟨k', ck', ik', ?_, ?_, hc'⟩
+          · rw [hp, List.getElem?_take, if_pos hkk, hk']
+          · rw [hp', hp, List.take_take, Nat.min_eq_left (Nat.le_of_lt hkk)]
+        · refine Or.inr ⟨hp'.trans hp.symm, ?_⟩
+          rw [hp', ← hp] at hlt
+          omega
+        · exfalso
+          rw [hp', hp] at hlt
+          have h1 := wsum_take_succ hk
+          have h2 := wsum_take_mono c.path (by omega : k + 1 ≤ k')
+          omega
+      · exfalso
+        rw [hp', hp] at hlt
+        have h1 := wsum_take_succ hk
+        have h2 := wsum_take_le c.path (k + 1)
+        omega
+  · constructor
+    · rintro (⟨k', ck', ik', hk', hp', hc'⟩ | ⟨hp', hc'⟩)
+      · rw [hp] at hk' hp'
+        exact Or.inl ⟨k', ck', ik', hk', hp', hc'⟩
+      · exact Or.inr ⟨hp'.trans hp, by omega⟩
+    · rintro (⟨k', ck', ik', hk', hp', hc'⟩ | ⟨hp', hc'⟩)
+      · rw [← hp] at hk' hp'
+        exact Or.inl ⟨k', ck', ik', hk', hp', hc'⟩
+      · refine Or.inr ⟨hp'.trans hp.symm, ?_⟩
+        rw [hp', ← hp] at hlt
+        omega
 
 /-- D1.2b (stack nesting, codex-crosscheck-1 Q2 "restricting σ"): below a stack occurrence `o`
 of `c`, the stacks of `o` and `c` resolve every number identically. -/
 theorem resolve_of_resolve_lt {base : Nat} {c o : ColAddr} {x q : Nat}
-    (h : c.resolve base x = some o) (hq : q < x) : o.resolve base q = c.resolve base q := by sorry
+    (h : c.resolve base x = some o) (hq : q < x) : o.resolve base q = c.resolve base q := by
+  obtain ⟨hs, hn⟩ := (resolve_spec base c o x).1 h
+  apply Option.ext
+  intro o'
+  rw [resolve_spec, resolve_spec]
+  constructor
+  · rintro ⟨h1, h2⟩
+    exact ⟨(onStack_iff_of_onStack base hs (by omega)).1 h1, h2⟩
+  · rintro ⟨h1, h2⟩
+    exact ⟨(onStack_iff_of_onStack base hs (by omega)).2 h1, h2⟩
+
 
 /-- D1.2b: the container of `c` in column `q`. -/
 theorem container_spec (q c : ColAddr) (e : EntryAddr) :
-    q.container c = some e ↔ e.col = q ∧ e.heightPath <+: c.path := by sorry
+    q.container c = some e ↔ e.col = q ∧ e.heightPath <+: c.path := by
+  unfold container
+  constructor
+  · intro h
+    split at h
+    · rename_i k i tl hd
+      split_ifs at h with hc
+      obtain ⟨ht, rfl⟩ := hc
+      cases h
+      refine ⟨rfl, tl, ?_⟩
+      rw [EntryAddr.heightPath, List.append_assoc, ← ht, List.singleton_append, ← hd,
+        List.take_append_drop]
+    · cases h
+  · rintro ⟨rfl, t, ht⟩
+    rw [← ht]
+    simp [EntryAddr.heightPath]
+
 
 end ColAddr
 
@@ -166,16 +363,50 @@ namespace EntryAddr
 
 /-- D1.2b: a containing column is visible from inside, under its own number. -/
 theorem resolve_host {e : EntryAddr} {c : ColAddr} (h : e.Contains c) :
-    c.resolve 0 (e.col.num 0) = some e.col := by sorry
+    c.resolve 0 (e.col.num 0) = some e.col := by
+  obtain ⟨t, ht⟩ := h
+  refine (ColAddr.resolve_spec 0 c e.col _).2
+    ⟨Or.inl ⟨e.col.path.length, e.col.col, e.idx, ?_, ?_, le_refl _⟩, rfl⟩
+  · rw [← ht]; simp [heightPath]
+  · rw [← ht]; simp [heightPath]
+
 
 /-- D1.2b (txt:216-217, "every visible z > a on this path is still inside H_e"): a stack
 occurrence with a number above the host of a containing entry lies inside that entry's height. -/
 theorem contains_of_resolve {e : EntryAddr} {c o : ColAddr} {z : Nat} (h : e.Contains c)
-    (hz : c.resolve 0 z = some o) (hlt : e.col.num 0 < z) : e.Contains o := by sorry
+    (hz : c.resolve 0 z = some o) (hlt : e.col.num 0 < z) : e.Contains o := by
+  obtain ⟨hs, hn⟩ := (ColAddr.resolve_spec 0 c o z).1 hz
+  obtain ⟨t, ht⟩ := h
+  have hpre : c.path.take e.col.path.length = e.col.path := by rw [← ht]; simp [heightPath]
+  have hm : c.path[e.col.path.length]? = some (e.col.col, e.idx) := by rw [← ht]; simp [heightPath]
+  have hhp : e.heightPath = c.path.take (e.col.path.length + 1) := by
+    rw [← ht]; exact (List.take_left' (by simp [heightPath])).symm
+  simp only [ColAddr.num] at hn hlt
+  rcases hs with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · rw [hp] at hn
+    by_cases hkm : e.col.path.length + 1 ≤ k
+    · rw [Contains, hhp, hp]
+      exact List.take_prefix_take_left hkm
+    · exfalso
+      rcases Nat.lt_or_eq_of_le (Nat.le_of_lt_succ (Nat.lt_of_not_le hkm)) with hkm | rfl
+      · have h1 := ColAddr.wsum_take_succ hk
+        have h2 := ColAddr.wsum_take_mono c.path (by omega : k + 1 ≤ e.col.path.length)
+        rw [hpre] at h2
+        omega
+      · rw [hm] at hk
+        cases hk
+        rw [hpre] at hn
+        omega
+  · rw [Contains, hp]
+    exact ⟨t, ht⟩
+
 
 /-- D1.2b: `e` contains `c` iff `e.col.container c = some e`. -/
 theorem contains_iff_container (e : EntryAddr) (c : ColAddr) :
-    e.Contains c ↔ e.col.container c = some e := by sorry
+    e.Contains c ↔ e.col.container c = some e := by
+  rw [ColAddr.container_spec]
+  exact ⟨fun h => ⟨rfl, h⟩, fun h => h.2⟩
+
 
 end EntryAddr
 
