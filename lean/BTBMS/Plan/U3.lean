@@ -2305,6 +2305,101 @@ theorem internal_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k 
             simp only [Option.map_some, Option.some.injEq] at hlab ⊢
             exact relLabel_eq_sigma_D8 hrt hlab.symm
 
+/-- G011-L7 helper: the host column of an entry is on the stack of every column inside its
+height. -/
+theorem resolve_host_D8 {e : EntryAddr} {d : ColAddr} (hd : e.heightPath <+: d.path) :
+    d.resolve 0 (e.col.num 0) = some e.col := by
+  rw [ColAddr.resolve_spec]
+  refine ⟨Or.inl ⟨e.col.path.length, e.col.col, e.idx, ?_, ?_, le_rfl⟩, rfl⟩
+  · obtain ⟨tl, htl⟩ := hd
+    rw [← htl, EntryAddr.heightPath]; simp
+  · obtain ⟨tl, htl⟩ := hd
+    rw [← htl, EntryAddr.heightPath]; simp
+
+/-- G011-L6 helper: a `⊤`-free nonincreasing word is below `[⊤]`. -/
+theorem lt_top_singleton_D8 (Z : List (WithTop Key)) (hZ : ∀ y ∈ Z, y ≠ ⊤) : Z < [⊤] := by
+  cases Z with
+  | nil => exact List.nil_lt_cons _ _
+  | cons z Z =>
+    exact List.cons_lt_cons_iff.2 (Or.inl (WithTop.lt_top_iff_ne_top.2 (hZ z List.mem_cons_self)))
+
+/-- G011-L6 (L4.2c step 4(b2)). The decorated host edge: read from any stack owner `d` that
+resolves `sd.t` to the stopping column, the decorated stopping column answers `sd.r` to the query
+of its full query prefix. -/
+theorem decorated_host_edge_D8 {H : Forest} {sd : StopData} (hsd : stopData H = some sd)
+    {d : ColAddr} (hd : d.resolve 0 sd.t = some sd.col) :
+    Edge H (capKeys H (routeCols H)) d (cutQuery (actualKeys H sd.col) sd.Q.length) sd.t sd.r := by
+  obtain ⟨hcol, -, -, hmem, -, -⟩ := stopData_spec hsd
+  set f : Nat × Forest → WithTop Key := fun x => ((relKey (sd.col.num 0) x.2 : Key) : WithTop Key)
+  have hks : actualKeys H sd.col = sd.Q.map f ++ [f (sd.r, Tree.empty)] := by
+    simp [actualKeys, hcol, f]
+  have hksD : capKeys H (routeCols H) sd.col = sd.Q.map f ++ [⊤] := by
+    simp [capKeys, hmem, hks]
+  have hZ : cutQuery (actualKeys H sd.col) sd.Q.length = nu (sd.Q.map f) := by
+    rw [cutQuery, hks, List.take_left' (by simp)]
+  refine ⟨sd.col, hd, ?_⟩
+  have hT : ∀ y ∈ nu (sd.Q.map f), y ≠ ⊤ := by
+    intro y hy
+    have := (nu_sublist _).subset hy
+    simp only [List.mem_map, f] at this
+    obtain ⟨_, -, rfl⟩ := this
+    exact WithTop.coe_ne_top
+  have hcur : cursor (capKeys H (routeCols H) sd.col)
+      (cutQuery (actualKeys H sd.col) sd.Q.length) = sd.Q.length := by
+    rw [hksD, hZ]
+    apply cursor_unique (nu_noninc _) (by simp)
+    · rw [cutQuery, List.take_left' (by simp)]
+    · intro _
+      rw [cutQuery, List.take_of_length_le (by simp), nu_append_singleton,
+        nuStep_eq_takeWhile (nu_noninc _)]
+      have : (nu (sd.Q.map f)).takeWhile (fun y => decide (⊤ ≤ y)) = [] := by
+        cases hn : nu (sd.Q.map f) with
+        | nil => rfl
+        | cons z zs =>
+          have hz : z ≠ ⊤ := hT z (by rw [hn]; exact List.mem_cons_self)
+          simp only [List.takeWhile_cons, top_le_iff, hz, decide_false, Bool.false_eq_true,
+            if_false]
+      rw [this, List.nil_append]
+      exact lt_top_singleton_D8 _ hT
+  simp [resp, hcur, hcol]
+
+/-- G011-L8 for an `E` anchor: the host crossing through the decorated stopping column of `E`
+itself (R8, `capping_forward`, `path_nesting`, and the capped/actual path transfer of L2.4b). -/
+theorem host_crossing_none_D8 {E : Forest} (hE : InL E) {sd : StopData}
+    (hsd : stopData E = some sd) {j : Nat} (hj : j < sd.Q.length) {c : ColAddr}
+    (hc : c ∈ E.colAddrs) (hbc : (⟨sd.col, j⟩ : EntryAddr).heightPath <+: c.path) {k : Nat}
+    (hk : k ≤ (parents E c).length)
+    (hreach : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.t) :
+    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.r := by
+  obtain ⟨hV, hI, hH, hA, hS⟩ := id hE
+  have hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k :=
+    fun e he hec => (barrier_joint hV hA hS he hc hec hk).1
+  have ht : sd.t = sd.col.num 0 := (stopData_spec hsd).2.2.1
+  have hres : c.resolve 0 sd.t = some sd.col := by
+    rw [ht]; exact resolve_host_D8 (e := ⟨sd.col, j⟩) hbc
+  have hcont : sd.col.container c = some ⟨sd.col, j⟩ :=
+    (ColAddr.container_spec _ c _).2 ⟨rfl, hbc⟩
+  have hbar : cutQuery (actualKeys E c) k < cutQuery (actualKeys E sd.col) (j + 1) :=
+    cut_barrier_read hE hc hk hreach hres hcont
+  have hWZ : cutQuery (actualKeys E c) k ≤ cutQuery (actualKeys E sd.col) sd.Q.length :=
+    le_of_lt (lt_of_lt_of_le hbar (cutQuery_mono _ (by omega)))
+  have hedge := decorated_host_edge_D8 hsd hres
+  have hdecA : CondAK E (capKeys E (routeCols E)) := capping_forward hV hA hS (fun _ h => h)
+  have hp1 := path_nesting hV hdecA c (cutQuery_noninc _ _) (cutQuery_noninc _ _) hWZ hedge
+  have hp0 := capped_path_of_actual hV (sel := routeCols E) (fun _ h => h) hc hcut hreach
+  exact actual_path_of_capped hV (fun _ h => h) hc hcut (hp0.trans hp1)
+
+/-- G011-L8 for an admissible-cap anchor (step 4(b3) with a moved cap anchor, F13): the decorated
+host path of `w.H` transferred to `E` through the stack correspondence of the cap (G011-L1). -/
+theorem host_crossing_cap_D8 {E : Forest} (hE : InL E) (w : Closure.AdmCap E) {sd : StopData}
+    (hsd : stopData w.H = some sd) {j : Nat} (hj : j < sd.Q.length) {b : EntryAddr}
+    (hb : w.origin (.slot ⟨sd.col, j⟩) = some (.slot b))
+    {c : ColAddr} (hc : c ∈ E.colAddrs) (hbc : b.heightPath <+: c.path) {k : Nat}
+    (hk : k ≤ (parents E c).length)
+    (hreach : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.t) :
+    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.r := by
+  sorry
+
 /-- G011-L8 (L4.2c step 4(b), scan and descendant records, `E` or cap anchor). If the target
 chain reaches the host `t = sd.t`, it continues to the source host `r = sd.r`. -/
 theorem host_crossing_D8 {E : Forest} (hE : InL E) {cap : Option (Closure.AdmCap E)}
@@ -2315,7 +2410,12 @@ theorem host_crossing_D8 {E : Forest} (hE : InL E) {cap : Option (Closure.AdmCap
     (hk : k ≤ (parents E c).length)
     (hreach : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.t) :
     Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.r := by
-  sorry
+  cases cap with
+  | none =>
+    simp only [Closure.anchorOrigin, Option.some.injEq, Role.slot.injEq] at hb
+    subst hb
+    exact host_crossing_none_D8 hE hsd hj hc hbc hk hreach
+  | some w => exact host_crossing_cap_D8 hE w hsd hj hb hc hbc hk hreach
 
 /-- G011-L10 (L4.2c step 4(c), scan and descendant records). At every vertex `y ≤ r` reached by
 both chains, the source edge (in `F`, query `W'`) equals the target edge (in `E`, query `W`). -/
