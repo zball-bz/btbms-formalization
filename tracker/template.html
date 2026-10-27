@@ -63,7 +63,7 @@ document.getElementById('metrics').innerHTML = [
   [S.tasks.doing, 'in progress'],
   [gapsOpen, 'open gaps'],
   [L.gaps.filter(g => g.severity==='fatal' && g.status!=='refuted' && g.status!=='closed').length, 'open fatal gaps'],
-  [S.plan?.known ? S.plan.done + ' / ' + L.nodes.length : '?', 'plan nodes proved'],
+  [S.plan?.known ? S.plan.done + ' / ' + S.plan.needed : '?', 'needed plan nodes proved'],
   [S.plan?.known ? S.plan.ready.length : '?', 'nodes ready to prove now'],
   [S.open_user_decisions, 'decisions waiting on you'],
   [S.lean.lock_ok ? 'intact' : 'BROKEN', 'statement lock'],
@@ -99,7 +99,8 @@ const views = {
     const by = Object.fromEntries(L.nodes.map(n => [n.id, n]));
     const row = i => `<tr><td class="mono">${esc(i)}</td><td>${esc(by[i].unit)}</td><td>${esc(by[i].title)}</td><td>${esc(by[i].difficulty)}</td><td>${esc(S.lean.claims[i])}</td></tr>`;
     const head = `<tr><th>Node</th><th>Unit</th><th>Title</th><th>Size</th><th>Lean</th></tr>`;
-    return `<p class="muted">Derived from the node graph and the last Lean build. Size weights: S 1, M 2, L 4, XL 8 (total ${P.total_weight}).
+    return `<p class="muted">Derived from the node graph and the last Lean build. Size weights: S 1, M 2, L 4, XL 8 (total ${P.total_weight}). Counts cover the ${P.needed} nodes on a chain to the main theorem;
+      ${P.optional.length} optional nodes are not needed: <span class="mono">${esc(P.optional.join(' '))}</span>.
       ${P.known ? '' : '<b style="color:var(--blocked)">Lean status not current, so progress is unknown.</b>'}</p>
       <div class="wrap"><table><tr><th>Unit</th><th>Nodes</th><th>Weight</th><th>Proved</th><th>Ready now</th></tr>${
       Object.entries(P.units).map(([u, x]) => `<tr><td>${esc(u)}</td><td>${x.nodes}</td><td>${x.weight}</td><td>${P.known ? x.done : '?'}</td><td>${P.known ? x.ready : '?'}</td></tr>`).join('')}</table></div>

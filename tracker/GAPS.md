@@ -16,13 +16,13 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | G-010 | confirmed | unknown | §3 txt:520-541 | Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix | claude | codex |
 | G-011 | suspected | unknown | §4 txt:667-681 | First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed | claude |  |
 | G-012 | suspected | unknown | §8.5 txt:1418-1423 | Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched | claude |  |
-| G-013 | suspected | repairable | blueprint D3.3b | word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole | codex |  |
-| G-014 | suspected | repairable | blueprint T3.2i | num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0 | codex |  |
-| G-015 | suspected | repairable | blueprint D3.1d | origin_spec_full claims parent lookup is preserved at slots that do not exist in the output | codex |  |
-| G-016 | confirmed | repairable | blueprint D3.1e, L4.3c, L7.5a | moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false | codex, claude | claude |
-| G-017 | suspected | repairable | blueprint L8.8a | failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner | codex |  |
-| G-018 | suspected | exposition | blueprint D3.1d, L8.6a | anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap) | codex |  |
-| G-019 | confirmed | exposition | blueprint L4.3, L4.3d | childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export | codex, claude | claude |
+| G-013 | repaired | repairable | blueprint D3.3b | word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole | codex |  |
+| G-014 | repaired | repairable | blueprint T3.2i | num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0 | codex |  |
+| G-015 | repaired | repairable | blueprint D3.1d | origin_spec_full claims parent lookup is preserved at slots that do not exist in the output | codex |  |
+| G-016 | repaired | repairable | blueprint D3.1e, L4.3c, L7.5a | moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false | codex, claude | claude |
+| G-017 | repaired | repairable | blueprint L8.8a | failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner | codex |  |
+| G-018 | repaired | exposition | blueprint D3.1d, L8.6a | anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap) | codex |  |
+| G-019 | repaired | exposition | blueprint L4.3, L4.3d | childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export | codex, claude | claude |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -194,7 +194,8 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | D-1 | user | decided | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | H: host-Lean theorem. Hypothesis "for every n an n-Mahlo cardinal exists" is an explicit premise (Lean cannot prove even one Mahlo cardinal exists), stated in the same universe as the J-hierarchy. Decided by the user 2026-10-27. |
 | D-2 | claude | decided | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? | Default, user may override: main theorem with weakly n-Mahlo cardinals (stronger theorem, simpler definition); the paper's n-Mahlo version as a corollary. This delivers both statements. |
 | D-3 | claude | decided | Operation domain in Lean | Lean `expand : Forest → Nat → Option Forest` mirrors BTBM.FS exactly, returning none exactly where the reference throws (owner-root exhausted scan with n ≥ 1; invisible root). ∅[n] = some ∅ as in the reference. IsStd closes the seeds under defined operations, as in the paper. |
-| D-4 | user | open | Hierarchy for the main-theorem route: the paper's J-hierarchy (§5, blueprint Part B) or the reflection hierarchy (S-7 / P-U4-1, Part C)? | Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement. Codex (T-017, blind) also recommends Part C: the interface is sufficient and the construction sound at proof-plan level. |
+| D-4 | user | decided | Hierarchy for the main-theorem route: the paper's J-hierarchy (§5, blueprint Part B) or the reflection hierarchy (S-7 / P-U4-1, Part C)? | Part C, the reflection hierarchy (user, 2026-10-28: "just do whatever to formally verify the main theorem"). Part B is dropped from the build. |
+| D-5 | user | decided | What must be verified, and by whom, from now on? | User, 2026-10-28: only the locked main theorem (the well-ordering of Std) matters. Fidelity of the proof route to the paper does not. Verification is by Lean alone (checks/lock/check.sh --final). No Codex checks during formalization; no G1 proof-fidelity sign-off. |
 
 # Simplifications
 

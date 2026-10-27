@@ -5,7 +5,7 @@
   "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
   "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
   "root": "claude",
-  "phase": "P2 Repair & simplify (blueprint)",
+  "phase": "P4 Formalize",
   "phases": [
    {
     "id": "P1",
@@ -32,7 +32,48 @@
     "name": "Final verification",
     "exit": "Cold recheck and axiom audit pass; statement-fidelity review written. Gate G3: user signs off."
    }
-  ]
+  ],
+  "dropped_nodes": {
+   "reason": "Part B (J-hierarchy) dropped by decision D-4; declarations removed from lean/BTBMS/Plan/U4.lean",
+   "ids": [
+    "C5.3",
+    "C5.3a",
+    "C5.3b",
+    "C5.3c",
+    "C5.3d",
+    "C5.3e",
+    "C5.4",
+    "D5.2",
+    "D5.2a",
+    "D5.7",
+    "D5.7a",
+    "D5.7b",
+    "D5.7c",
+    "D5.7d",
+    "L5.5",
+    "L5.5a",
+    "L5.5b",
+    "L5.5c",
+    "L5.5d",
+    "L5.5e",
+    "L5.5f",
+    "L5.5g",
+    "L5.6",
+    "L5.6a",
+    "L5.8",
+    "L5.8a",
+    "L5.8b",
+    "L5.8c",
+    "L5.8d",
+    "L5.9",
+    "L5.9a",
+    "L5.9b",
+    "L6.5",
+    "L6.6",
+    "L6.6a",
+    "N4.2"
+   ]
+  }
  },
  "tasks": [
   {
@@ -142,11 +183,14 @@
    "id": "T-009",
    "phase": "P2",
    "owner": "user",
-   "status": "todo",
-   "title": "Gate G1: sign off the repaired, simplified proof (the blueprint)",
+   "status": "done",
+   "title": "Gate G1: waived by the user (D-5); proceed to formalization",
    "deps": [
     "T-017",
     "T-021"
+   ],
+   "evidence": [
+    "tracker/CURRENT.md"
    ]
   },
   {
@@ -277,11 +321,17 @@
    "id": "T-018",
    "phase": "P3",
    "owner": "claude",
-   "status": "todo",
-   "title": "Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations",
+   "status": "done",
+   "title": "Move the skeleton into lean/BTBMS/Plan (Part C, Part B and off-chain nodes dropped, false statements corrected); every node mapped to Lean declarations",
    "deps": [
     "T-009"
-   ]
+   ],
+   "evidence": [
+    "lean/BTBMS/Plan/Spine.lean",
+    "lean/BTBMS/Plan/U5.lean",
+    "lean/BTBMS/Main.lean"
+   ],
+   "note": "lake build passes; Main.lean proves std_isWellOrder from Descent.abstract_implies_main and finalHyps Hier.jInterface (Part C). Only sorry proofs remain."
   },
   {
    "id": "T-019",
@@ -308,18 +358,34 @@
     "T-016"
    ],
    "deliverable": "blueprint/repairs/",
-   "note": "Stopped 2026-10-28 by root after the user objected to unbounded verification runs. Drafts for G-009..G-012 and TESTS are kept in blueprint/repairs/ as UNVERIFIED drafts (their verifiers were stopped). Under the new verification policy they are checked by Lean, not by another informal round."
+   "note": "Stopped 2026-10-28 by root after the user objected to unbounded verification runs. Drafts for G-009..G-012 and TESTS are kept in blueprint/repairs/ as UNVERIFIED drafts (their verifiers were stopped). Under the new verification policy they are checked by Lean, not by another informal round. Superseded by D-5: the drafts are proof plans; Lean decides."
   },
   {
    "id": "T-021",
    "phase": "P2",
    "owner": "claude",
-   "status": "todo",
+   "status": "done",
    "deps": [
     "T-017"
    ],
    "title": "Correct the false statements BP-01..BP-05 and provider gaps BP-08/BP-09; rerun Codex's counterexample files against the amended skeleton",
-   "deliverable": "blueprint/ (amended), regression log"
+   "deliverable": "blueprint/ (amended), regression log",
+   "evidence": [
+    "lean/BTBMS/Plan/U2.lean",
+    "lean/BTBMS/Plan/U3.lean",
+    "lean/BTBMS/Plan/U5.lean"
+   ],
+   "note": "Applied in lean/BTBMS/Plan: BP-01 word_kernel +KernelDefined; BP-02 num_phaseCol actual-data hypotheses; BP-03 origin_spec_full clauses restricted to roles of w.H; BP-04 Closure.MovesOutside in moves_spec, applyMoves_litCap_addr, repair_moves_outside, frame_repair; BP-05 failure_floor +source-entry membership; BP-08 anchorOrigin_prefix assumes InL of the anchor only; BP-09 reduce_childEnds exports role prefix and graph inclusion; G-009/G-010 prev_root_response +hend. Each Codex counterexample violates the added hypothesis by construction."
+  },
+  {
+   "id": "T-022",
+   "phase": "P4",
+   "owner": "claude",
+   "status": "todo",
+   "deps": [
+    "T-018"
+   ],
+   "title": "Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes"
   }
  ],
  "nodes": [
@@ -4255,8 +4321,7 @@
     "BTBMS.Packet.Frame.toFr",
     "BTBMS.Packet.freeBlock",
     "BTBMS.Packet.posBlock",
-    "BTBMS.Packet.noB",
-    "BTBMS.Hier.Atom.noReal"
+    "BTBMS.Packet.noB"
    ]
   },
   {
@@ -5297,875 +5362,6 @@
     "BTBMS.Hier.Diagram.realizableBelow_mono",
     "BTBMS.Hier.Diagram.realizableBelow_congr_below",
     "BTBMS.Hier.Diagram.realizableBelow_congr_fixed"
-   ]
-  },
-  {
-   "id": "C5.3b",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "txt:776-779",
-   "title": "Formulas of set theory, Δ₀ and Σ₁, absoluteness",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.SetFml",
-    "BTBMS.Hier.SetFml.Sat",
-    "BTBMS.Hier.SetFml.IsDelta0",
-    "BTBMS.Hier.SetFml.IsSigma1",
-    "BTBMS.Hier.SetFml.sat_delta0_iff",
-    "BTBMS.Hier.SetFml.sat_sigma1_up",
-    "BTBMS.Hier.SigmaElem",
-    "BTBMS.Hier.FullElem",
-    "BTBMS.Hier.FullElem.sigmaElem",
-    "BTBMS.Hier.SigmaElem.trans",
-    "BTBMS.Hier.SigmaElem.mid"
-   ]
-  },
-  {
-   "id": "D5.2",
-   "unit": "U4",
-   "kind": "def",
-   "loc": "§5.1 txt:739-766",
-   "title": "The basis B, `S(X)` and `J`",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [],
-   "testable": true,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.triple",
-    "BTBMS.Hier.fld",
-    "BTBMS.Hier.fibre",
-    "BTBMS.Hier.BOp",
-    "BTBMS.Hier.BOp.arity",
-    "BTBMS.Hier.arg",
-    "BTBMS.Hier.BOp.eval",
-    "BTBMS.Hier.succSet",
-    "BTBMS.Hier.S",
-    "BTBMS.Hier.J",
-    "BTBMS.Hier.J_zero",
-    "BTBMS.Hier.J_add_one",
-    "BTBMS.Hier.J_limit",
-    "BTBMS.Hier.BClosed"
-   ]
-  },
-  {
-   "id": "D5.2a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:748-749",
-   "title": "Bounded graphs of the basis operations and of `S`",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "C5.3b",
-    "D5.2"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.bOp_graph_delta0",
-    "BTBMS.Hier.S_graph_delta0"
-   ]
-  },
-  {
-   "id": "C5.3a",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "txt:753-759",
-   "title": "Transitivity and closure of the levels",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "D5.2"
-   ],
-   "testable": true,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.S_isTransitive",
-    "BTBMS.Hier.succSet_subset_S",
-    "BTBMS.Hier.J_isTransitive",
-    "BTBMS.Hier.J_mono",
-    "BTBMS.Hier.J_mem_J",
-    "BTBMS.Hier.J_bClosed"
-   ]
-  },
-  {
-   "id": "C5.3c",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "txt:768-774",
-   "title": "Truth tables of fixed formulas",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "D5.2"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.tup",
-    "BTBMS.Hier.tupSpace",
-    "BTBMS.Hier.table",
-    "BTBMS.Hier.table_mem"
-   ],
-   "notes": [
-    "OP-U4-4 (minor): bridge between B and the Goedel operations"
-   ]
-  },
-  {
-   "id": "C5.3d",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "txt:775-779",
-   "title": "The uniform bounded table verifier",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.3c"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.natSet",
-    "BTBMS.Hier.SetFml.code",
-    "BTBMS.Hier.uniform_verifier"
-   ]
-  },
-  {
-   "id": "C5.3e",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "txt:780-797",
-   "title": "`S(T)` inside closed levels",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3c"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.S_mem"
-   ]
-  },
-  {
-   "id": "C5.3",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "§5.1 txt:768-798",
-   "title": "Truth tables, bounded verifier, `S(T)` inside closed levels",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.3c",
-    "C5.3d",
-    "C5.3e"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": []
-  },
-  {
-   "id": "C5.4",
-   "unit": "U4",
-   "kind": "fact",
-   "loc": "§5.1 txt:799-807",
-   "title": "(9) Heights and sizes",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3c",
-    "D5.2"
-   ],
-   "testable": true,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.toZFSet_mem_J_iff",
-    "BTBMS.Hier.rank_J",
-    "BTBMS.Hier.card_J_le"
-   ]
-  },
-  {
-   "id": "L5.5a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:813-815",
-   "title": "Histories: the bounded check and uniqueness",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "C5.3b",
-    "D5.2",
-    "D5.2a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.history",
-    "BTBMS.Hier.histOK_exists"
-   ]
-  },
-  {
-   "id": "L5.5b",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:809",
-   "title": "The history budget",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.3c",
-    "C5.4",
-    "F5.1a",
-    "L5.5a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.history_mem"
-   ]
-  },
-  {
-   "id": "L5.5g",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:808-815",
-   "title": "`ξ ↦ J_ξ` is globally single-valued Σ₁",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "F5.1",
-    "L5.5a",
-    "L5.5b"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.J_sigma1"
-   ]
-  },
-  {
-   "id": "L5.5c",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:816-829",
-   "title": "The canonical well-order `<_J`",
-   "fidelity": "as-paper",
-   "difficulty": "XL",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.3c",
-    "D5.2",
-    "F5.1",
-    "L5.5a",
-    "L5.5b"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.canonical_order"
-   ],
-   "notes": [
-    "OP-U4-1 (major if Part B): coding layer at sketch level"
-   ]
-  },
-  {
-   "id": "L5.5f",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:810-812",
-   "title": "The canonical Σ₁ hull (definition)",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "C5.3b",
-    "D5.2"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.hull"
-   ]
-  },
-  {
-   "id": "L5.5d",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:830-838",
-   "title": "Compatible canonical Σ₁ Skolem functions",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.3d",
-    "D5.2",
-    "L5.5c",
-    "L5.5f"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.skolem_compatible"
-   ],
-   "notes": [
-    "OP-U4-1 (major if Part B): coding layer at sketch level"
-   ]
-  },
-  {
-   "id": "L5.5e",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:808-812",
-   "title": "Hulls: elementarity, monotonicity, continuity, size, compatibility",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "D5.2",
-    "L5.5d",
-    "L5.5f"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.subset_hull",
-    "BTBMS.Hier.hull_mono",
-    "BTBMS.Hier.hull_sigmaElem",
-    "BTBMS.Hier.hull_iUnion",
-    "BTBMS.Hier.card_hull_le",
-    "BTBMS.Hier.hull_subset_of_le",
-    "BTBMS.Hier.hull_eq_of_sigmaElem"
-   ]
-  },
-  {
-   "id": "L5.5",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§5.1 txt:808-841",
-   "title": "History and hull lemma",
-   "fidelity": "as-paper",
-   "difficulty": "XL",
-   "uses": [
-    "L5.5a",
-    "L5.5b",
-    "L5.5c",
-    "L5.5d",
-    "L5.5e",
-    "L5.5f",
-    "L5.5g"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": []
-  },
-  {
-   "id": "L5.6a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:844-845",
-   "title": "Collapse of a Σ₁ substructure",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "C5.3b",
-    "D5.2"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.collapse",
-    "BTBMS.Hier.collapse_injOn",
-    "BTBMS.Hier.collapse_eq_self",
-    "BTBMS.Hier.collapse_image_transitive",
-    "BTBMS.Hier.collapse_sat_iff_image"
-   ]
-  },
-  {
-   "id": "L5.6",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§5.1 txt:842-853",
-   "title": "Condensation",
-   "fidelity": "as-paper",
-   "difficulty": "XL",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.4",
-    "D5.2",
-    "D5.2a",
-    "F5.1",
-    "L5.5a",
-    "L5.5b",
-    "L5.6a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.condensation",
-    "BTBMS.Hier.collapse_sat_iff"
-   ]
-  },
-  {
-   "id": "D5.7",
-   "unit": "U4",
-   "kind": "def",
-   "loc": "§5.2 txt:859-873",
-   "title": "Control edges (10) and the J primitives",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "C5.3b",
-    "D5.2",
-    "L5.5f"
-   ],
-   "testable": false,
-   "gaps": [
-    "G-004"
-   ],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.JElem",
-    "BTBMS.Hier.JEdge",
-    "BTBMS.Hier.jPrims"
-   ]
-  },
-  {
-   "id": "D5.7a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:864-866",
-   "title": "Edges give `J_a ≺ J_b`; repair of G-004",
-   "fidelity": "repaired",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.4",
-    "D5.7",
-    "L5.5e",
-    "L5.5f",
-    "L5.5g"
-   ],
-   "testable": false,
-   "gaps": [
-    "G-004"
-   ],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.J_mem_controlHull",
-    "BTBMS.Hier.fullElem_inter_of_mem",
-    "BTBMS.Hier.fullElem_of_edge"
-   ]
-  },
-  {
-   "id": "D5.7b",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:867-869",
-   "title": "Environment restriction",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.4",
-    "D5.7",
-    "L5.5e"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.jEdge_restrict"
-   ]
-  },
-  {
-   "id": "D5.7c",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:869-871",
-   "title": "Environment extension",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "C5.3b",
-    "D5.7",
-    "L5.5e"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.jEdge_extend"
-   ]
-  },
-  {
-   "id": "D5.7d",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:872-873",
-   "title": "The control collapse",
-   "fidelity": "as-paper",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "C5.4",
-    "D5.7",
-    "L5.5e",
-    "L5.6",
-    "L5.6a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.control_collapse"
-   ]
-  },
-  {
-   "id": "L5.8b",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:882-895",
-   "title": "`JElem`, `JEdge` are Δ₀ in a history parameter",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3b",
-    "C5.3d",
-    "D5.7",
-    "L5.5a",
-    "L5.5d",
-    "L5.5e"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.elem_edge_delta0"
-   ],
-   "notes": [
-    "OP-U4-1 (major if Part B): coding layer at sketch level"
-   ]
-  },
-  {
-   "id": "L5.8c",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:1033-1040",
-   "title": "Block problems are Δ₀ in their parameters",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "C5.3b",
-    "C5.4",
-    "L5.8b",
-    "N4.1b"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.blockAbove_delta0"
-   ]
-  },
-  {
-   "id": "L5.8d",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:1041-1044",
-   "title": "(16) The negative label is Δ₀",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "L5.8c"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.noReal_delta0"
-   ]
-  },
-  {
-   "id": "L5.8a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:874-905",
-   "title": "Certificate lemma, ordinal form",
-   "fidelity": "simplified",
-   "difficulty": "L",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.4",
-    "F5.1",
-    "L5.5a",
-    "L5.5b",
-    "L5.5g",
-    "L5.8b",
-    "L5.8c",
-    "L5.8d",
-    "N4.1a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.cert_sigma1"
-   ]
-  },
-  {
-   "id": "L5.8",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§5.2 txt:874-905",
-   "title": "Certificate lemma",
-   "fidelity": "simplified",
-   "difficulty": "XL",
-   "uses": [
-    "L5.8a",
-    "L5.8b",
-    "L5.8c",
-    "L5.8d"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": []
-  },
-  {
-   "id": "L5.9a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:909-911",
-   "title": "Capture",
-   "fidelity": "simplified",
-   "difficulty": "S",
-   "uses": [
-    "C5.4",
-    "D5.7",
-    "L5.8a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.jCapture"
-   ]
-  },
-  {
-   "id": "L5.9b",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:912-918",
-   "title": "Control transport",
-   "fidelity": "simplified",
-   "difficulty": "M",
-   "uses": [
-    "D5.7",
-    "D5.7d",
-    "L5.5e",
-    "L5.6",
-    "L5.8a",
-    "L5.9a",
-    "N4.1a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.jTransport"
-   ]
-  },
-  {
-   "id": "L5.9",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§5.2 txt:909-918",
-   "title": "Capture and transport",
-   "fidelity": "simplified",
-   "difficulty": "S",
-   "uses": [
-    "L5.9a",
-    "L5.9b"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound (standard; sketch)",
-    "codex": "sound"
-   },
-   "lean_decls": []
-  },
-  {
-   "id": "L6.5",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§6.2 txt:976-983",
-   "title": "(13) `J_κ ≺₁ J_w`",
-   "fidelity": "simplified",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "C5.4",
-    "D5.2",
-    "D6.4",
-    "L5.5e",
-    "L5.6",
-    "L5.6a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.jCard_elem"
-   ]
-  },
-  {
-   "id": "L6.6a",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "txt:988-990",
-   "title": "Hulls meet `J_κ` boundedly",
-   "fidelity": "simplified",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "C5.4",
-    "D5.2",
-    "D6.4",
-    "F5.1a",
-    "L5.5e"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.hull_bounded"
-   ]
-  },
-  {
-   "id": "L6.6",
-   "unit": "U4",
-   "kind": "lemma",
-   "loc": "§6.2 txt:984-999",
-   "title": "(14) The club of reflection points",
-   "fidelity": "simplified",
-   "difficulty": "M",
-   "uses": [
-    "C5.3a",
-    "D5.2",
-    "D6.4",
-    "F5.1a",
-    "L5.5e",
-    "L6.5",
-    "L6.6a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Hier.jClub_edge"
-   ]
-  },
-  {
-   "id": "N4.2",
-   "unit": "U4",
-   "kind": "def",
-   "loc": "new",
-   "title": "The J instance of the interface",
-   "fidelity": "new",
-   "difficulty": "S",
-   "uses": [
-    "C5.3a",
-    "C5.3b",
-    "D5.7",
-    "D5.7a",
-    "D5.7b",
-    "D5.7c",
-    "L5.9a",
-    "L5.9b",
-    "L6.5",
-    "L6.6"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Hier.jElem_le",
-    "BTBMS.Hier.jEdge_elem_high",
-    "BTBMS.Hier.jInst"
-   ],
-   "notes": [
-    "SCR-U4-1 deferred: J instance (Part B) or reflection instance (P-U4-1, recommended)"
    ]
   },
   {
@@ -7736,7 +6932,7 @@
    "uses": [
     "N5.1",
     "T9.1a",
-    "N4.2"
+    "N4.10"
    ],
    "testable": false,
    "gaps": [],
@@ -7984,7 +7180,7 @@
   },
   {
    "id": "G-013",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "repairable",
    "loc": "blueprint D3.3b",
    "summary": "word_kernel asserts the word factorization when an exhausted owner root leaves no continuation hole",
@@ -7996,11 +7192,13 @@
     "codex-blueprint-review.md BP-01"
    ],
    "fix": "Add KernelDefined E rd and discharge it at consumers.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-014",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "repairable",
    "loc": "blueprint T3.2i",
    "summary": "num_phaseCol holds only for coherent stop/root data of an actual operation; arbitrary records give 1 = 0",
@@ -8012,11 +7210,13 @@
     "codex-blueprint-review.md BP-02"
    ],
    "fix": "Require actual-data/coherence hypotheses; recheck every application.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-015",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "repairable",
    "loc": "blueprint D3.1d",
    "summary": "origin_spec_full claims parent lookup is preserved at slots that do not exist in the output",
@@ -8028,11 +7228,13 @@
     "codex-blueprint-review.md BP-03"
    ],
    "fix": "Restrict the slot clause to actual output entries/roles.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-016",
-   "status": "confirmed",
+   "status": "repaired",
    "severity": "repairable",
    "loc": "blueprint D3.1e, L4.3c, L7.5a",
    "summary": "moves_spec and applyMoves_litCap_addr use the marked height's original address after earlier moves relocate it; both conclusions are false",
@@ -8047,11 +7249,13 @@
     "codex-blueprint-review.md BP-04"
    ],
    "fix": "State the exclusion at every current moveAddr (moves.take i) b (MovesOutside); U3 supplies it; propagate through the cap/readmission chain.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Found independently by the G-012 repair draft (blueprint/repairs/G-012.md §5).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-017",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "repairable",
    "loc": "blueprint L8.8a",
    "summary": "failure_floor drops factorization's actual-source-entry premise; Valid alone allows a successor-valued owner",
@@ -8063,11 +7267,13 @@
     "codex-blueprint-review.md BP-05"
    ],
    "fix": "Add Admitted or source-entry membership and pass it to factorization.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-018",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "exposition",
    "loc": "blueprint D3.1d, L8.6a",
    "summary": "anchorOrigin_prefix needs InL E, but the empty-query DLab over a cap provides only InL (anchor E cap)",
@@ -8079,11 +7285,13 @@
     "codex-blueprint-review.md BP-08"
    ],
    "fix": "Supply the structural origin-prefix lemma without InL E.",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   },
   {
    "id": "G-019",
-   "status": "confirmed",
+   "status": "repaired",
    "severity": "exposition",
    "loc": "blueprint L4.3, L4.3d",
    "summary": "childEnds_package uses role-prefix and subgraph facts that reduce_childEnds does not export",
@@ -8098,7 +7306,9 @@
     "codex-blueprint-review.md BP-09"
    ],
    "fix": "Export (setHeight a A1).roles <+: F.roles and graph subset (bounded-tested in blueprint/repairs/TESTS.md).",
-   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3)."
+   "detail": "Found by Codex in T-017 with an explicit counterexample (scratch/codex/). Claude's TESTS draft independently flagged the missing export (INTEGRATION.md I-3).",
+   "fix_by": "claude",
+   "repair": "Statement corrected in lean/BTBMS/Plan (T-021); Lean proof pending"
   }
  ],
  "simplifications": [
@@ -8276,9 +7486,17 @@
   {
    "id": "D-4",
    "owner": "user",
-   "status": "open",
+   "status": "decided",
    "question": "Hierarchy for the main-theorem route: the paper's J-hierarchy (§5, blueprint Part B) or the reflection hierarchy (S-7 / P-U4-1, Part C)?",
-   "impact": "Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement. Codex (T-017, blind) also recommends Part C: the interface is sufficient and the construction sound at proof-plan level."
+   "impact": "Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement. Codex (T-017, blind) also recommends Part C: the interface is sufficient and the construction sound at proof-plan level.",
+   "answer": "Part C, the reflection hierarchy (user, 2026-10-28: \"just do whatever to formally verify the main theorem\"). Part B is dropped from the build."
+  },
+  {
+   "id": "D-5",
+   "owner": "user",
+   "status": "decided",
+   "question": "What must be verified, and by whom, from now on?",
+   "answer": "User, 2026-10-28: only the locked main theorem (the well-ordering of Std) matters. Fidelity of the proof route to the paper does not. Verification is by Lean alone (checks/lock/check.sh --final). No Codex checks during formalization; no G1 proof-fidelity sign-off."
   }
  ]
 }

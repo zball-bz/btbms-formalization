@@ -1,4 +1,5 @@
 import BTBMS.Statement
+import BTBMS.Plan.U5
 
 /-!
 # The main theorem: proof
@@ -12,8 +13,8 @@ namespace BTBMS
 universe u
 
 theorem std_isWellOrder (h : ∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) :
-    IsWellOrder Std Std.lt := by
-  sorry
+    IsWellOrder Std Std.lt :=
+  Descent.abstract_implies_main (fun hM => ⟨_, Descent.finalHyps Hier.jInterface hM⟩) h
 
 theorem mainTheorem : MainTheorem.{u} := std_isWellOrder
 

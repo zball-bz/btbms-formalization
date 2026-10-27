@@ -203,6 +203,15 @@ def plan_stats(ledger, claims):
     if not nodes or 'MAIN' not in {n['id'] for n in nodes}:
         return None
     layer = layers(nodes)
+    by_id = {n['id']: n for n in nodes}
+    needed, todo = set(), ['MAIN']
+    while todo:  # only nodes on a chain to the main theorem count; the rest are optional
+        i = todo.pop()
+        if i not in needed:
+            needed.add(i)
+            todo += by_id[i].get('uses', [])
+    optional = [n['id'] for n in nodes if n['id'] not in needed]
+    nodes = [n for n in nodes if n['id'] in needed]
     known = not any(c.startswith('unknown') for c in claims.values())
     done = {i for i, c in claims.items() if c in DONE_STATES}
     umbrella = [n for n in nodes if not n.get('lean_decls')]  # done once everything it groups is done
@@ -219,7 +228,8 @@ def plan_stats(ledger, claims):
     w = lambda n: WEIGHTS[n.get('difficulty', 'S')]
     left = lambda n: 0 if n['id'] in done else w(n)
     return {
-        'known': known, 'done': len(done) if known else None, 'ready': ready if known else None,
+        'known': known, 'needed': len(nodes), 'optional': optional,
+        'done': len(done & needed) if known else None, 'ready': ready if known else None,
         'layers': layer, 'units': units,
         'critical_path': longest_chain(nodes, 'MAIN', lambda n: 1)[1],
         'weighted_path': longest_chain(nodes, 'MAIN', w),
@@ -304,7 +314,7 @@ def main():
           f"lock {'intact' if lean['lock_ok'] else 'BROKEN'}; "
           + (f"Lean status {lean['status_problem']}" if lean['status_problem']
              else f"{lean['sorry_decls']} declarations with a direct sorry")
-          + (f"; plan {plan['done']}/{len(ledger['nodes'])} nodes done, {len(plan['ready'])} ready"
+          + (f"; plan {plan['done']}/{plan['needed']} needed nodes done, {len(plan['ready'])} ready"
              if (plan := stats['plan']) and plan['known'] else ''))
 
 
