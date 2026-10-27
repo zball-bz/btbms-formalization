@@ -30,6 +30,10 @@ Goal: replace `sorry` with complete Lean proofs, so that eventually
    - If you need a fact that is not stated anywhere, add a helper lemma right before its first
      use, and prove it if you can.
    - Report every helper you leave as `sorry`.
+   - **Name every new helper with your branch id as a suffix**, for example
+     `forestAt_cons_D2`. Parallel branches cannot see each other's helpers, and duplicate
+     names break the merge. Before you add a helper, grep `lean/` for an existing lemma that
+     already says it.
 4. **Statements.** Keep every statement as it is unless it is false or unprovable as stated.
    - In that case make the minimal change (an extra hypothesis, or a weaker conclusion) and
      record the reason in a comment above it. Give a concrete counterexample if you have one.
