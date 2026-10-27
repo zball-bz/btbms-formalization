@@ -1511,28 +1511,6 @@ theorem graph_deletion {E E' : Forest} {n : Nat} (h : Scan.stepKind E = some .de
     (hexp : expand E n = some E') :
     E'.roles = E.roles.dropLast ∧ ∀ a, a ∈ graph E' ↔ a ∈ restrictTo (graph E) E'.roles := by sorry
 
-/-- L6.2c: the roles of the special owner entry `e` that are copied: its slot and its height
-without the stopping column (txt:107-109). -/
-def specialRoles (H : Forest) (sd : Scan.StopData) (e : EntryAddr) : List Role :=
-  (H.roles.dropWhile (· != .slot e)).takeWhile (· != .ord sd.col)
-
-/-- L6.2c: the `x`-th copy (`x < n + ε`) of the special owner entry `e`, at index `e.idx + x`. -/
-def specialCopy (e : EntryAddr) (x : Nat) : Role → Role :=
-  transColumn e.col e.col (fun i => if i = e.idx then e.idx + x else i)
-
--- provides: U3, L6.2c (special step)
-theorem graph_special {H H' : Forest} {n : Nat} {sd : Scan.StopData} {e : EntryAddr}
-    (hH : H ≠ Tree.empty) (hV : Scan.CondV H) (hI : Scan.CondI H)
-    (hk : Scan.stepKind H = some .special) (hsd : Scan.stopData H = some sd)
-    (he : sd.ownerEntry = some e) (hexp : expand H n = some H') :
-    let ε := if e.idx = 0 then 1 else 0
-    H'.roles = prefixRoles H e ++
-      (List.range (n + ε)).flatMap (fun x => (specialRoles H sd e).map (specialCopy e x)) ∧
-    (∀ z ∈ prefixRoles H e, ∀ a, a ∈ ownedBy (graph H') z ↔ a ∈ ownedBy (graph H) z) ∧
-    (∀ x, x < n + ε → ∀ y ∈ specialRoles H sd e, ∀ a,
-      a ∈ ownedBy (graph H') (specialCopy e x y) ↔
-        ∃ a₀ ∈ ownedBy (graph H) y, a = a₀.map (specialCopy e x)) := by sorry
-
 -- provides: U3, L6.2d (the spine's `graph_prefix`†: the prefix before any old pre-stop role is
 -- unchanged in `H[n]`; used by U5 with `ι = id`)
 theorem graph_prefix {H H' : Forest} {n : Nat} {rs : RoleSets}
@@ -2047,6 +2025,925 @@ theorem graph_owned_block {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs)
     ∀ a ∈ ownedBy (graph F) z, ∃ a₀ ∈ posBlock (relKey (e.col.num 0) ((F.heightAt e).getD Tree.empty))
       (((F.entryAt e).map Prod.fst).getD 0), a = a₀.map (blockMap e) :=
   graph_owned_block_core he z hz
+
+/-! ## L6.2c  Graph of a special step (moved below D7.1a, unchanged: its proof uses the block
+lemmas of D7.1a; nothing in between uses it) -/
+
+/-- L6.2c: the roles of the special owner entry `e` that are copied: its slot and its height
+without the stopping column (txt:107-109). -/
+def specialRoles (H : Forest) (sd : Scan.StopData) (e : EntryAddr) : List Role :=
+  (H.roles.dropWhile (· != .slot e)).takeWhile (· != .ord sd.col)
+
+/-- L6.2c: the `x`-th copy (`x < n + ε`) of the special owner entry `e`, at index `e.idx + x`. -/
+def specialCopy (e : EntryAddr) (x : Nat) : Role → Role :=
+  transColumn e.col e.col (fun i => if i = e.idx then e.idx + x else i)
+
+/-- L6.2e helper: a column list obtained by replacing (or deleting) the last entry of the last
+column keeps the labels of the other entries. -/
+theorem labelSub_lastEntry {A : List (List (Nat × Forest))} {B : List (Nat × Forest)} {p : Nat}
+    {h h' : Forest} (hsub : Tree.LabelSub h' h) :
+    Tree.LabelSub (Tree.node (A ++ [B ++ [(p, h')]])) (Tree.node (A ++ [B ++ [(p, h)]])) := by
+  apply Tree.labelSub_node
+  intro a b y hy
+  rw [Option.bind_eq_some_iff] at hy
+  obtain ⟨col', hcol', hy⟩ := hy
+  rw [List.getElem?_append] at hcol'
+  split_ifs at hcol' with ha
+  · exact ⟨y, by rw [List.getElem?_append_left ha, hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
+  · rw [List.getElem?_singleton] at hcol'
+    split_ifs at hcol' with ha'
+    cases hcol'
+    have hidx : a = A.length := by omega
+    subst hidx
+    rw [List.getElem?_append] at hy
+    split_ifs at hy with hb
+    · exact ⟨y, by simp [List.getElem?_append_left hb, hy], rfl, Tree.LabelSub.refl _⟩
+    · rw [List.getElem?_singleton] at hy
+      split_ifs at hy with hb'
+      cases hy
+      have : b = B.length := by omega
+      subst this
+      exact ⟨(p, h), by simp, rfl, hsub⟩
+
+theorem labelSub_dropLast (cols : List (List (Nat × Forest))) :
+    Tree.LabelSub (Tree.node cols.dropLast) (Tree.node cols) := by
+  apply Tree.labelSub_node
+  intro a b y hy
+  rw [Option.bind_eq_some_iff] at hy
+  obtain ⟨col', hcol', hy⟩ := hy
+  rw [List.dropLast_eq_take] at hcol'
+  exact ⟨y, by rw [Tree.getElem?_take_bind hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
+
+/-- L6.2e helper: the unshifted deletion of the route column at depth `ℓ` keeps labels. -/
+theorem labelSub_replaceAt_empty :
+    ∀ (ℓ : Nat) (F : Forest), Tree.LabelSub (replaceAt 0 0 Tree.empty ℓ F) F := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro ⟨cols⟩
+    cases cols with
+    | nil => exact Tree.LabelSub.refl _
+    | cons x xs =>
+      have : replaceAt 0 0 Tree.empty 0 (Tree.node (x :: xs)) = Tree.node (x :: xs).dropLast := by
+        simp only [replaceAt, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun, List.map_id]
+        simp [Tree.empty, Tree.cols]
+      rw [this]
+      exact labelSub_dropLast _
+  | succ k ih =>
+    rintro ⟨cols⟩
+    cases hl : cols.getLast? with
+    | none =>
+      rw [List.getLast?_eq_none_iff] at hl
+      subst hl
+      simp only [replaceAt, mapLast]
+      exact Tree.LabelSub.refl _
+    | some col =>
+      obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
+      cases hl' : col.getLast? with
+      | none =>
+        rw [List.getLast?_eq_none_iff] at hl'
+        subst hl'
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id]
+        exact Tree.LabelSub.refl _
+      | some x =>
+        obtain ⟨B, rfl⟩ : ∃ B, col = B ++ [x] := ⟨_, (List.dropLast_append_getLast? x hl').symm⟩
+        obtain ⟨p, h⟩ := x
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id, Scan.treeMap_id, id_eq]
+        have : (B.map fun x : Nat × Forest => (x.1, x.2)) = B := by
+          conv_rhs => rw [← List.map_id B]
+          rfl
+        rw [this]
+        exact labelSub_lastEntry (ih h)
+
+/-- L6.2c helper: replacing the route column at depth `ℓ` by a column `c₁` keeps the labels of
+the entries that survive replacing it by a column `c₂` extending `c₁`. -/
+theorem labelSub_replaceAt_col {c₁ c₂ : Column} (hc : c₁ <+: c₂) :
+    ∀ (ℓ : Nat) (F : Forest), Tree.LabelSub (replaceAt 0 0 (Tree.node [c₁]) ℓ F)
+      (replaceAt 0 0 (Tree.node [c₂]) ℓ F) := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro ⟨cols⟩
+    cases cols with
+    | nil => exact Tree.LabelSub.refl _
+    | cons x xs =>
+      simp only [replaceAt, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun, List.map_id, Tree.cols]
+      apply Tree.labelSub_node
+      intro a b y hy
+      refine ⟨y, ?_, rfl, Tree.LabelSub.refl _⟩
+      rw [Option.bind_eq_some_iff] at hy ⊢
+      obtain ⟨col, hcol, hy⟩ := hy
+      rw [List.getElem?_append] at hcol ⊢
+      split_ifs at hcol ⊢ with ha
+      · exact ⟨col, hcol, hy⟩
+      · rw [List.getElem?_singleton] at hcol ⊢
+        split_ifs at hcol ⊢ with ha'
+        cases hcol
+        refine ⟨c₂, rfl, ?_⟩
+        obtain ⟨t, rfl⟩ := hc
+        rw [List.getElem?_append_left (List.getElem?_eq_some_iff.1 hy).1]; exact hy
+  | succ k ih =>
+    rintro ⟨cols⟩
+    cases hl : cols.getLast? with
+    | none =>
+      rw [List.getLast?_eq_none_iff] at hl
+      subst hl
+      simp only [replaceAt, mapLast]
+      exact Tree.LabelSub.refl _
+    | some col =>
+      obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
+      cases hl' : col.getLast? with
+      | none =>
+        rw [List.getLast?_eq_none_iff] at hl'
+        subst hl'
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id]
+        exact Tree.LabelSub.refl _
+      | some x =>
+        obtain ⟨B, rfl⟩ : ∃ B, col = B ++ [x] := ⟨_, (List.dropLast_append_getLast? x hl').symm⟩
+        obtain ⟨p, h⟩ := x
+        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+          List.map_id, Scan.treeMap_id, id_eq]
+        exact labelSub_lastEntry (ih h)
+
+/-- L6.2c helper: the route columns of `routeColsAux` at depth `d` have paths of length `|σ| + d`,
+extending `σ`. -/
+theorem routeColsAux_path : ∀ (fuel : Nat) (F : Forest) (σ : List (Nat × Nat)) (d : Nat)
+    (c : ColAddr), (Scan.routeColsAux fuel F σ)[d]? = some c → ∃ τ, c.path = σ ++ τ ∧ τ.length = d
+  | 0, _, _, _, _, h => by simp [Scan.routeColsAux] at h
+  | fuel + 1, ⟨cols⟩, σ, d, c, h => by
+    simp only [Scan.routeColsAux, Tree.cols] at h
+    cases hl : cols.getLast? with
+    | none => rw [hl] at h; simp at h
+    | some col =>
+      rw [hl] at h
+      cases d with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+        exact ⟨[], by rw [← h]; simp, rfl⟩
+      | succ d =>
+        simp only [List.getElem?_cons_succ] at h
+        cases hl' : col.getLast? with
+        | none => rw [hl'] at h; simp at h
+        | some ph =>
+          obtain ⟨p, hh⟩ := ph
+          rw [hl'] at h
+          simp only at h
+          obtain ⟨τ, hτ, hlen⟩ := routeColsAux_path fuel hh _ d c h
+          exact ⟨(cols.length - 1, col.length - 1) :: τ, by rw [hτ]; simp, by simp [hlen]⟩
+
+/-- L6.2c helper: replacing the route column by itself is the identity. -/
+theorem replaceAt_self : ∀ (ℓ fuel : Nat) (F : Forest) (σ π : List (Nat × Nat)) (c : Nat)
+    (col : Column), (Scan.routeColsAux fuel F σ)[ℓ]? = some ⟨σ ++ π, c⟩ →
+    F.colAt ⟨π, c⟩ = some col → replaceAt 0 0 (Tree.node [col]) ℓ F = F := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c col h hcol
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col' =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_zero, Option.some.injEq, ColAddr.mk.injEq] at h
+        obtain ⟨h1, rfl⟩ := h
+        have hπ : π = [] := by simpa using h1
+        subst hπ
+        obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col'] := ⟨_, (List.dropLast_append_getLast? col' hl).symm⟩
+        have : col = col' := by
+          simp [Tree.colAt, Tree.forestAt, Tree.cols] at hcol
+          exact hcol.symm
+        subst this
+        obtain ⟨y, ys, hys⟩ := List.exists_cons_of_ne_nil (show A ++ [col] ≠ [] by simp)
+        rw [hys]
+        simp only [replaceAt]
+        rw [← hys, List.dropLast_concat, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun, List.map_id]
+        rfl
+  | succ k ih =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c col h hcol
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col' =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_succ] at h
+        cases hl' : col'.getLast? with
+        | none => rw [hl'] at h; simp at h
+        | some ph =>
+          obtain ⟨p, hh⟩ := ph
+          rw [hl'] at h
+          simp only at h
+          obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col'] := ⟨_, (List.dropLast_append_getLast? col' hl).symm⟩
+          obtain ⟨B, rfl⟩ : ∃ B, col' = B ++ [(p, hh)] :=
+            ⟨_, (List.dropLast_append_getLast? _ hl').symm⟩
+          simp only [List.length_append, List.length_singleton, Nat.add_sub_cancel] at h
+          obtain ⟨τ, hτ, -⟩ := routeColsAux_path fuel hh _ k _ h
+          simp only [List.append_assoc, List.singleton_append] at hτ
+          have hπ : π = (A.length, B.length) :: τ := List.append_cancel_left hτ
+          subst hπ
+          have hcol' : hh.colAt ⟨τ, c⟩ = some col := by
+            rw [Tree.colAt_cons] at hcol
+            simpa [Tree.cols] using hcol
+          have IH := ih fuel hh (σ ++ [(A.length, B.length)]) τ c col (by simpa using h) hcol'
+          simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+            Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
+            List.map_id, Scan.treeMap_id, id_eq, IH]
+          have : (B.map fun x : Nat × Forest => (x.1, x.2)) = B := by
+            conv_rhs => rw [← List.map_id B]
+            rfl
+          rw [this]
+
+/-- L6.2c helper: after replacing the route column by a single column `z`, the column at the
+route address is `z`. -/
+theorem colAt_replaceAt : ∀ (ℓ fuel : Nat) (F : Forest) (σ π : List (Nat × Nat)) (c : Nat)
+    (z : Column), (Scan.routeColsAux fuel F σ)[ℓ]? = some ⟨σ ++ π, c⟩ →
+    (replaceAt 0 0 (Tree.node [z]) ℓ F).colAt ⟨π, c⟩ = some z := by
+  intro ℓ
+  induction ℓ with
+  | zero =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c z h
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col' =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_zero, Option.some.injEq, ColAddr.mk.injEq] at h
+        obtain ⟨h1, rfl⟩ := h
+        have hπ : π = [] := by simpa using h1
+        subst hπ
+        obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col'] := ⟨_, (List.dropLast_append_getLast? col' hl).symm⟩
+        obtain ⟨y, ys, hys⟩ := List.exists_cons_of_ne_nil (show A ++ [col'] ≠ [] by simp)
+        rw [hys]
+        simp only [replaceAt]
+        rw [← hys, List.dropLast_concat]
+        simp [Tree.colAt, Tree.forestAt, Tree.cols]
+  | succ k ih =>
+    rintro (_ | fuel) ⟨cols⟩ σ π c z h
+    · simp [Scan.routeColsAux] at h
+    · simp only [Scan.routeColsAux, Tree.cols] at h
+      cases hl : cols.getLast? with
+      | none => rw [hl] at h; simp at h
+      | some col' =>
+        rw [hl] at h
+        simp only [List.getElem?_cons_succ] at h
+        cases hl' : col'.getLast? with
+        | none => rw [hl'] at h; simp at h
+        | some ph =>
+          obtain ⟨p, hh⟩ := ph
+          rw [hl'] at h
+          simp only at h
+          obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col'] := ⟨_, (List.dropLast_append_getLast? col' hl).symm⟩
+          obtain ⟨B, rfl⟩ : ∃ B, col' = B ++ [(p, hh)] :=
+            ⟨_, (List.dropLast_append_getLast? _ hl').symm⟩
+          simp only [List.length_append, List.length_singleton, Nat.add_sub_cancel] at h
+          obtain ⟨τ, hτ, -⟩ := routeColsAux_path fuel hh _ k _ h
+          simp only [List.append_assoc, List.singleton_append] at hτ
+          have hπ : π = (A.length, B.length) :: τ := List.append_cancel_left hτ
+          subst hπ
+          have IH := ih fuel hh (σ ++ [(A.length, B.length)]) τ c z (by simpa using h)
+          simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+            Option.map_some, Option.toList_some]
+          rw [Tree.colAt_cons]
+          simp [Tree.cols, IH]
+
+/-- L6.2c helper: consecutive route columns: the next one lies in the last entry of the previous. -/
+theorem routeColsAux_succ : ∀ (fuel : Nat) (F : Forest) (σ : List (Nat × Nat)) (d : Nat)
+    (c c' : ColAddr), (Scan.routeColsAux fuel F σ)[d]? = some c →
+    (Scan.routeColsAux fuel F σ)[d + 1]? = some c' → ∃ i, c'.path = c.path ++ [(c.col, i)]
+  | 0, _, _, _, _, _, h, _ => by simp [Scan.routeColsAux] at h
+  | fuel + 1, ⟨cols⟩, σ, d, c, c', h, h' => by
+    simp only [Scan.routeColsAux, Tree.cols] at h h'
+    cases hl : cols.getLast? with
+    | none => rw [hl] at h; simp at h
+    | some col =>
+      rw [hl] at h h'
+      simp only at h h'
+      cases hl' : col.getLast? with
+      | none =>
+        rw [hl'] at h'
+        cases d <;> simp at h'
+      | some ph =>
+        obtain ⟨p, hh⟩ := ph
+        rw [hl'] at h h'
+        simp only at h h'
+        cases d with
+        | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+          simp only [List.getElem?_cons_succ] at h'
+          subst h
+          obtain ⟨τ, hτ, hlen⟩ := routeColsAux_path fuel hh _ 0 c' h'
+          simp only [List.length_eq_zero_iff] at hlen
+          subst hlen
+          exact ⟨col.length - 1, by simp [hτ]⟩
+        | succ d =>
+          simp only [List.getElem?_cons_succ] at h h'
+          exact routeColsAux_succ fuel hh _ d c c' h h'
+
+/-- L6.2c helper: the special owner column is the route column one level above the stop. -/
+theorem route_ownerCol {H : Forest} {sd : Scan.StopData} {e : EntryAddr}
+    (hk : Scan.stepKind H = some .special) (hsd : Scan.stopData H = some sd)
+    (he : sd.ownerEntry = some e) :
+    1 ≤ sd.depth ∧ (Scan.routeCols H)[sd.depth - 1]? = some e.col := by
+  obtain ⟨-, hhp, -⟩ := Scan.ownerEntry_spec hk hsd he
+  obtain ⟨-, hdepth, -, -, hlast, hlen⟩ := Scan.stopData_spec hsd
+  have hd : 1 ≤ sd.depth := by
+    rw [hdepth, ← hhp]; simp [EntryAddr.heightPath]
+  refine ⟨hd, ?_⟩
+  have hT : (Scan.routeCols H)[sd.depth]? = some sd.col := by
+    rw [List.getLast?_eq_getElem?, hlen] at hlast; simpa using hlast
+  obtain ⟨c₀, hc₀⟩ : ∃ c₀, (Scan.routeCols H)[sd.depth - 1]? = some c₀ :=
+    ⟨_, List.getElem?_eq_getElem (by omega)⟩
+  obtain ⟨i, hi⟩ := routeColsAux_succ _ H [] (sd.depth - 1) c₀ sd.col hc₀
+    (by rw [show sd.depth - 1 + 1 = sd.depth by omega]; exact hT)
+  rw [← hhp] at hi
+  simp only [EntryAddr.heightPath] at hi
+  have h1 := List.append_inj' hi rfl
+  simp only [List.cons.injEq, Prod.mk.injEq, and_true] at h1
+  rw [hc₀]
+  congr 1
+  exact colAddr_eq h1.1.symm h1.2.1.symm
+
+theorem rolesCol_replicate (π : List (Nat × Nat)) (c : Nat) (x : Nat × Forest) :
+    ∀ (N i : Nat), Tree.rolesCol π c i (List.replicate N x) =
+      (List.range N).flatMap (fun k => Role.slot ⟨⟨π, c⟩, i + k⟩ :: Tree.rolesF (π ++ [(c, i + k)]) x.2)
+  | 0, i => by simp [Tree.rolesCol]
+  | N + 1, i => by
+    obtain ⟨p, h⟩ := x
+    rw [List.replicate_succ, Tree.rolesCol, rolesCol_replicate π c (p, h) N (i + 1),
+      List.range_succ_eq_map, List.flatMap_cons, List.flatMap_map]
+    simp only [Nat.add_zero, List.cons_append]
+    congr 2
+    apply List.flatMap_congr
+    intro k _
+    rw [show i + 1 + k = i + (k + 1) by omega]
+
+/-- L6.2c helper: the structure of the output of a special step. -/
+theorem special_struct {H H' : Forest} {n : Nat} {sd : Scan.StopData} {e : EntryAddr}
+    (hH : H ≠ Tree.empty) (hV : Scan.CondV H) (hI : Scan.CondI H)
+    (hk : Scan.stepKind H = some .special) (hsd : Scan.stopData H = some sd)
+    (he : sd.ownerEntry = some e) (hexp : expand H n = some H') :
+    ∃ (p : Nat) (Fl : Forest), H.entryAt e = some (p, Fl) ∧
+      H'.roles = prefixRoles H e ++ (List.range (n + if e.idx = 0 then 1 else 0)).flatMap
+        (fun x => Role.slot ⟨e.col, e.idx + x⟩ ::
+          (Tree.node Fl.cols.dropLast).roles.map (Role.under (⟨e.col, e.idx + x⟩ : EntryAddr).heightPath)) ∧
+      (∀ x, x < n + (if e.idx = 0 then 1 else 0) →
+        H'.entryAt ⟨e.col, e.idx + x⟩ = some (p, Tree.node Fl.cols.dropLast)) ∧
+      ∃ G : Forest, G.roles = prefixRoles H e ∧ Tree.LabelSub G H ∧ Tree.LabelSub G H' := by
+  obtain ⟨-, -, -, col, p, Fl, hcol, hlast, hidx, -⟩ := Scan.ownerEntry_spec hk hsd he
+  have hpo := Scan.paperOp_special hk hsd he hcol hlast n
+  rw [← Scan.expand_eq_paperOp hH hV hI, hexp] at hpo
+  have hdl : col.dropLast.length = e.idx := by rw [List.length_dropLast]; omega
+  have heps : (if col.dropLast.isEmpty then 1 else 0) = (if e.idx = 0 then 1 else 0) := by
+    by_cases h0 : e.idx = 0
+    · rw [if_pos h0, if_pos]; rw [List.isEmpty_iff, ← List.length_eq_zero_iff, hdl, h0]
+    · rw [if_neg h0, if_neg]; rw [List.isEmpty_iff, ← List.length_eq_zero_iff, hdl]; exact h0
+  rw [heps] at hpo
+  set N := n + (if e.idx = 0 then 1 else 0) with hN
+  set C : Forest := Tree.node Fl.cols.dropLast with hC
+  set newcol : Column := col.dropLast ++ List.replicate N (p, C) with hnew
+  cases hpo
+  obtain ⟨-, hroute⟩ := route_ownerCol hk hsd he
+  have hroute' : (Scan.routeCols H)[sd.depth - 1]? = some ⟨e.col.path, e.col.col⟩ := hroute
+  have hcolsplit : col = col.dropLast ++ [(p, Fl)] := (List.dropLast_append_getLast? _ hlast).symm
+  have hentry : H.entryAt e = some (p, Fl) := by
+    unfold Tree.entryAt
+    rw [hcol, Option.bind_some, List.getLast?_eq_getElem?] at *
+    rw [show e.idx = col.length - 1 by omega]
+    exact hlast
+  -- the reading order of `H` around column `e.col`
+  obtain ⟨A, B, hAB⟩ := roles_col_decomp hcol
+  have hcolroles : Tree.rolesCol e.col.path e.col.col 0 col =
+      Tree.rolesCol e.col.path e.col.col 0 col.dropLast ++ Role.slot e ::
+        (Tree.rolesF (e.col.path ++ [(e.col.col, e.idx)]) Fl) := by
+    conv_lhs => rw [hcolsplit]
+    rw [Tree.rolesCol_append, hdl, Nat.zero_add]
+    simp [Tree.rolesCol]
+  have hnd := Tree.roles_nodup H
+  rw [hAB] at hnd
+  have hA : rolesBefore H (.ord e.col) = A := by
+    unfold rolesBefore; rw [hAB]; exact takeWhile_ne_of_decomp hnd
+  have hpre : prefixRoles H e = A ++ Role.ord e.col :: Tree.rolesCol e.col.path e.col.col 0 col.dropLast := by
+    unfold prefixRoles rolesBefore
+    rw [hAB, hcolroles]
+    rw [hcolroles] at hnd
+    have hnd' : ((A ++ Role.ord e.col :: Tree.rolesCol e.col.path e.col.col 0 col.dropLast) ++
+        Role.slot e :: (Tree.rolesF (e.col.path ++ [(e.col.col, e.idx)]) Fl ++ B)).Nodup := by
+      simpa using hnd
+    rw [show A ++ Role.ord e.col :: (Tree.rolesCol e.col.path e.col.col 0 col.dropLast ++ Role.slot e ::
+        Tree.rolesF (e.col.path ++ [(e.col.col, e.idx)]) Fl ++ B) =
+      (A ++ Role.ord e.col :: Tree.rolesCol e.col.path e.col.col 0 col.dropLast) ++
+        Role.slot e :: (Tree.rolesF (e.col.path ++ [(e.col.col, e.idx)]) Fl ++ B) by simp]
+    exact takeWhile_ne_of_decomp hnd'
+  -- roles of a single-column replacement
+  have hZroles : ∀ z : Column, (replaceAt 0 0 (Tree.node [z]) (sd.depth - 1) H).roles =
+      A ++ Role.ord e.col :: Tree.rolesCol e.col.path e.col.col 0 z := by
+    intro z
+    rw [roles_replaceAt 0 0 (sd.depth - 1) _ H hroute', hA]
+    congr 1
+    have := rolesCols_place e.col.path e.col.col 0 [z]
+    rw [Nat.zero_add] at this
+    rw [show (Tree.node [z]).roles = Tree.rolesCols [] 0 [z] from rfl, ← this]
+    simp [Tree.rolesCols]
+  refine ⟨p, Fl, hentry, ?_, ?_, ?_⟩
+  · rw [show Scan.Hole.fill ⟨H, sd.depth - 1⟩ 0 0 (Tree.node [newcol]) =
+      replaceAt 0 0 (Tree.node [newcol]) (sd.depth - 1) H from rfl, hZroles, hpre, hnew,
+      Tree.rolesCol_append, hdl, Nat.zero_add, rolesCol_replicate]
+    simp only [List.append_assoc, List.cons_append]
+    congr 3
+    apply List.flatMap_congr
+    intro k _
+    congr 1
+    rw [Tree.rolesF_eq_map_under]
+    rfl
+  · intro x hx
+    have hc := colAt_replaceAt (sd.depth - 1) _ H [] e.col.path e.col.col newcol hroute'
+    show (replaceAt 0 0 (Tree.node [newcol]) (sd.depth - 1) H).entryAt ⟨e.col, e.idx + x⟩ = _
+    unfold Tree.entryAt
+    rw [show (⟨e.col, e.idx + x⟩ : EntryAddr).col = ⟨e.col.path, e.col.col⟩ from rfl, hc, Option.bind_some]
+    show newcol[e.idx + x]? = _
+    rw [hnew, List.getElem?_append_right (by omega), hdl, Nat.add_sub_cancel_left,
+      List.getElem?_replicate, if_pos hx]
+  · refine ⟨replaceAt 0 0 (Tree.node [col.dropLast]) (sd.depth - 1) H, ?_, ?_, ?_⟩
+    · rw [hZroles, hpre]
+    · have h1 := labelSub_replaceAt_col (List.dropLast_prefix col) (sd.depth - 1) H
+      rwa [replaceAt_self (sd.depth - 1) _ H [] e.col.path e.col.col col hroute' hcol] at h1
+    · exact labelSub_replaceAt_col (List.prefix_append _ _) (sd.depth - 1) H
+
+/-- L6.2f helper: an atom of `Γ(H')` owned by a role of a common prefix `S` of `H'` and `H` whose
+labels agree (through a forest `G` with roles `S`) is an atom of `Γ(H)` reading only `S`. -/
+theorem owned_common_prefix {H H' G : Forest} (hGH : Tree.LabelSub G H) (hGH' : Tree.LabelSub G H')
+    (hS : G.roles <+: H.roles) (hS' : G.roles <+: H'.roles) {z : Role} (hz : z ∈ G.roles)
+    {a : BaseAtom Role} (ha : a ∈ ownedBy (graph H') z) :
+    a ∈ graph H ∧ ∀ v ∈ a.vars, v ∈ G.roles := by
+  have hvars : ∀ v ∈ a.vars, v ∈ G.roles := by
+    intro v hv
+    rcases owned_before ha hv with h | rfl
+    · exact rolesBefore_sub_prefix hS' hz h
+    · exact hz
+  have hlab : ∀ e', Role.slot e' ∈ G.roles →
+      (H'.entryAt e').map Prod.fst = (H.entryAt e').map Prod.fst := by
+    intro e' he'
+    rw [Tree.mem_roles_iff] at he'
+    obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 he'
+    obtain ⟨h₁, hh₁⟩ := hGH e' y hy
+    obtain ⟨h₂, hh₂⟩ := hGH' e' y hy
+    rw [hh₁, hh₂]; rfl
+  have ha' : a ∈ graph H' := by
+    unfold ownedBy at ha; exact (List.mem_filter.1 ha).1
+  have := restrict_graph_of_common hS' hS hlab a (by
+    unfold restrictTo; rw [List.mem_filter]; exact ⟨ha', by simpa using hvars⟩)
+  unfold restrictTo at this
+  exact ⟨(List.mem_filter.1 this).1, hvars⟩
+
+theorem atomOwner_map {V W : Type} (f : V → W) (a : BaseAtom V) :
+    atomOwner (a.map f) = (atomOwner a).map f := by
+  cases a <;> rfl
+
+theorem baseAtom_map_map {U V W : Type} (f : U → V) (g : V → W) (a : BaseAtom U) :
+    (a.map f).map g = a.map (g ∘ f) := by
+  cases a <;> rfl
+
+/-- L6.2c helper: the copy map moves entry `e` to index `e.idx + x` and fixes the stack of `e.col`. -/
+theorem specialCopy_slot (e : EntryAddr) (x : Nat) :
+    specialCopy e x (.slot e) = .slot ⟨e.col, e.idx + x⟩ := by
+  simp [specialCopy, transColumn]
+
+theorem specialCopy_under (e : EntryAddr) (x : Nat) (r : Role) :
+    specialCopy e x (r.under e.heightPath) = r.under (⟨e.col, e.idx + x⟩ : EntryAddr).heightPath := by
+  have hpre : e.col.path.isPrefixOf (e.col.path ++ (e.col.col, e.idx) :: r.path) = true := by
+    rw [List.isPrefixOf_iff_prefix]; exact List.prefix_append _ _
+  cases r with
+  | ord c =>
+    have hne : (⟨e.col.path ++ [(e.col.col, e.idx)] ++ c.path, c.col⟩ : ColAddr) ≠ e.col := by
+      intro h
+      have := congrArg (fun d : ColAddr => d.path.length) h
+      simp at this
+    simp only [specialCopy, transColumn, Role.under, EntryAddr.heightPath, relocCol, if_neg hne]
+    rw [if_pos (by rw [List.isPrefixOf_iff_prefix]; simp)]
+    simp
+  | slot e' =>
+    have hne : (⟨e.col.path ++ [(e.col.col, e.idx)] ++ e'.col.path, e'.col.col⟩ : ColAddr) ≠ e.col := by
+      intro h
+      have := congrArg (fun d : ColAddr => d.path.length) h
+      simp at this
+    simp only [specialCopy, transColumn, Role.under, EntryAddr.heightPath, if_neg hne, relocCol]
+    rw [if_pos (by rw [List.isPrefixOf_iff_prefix]; simp)]
+    simp
+
+theorem specialCopy_stack (e : EntryAddr) (x : Nat) {o : ColAddr} (ho : e.col.OnStack o) :
+    specialCopy e x (.ord o) = .ord o ∧
+      ∀ i, specialCopy e x (.slot ⟨o, i⟩) = .slot ⟨o, i⟩ := by
+  have hne : o ≠ e.col := by
+    intro h; subst h
+    have := ColAddr.num_lt_of_onStack 0 ho; omega
+  have hrel : relocCol e.col e.col (fun i => if i = e.idx then e.idx + x else i) o = o := by
+    unfold relocCol
+    rw [if_neg hne]
+    split_ifs with hp
+    · have hp' : e.col.path <+: o.path := List.isPrefixOf_iff_prefix.1 hp
+      have hp'' := onStack_path_prefix ho
+      have heq : o.path = e.col.path := List.IsPrefix.eq_of_length hp'' (Nat.le_antisymm
+        hp''.length_le hp'.length_le) |>.symm ▸ rfl
+      rw [show o.path.drop e.col.path.length = [] by
+        rw [List.drop_eq_nil_iff]; exact hp''.length_le]
+    · rfl
+  refine ⟨by simp [specialCopy, transColumn, hrel], fun i => ?_⟩
+  simp [specialCopy, transColumn, hne, hrel]
+
+/-- L6.2c helper: the copy map turns the block map of `e` into that of the copy. -/
+theorem specialCopy_blockMap (e : EntryAddr) (x : Nat) (w : BlkVar) :
+    specialCopy e x (blockMap e w) = blockMap ⟨e.col, e.idx + x⟩ w := by
+  have hrep : ∀ q ov, e.col.rep 0 q = some ov →
+      specialCopy e x ov.1 = ov.1 ∧ specialCopy e x ov.2 = ov.2 := by
+    intro q ov h
+    unfold ColAddr.rep at h
+    obtain ⟨o', ho', rfl⟩ := Option.map_eq_some_iff.1 h
+    have hs := ((ColAddr.resolve_spec 0 _ _ _).1 ho').1
+    obtain ⟨h1, h2⟩ := specialCopy_stack e x hs
+    refine ⟨h1, ?_⟩
+    split
+    · rename_i e'' he''
+      obtain ⟨hc, -⟩ := (ColAddr.container_spec _ _ _).1 he''
+      obtain ⟨c'', i''⟩ := e''
+      simp only at hc
+      subst hc
+      exact h2 i''
+    · exact h1
+  have hcol : specialCopy e x (.ord e.col) = .ord e.col := by
+    simp [specialCopy, transColumn, relocCol]
+  cases w with
+  | host => exact hcol
+  | ord q =>
+    simp only [blockMap]
+    cases h : e.col.rep 0 q with
+    | none => exact hcol
+    | some ov => exact (hrep q ov h).1
+  | cur q =>
+    simp only [blockMap]
+    cases h : e.col.rep 0 q with
+    | none => exact hcol
+    | some ov => exact (hrep q ov h).2
+  | owner => exact specialCopy_slot e x
+  | inner r => exact specialCopy_under e x r
+
+/-- L6.2c helper: owners of block atoms are the owner or internal variables. -/
+theorem posBlock_owner {K : Key} {sel : Nat} {a : BaseAtom BlkVar} (ha : a ∈ posBlock K sel)
+    {w : BlkVar} (hw : atomOwner a = some w) : w = .owner ∨ ∃ r, w = .inner r := by
+  unfold posBlock freeBlock at ha
+  simp only [List.mem_append, List.mem_cons, List.mem_map, List.mem_filterMap, List.mem_flatMap,
+    List.not_mem_nil, or_false] at ha
+  rcases ha with (((((rfl | ⟨_, ⟨r, -, rfl⟩, rfl⟩) | ⟨_, -, rfl⟩) | ⟨c, -, hc⟩) | ⟨e', -, ha⟩) | rfl | rfl)
+  · simp [atomOwner] at hw; exact Or.inl hw.symm
+  · simp [atomOwner] at hw; exact Or.inr ⟨r, hw.symm⟩
+  · simp [atomOwner] at hw
+  · split_ifs at hc; cases hc; simp [atomOwner] at hw; exact Or.inr ⟨_, hw.symm⟩
+  · split at ha
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+      rcases ha with rfl | rfl <;> (simp [atomOwner] at hw; exact Or.inr ⟨_, hw.symm⟩)
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+      rcases ha with rfl | rfl <;> (simp [atomOwner] at hw; exact Or.inr ⟨_, hw.symm⟩)
+    · split at ha
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+        rcases ha with rfl | rfl <;> (simp [atomOwner] at hw; exact Or.inr ⟨_, hw.symm⟩)
+      · simp at ha
+    · simp at ha
+  · simp [atomOwner] at hw; exact Or.inl hw.symm
+  · simp [atomOwner] at hw; exact Or.inl hw.symm
+
+/-- L6.2c helper: the index of a column address at the outermost level. -/
+def headIdx (d : ColAddr) : Nat :=
+  match d.path with
+  | [] => d.col
+  | (a, _) :: _ => a
+
+theorem takeCols_colAt (B : Forest) (m : Nat) (d : ColAddr) :
+    (takeCols B m).colAt d = if headIdx d < m then B.colAt d else none := by
+  obtain ⟨cols⟩ := B
+  obtain ⟨dp, dc⟩ := d
+  cases dp with
+  | nil =>
+    show (cols.take m)[dc]? = if dc < m then cols[dc]? else none
+    rw [List.getElem?_take]
+  | cons ab rest =>
+    obtain ⟨a, b⟩ := ab
+    show _ = if a < m then _ else none
+    rw [takeCols, Tree.colAt_cons, Tree.colAt_cons]
+    simp only [Tree.cols, List.getElem?_take]
+    by_cases ha : a < m
+    · rw [if_pos ha, if_pos ha]
+    · rw [if_neg ha, if_neg ha]; rfl
+
+theorem takeCols_entryAt_eq (B : Forest) (m : Nat) (e' : EntryAddr) :
+    (takeCols B m).entryAt e' = if headIdx e'.col < m then B.entryAt e' else none := by
+  unfold Tree.entryAt
+  rw [takeCols_colAt]
+  split_ifs <;> simp
+
+/-- L6.2c helper: a free-block atom of a height whose owner lies in the first `m` columns is a
+free-block atom of the first `m` columns. -/
+theorem freeBlock_restrict {B : Forest} {a m : Nat} {x : BaseAtom BlkVar}
+    (hx : x ∈ freeBlock (relKey a B)) {w : BlkVar} (hw : atomOwner x = some w)
+    (hw' : w = .owner ∨ ∃ r ∈ (takeCols B m).roles, w = .inner r) :
+    x ∈ freeBlock (relKey a (takeCols B m)) := by
+  have hKcol : ∀ X : Forest, ∀ d, ((relKey a X).colAt d).isSome = (X.colAt d).isSome := by
+    intro X d; rw [relKey, Tree.colAt_map]; cases X.colAt d <;> rfl
+  have hKent : ∀ e', (relKey a (takeCols B m)).entryAt e' =
+      if headIdx e'.col < m then (relKey a B).entryAt e' else none := by
+    intro e'
+    rw [relKey, relKey, Tree.entryAt_map, Tree.entryAt_map, takeCols_entryAt_eq]
+    split_ifs <;> rfl
+  have hroles : ∀ r, r ∈ (takeCols B m).roles → r ∈ (relKey a (takeCols B m)).roles := by
+    intro r hr; rwa [relKey_roles]
+  unfold freeBlock at hx ⊢
+  simp only [List.mem_cons, List.mem_append, List.mem_map, List.mem_filterMap,
+    List.mem_flatMap] at hx ⊢
+  rcases hx with ((((rfl | ⟨_, ⟨r, hr, rfl⟩, rfl⟩) | ⟨⟨y, z⟩, hyz, rfl⟩) | ⟨c, hc, hc'⟩) | ⟨e', he', hx⟩)
+  · exact Or.inl (Or.inl (Or.inl (Or.inl rfl)))
+  · simp only [atomOwner, Option.some.injEq] at hw
+    subst hw
+    rcases hw' with h | ⟨r', hr', h⟩
+    · cases h
+    · simp only [BlkVar.inner.injEq] at h
+      subst h
+      exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, ⟨r, hroles r hr', rfl⟩, rfl⟩)))
+  · simp [atomOwner] at hw
+  · split_ifs at hc' with h
+    cases hc'
+    simp only [atomOwner, Option.some.injEq] at hw
+    subst hw
+    rcases hw' with h' | ⟨r', hr', h'⟩
+    · cases h'
+    · cases h'
+      rw [Tree.mem_roles_iff] at hr'
+      change ((takeCols B m).colAt ⟨c.path, c.col + 1⟩).isSome at hr'
+      rw [takeCols_colAt] at hr'
+      split_ifs at hr' with hm
+      · have hm' : headIdx c < m := by
+          obtain ⟨cp, cc⟩ := c
+          cases cp <;> simp [headIdx] at hm ⊢ <;> omega
+        refine Or.inl (Or.inr ⟨c, ?_, ?_⟩)
+        · rw [Tree.mem_colAddrs_iff, hKcol, takeCols_colAt, if_pos hm', ← hKcol]
+          exact (Tree.mem_colAddrs_iff _ _).1 hc
+        · rw [if_pos (by rw [hKcol, takeCols_colAt, if_pos hm]; exact hr')]
+      · simp at hr'
+  · -- every edge of an internal entry is owned by its slot
+    have howner : ∀ y ∈ (match (relKey a B).entryAt e' with
+        | some ((false, q), _) => [BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) (.ord q),
+            BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) (.cur q)]
+        | some ((true, 0), _) => [BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) .host,
+            BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) .owner]
+        | some ((true, v + 1), _) =>
+          match e'.col.rep 1 (v + 1) with
+          | some (o, w) => [BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) (.inner o),
+              BaseAtom.edge (BlkVar.inner (.slot e')) (BlkVar.inner (.ord e'.col)) (.inner w)]
+          | none => []
+        | none => [] : List (BaseAtom BlkVar)), atomOwner y = some (.inner (.slot e')) := by
+      intro y hy
+      split at hy
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at hy
+        rcases hy with rfl | rfl <;> rfl
+      · simp only [List.mem_cons, List.not_mem_nil, or_false] at hy
+        rcases hy with rfl | rfl <;> rfl
+      · split at hy
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hy
+          rcases hy with rfl | rfl <;> rfl
+        · simp at hy
+      · simp at hy
+    have hxo := howner x hx
+    rw [hw, Option.some.injEq] at hxo
+    subst hxo
+    rcases hw' with h' | ⟨r', hr', h'⟩
+    · cases h'
+    · cases h'
+      rw [Tree.mem_roles_iff] at hr'
+      change ((takeCols B m).entryAt e').isSome at hr'
+      rw [takeCols_entryAt_eq] at hr'
+      split_ifs at hr' with hm
+      · refine Or.inr ⟨e', ?_, ?_⟩
+        · rw [Tree.mem_entryAddrs_iff, hKent, if_pos hm]
+          exact (Tree.mem_entryAddrs_iff _ _).1 he'
+        · rw [hKent, if_pos hm]; exact hx
+      · simp at hr'
+
+-- provides: U3, L6.2c (special step)
+theorem graph_special {H H' : Forest} {n : Nat} {sd : Scan.StopData} {e : EntryAddr}
+    (hH : H ≠ Tree.empty) (hV : Scan.CondV H) (hI : Scan.CondI H)
+    (hk : Scan.stepKind H = some .special) (hsd : Scan.stopData H = some sd)
+    (he : sd.ownerEntry = some e) (hexp : expand H n = some H') :
+    let ε := if e.idx = 0 then 1 else 0
+    H'.roles = prefixRoles H e ++
+      (List.range (n + ε)).flatMap (fun x => (specialRoles H sd e).map (specialCopy e x)) ∧
+    (∀ z ∈ prefixRoles H e, ∀ a, a ∈ ownedBy (graph H') z ↔ a ∈ ownedBy (graph H) z) ∧
+    (∀ x, x < n + ε → ∀ y ∈ specialRoles H sd e, ∀ a,
+      a ∈ ownedBy (graph H') (specialCopy e x y) ↔
+        ∃ a₀ ∈ ownedBy (graph H) y, a = a₀.map (specialCopy e x)) := by
+  intro ε
+  obtain ⟨p, Fl, hent, hroles, hcopies, G, hGr, hGH, hGH'⟩ := special_struct hH hV hI hk hsd he hexp
+  obtain ⟨-, hhp, -, col, p', Fl', hcol, hlast, hidx, hFl⟩ := Scan.ownerEntry_spec hk hsd he
+  have hFF : (p', Fl') = (p, Fl) := by
+    have : H.entryAt e = some (p', Fl') := by
+      unfold Tree.entryAt
+      rw [hcol, Option.bind_some, show e.idx = col.length - 1 by omega, ← List.getLast?_eq_getElem?]
+      exact hlast
+    rw [hent] at this
+    exact (Option.some.inj this).symm
+  simp only [Prod.mk.injEq] at hFF
+  obtain ⟨h1, h2⟩ := hFF
+  subst p' Fl'
+  obtain ⟨-, -, -, hmemT, -⟩ := Scan.stopData_spec hsd
+  set C : Forest := Tree.node Fl.cols.dropLast with hC
+  have hemem : e ∈ H.entryAddrs := by rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  have hheight : H.heightAt e = some Fl := by simp [Tree.heightAt, hent]
+  -- the copied roles: `U_e` and the roles of the height without its last column
+  have hspec : specialRoles H sd e = Role.slot e :: C.roles.map (Role.under e.heightPath) := by
+    obtain ⟨post, hr, -⟩ := Tree.roles_entry hemem
+    rw [hheight, Option.getD_some] at hr
+    obtain ⟨-, F, hF, hFlen⟩ := (Scan.mem_routeCols_iff H sd.col).1 hmemT
+    rw [← hhp, Tree.forestAt_heightPath, hheight, Option.some.injEq] at hF
+    subst hF
+    have hsplit : Fl.cols = Fl.cols.dropLast ++ [[(sd.r, Tree.empty)]] :=
+      (List.dropLast_append_getLast? _ hFl).symm
+    have hdl : Fl.cols.dropLast.length = sd.col.col := by rw [List.length_dropLast]; omega
+    have hT : Role.ord sd.col = Role.ord ⟨e.heightPath, Fl.cols.dropLast.length⟩ := by
+      rw [hdl, hhp]
+    have hFr : Fl.roles.map (Role.under e.heightPath) = Tree.rolesCols e.heightPath 0 Fl.cols.dropLast ++
+        Role.ord ⟨e.heightPath, Fl.cols.dropLast.length⟩ ::
+          (Tree.rolesCol e.heightPath Fl.cols.dropLast.length 0 [(sd.r, Tree.empty)]) := by
+      rw [← Tree.rolesF_eq_map_under]
+      cases Fl with
+      | node fc =>
+        simp only [Tree.cols] at hsplit ⊢
+        rw [Tree.rolesF]
+        conv_lhs => rw [hsplit]
+        rw [Tree.rolesCols_append, Nat.zero_add]
+        simp [Tree.rolesCols]
+    have hnd := Tree.roles_nodup H
+    rw [hr, hFr] at hnd
+    unfold specialRoles
+    rw [hr, hFr, List.dropWhile_append_of_pos, List.dropWhile_cons_of_neg (by simp),
+      List.takeWhile_cons_of_pos (by simp), hT]
+    · congr 1
+      rw [show Tree.rolesCols e.heightPath 0 Fl.cols.dropLast ++ (Role.ord ⟨e.heightPath,
+          Fl.cols.dropLast.length⟩ :: Tree.rolesCol e.heightPath Fl.cols.dropLast.length 0
+            [(sd.r, Tree.empty)]) ++ post = Tree.rolesCols e.heightPath 0 Fl.cols.dropLast ++
+          Role.ord ⟨e.heightPath, Fl.cols.dropLast.length⟩ :: (Tree.rolesCol e.heightPath
+            Fl.cols.dropLast.length 0 [(sd.r, Tree.empty)] ++ post) by simp]
+      rw [takeWhile_ne_of_decomp]
+      · rw [← Tree.rolesF_eq_map_under]; rfl
+      · have := (List.nodup_cons.1 (List.nodup_append.1 hnd).2.1).2
+        simpa using this
+    · intro y hy
+      simp only [bne_iff_ne, ne_eq]
+      rintro rfl
+      exact (List.nodup_append.1 hnd).2.2 _ hy _ (List.mem_cons_self ..) rfl
+  have hcp_spec : ∀ x, (specialRoles H sd e).map (specialCopy e x) =
+      Role.slot ⟨e.col, e.idx + x⟩ :: C.roles.map (Role.under (⟨e.col, e.idx + x⟩ : EntryAddr).heightPath) := by
+    intro x
+    rw [hspec, List.map_cons, List.map_map, specialCopy_slot]
+    congr 1
+    apply List.map_congr_left
+    intro r _
+    exact specialCopy_under e x r
+  have hS' : G.roles <+: H'.roles := by rw [hGr, hroles]; exact List.prefix_append _ _
+  have hS : G.roles <+: H.roles := by rw [hGr]; exact List.takeWhile_prefix _
+  refine ⟨?_, ?_, ?_⟩
+  · rw [hroles]
+    congr 1
+    apply List.flatMap_congr
+    intro x _
+    rw [hcp_spec]
+  · intro z hz a
+    rw [← hGr] at hz
+    constructor
+    · intro ha
+      have hown := (List.mem_filter.1 ha).2
+      exact List.mem_filter.2 ⟨(owned_common_prefix hGH hGH' hS hS' hz ha).1, hown⟩
+    · intro ha
+      have hown := (List.mem_filter.1 ha).2
+      exact List.mem_filter.2 ⟨(owned_common_prefix hGH' hGH hS' hS hz ha).1, hown⟩
+  · intro x hx y hy a
+    set ex : EntryAddr := ⟨e.col, e.idx + x⟩ with hex
+    have hentx : H'.entryAt ex = some (p, C) := hcopies x hx
+    have hexm : ex ∈ H'.entryAddrs := by rw [Tree.mem_entryAddrs_iff, hentx]; rfl
+    have hhx : H'.heightAt ex = some C := by simp [Tree.heightAt, hentx]
+    rw [hspec] at hy
+    have hyform : y = .slot e ∨ ∃ r ∈ C.roles, y = r.under e.heightPath := by
+      rcases List.mem_cons.1 hy with h | h
+      · exact Or.inl h
+      · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 h
+        exact Or.inr ⟨r, hr, rfl⟩
+    have hslot_ne : ∀ r : Role, Role.slot ex ≠ r.under ex.heightPath := by
+      intro r h
+      have := congrArg Role.path h
+      rw [Role.path_under] at this
+      have := congrArg List.length this
+      simp [Role.path, EntryAddr.heightPath] at this
+    have hslot_ne' : ∀ r : Role, Role.slot e ≠ r.under e.heightPath := by
+      intro r h
+      have := congrArg Role.path h
+      rw [Role.path_under] at this
+      have := congrArg List.length this
+      simp [Role.path, EntryAddr.heightPath] at this
+    have hcy : specialCopy e x y = .slot ex ∨ ex.heightPath <+: (specialCopy e x y).path := by
+      rcases hyform with rfl | ⟨r, -, rfl⟩
+      · left; exact specialCopy_slot e x
+      · right; rw [specialCopy_under, Role.path_under]; exact List.prefix_append _ _
+    have hy' : y = .slot e ∨ e.heightPath <+: y.path := by
+      rcases hyform with rfl | ⟨r, -, rfl⟩
+      · left; rfl
+      · right; rw [Role.path_under]; exact List.prefix_append _ _
+    have hmap : ∀ a₁ : BaseAtom BlkVar, a₁.map (blockMap ex) = (a₁.map (blockMap e)).map (specialCopy e x) := by
+      intro a₁
+      rw [baseAtom_map_map]
+      congr 1
+      funext w
+      exact (specialCopy_blockMap e x w).symm
+    -- injectivity of the copy on the copied region
+    have hinj : ∀ w : BlkVar, (w = .owner ∨ ∃ r, w = .inner r) →
+        specialCopy e x (blockMap e w) = specialCopy e x y → blockMap e w = y := by
+      rintro w (rfl | ⟨r, rfl⟩) hw
+      · simp only [blockMap, specialCopy_slot] at hw
+        rcases hyform with rfl | ⟨r', -, rfl⟩
+        · rfl
+        · rw [specialCopy_under] at hw; exact absurd hw (hslot_ne r')
+      · simp only [blockMap, specialCopy_under] at hw
+        rcases hyform with rfl | ⟨r', -, rfl⟩
+        · rw [specialCopy_slot] at hw; exact absurd hw.symm (hslot_ne r)
+        · rw [specialCopy_under] at hw
+          rw [Role.under_injective _ hw]
+          rfl
+    have hC' : takeCols Fl (Fl.cols.length - 1) = C := by
+      simp [takeCols, hC, List.dropLast_eq_take]
+    constructor
+    · intro ha
+      obtain ⟨a₁, ha₁, rfl⟩ := graph_owned_block_core hexm _ hcy a ha
+      rw [hhx, hentx] at ha₁
+      simp only [Option.getD_some, Option.map_some] at ha₁
+      have hown := (List.mem_filter.1 ha).2
+      rw [beq_iff_eq, atomOwner_map] at hown
+      obtain ⟨w, hw, hwy⟩ := Option.map_eq_some_iff.1 hown
+      refine ⟨a₁.map (blockMap e), ?_, hmap a₁⟩
+      refine List.mem_filter.2 ⟨?_, ?_⟩
+      · unfold posBlock at ha₁
+        rcases List.mem_append.1 ha₁ with h | h
+        · have := freeBlock_graph_core hemem (Fl.cols.length - 1) a₁
+          rw [hheight, Option.getD_some, hC'] at this
+          exact this h
+        · have := posBlock_heads_graph hemem hV a₁
+          rw [hheight, hent] at this
+          exact this (List.mem_append_right _ h)
+      · rw [beq_iff_eq, atomOwner_map, hw, Option.map_some]
+        congr 1
+        apply hinj w (posBlock_owner ha₁ hw)
+        rw [specialCopy_blockMap]
+        exact hwy
+    · rintro ⟨a₀, ha₀, rfl⟩
+      obtain ⟨a₁, ha₁, rfl⟩ := graph_owned_block_core hemem y hy' a₀ ha₀
+      rw [hheight, hent] at ha₁
+      simp only [Option.getD_some, Option.map_some] at ha₁
+      have hown := (List.mem_filter.1 ha₀).2
+      rw [beq_iff_eq, atomOwner_map] at hown
+      obtain ⟨w, hw, hwy⟩ := Option.map_eq_some_iff.1 hown
+      rw [← hmap]
+      refine List.mem_filter.2 ⟨?_, ?_⟩
+      · unfold posBlock at ha₁
+        rcases List.mem_append.1 ha₁ with h | h
+        · have hw' : w = .owner ∨ ∃ r ∈ (takeCols Fl (Fl.cols.length - 1)).roles, w = .inner r := by
+            rcases posBlock_owner (List.mem_append_left _ h : a₁ ∈ posBlock _ p) hw with h1 | ⟨r, rfl⟩
+            · exact Or.inl h1
+            · right
+              refine ⟨r, ?_, rfl⟩
+              rw [hC']
+              rcases hyform with rfl | ⟨r', hr', hry⟩
+              · exact absurd hwy (hslot_ne' r).symm
+              · simp only [blockMap] at hwy
+                rw [Role.under_injective _ (hwy.trans hry)]
+                exact hr'
+          have h2 := freeBlock_restrict h hw hw'
+          rw [hC'] at h2
+          have := freeBlock_graph_core hexm C.cols.length a₁
+          rw [hhx, Option.getD_some, takeCols_length] at this
+          exact this h2
+        · -- the two heads of the copy
+          obtain ⟨⟨o, v⟩, hov⟩ := Option.isSome_iff_exists.1
+            ((rep_isSome_iff e.col p).2 ((ColAddr.resolve_isSome_iff 0 e.col p).1
+              (hV e hemem p Fl hent)).2)
+          rw [mem_graph_iff]
+          refine Or.inr (Or.inr (Or.inr ⟨ex, p, o, v, by rw [hentx]; rfl, hov, ?_⟩))
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+          rcases h with rfl | rfl
+          · left; simp [BaseAtom.map, blockMap, hov, hex]
+          · right; simp [BaseAtom.map, blockMap, hov, hex]
+      · rw [beq_iff_eq, atomOwner_map, hw, Option.map_some, ← specialCopy_blockMap e x w, hwy]
 
 /-! ## N3.1  Finite-name amalgamation and packing (S-6) -/
 
@@ -2722,87 +3619,6 @@ theorem frameOf_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs
   rw [reps0_getElem?] at hq
   exact rep_mem_prefix he hq
 
-/-- L6.2e helper: a column list obtained by replacing (or deleting) the last entry of the last
-column keeps the labels of the other entries. -/
-theorem labelSub_lastEntry {A : List (List (Nat × Forest))} {B : List (Nat × Forest)} {p : Nat}
-    {h h' : Forest} (hsub : Tree.LabelSub h' h) :
-    Tree.LabelSub (Tree.node (A ++ [B ++ [(p, h')]])) (Tree.node (A ++ [B ++ [(p, h)]])) := by
-  apply Tree.labelSub_node
-  intro a b y hy
-  rw [Option.bind_eq_some_iff] at hy
-  obtain ⟨col', hcol', hy⟩ := hy
-  rw [List.getElem?_append] at hcol'
-  split_ifs at hcol' with ha
-  · exact ⟨y, by rw [List.getElem?_append_left ha, hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
-  · rw [List.getElem?_singleton] at hcol'
-    split_ifs at hcol' with ha'
-    cases hcol'
-    have hidx : a = A.length := by omega
-    subst hidx
-    rw [List.getElem?_append] at hy
-    split_ifs at hy with hb
-    · exact ⟨y, by simp [List.getElem?_append_left hb, hy], rfl, Tree.LabelSub.refl _⟩
-    · rw [List.getElem?_singleton] at hy
-      split_ifs at hy with hb'
-      cases hy
-      have : b = B.length := by omega
-      subst this
-      exact ⟨(p, h), by simp, rfl, hsub⟩
-
-theorem labelSub_dropLast (cols : List (List (Nat × Forest))) :
-    Tree.LabelSub (Tree.node cols.dropLast) (Tree.node cols) := by
-  apply Tree.labelSub_node
-  intro a b y hy
-  rw [Option.bind_eq_some_iff] at hy
-  obtain ⟨col', hcol', hy⟩ := hy
-  rw [List.dropLast_eq_take] at hcol'
-  exact ⟨y, by rw [Tree.getElem?_take_bind hcol']; exact hy, rfl, Tree.LabelSub.refl _⟩
-
-/-- L6.2e helper: the unshifted deletion of the route column at depth `ℓ` keeps labels. -/
-theorem labelSub_replaceAt_empty :
-    ∀ (ℓ : Nat) (F : Forest), Tree.LabelSub (replaceAt 0 0 Tree.empty ℓ F) F := by
-  intro ℓ
-  induction ℓ with
-  | zero =>
-    rintro ⟨cols⟩
-    cases cols with
-    | nil => exact Tree.LabelSub.refl _
-    | cons x xs =>
-      have : replaceAt 0 0 Tree.empty 0 (Tree.node (x :: xs)) = Tree.node (x :: xs).dropLast := by
-        simp only [replaceAt, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun, List.map_id]
-        simp [Tree.empty, Tree.cols]
-      rw [this]
-      exact labelSub_dropLast _
-  | succ k ih =>
-    rintro ⟨cols⟩
-    cases hl : cols.getLast? with
-    | none =>
-      rw [List.getLast?_eq_none_iff] at hl
-      subst hl
-      simp only [replaceAt, mapLast]
-      exact Tree.LabelSub.refl _
-    | some col =>
-      obtain ⟨A, rfl⟩ : ∃ A, cols = A ++ [col] := ⟨_, (List.dropLast_append_getLast? col hl).symm⟩
-      cases hl' : col.getLast? with
-      | none =>
-        rw [List.getLast?_eq_none_iff] at hl'
-        subst hl'
-        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
-          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
-          List.map_id]
-        exact Tree.LabelSub.refl _
-      | some x =>
-        obtain ⟨B, rfl⟩ : ∃ B, col = B ++ [x] := ⟨_, (List.dropLast_append_getLast? x hl').symm⟩
-        obtain ⟨p, h⟩ := x
-        simp only [replaceAt, Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat,
-          Option.map_some, Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun,
-          List.map_id, Scan.treeMap_id, id_eq]
-        have : (B.map fun x : Nat × Forest => (x.1, x.2)) = B := by
-          conv_rhs => rw [← List.map_id B]
-          rfl
-        rw [this]
-        exact labelSub_lastEntry (ih h)
-
 -- provides: U3, L6.2e (requested by U5 R22, stage zero): `H[0]` is the restriction to `P`, and
 -- `f_0` is the identity on `D`.
 theorem stage_zero {H : Forest} (hL : Scan.InL H) {rs : RoleSets} (hrs : roleSets H = some rs)
@@ -2957,7 +3773,56 @@ theorem special_graph {H : Forest} (hL : Scan.InL H) (hk : Scan.stepKind H = som
       (∀ i w x, (frameOf e).toFr w = some x → cm i w = x) ∧
       ∀ a ∈ graph H', isStruct a = true →
         (a ∈ graph H ∧ ∀ v ∈ a.vars, v ∈ prefixRoles H e) ∨
-        ∃ i < N, ∃ a' ∈ posBlock (specialKey H e) (entrySel H e), a = a'.map (cm i) := by sorry
+        ∃ i < N, ∃ a' ∈ posBlock (specialKey H e) (entrySel H e), a = a'.map (cm i) := by
+  have hH : H ≠ Tree.empty := by
+    rintro rfl; simp [Scan.stepKind, Scan.stepKindBody, Tree.empty, Tree.cols] at hk
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨p, Fl, hent, hroles, hcopies, G, hGr, hGH, hGH'⟩ := special_struct hH hV hI hk hsd he hH'
+  have hheight : H.heightAt e = some Fl := by simp [Tree.heightAt, hent]
+  have hkey : specialKey H e = relKey (e.col.num 0) (Tree.node Fl.cols.dropLast) := by
+    simp [specialKey, hheight]
+  have hsel : entrySel H e = p := by simp [entrySel, hent]
+  refine ⟨k + (if e.idx = 0 then 1 else 0), fun i => blockMap ⟨e.col, e.idx + i⟩, ?_, ?_, ?_⟩
+  · rw [hroles, hkey, relKey_roles]
+    congr 1
+    apply List.flatMap_congr
+    intro i _
+    simp only [List.map_cons, List.map_map]
+    rfl
+  · intro i w x hw
+    exact blockMap_frame ⟨e.col, e.idx + i⟩ w x hw
+  · intro a ha hs
+    obtain ⟨z, hzr, hz⟩ : ∃ z ∈ H'.roles, atomOwner a = some z := by
+      rcases graph_atom_cases H' a ha with ⟨i, x, y, rfl, -⟩ | h
+      · simp [isStruct] at hs
+      · exact h
+    have hown : a ∈ ownedBy (graph H') z := by
+      unfold ownedBy; rw [List.mem_filter]; exact ⟨ha, by simp [hz]⟩
+    have hS' : G.roles <+: H'.roles := by rw [hGr, hroles]; exact List.prefix_append _ _
+    have hS : G.roles <+: H.roles := by rw [hGr]; exact List.takeWhile_prefix _
+    rw [hroles, List.mem_append] at hzr
+    rcases hzr with hzP | hzc
+    · left
+      rw [← hGr]
+      exact owned_common_prefix hGH hGH' hS hS' (by rw [hGr]; exact hzP) hown
+    · right
+      obtain ⟨i, hi, hzi⟩ := List.mem_flatMap.1 hzc
+      rw [List.mem_range] at hi
+      have hei : (⟨e.col, e.idx + i⟩ : EntryAddr) ∈ H'.entryAddrs := by
+        rw [Tree.mem_entryAddrs_iff, hcopies i hi]; rfl
+      have hzz : z = .slot ⟨e.col, e.idx + i⟩ ∨
+          (⟨e.col, e.idx + i⟩ : EntryAddr).heightPath <+: z.path := by
+        rcases List.mem_cons.1 hzi with h | h
+        · exact Or.inl h
+        · obtain ⟨r, -, rfl⟩ := List.mem_map.1 h
+          exact Or.inr ⟨r.path, by rw [Role.path_under]⟩
+      obtain ⟨a₀, ha₀, rfl⟩ := graph_owned_block_core hei z hzz a hown
+      refine ⟨i, hi, a₀, ?_, rfl⟩
+      have h1 : H'.heightAt ⟨e.col, e.idx + i⟩ = some (Tree.node Fl.cols.dropLast) := by
+        simp [Tree.heightAt, hcopies i hi]
+      rw [h1, hcopies i hi] at ha₀
+      rw [hkey, hsel]
+      simpa using ha₀
 
 -- provides: U3, D7.2d (requested by U5 R25): the target of the scan record at `(i, j)` is query
 -- entry `j`'s height.
