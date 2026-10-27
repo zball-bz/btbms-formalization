@@ -970,13 +970,8 @@ theorem cut_location (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.
       (∃ i a, 1 ≤ i ∧ i ≤ S.n ∧ IsTmplCol S.A S.sd S.rd a ∧ (isQMat S.sd a = true → 2 ≤ i) ∧
         phaseCol S.sd S.rd i a = some c) := by sorry
 
--- T3.8lb (txt:607-608, with the method of T3.8li): the old terminal cap of a head-query cut
-theorem headQuery_oldCap (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
-    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
-    let K' := litCap S.A S.sd.col k (ρ - (i - 1) * S.d)
-    S.s (i - 1) < ρ ∧ IsUpward S.A S.sd.col k (ρ - (i - 1) * S.d) ∧ CondV K' ∧ CondI K' ∧
-      CondAK K' (capKeys K' (routeCols K')) := by sorry
+-- T3.8lb (`headQuery_oldCap`) moved below the G-009 block, to the G-010 (D7) section (brief
+-- rule 5).
 
 -- T3.8lc (txt:607-611): query-part cuts of head `i ≥ 2`
 theorem headQuery_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
@@ -4748,6 +4743,113 @@ theorem projection (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 
     subst hk0
     exact projection_host_D7 S hi ha hq hc hup hKL hρ hpa
   · exact condAK_litCap_D7 S.inL hup' (projection_finalTest_D7 S hi ha hq hc hup hKL hend hρ)
+
+-- D7: the closing parent of an upward V cap is visible from the cap column
+theorem lt_num_of_litCap_D7 {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward B c k ρ)
+    (hV : CondV (litCap B c k ρ)) : ρ < c.num 0 := by
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  have hent : (litCap B c k ρ).entryAt ⟨c, k⟩ = some (ρ, Tree.empty) := by
+    simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [List.getElem?_append_right (by omega), hlen, Nat.sub_self]
+    rfl
+  have hmem : (⟨c, k⟩ : EntryAddr) ∈ (litCap B c k ρ).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  exact (condV_iff_lt _).mp hV _ hmem _ _ hent
+
+-- D7: the parents of the stopping column are at least `r` (H, ending in `(r, ∅)`)
+theorem sdcol_parent_ge_D7 (S : OrdStep) {v q : Nat} (h : (parents S.A S.sd.col)[v]? = some q) :
+    S.sd.r ≤ q := by sorry
+
+-- T3.8lb step 4 (D7; I): the host bound of a column-start head-query cap
+theorem headQuery_host_D7 (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c 0 ρ)
+    (hKL : InL (litCap S.B c 0 ρ)) (hρ : S.s (i - 1) < ρ)
+    {π : List (Nat × Nat)} {ci ei : Nat} (hpa : S.sd.col.path = π ++ [(ci, ei)]) :
+    (⟨π, ci⟩ : ColAddr).num 0 ≤ ρ - (i - 1) * S.d := by sorry
+
+-- T3.8lb (txt:607-608, with the method of T3.8li): the old terminal cap of a head-query cut
+-- (moved here from before T3.8lc, brief rule 5: its proof uses the G-010 helpers)
+theorem headQuery_oldCap (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
+    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
+    let K' := litCap S.A S.sd.col k (ρ - (i - 1) * S.d)
+    S.s (i - 1) < ρ ∧ IsUpward S.A S.sd.col k (ρ - (i - 1) * S.d) ∧ CondV K' ∧ CondI K' ∧
+      CondAK K' (capKeys K' (routeCols K')) := by
+  intro K'
+  have hi1 : 1 ≤ i ∧ i ≤ S.n := ⟨by omega, hi.2⟩
+  obtain ⟨hmB, hparB, hkeyB⟩ := headQuery_prefix_D7 S hi1 hc
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hparA : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcol]
+  have hlenA : (parents S.A S.sd.col).length = S.m + 1 := by
+    rw [hparA]; simp [OrdStep.m]
+  have hkm : k ≤ S.m := by rcases hk with h | ⟨h, -⟩ <;> omega
+  obtain ⟨hcB, hkB, hupB⟩ := isUpward_iff_parents_D7.mp hup
+  have hmemA : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  -- the parents of the head before `m` are the shifted query parents
+  have hparBk : ∀ v, v < S.m → (parents S.B c)[v]? =
+      ((parents S.A S.sd.col)[v]?).map (shiftVal S.sd.r ((i - 1) * S.d)) := by
+    intro v hv
+    rw [← List.getElem?_take_of_lt hv, hparB, List.getElem?_map, List.getElem?_take_of_lt hv]
+  -- the closing parent beats the shifted old next parent
+  have hnext : ∀ q, (parents S.A S.sd.col)[k]? = some q → q + (i - 1) * S.d < ρ := by
+    intro q hq
+    have hrq := sdcol_parent_ge_D7 S hq
+    rcases hk with hk | ⟨rfl, hρ⟩
+    · have := hupB _ (by rw [hparBk k hk, hq]; rfl)
+      simpa [shiftVal, hrq] using this
+    · rw [hparA, List.getElem?_append_right (by simp [OrdStep.m]),
+        show S.m - (S.sd.Q.map Prod.fst).length = 0 by simp [OrdStep.m]] at hq
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at hq
+      subst hq
+      simpa [OrdStep.s] using hρ
+  have hρ : S.s (i - 1) < ρ := by
+    obtain ⟨q, hq⟩ : ∃ q, (parents S.A S.sd.col)[k]? = some q :=
+      ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    have := hnext q hq
+    have := sdcol_parent_ge_D7 S hq
+    simp only [OrdStep.s]
+    omega
+  have hupA : IsUpward S.A S.sd.col k (ρ - (i - 1) * S.d) := by
+    refine isUpward_iff_parents_D7.mpr ⟨hmemA, by omega, fun q hq => ?_⟩
+    have := hnext q hq
+    omega
+  obtain ⟨-, hnum⟩ := phasePair_num_D7 S hi1 (Or.inr ⟨rfl, hc, rfl⟩)
+  refine ⟨hρ, hupA, ?_, ?_, ?_⟩
+  · -- V
+    have := lt_num_of_litCap_D7 hup hKL.1
+    exact condV_litCap_D7 S.inL.1 hmemA (by omega) (by omega)
+  · -- I
+    refine condI_litCap_D7 S.inL.2.1 hmemA (by omega) ?_
+    intro hk0 π ci ei hpa
+    subst hk0
+    exact headQuery_host_D7 S hi hc hup hKL hρ hpa
+  · -- decorated A: the final test, through the head pair `(sd.col, c, i − 1)`
+    refine condAK_litCap_D7 S.inL hupA ?_
+    have hpre : (parents S.B c).take k =
+        ((parents S.A S.sd.col).take k).map (shiftVal S.sd.r ((i - 1) * S.d)) := by
+      have e : (parents S.B c).take k = ((parents S.B c).take S.m).take k := by
+        rw [List.take_take, Nat.min_eq_left hkm]
+      rw [e, hparB, List.map_take, List.take_take, Nat.min_eq_left hkm, List.map_take]
+    have hQ : cutQuery (actualKeys S.B c) k =
+        kappaQ S.sd.r S.d (i - 1) (cutQuery (actualKeys S.A S.sd.col) k) := by
+      have e : (actualKeys S.B c).take k = ((actualKeys S.B c).take S.m).take k := by
+        rw [List.take_take, Nat.min_eq_left hkm]
+      unfold cutQuery
+      rw [e, hkeyB]
+      unfold kappaQ
+      rw [List.map_take, List.take_take, Nat.min_eq_left hkm, ← List.map_take,
+        nu_map (kappaQry_strictMono _ _ _)]
+    have hKA := capping_forward hKL.1 hKL.2.2.2.1 hKL.2.2.2.2
+      (sel := routeCols (litCap S.B c k ρ)) (fun _ h => h)
+    obtain ⟨hcK, -⟩ := litCap_parents_self hup
+    have hB := (aAt_litCap_final_D7 hup).mp ((condAK_iff _ _).mp hKA c hcK k)
+    have := phase_finalTest_D7 S hi1 (Or.inr ⟨rfl, hc, rfl⟩) (by omega) (by omega) hpre hQ
+      (Or.inr hρ.le) hB
+    have hproj : S.proj (i - 1) ρ = ρ - (i - 1) * S.d := by
+      simp [OrdStep.proj, hρ]
+    rwa [hproj] at this
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by sorry
