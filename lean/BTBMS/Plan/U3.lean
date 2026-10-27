@@ -24,6 +24,315 @@ namespace BTBMS
 
 universe u
 
+/-! D6.1a helpers on trees: labels kept by truncation, roles and labels kept by `setHeight`. -/
+
+namespace Tree
+
+variable {α : Type}
+
+/-- D6.1a helper: every entry of `t'` is an entry of `t` with the same label. -/
+def LabelSub (t' t : Tree α) : Prop :=
+  ∀ e' y, t'.entryAt e' = some y → ∃ h, t.entryAt e' = some (y.1, h)
+
+theorem LabelSub.refl (t : Tree α) : LabelSub t t := fun _ y hy => ⟨y.2, by simp [hy]⟩
+
+theorem entryAt_nil (cols : List (List (α × Tree α))) (j i : Nat) :
+    (Tree.node cols).entryAt ⟨⟨[], j⟩, i⟩ = cols[j]?.bind (·[i]?) := rfl
+
+theorem labelSub_node {cols' cols : List (List (α × Tree α))}
+    (h : ∀ (a b : Nat) (y : α × Tree α), (cols'[a]?.bind (·[b]?)) = some y →
+      ∃ y' : α × Tree α, cols[a]?.bind (·[b]?) = some y' ∧ y.1 = y'.1 ∧ LabelSub y.2 y'.2) :
+    LabelSub (Tree.node cols') (Tree.node cols) := by
+  rintro ⟨⟨P, j⟩, i⟩ y hy
+  cases P with
+  | nil =>
+    rw [entryAt_nil] at hy ⊢
+    obtain ⟨y', hy', h1, -⟩ := h j i y hy
+    exact ⟨y'.2, by rw [hy', h1]⟩
+  | cons ab P =>
+    obtain ⟨a, b⟩ := ab
+    rw [entryAt_cons, Option.bind_eq_some_iff] at hy
+    obtain ⟨z, hz, hy⟩ := hy
+    obtain ⟨z', hz', -, hsub⟩ := h a b z hz
+    obtain ⟨h', hh'⟩ := hsub _ y hy
+    refine ⟨h', ?_⟩
+    rw [entryAt_cons, Option.bind_eq_some_iff]
+    exact ⟨z', hz', hh'⟩
+
+theorem getElem?_take_bind {β : Type} {l : List β} {n m : Nat} {x : β} (h : (l.take n)[m]? = some x) :
+    l[m]? = some x := by
+  rw [List.getElem?_take] at h
+  split_ifs at h; exact h
+
+/-- D6.1a helper: truncation keeps the labels of the entries it keeps. -/
+theorem labelSub_truncAux (P : List (Nat × Nat)) :
+    ∀ (t : Tree α) (j i : Nat), LabelSub (truncAux P j i t) t := by
+  induction P with
+  | nil =>
+    rintro ⟨cols⟩ j i
+    apply labelSub_node
+    intro a b y hy
+    refine ⟨y, ?_, rfl, LabelSub.refl _⟩
+    rw [Option.bind_eq_some_iff] at hy ⊢
+    obtain ⟨col', hcol', hy⟩ := hy
+    rw [List.getElem?_append] at hcol'
+    split_ifs at hcol' with ha
+    · exact ⟨col', getElem?_take_bind hcol', hy⟩
+    · simp only [List.length_take] at ha hcol'
+      rw [List.getElem?_singleton] at hcol'
+      split_ifs at hcol' with ha'
+      cases hcol'
+      rw [List.getD_eq_getElem?_getD] at hy
+      cases hj : cols[j]? with
+      | none => rw [hj] at hy; simp at hy
+      | some col =>
+        rw [hj, Option.getD_some] at hy
+        have hjl : j < cols.length := (List.getElem?_eq_some_iff.1 hj).1
+        have : a = j := by omega
+        subst this
+        exact ⟨col, hj ▸ rfl, getElem?_take_bind hy⟩
+  | cons ci P ih =>
+    obtain ⟨c, i₀⟩ := ci
+    rintro ⟨cols⟩ j i
+    apply labelSub_node
+    intro a b y hy
+    rw [Option.bind_eq_some_iff] at hy
+    obtain ⟨col', hcol', hy⟩ := hy
+    rw [List.getElem?_append] at hcol'
+    split_ifs at hcol' with ha
+    · exact ⟨y, by rw [getElem?_take_bind hcol']; simpa using hy, rfl, LabelSub.refl _⟩
+    · simp only [List.length_take] at ha hcol'
+      rw [List.getElem?_singleton] at hcol'
+      split_ifs at hcol' with ha'
+      cases hcol'
+      rw [List.getD_eq_getElem?_getD] at hy
+      cases hc : cols[c]? with
+      | none => rw [hc] at hy; simp at hy
+      | some col =>
+      rw [hc, Option.getD_some] at hy
+      have hcl : c < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+      have : a = c := by omega
+      subst this
+      rw [List.getElem?_append] at hy
+      split_ifs at hy with hb
+      · exact ⟨y, by rw [hc]; simpa using getElem?_take_bind hy, rfl, LabelSub.refl _⟩
+      · simp only [List.length_take] at hb hy
+        cases hx : col[i₀]? with
+        | none => rw [hx] at hy; simp at hy
+        | some x =>
+          rw [hx] at hy
+          simp only [Option.map_some, Option.toList_some, List.getElem?_singleton] at hy
+          split_ifs at hy with hb'
+          cases hy
+          have hil : i₀ < col.length := (List.getElem?_eq_some_iff.1 hx).1
+          have : b = i₀ := by omega
+          subst this
+          exact ⟨x, by rw [hc]; simpa using hx, rfl, ih x.2 j i⟩
+
+theorem labelSub_truncAfter (t : Tree α) (e : EntryAddr) : LabelSub (t.truncAfter e) t := by
+  show LabelSub (t.truncAfterBody e) t
+  unfold truncAfterBody
+  split_ifs
+  · exact labelSub_truncAux _ _ _ _
+  · exact LabelSub.refl _
+
+theorem getElem?_modify_modify (cols : List (List (α × Tree α))) (a b : Nat)
+    (g : α × Tree α → α × Tree α) (a' b' : Nat) :
+    ((cols.modify a (fun col => col.modify b g))[a']?.bind (·[b']?)) =
+      if a' = a ∧ b' = b then (cols[a]?.bind (·[b]?)).map g else cols[a']?.bind (·[b']?) := by
+  rw [List.getElem?_modify]
+  cases hc : cols[a']? with
+  | none =>
+    by_cases h : a' = a
+    · subst h; simp [hc]
+    · simp [h]
+  | some col =>
+    by_cases h : a' = a
+    · subst h
+      simp only [Option.map_eq_map, Option.map_some, if_true, Option.bind_some, hc]
+      rw [List.getElem?_modify]
+      by_cases hb : b' = b
+      · subst hb; simp
+      · simp [hb, Ne.symm hb]
+    · simp [h, Ne.symm h]
+
+/-- D6.1a helper: `setAux` keeps the label of every entry outside the replaced height. -/
+theorem entryAt_setAux_label (h : Tree α) (P : List (Nat × Nat)) :
+    ∀ (t : Tree α) (j i : Nat) (e' : EntryAddr) (y : α × Tree α),
+      (setAux h P j i t).entryAt e' = some y → ¬ (P ++ [(j, i)]) <+: e'.col.path →
+      ∃ h', t.entryAt e' = some (y.1, h') := by
+  induction P with
+  | nil =>
+    rintro ⟨cols⟩ j i ⟨⟨P', j'⟩, i'⟩ y hy hpre
+    simp only [setAux] at hy
+    cases P' with
+    | nil =>
+      rw [entryAt_nil, getElem?_modify_modify] at hy
+      rw [entryAt_nil]
+      split_ifs at hy with hab
+      · obtain ⟨rfl, rfl⟩ := hab
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+        exact ⟨x.2, hx⟩
+      · exact ⟨y.2, by simp [hy]⟩
+    | cons ab P' =>
+      obtain ⟨a, b⟩ := ab
+      rw [entryAt_cons] at hy
+      simp only [Tree.cols] at hy
+      rw [getElem?_modify_modify] at hy
+      rw [entryAt_cons]
+      simp only [Tree.cols]
+      have hab : ¬ (a = j ∧ b = i) := by
+        rintro ⟨rfl, rfl⟩; exact hpre ⟨P', by simp⟩
+      rw [if_neg hab] at hy
+      exact ⟨y.2, by simpa using hy⟩
+  | cons ci P ih =>
+    obtain ⟨c, i₀⟩ := ci
+    rintro ⟨cols⟩ j i ⟨⟨P', j'⟩, i'⟩ y hy hpre
+    simp only [setAux] at hy
+    cases P' with
+    | nil =>
+      rw [entryAt_nil, getElem?_modify_modify] at hy
+      rw [entryAt_nil]
+      split_ifs at hy with hab
+      · obtain ⟨rfl, rfl⟩ := hab
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+        exact ⟨x.2, hx⟩
+      · exact ⟨y.2, by simp [hy]⟩
+    | cons ab P' =>
+      obtain ⟨a, b⟩ := ab
+      rw [entryAt_cons] at hy
+      simp only [Tree.cols] at hy
+      rw [getElem?_modify_modify] at hy
+      rw [entryAt_cons]
+      simp only [Tree.cols]
+      split_ifs at hy with hab
+      · obtain ⟨rfl, rfl⟩ := hab
+        rw [Option.bind_eq_some_iff] at hy
+        obtain ⟨z, hz, hy⟩ := hy
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hz
+        have hpre' : ¬ (P ++ [(j, i)]) <+: P' := by
+          rintro ⟨u, hu⟩; exact hpre ⟨u, by simp [← hu]⟩
+        obtain ⟨h', hh'⟩ := ih x.2 j i ⟨⟨P', j'⟩, i'⟩ y hy hpre'
+        exact ⟨h', by rw [hx]; simpa using hh'⟩
+      · exact ⟨y.2, by simpa using hy⟩
+
+/-- D6.1a helper: the roles of `setAux` around the replaced entry. -/
+theorem roles_setAux (h : Tree α) (P : List (Nat × Nat)) :
+    ∀ (t : Tree α) (j i : Nat) (p : α) (H : Tree α), t.entryAt ⟨⟨P, j⟩, i⟩ = some (p, H) →
+    ∃ pre post, t.roles = pre ++ Role.slot ⟨⟨P, j⟩, i⟩ ::
+        (H.roles.map (Role.under (P ++ [(j, i)])) ++ post) ∧
+      (setAux h P j i t).roles = pre ++ Role.slot ⟨⟨P, j⟩, i⟩ ::
+        (h.roles.map (Role.under (P ++ [(j, i)])) ++ post) := by
+  induction P with
+  | nil =>
+    rintro ⟨cols⟩ j i p H he
+    change (cols[j]?.bind (·[i]?)) = some (p, H) at he
+    rw [Option.bind_eq_some_iff] at he
+    obtain ⟨col, hcol, hx⟩ := he
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hi : i < col.length := (List.getElem?_eq_some_iff.1 hx).1
+    have hcj : cols[j] = col := (List.getElem?_eq_some_iff.1 hcol).2
+    have hci : col[i] = (p, H) := (List.getElem?_eq_some_iff.1 hx).2
+    have key : ∀ K : Tree α, (Tree.node (cols.take j ++ (col.take i ++ (p, K) :: col.drop (i + 1)) ::
+        cols.drop (j + 1))).roles =
+        (rolesCols [] 0 (cols.take j) ++ Role.ord ⟨[], j⟩ :: rolesCol [] j 0 (col.take i)) ++
+          Role.slot ⟨⟨[], j⟩, i⟩ :: (K.roles.map (Role.under ([] ++ [(j, i)])) ++
+            (rolesCol [] j (i + 1) (col.drop (i + 1)) ++ rolesCols [] (j + 1) (cols.drop (j + 1)))) := by
+      intro K
+      rw [roles, rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol, ← rolesF_eq_map_under]
+      simp only [List.length_take, Nat.min_eq_left (Nat.le_of_lt hj), Nat.min_eq_left (Nat.le_of_lt hi),
+        Nat.zero_add, List.append_assoc, List.cons_append, List.nil_append]
+    refine ⟨rolesCols [] 0 (cols.take j) ++ Role.ord ⟨[], j⟩ :: rolesCol [] j 0 (col.take i),
+      rolesCol [] j (i + 1) (col.drop (i + 1)) ++ rolesCols [] (j + 1) (cols.drop (j + 1)), ?_, ?_⟩
+    · rw [← key H]
+      congr 1
+      conv_lhs => rw [list_split_of_getElem? hcol]
+      congr 2
+      exact congrArg (· :: _) (list_split_of_getElem? hx)
+    · rw [← key h]
+      simp only [setAux]
+      congr 1
+      rw [List.modify_eq_take_cons_drop hj, hcj, List.modify_eq_take_cons_drop hi, hci]
+  | cons ab P ih =>
+    obtain ⟨a, b⟩ := ab
+    rintro ⟨cols⟩ j i p H he
+    rw [entryAt_cons, Option.bind_eq_some_iff] at he
+    obtain ⟨⟨p', h'⟩, hab, he'⟩ := he
+    simp only [Tree.cols, Option.bind_eq_some_iff] at hab
+    obtain ⟨col, hcol, hx⟩ := hab
+    have ha : a < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hb : b < col.length := (List.getElem?_eq_some_iff.1 hx).1
+    have hca : cols[a] = col := (List.getElem?_eq_some_iff.1 hcol).2
+    have hcb : col[b] = (p', h') := (List.getElem?_eq_some_iff.1 hx).2
+    obtain ⟨pre', post', hr', hs'⟩ := ih h' j i p H he'
+    have key : ∀ K : Tree α, (Tree.node (cols.take a ++ (col.take b ++ (p', K) :: col.drop (b + 1)) ::
+        cols.drop (a + 1))).roles =
+        rolesCols [] 0 (cols.take a) ++ Role.ord ⟨[], a⟩ :: (rolesCol [] a 0 (col.take b) ++
+          Role.slot ⟨⟨[], a⟩, b⟩ :: (K.roles.map (Role.under [(a, b)]) ++
+            (rolesCol [] a (b + 1) (col.drop (b + 1)) ++ rolesCols [] (a + 1) (cols.drop (a + 1))))) := by
+      intro K
+      rw [roles, rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol, rolesF_eq_map_under]
+      simp only [List.length_take, Nat.min_eq_left (Nat.le_of_lt ha), Nat.min_eq_left (Nat.le_of_lt hb),
+        Nat.zero_add, List.append_assoc, List.cons_append, List.nil_append]
+    have hu : (Role.under [(a, b)] ∘ Role.under (P ++ [(j, i)])) =
+        Role.under ((a, b) :: P ++ [(j, i)]) := by
+      funext x; simp [Role.under_under]
+    refine ⟨rolesCols [] 0 (cols.take a) ++ Role.ord ⟨[], a⟩ :: (rolesCol [] a 0 (col.take b) ++
+          Role.slot ⟨⟨[], a⟩, b⟩ :: pre'.map (Role.under [(a, b)])),
+        post'.map (Role.under [(a, b)]) ++ (rolesCol [] a (b + 1) (col.drop (b + 1)) ++
+          rolesCols [] (a + 1) (cols.drop (a + 1))), ?_, ?_⟩
+    · have : Tree.node cols = Tree.node (cols.take a ++ (col.take b ++ (p', h') :: col.drop (b + 1)) ::
+          cols.drop (a + 1)) := by
+        congr 1
+        conv_lhs => rw [list_split_of_getElem? hcol]
+        congr 2
+        exact list_split_of_getElem? hx
+      rw [this, key h', hr']
+      simp only [List.map_append, List.map_cons, List.map_map, hu, List.append_assoc,
+        List.cons_append]
+      rfl
+    · have : setAux h ((a, b) :: P) j i (Tree.node cols) =
+          Tree.node (cols.take a ++ (col.take b ++ (p', setAux h P j i h') :: col.drop (b + 1)) ::
+            cols.drop (a + 1)) := by
+        simp only [setAux]
+        congr 1
+        rw [List.modify_eq_take_cons_drop ha, hca, List.modify_eq_take_cons_drop hb, hcb]
+      rw [this, key, hs']
+      simp only [List.map_append, List.map_cons, List.map_map, hu, List.append_assoc,
+        List.cons_append]
+      rfl
+
+/-- D6.1a helper: a role of `t` whose path passes through the height of `e` is a role of that
+height placed under `e`. -/
+theorem mem_height_of_prefix {t : Tree α} {e : EntryAddr} {p : α} {H : Tree α}
+    (he : t.entryAt e = some (p, H)) {x : Role} (hx : x ∈ t.roles) (hp : e.heightPath <+: x.path) :
+    x ∈ H.roles.map (Role.under e.heightPath) := by
+  obtain ⟨σ, hσ⟩ := hp
+  have hf : t.forestAt e.heightPath = some H := by rw [forestAt_heightPath]; simp [heightAt, he]
+  have hcol : ∀ c : ColAddr, c.path = e.heightPath ++ σ → t.colAt c = H.colAt ⟨σ, c.col⟩ := by
+    intro c hc
+    unfold colAt
+    rw [hc, forestAt_append, hf]
+    rfl
+  cases x with
+  | ord c =>
+    rw [mem_roles_iff] at hx
+    simp only [Role.path] at hσ
+    refine List.mem_map.2 ⟨.ord ⟨σ, c.col⟩, ?_, ?_⟩
+    · rw [mem_roles_iff]; show (H.colAt _).isSome; rw [← hcol c hσ.symm]; exact hx
+    · simp [Role.under, hσ]
+  | slot e' =>
+    rw [mem_roles_iff] at hx
+    simp only [Role.path] at hσ
+    refine List.mem_map.2 ⟨.slot ⟨⟨σ, e'.col.col⟩, e'.idx⟩, ?_, ?_⟩
+    · rw [mem_roles_iff]
+      have : t.entryAt e' = H.entryAt ⟨⟨σ, e'.col.col⟩, e'.idx⟩ := by
+        unfold entryAt; rw [hcol e'.col hσ.symm]
+      show (H.entryAt _).isSome; rw [← this]; exact hx
+    · simp [Role.under, hσ]
+
+end Tree
+
 namespace Packet
 
 open Hier
@@ -48,52 +357,359 @@ def ownedBy (D : List (BaseAtom Role)) (z : Role) : List (BaseAtom Role) :=
 def Before (E : Forest) (x y : Role) : Prop :=
   ∃ i j : Nat, E.roles[i]? = some x ∧ E.roles[j]? = some y ∧ i < j
 
+/-- D6.1a helper: membership in `Γ(E)`, by the four parts of `graph`. -/
+theorem mem_graph_iff (E : Forest) (a : BaseAtom Role) :
+    a ∈ graph E ↔
+      (∃ x ∈ E.roles, a = .lim x) ∨
+      (∃ (i : Nat) (x y : Role), E.roles[i]? = some x ∧ E.roles[i + 1]? = some y ∧ a = .lt x y) ∨
+      (∃ c : ColAddr, Role.ord c ∈ E.roles ∧ Role.ord ⟨c.path, c.col + 1⟩ ∈ E.roles ∧
+        a = .elem (.ord c) (.ord ⟨c.path, c.col + 1⟩)) ∨
+      (∃ (e : EntryAddr) (p : Nat) (o v : Role), (E.entryAt e).map Prod.fst = some p ∧
+        e.col.rep 0 p = some (o, v) ∧
+        (a = .edge (.slot e) (.ord e.col) o ∨ a = .edge (.slot e) (.ord e.col) v)) := by
+  unfold graph
+  simp only [List.mem_append, List.mem_map, List.mem_filterMap, List.mem_flatMap, or_assoc]
+  apply or_congr
+  · constructor
+    · rintro ⟨x, hx, rfl⟩; exact ⟨x, hx, rfl⟩
+    · rintro ⟨x, hx, rfl⟩; exact ⟨x, hx, rfl⟩
+  apply or_congr
+  · constructor
+    · rintro ⟨⟨x, y⟩, hxy, rfl⟩
+      obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hxy
+      rw [List.getElem?_zip_eq_some, List.getElem?_tail] at hi
+      exact ⟨i, x, y, hi.1, hi.2, rfl⟩
+    · rintro ⟨i, x, y, hx, hy, rfl⟩
+      refine ⟨(x, y), List.mem_iff_getElem?.2 ⟨i, ?_⟩, rfl⟩
+      rw [List.getElem?_zip_eq_some, List.getElem?_tail]
+      exact ⟨hx, hy⟩
+  apply or_congr
+  · constructor
+    · rintro ⟨c, hc, hc'⟩
+      split_ifs at hc' with h
+      cases hc'
+      refine ⟨c, ?_, ?_, rfl⟩
+      · rw [Tree.mem_roles_iff]; exact (Tree.mem_colAddrs_iff _ _).1 hc
+      · rw [Tree.mem_roles_iff]; exact h
+    · rintro ⟨c, hc, hc', rfl⟩
+      refine ⟨c, (Tree.mem_colAddrs_iff _ _).2 ((Tree.mem_roles_iff _ _).1 hc), ?_⟩
+      rw [if_pos ((Tree.mem_roles_iff _ _).1 hc')]
+  · constructor
+    · rintro ⟨e, he, ha⟩
+      split at ha
+      · rename_i p h' hpe
+        split at ha
+        · rename_i o v hov
+          refine ⟨e, p, o, v, by simp [hpe], hov, ?_⟩
+          simpa using ha
+        · simp at ha
+      · simp at ha
+    · rintro ⟨e, p, o, v, hp, hov, ha⟩
+      obtain ⟨⟨p', h'⟩, hpe, rfl⟩ := Option.map_eq_some_iff.1 hp
+      refine ⟨e, (Tree.mem_entryAddrs_iff _ _).2 (by simp [hpe]), ?_⟩
+      simp only [hpe, hov]
+      simpa using ha
+
+/-- D6.1a helper: both representatives read by an entry lie in its prefix. -/
+theorem rep_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) {q : Nat}
+    {o v : Role} (h : e.col.rep 0 q = some (o, v)) :
+    o ∈ prefixRoles E e ∧ v ∈ prefixRoles E e := by
+  obtain ⟨-, hstack, hcont⟩ := Tree.stack_mem_prefix he
+  unfold ColAddr.rep at h
+  obtain ⟨o', ho', hov⟩ := Option.map_eq_some_iff.1 h
+  have hs := ((ColAddr.resolve_spec 0 _ _ _).1 ho').1
+  simp only [Prod.mk.injEq] at hov
+  obtain ⟨rfl, rfl⟩ := hov
+  refine ⟨hstack o' hs, ?_⟩
+  split
+  · rename_i e'' he''
+    obtain ⟨-, hc⟩ := (ColAddr.container_spec _ _ _).1 he''
+    exact hcont e'' hc
+  · exact hstack o' hs
+
+theorem prefixRoles_sub {E : Forest} {e : EntryAddr} {x : Role} (h : x ∈ prefixRoles E e) :
+    x ∈ E.roles :=
+  (List.takeWhile_prefix _).mem h
+
 -- provides: U3, D6.1a (every atom of `Γ(E)` is a consecutive order atom or is owned by a role)
 theorem graph_atom_cases (E : Forest) (a : BaseAtom Role) (ha : a ∈ graph E) :
     (∃ (i : Nat) (x y : Role), a = .lt x y ∧ E.roles[i]? = some x ∧ E.roles[i + 1]? = some y) ∨
-    (∃ z ∈ E.roles, atomOwner a = some z) := by sorry
+    (∃ z ∈ E.roles, atomOwner a = some z) := by
+  rcases (mem_graph_iff E a).1 ha with ⟨x, hx, rfl⟩ | ⟨i, x, y, hx, hy, rfl⟩ | ⟨c, -, hc, rfl⟩ |
+    ⟨e, p, o, v, hp, -, ha⟩
+  · exact Or.inr ⟨x, hx, rfl⟩
+  · exact Or.inl ⟨i, x, y, rfl, hx, hy⟩
+  · exact Or.inr ⟨_, hc, rfl⟩
+  · refine Or.inr ⟨.slot e, ?_, by rcases ha with rfl | rfl <;> rfl⟩
+    rw [Tree.mem_roles_iff]
+    obtain ⟨x, hx, -⟩ := Option.map_eq_some_iff.1 hp
+    simp [hx]
 
 -- provides: U3, D6.1a (the order atoms of `Γ(E)` are exactly the consecutive pairs)
 theorem graph_lt_iff (E : Forest) (x y : Role) :
-    BaseAtom.lt x y ∈ graph E ↔ ∃ i : Nat, E.roles[i]? = some x ∧ E.roles[i + 1]? = some y := by sorry
+    BaseAtom.lt x y ∈ graph E ↔ ∃ i : Nat, E.roles[i]? = some x ∧ E.roles[i + 1]? = some y := by
+  rw [mem_graph_iff]
+  constructor
+  · rintro (⟨_, -, h⟩ | ⟨i, x', y', hx, hy, h⟩ | ⟨c, -, -, h⟩ | ⟨e, p, o, v, -, -, h | h⟩)
+    · cases h
+    · cases h; exact ⟨i, hx, hy⟩
+    · cases h
+    · cases h
+    · cases h
+  · rintro ⟨i, hx, hy⟩
+    exact Or.inr (Or.inl ⟨i, x, y, hx, hy, rfl⟩)
 
 -- provides: U3, D6.1a (every variable of an atom of `Γ(E)` is a role of `E`)
 theorem graph_vars_roles (E : Forest) (a : BaseAtom Role) (ha : a ∈ graph E) :
-    ∀ v ∈ a.vars, v ∈ E.roles := by sorry
+    ∀ v ∈ a.vars, v ∈ E.roles := by
+  rcases (mem_graph_iff E a).1 ha with ⟨x, hx, rfl⟩ | ⟨i, x, y, hx, hy, rfl⟩ | ⟨c, hc, hc', rfl⟩ |
+    ⟨e, p, o, v, hp, hov, ha⟩
+  · simpa [BaseAtom.vars] using hx
+  · simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false]
+    rintro v (rfl | rfl)
+    · exact List.mem_of_getElem? hx
+    · exact List.mem_of_getElem? hy
+  · simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false]
+    rintro v (rfl | rfl) <;> assumption
+  · obtain ⟨x, hx, -⟩ := Option.map_eq_some_iff.1 hp
+    have he : e ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 (by simp [hx])
+    have hslot : Role.slot e ∈ E.roles := by rw [Tree.mem_roles_iff]; simp [hx]
+    obtain ⟨hord, -, -⟩ := Tree.stack_mem_prefix he
+    obtain ⟨ho, hv⟩ := rep_mem_prefix he hov
+    rcases ha with rfl | rfl <;>
+    · simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false]
+      rintro w (rfl | rfl | rfl)
+      · exact hslot
+      · exact prefixRoles_sub hord
+      · first | exact prefixRoles_sub ho | exact prefixRoles_sub hv
+
+/-- D6.1a helper: strict increase along `E.roles` from consecutive order atoms that hold. -/
+theorem lt_of_consec {E : Forest} {α : Role → Ordinal.{u}} (m : Nat)
+    (hcons : ∀ i x y, i + 1 < m → E.roles[i]? = some x → E.roles[i + 1]? = some y → α x < α y) :
+    ∀ (d i : Nat) {x y : Role}, i + d + 1 < m → E.roles[i]? = some x →
+      E.roles[i + d + 1]? = some y → α x < α y := by
+  intro d
+  induction d with
+  | zero => intro i x y hm hx hy; exact hcons i x y hm hx hy
+  | succ d ih =>
+    intro i x y hm hx hy
+    have hlen : i + d + 1 < E.roles.length := by
+      have := (List.getElem?_eq_some_iff.1 hy).1; omega
+    have hz : E.roles[i + d + 1]? = some (E.roles[i + d + 1]) := List.getElem?_eq_getElem hlen
+    exact (ih i (by omega) hx hz).trans
+      (hcons (i + d + 1) _ y (by omega) hz (by rw [← hy]; congr 1))
 
 -- provides: U3, D6.1a (a configuration is strictly increasing along the reading order)
 theorem isConfig_before {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}}
-    (h : IsConfig P E α) {x y : Role} (hxy : Before E x y) : α x < α y := by sorry
+    (h : IsConfig P E α) {x y : Role} (hxy : Before E x y) : α x < α y := by
+  obtain ⟨i, j, hx, hy, hij⟩ := hxy
+  obtain ⟨d, rfl⟩ : ∃ d, j = i + d + 1 := ⟨j - i - 1, by omega⟩
+  refine lt_of_consec (E := E) (i + d + 2) (fun k x y _ hx hy => ?_) d i (by omega) hx hy
+  exact h _ ((graph_lt_iff E x y).2 ⟨k, hx, hy⟩)
 
 -- provides: U3, D6.1a
 theorem le_cfgMax (E : Forest) (α : Role → Ordinal.{u}) {x : Role} (hx : x ∈ E.roles) :
-    α x ≤ cfgMax E α := by sorry
+    α x ≤ cfgMax E α := by
+  unfold cfgMax
+  generalize E.roles = l at hx
+  induction l with
+  | nil => simp at hx
+  | cons y l ih =>
+    simp only [List.map_cons, List.foldr_cons]
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact le_max_left _ _
+    · exact (ih hx).trans (le_max_right _ _)
 
 -- provides: U3, D6.1a
 theorem cfgMax_lt (E : Forest) (α : Role → Ordinal.{u}) {θ : Ordinal.{u}} (hθ : 0 < θ)
-    (h : ∀ x ∈ E.roles, α x < θ) : cfgMax E α < θ := by sorry
+    (h : ∀ x ∈ E.roles, α x < θ) : cfgMax E α < θ := by
+  unfold cfgMax
+  generalize E.roles = l at h
+  induction l with
+  | nil => simpa using hθ
+  | cons y l ih =>
+    simp only [List.map_cons, List.foldr_cons]
+    exact max_lt (h y (List.mem_cons_self ..)) (ih fun x hx => h x (List.mem_cons_of_mem _ hx))
+
+theorem getElem?_of_prefix {β : Type} {S L : List β} (h : S <+: L) {k : Nat} (hk : k < S.length) :
+    L[k]? = S[k]? := by
+  rw [List.prefix_iff_eq_take.1 h, List.getElem?_take, if_pos hk]
+
+/-- D6.1a helper: atoms of `Γ(F)` inside a common prefix `S` of the reading orders of `F` and `t`
+are atoms of `Γ(t)`, when the entries with slots in `S` have the same labels. -/
+theorem restrict_graph_of_common {F t : Forest} {S : List Role} (hF : S <+: F.roles)
+    (ht : S <+: t.roles)
+    (hlab : ∀ e, Role.slot e ∈ S → (F.entryAt e).map Prod.fst = (t.entryAt e).map Prod.fst)
+    (a : BaseAtom Role) : a ∈ restrictTo (graph F) S → a ∈ restrictTo (graph t) S := by
+  unfold restrictTo
+  rw [List.mem_filter, List.mem_filter]
+  rintro ⟨ha, hv⟩
+  refine ⟨?_, hv⟩
+  have hv' : ∀ v ∈ a.vars, v ∈ S := by simpa using hv
+  rw [mem_graph_iff]
+  rcases (mem_graph_iff F a).1 ha with ⟨x, hx, rfl⟩ | ⟨i, x, y, hx, hy, rfl⟩ | ⟨c, hc, hc', rfl⟩ |
+    ⟨e, p, o, v, hp, hov, ha⟩
+  · exact Or.inl ⟨x, ht.mem (hv' x (by simp [BaseAtom.vars])), rfl⟩
+  · have hyS := hv' y (by simp [BaseAtom.vars])
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 hyS
+    have hkS : k < S.length := (List.getElem?_eq_some_iff.1 hk).1
+    have hkF : F.roles[k]? = some y := by rw [getElem?_of_prefix hF hkS]; exact hk
+    have hkl : k < F.roles.length := (List.getElem?_eq_some_iff.1 hkF).1
+    have hki : k = i + 1 := (List.getElem?_inj hkl (Tree.roles_nodup F)).1 (hkF.trans hy.symm)
+    subst hki
+    refine Or.inr (Or.inl ⟨i, x, y, ?_, ?_, rfl⟩)
+    · rw [getElem?_of_prefix ht (by omega), ← getElem?_of_prefix hF (by omega)]; exact hx
+    · rw [getElem?_of_prefix ht hkS]; exact hk
+  · refine Or.inr (Or.inr (Or.inl ⟨c, ht.mem (hv' _ (by simp [BaseAtom.vars])),
+      ht.mem (hv' _ (by simp [BaseAtom.vars])), rfl⟩))
+  · have hs : Role.slot e ∈ S := hv' _ (by rcases ha with rfl | rfl <;> simp [BaseAtom.vars])
+    exact Or.inr (Or.inr (Or.inr ⟨e, p, o, v, by rw [← hlab e hs]; exact hp, hov, ha⟩))
+
+theorem restrict_graph_self (F : Forest) (a : BaseAtom Role) :
+    a ∈ restrictTo (graph F) F.roles ↔ a ∈ graph F := by
+  unfold restrictTo
+  rw [List.mem_filter]
+  constructor
+  · exact fun h => h.1
+  · intro h
+    exact ⟨h, by simpa using graph_vars_roles F a h⟩
 
 -- provides: U3, D6.1a (truncation after an entry restricts the graph)
 theorem graph_truncAfter (t : Forest) (e : EntryAddr) (he : e ∈ t.entryAddrs) (a : BaseAtom Role) :
-    a ∈ graph (t.truncAfter e) ↔ a ∈ restrictTo (graph t) (t.truncAfter e).roles := by sorry
+    a ∈ graph (t.truncAfter e) ↔ a ∈ restrictTo (graph t) (t.truncAfter e).roles := by
+  have hF := Tree.truncAfter_roles_under he
+  obtain ⟨post, hr, -⟩ := Tree.roles_entry he
+  have hpre : (t.truncAfter e).roles <+: t.roles := by
+    rw [hF, hr]
+    exact ⟨post, by simp⟩
+  have hlab : ∀ e', Role.slot e' ∈ (t.truncAfter e).roles →
+      ((t.truncAfter e).entryAt e').map Prod.fst = (t.entryAt e').map Prod.fst := by
+    intro e' he'
+    rw [Tree.mem_roles_iff] at he'
+    obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 he'
+    obtain ⟨h', hh'⟩ := Tree.labelSub_truncAfter t e e' y hy
+    rw [hy, hh']; rfl
+  rw [← restrict_graph_self]
+  constructor
+  · exact restrict_graph_of_common (List.prefix_refl _) hpre hlab a
+  · exact restrict_graph_of_common hpre (List.prefix_refl _) (fun e' he' => (hlab e' he').symm) a
+
+/-- D6.1a helper: `setHeight` keeps the roles before the slot and their labels. -/
+theorem setHeight_decomp (t : Forest) (e : EntryAddr) (h : Forest) {p : Nat} {H : Forest}
+    (he : t.entryAt e = some (p, H)) :
+    ∃ post, t.roles = prefixRoles t e ++ Role.slot e :: (H.roles.map (Role.under e.heightPath) ++ post) ∧
+      (t.setHeight e h).roles = prefixRoles t e ++ Role.slot e ::
+        (h.roles.map (Role.under e.heightPath) ++ post) ∧
+      ∀ e', Role.slot e' ∈ prefixRoles t e →
+        ((t.setHeight e h).entryAt e').map Prod.fst = (t.entryAt e').map Prod.fst := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  have hsh : t.setHeight ⟨⟨P, j⟩, i⟩ h = Tree.setAux h P j i t := by
+    show t.setHeightBody _ h = _
+    rw [Tree.setHeightBody, if_pos (by rw [he]; rfl)]
+  obtain ⟨pre, post, hr, hs⟩ := Tree.roles_setAux h P t j i p H he
+  have hpre : prefixRoles t ⟨⟨P, j⟩, i⟩ = pre := Tree.prefixRoles_of_decomp hr
+  rw [hpre, hsh]
+  refine ⟨post, hr, hs, ?_⟩
+  intro e' he'
+  have hin : Role.slot e' ∈ (Tree.setAux h P j i t).roles := by rw [hs]; simp [he']
+  rw [Tree.mem_roles_iff] at hin
+  obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 hin
+  have hnot : ¬ (P ++ [(j, i)]) <+: e'.col.path := by
+    intro hp
+    have hmem := Tree.mem_height_of_prefix he (x := .slot e') (by rw [hr]; simp [he'])
+      (by simpa [EntryAddr.heightPath, Role.path] using hp)
+    have hnd := Tree.roles_nodup t
+    rw [hr, List.nodup_append] at hnd
+    exact hnd.2.2 _ he' _ (List.mem_cons_of_mem _ (List.mem_append_left _ hmem)) rfl
+  obtain ⟨h', hh'⟩ := Tree.entryAt_setAux_label h P t j i e' y hy hnot
+  rw [hy, hh']; rfl
 
 -- provides: U3, D6.1a (replacing a height leaves the prefix before its slot unchanged)
 theorem prefixGraph_setHeight (t : Forest) (e : EntryAddr) (h : Forest) (he : e ∈ t.entryAddrs) :
     prefixRoles (t.setHeight e h) e = prefixRoles t e ∧
-    ∀ a, a ∈ prefixGraph (t.setHeight e h) e ↔ a ∈ prefixGraph t e := by sorry
+    ∀ a, a ∈ prefixGraph (t.setHeight e h) e ↔ a ∈ prefixGraph t e := by
+  rw [Tree.mem_entryAddrs_iff] at he
+  obtain ⟨⟨p, H⟩, hx⟩ := Option.isSome_iff_exists.1 he
+  obtain ⟨post, hr, hs, hlab⟩ := setHeight_decomp t e h hx
+  have hpre : prefixRoles (t.setHeight e h) e = prefixRoles t e := Tree.prefixRoles_of_decomp hs
+  refine ⟨hpre, fun a => ?_⟩
+  unfold prefixGraph
+  rw [hpre]
+  have h1 : prefixRoles t e <+: (t.setHeight e h).roles := by rw [hs]; exact List.prefix_append _ _
+  have h2 : prefixRoles t e <+: t.roles := by rw [hr]; exact List.prefix_append _ _
+  constructor
+  · exact restrict_graph_of_common h1 h2 hlab a
+  · exact restrict_graph_of_common h2 h1 (fun e' he' => (hlab e' he').symm) a
 
 -- [Changed in verification] D6.1a item 4b: strict increase along a realized prefix of `Γ(E)`
 -- (used by L7.6a step 8(b), where only `restrictTo (graph E) P_E` is realized).
 theorem before_of_restrict {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}} {m : Nat}
     (h : BaseHolds P (restrictTo (graph E) (E.roles.take m)) α) {x y : Role}
     (hx : x ∈ E.roles.take m) (hy : y ∈ E.roles.take m) (hxy : Before E x y) : α x < α y := by
-  sorry
+  obtain ⟨i, j, hxi, hyj, hij⟩ := hxy
+  have hjm : j < m := by
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 hy
+    rw [List.getElem?_take] at hk
+    split_ifs at hk with hkm
+    · have hk' : k < E.roles.length := (List.getElem?_eq_some_iff.1 hk).1
+      have := (List.getElem?_inj hk' (Tree.roles_nodup E)).1 (hk.trans hyj.symm)
+      omega
+  obtain ⟨d, rfl⟩ : ∃ d, j = i + d + 1 := ⟨j - i - 1, by omega⟩
+  refine lt_of_consec (E := E) m (fun k x y hk hx hy => ?_) d i hjm hxi hyj
+  refine h (BaseAtom.lt x y) ?_
+  unfold restrictTo
+  rw [List.mem_filter]
+  refine ⟨(graph_lt_iff E x y).2 ⟨k, hx, hy⟩, ?_⟩
+  simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+    decide_eq_true_eq]
+  refine ⟨List.mem_iff_getElem?.2 ⟨k, ?_⟩, List.mem_iff_getElem?.2 ⟨k + 1, ?_⟩⟩
+  · rw [List.getElem?_take, if_pos (by omega)]; exact hx
+  · rw [List.getElem?_take, if_pos hk]; exact hy
 
 -- [Changed in verification] D6.1a item 8: truncation at a slot (keep `U_e`, clear its height)
 -- restricts the graph (used by L7.4 step 6 for the reindexed internal cap `S_A`).
 theorem graph_truncClear (t : Forest) (e : EntryAddr) (he : e ∈ t.entryAddrs) (a : BaseAtom Role) :
     a ∈ graph ((t.truncAfter e).setHeight e Tree.empty) ↔
-      a ∈ restrictTo (graph t) ((t.truncAfter e).setHeight e Tree.empty).roles := by sorry
+      a ∈ restrictTo (graph t) ((t.truncAfter e).setHeight e Tree.empty).roles := by
+  have hx' := he
+  rw [Tree.mem_entryAddrs_iff] at hx'
+  obtain ⟨⟨p, H⟩, hx⟩ := Option.isSome_iff_exists.1 hx'
+  have hFe : (t.truncAfter e).entryAt e = some (p, H) := by rw [Tree.entryAt_truncAfter he, hx]
+  obtain ⟨post, hr, hs, hlab⟩ := setHeight_decomp (t.truncAfter e) e Tree.empty hFe
+  have hF := Tree.truncAfter_roles_under he
+  have hpF : prefixRoles (t.truncAfter e) e = prefixRoles t e := (Tree.truncAfter_spec t e he).2.2.2.2.2
+  rw [hpF] at hr hs hlab
+  have hpost : post = [] := by
+    rw [hF, show t.heightAt e = some H by simp [Tree.heightAt, hx], Option.getD_some] at hr
+    have := congrArg List.length hr
+    simp only [List.length_append, List.length_cons, List.length_map] at this
+    exact List.eq_nil_of_length_eq_zero (by omega)
+  subst hpost
+  have hroles : ((t.truncAfter e).setHeight e Tree.empty).roles = prefixRoles t e ++ [Role.slot e] := by
+    rw [hs]; rfl
+  obtain ⟨post', hr', -⟩ := Tree.roles_entry he
+  have hpre : ((t.truncAfter e).setHeight e Tree.empty).roles <+: t.roles := by
+    rw [hroles, hr']
+    exact ⟨((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) ++ post', by simp⟩
+  have hlab' : ∀ e', Role.slot e' ∈ ((t.truncAfter e).setHeight e Tree.empty).roles →
+      (((t.truncAfter e).setHeight e Tree.empty).entryAt e').map Prod.fst =
+        (t.entryAt e').map Prod.fst := by
+    intro e' he'
+    rw [hroles, List.mem_append, List.mem_singleton] at he'
+    rcases he' with he' | he'
+    · rw [hlab e' he']
+      have hin : Role.slot e' ∈ (t.truncAfter e).roles := by rw [hF]; simp [he']
+      rw [Tree.mem_roles_iff] at hin
+      obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 hin
+      obtain ⟨h', hh'⟩ := Tree.labelSub_truncAfter t e e' y hy
+      rw [hy, hh']; rfl
+    · cases he'
+      have hmem : e ∈ (t.truncAfter e).entryAddrs := (Tree.truncAfter_spec t e he).2.1
+      rw [(Tree.setHeight_basic _ e Tree.empty hmem).2.2.2.2.2, hFe, hx]
+  rw [← restrict_graph_self]
+  constructor
+  · exact restrict_graph_of_common (List.prefix_refl _) hpre hlab' a
+  · exact restrict_graph_of_common hpre (List.prefix_refl _) (fun e' he' => (hlab' e' he').symm) a
 
 /-! ## D6.1c  Syntactic helpers (moved from U5 N5.7 at integration; real bodies) -/
 
