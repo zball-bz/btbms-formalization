@@ -10606,9 +10606,364 @@ theorem KS_safePrefix {A : Forest} (hA : InL A) (hcof : Cof A) (k : Nat) : KS (s
       unfold mu at hi; rw [hw, List.length_take] at hi; omega
     rw [hw, List.getElem?_take, if_pos hik]
 
+/-- T3.8e/T3.8k helper: an `L` forest whose word lies strictly between the one-copy output
+`X = w(A_1)` and `w(A) = X ⌢ [z]` of a special step continues `A`'s context `W` by the owner
+column `P ⌢ (p, C) ⌢ R` with every entry of `R` at most `(p, C)` (I excludes a deeper next atom,
+H bounds the later entries). -/
+theorem special_decode_E5 {E F : Forest} (hF : InL F) {sd : StopData} {oe : EntryAddr}
+    {P : Column} {p : Nat} {Cs : List Column} {e : Nat} (hsd : stopData E = some sd)
+    (hhp : oe.heightPath = sd.col.path) (hnum : oe.col.num 0 = sd.r) (_hde : sd.depth = e + 1)
+    (hR : KerRoute e E)
+    (hself : replaceAt 0 0 (Tree.node [P ++ [(p, Tree.node (Cs ++ [[(sd.r, Tree.empty)]]))]]) e E = E)
+    {y : WordAtom} {L' : List WordAtom}
+    (hFw : word F = word (replaceAt 0 0 Tree.empty e E) ++ wordCol e (P ++ [(p, Tree.node Cs)]) ++
+      y :: L')
+    (hyz : y < toLex (2 * (e + 1), toLex (1, sd.r))) :
+    ∃ (D : Column) (R : List Column) (S : List WordAtom),
+      word F = word (replaceAt 0 0 Tree.empty e E) ++
+        wordAt e (Tree.node ((P ++ (p, Tree.node Cs) :: D) :: R)) ++ S ∧
+      (∀ x ∈ D, EntryLe x (p, Tree.node Cs)) ∧ (∀ s ∈ S.head?, (ofLex s).1 < 2 * e) ∧
+      (∀ s ∈ S, s.WF) := by
+  have hwZ : ∀ Z, word (replaceAt 0 0 Z e E) =
+      word (replaceAt 0 0 Tree.empty e E) ++ wordAt e Z := by
+    intro Z; unfold word; rw [ker_wordAt_replaceAt Z e E 0 hR, Nat.zero_add]
+  set W := word (replaceAt 0 0 Tree.empty e E) with hW
+  have hw1 : ∀ c : Column, wordAt e (Tree.node [c]) = wordCol e c := by
+    intro c; simp [wordAt, wordCols]
+  set C : Forest := Tree.node Cs with hC
+  set X := W ++ wordCol e (P ++ [(p, C)]) with hX
+  set z : WordAtom := toLex (2 * (e + 1), toLex (1, sd.r)) with hz
+  have hsplitC : ∀ (H : Forest) (R : Column), wordCol e (P ++ (p, H) :: R) =
+      wordCol e (P ++ [(p, Tree.empty)]) ++ wordAt (e + 1) H ++ wordLater e R :=
+    fun H R => wordCol_split_E5 e P p H R
+  have hXC : wordCol e (P ++ [(p, C)]) = wordCol e (P ++ [(p, Tree.empty)]) ++ wordAt (e + 1) C := by
+    rw [hsplitC]; simp [wordLater]
+  have hwE : word E = X ++ [z] := by
+    conv_lhs => rw [← hself]
+    rw [hwZ, hw1, hsplitC, hX, hXC]
+    simp [wordLater, wordAt, wordCols_append, wordCols, wordCol, Tree.empty, hz, List.append_assoc]
+    rfl
+  by_cases hdeep : 2 * (e + 1) ≤ (ofLex y).1
+  · -- a column start at depth `ℓ` would break `I` of `B`
+    exfalso
+    have hFX : (word F).take X.length = X := by rw [hFw, List.take_left]
+    have hFy : (word F)[X.length]? = some y := by rw [hFw]; simp
+    obtain ⟨c, k, hc, hk', -, hk0, -, hup, hcap⟩ :=
+      exists_litCap_of_word (B := F) (E := E) (π := X.length) (e := e + 1) (p := sd.r)
+        (first := true) (by rw [hFX]; simpa [hz] using hwE)
+        (by unfold mu; rw [hFw]; simp)
+        (by intro y' hy'; rw [hFy] at hy'; cases hy'; simpa [hz] using hyz)
+        (fun _ => ⟨y, hFy, hdeep⟩)
+    have hk00 : k = 0 := hk0.2 rfl
+    subst hk00
+    have hsd2 := stopData_litCap hup
+    rw [hcap, hsd] at hsd2
+    have hcolE : sd.col = c := congrArg StopData.col (Option.some.inj hsd2)
+    obtain ⟨colc, hcolc⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff F c).1 hc)
+    have hup' := hup
+    unfold IsUpward at hup'
+    rw [hcolc] at hup'
+    have hcolc' := hcolc
+    unfold Tree.colAt at hcolc'
+    rw [← hcolE, ← hhp, Tree.forestAt_heightPath] at hcolc'
+    cases hH : F.heightAt oe with
+    | none => rw [hH] at hcolc'; cases hcolc'
+    | some h₀ =>
+      rw [hH, Option.bind_some] at hcolc'
+      obtain ⟨y₀, hy₀⟩ : ∃ y₀, F.entryAt oe = some (y₀, h₀) := by
+        unfold Tree.heightAt at hH
+        cases hE0 : F.entryAt oe with
+        | none => rw [hE0] at hH; cases hH
+        | some x =>
+          rw [hE0] at hH
+          simp only [Option.map_some, Option.some.injEq] at hH
+          exact ⟨x.1, by rw [← hH]⟩
+      have hmem : oe ∈ F.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hy₀]; rfl)
+      have hne : h₀ ≠ Tree.empty := by
+        intro h0; subst h0; simp [Tree.empty, Tree.cols] at hcolc'
+      obtain ⟨q, H, rest, hcq, hq⟩ :=
+        hF.2.1 _ hmem y₀ h₀ hy₀ hne colc (List.mem_of_getElem? hcolc')
+      rw [hcq] at hup'
+      simp only [List.getElem?_cons_zero] at hup'
+      rw [hnum] at hq
+      omega
+  · -- the next atom is at most an entry continuation of the owner column
+    have hFX : (word F).take X.length = X := by rw [hFw, List.take_left]
+    have hFy : (word F)[X.length]? = some y := by rw [hFw]; simp
+    set pb := (ofLex (ofLex y).2).2 + 1 with hpb
+    have hy1 : y < toLex (2 * e + 1, toLex (0, pb)) := by
+      have hwf := word_wf F y (by rw [hFw]; simp)
+      rw [Prod.Lex.lt_iff]
+      simp only [ofLex_toLex]
+      by_cases hy1 : (ofLex y).1 < 2 * e + 1
+      · exact Or.inl hy1
+      · right
+        refine ⟨by omega, ?_⟩
+        rw [Prod.Lex.lt_iff]
+        simp only [ofLex_toLex]
+        unfold WordAtom.WF at hwf
+        right
+        refine ⟨by omega, by omega⟩
+    set E' := replaceAt 0 0 (Tree.node [P ++ [(p, C), (pb, Tree.empty)]]) e E with hE'
+    have hwE' : word E' = X ++ [toLex (2 * e + 1, toLex (0, pb))] := by
+      rw [hE', hwZ, hw1, show P ++ [(p, C), (pb, Tree.empty)] = P ++ (p, C) :: [(pb, Tree.empty)]
+        from rfl, hsplitC, hX, hXC]
+      simp [wordLater, wordAt, wordCols, Tree.empty, List.append_assoc]
+    obtain ⟨c', k', hc', hk', hdep', hk0', -, hup', hcap'⟩ :=
+      exists_litCap_of_word (B := F) (E := E') (π := X.length) (e := e) (p := pb)
+        (first := false) (by rw [hFX]; simpa using hwE')
+        (by unfold mu; rw [hFw]; simp)
+        (by intro y' hy'; rw [hFy] at hy'; cases hy'; simpa using hy1)
+        (fun h => absurd h (by decide))
+    have hk'0 : k' ≠ 0 := fun h => absurd (hk0'.1 h) (by decide)
+    -- the cap column of `B` is the hole of the special step
+    have hsdE' := stopData_litCap hup'
+    rw [hcap'] at hsdE'
+    obtain ⟨hRE', hhole⟩ := ker_stop_hole hsdE'
+    simp only at hhole
+    rw [hdep', hE', kerHoleAt_replaceAt_E5 _ e E hR] at hhole
+    obtain ⟨hcolE', -⟩ := stopData_spec hsdE'
+    simp only at hcolE'
+    have hlaw := (ker_hole_law (Tree.node [P ++ [(p, C), (pb, Tree.empty)]]) hR ⟨[], 0⟩).1
+    have hu : underCol (kerHoleAt e E) ⟨[], 0⟩ = kerHoleAt e E := by
+      simp [underCol]
+    rw [hu, hhole] at hlaw
+    rw [← hE', hcolE'] at hlaw
+    simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols, List.getElem?_cons_zero,
+      Option.some.injEq] at hlaw
+    have htk : ((F.colAt c').getD []).take k' = P ++ [(p, C)] := by
+      have := hlaw
+      rw [show P ++ [(p, C), (pb, Tree.empty)] = (P ++ [(p, C)]) ++ [(pb, Tree.empty)] by simp]
+        at this
+      exact List.append_cancel_right this
+    -- the word of `B` around its cap column
+    obtain ⟨A, S, hwB, hS, hcapB⟩ := wordDecomp_E5 hc'
+    obtain ⟨D, hD⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff F c').1 hc')
+    rw [hD, Option.getD_some] at htk
+    have hAW : A = W := by
+      have h1 := hcapB k' pb
+      rw [hcap', hD, Option.getD_some, htk, hwE', hdep'] at h1
+      rw [hX, hXC] at h1
+      have h2 : wordCol e (P ++ [(p, C)] ++ [(pb, Tree.empty)]) =
+          wordCol e (P ++ [(p, Tree.empty)]) ++ wordAt (e + 1) C ++
+            [toLex (2 * e + 1, toLex (0, pb))] := by
+        rw [show P ++ [(p, C)] ++ [(pb, Tree.empty)] = P ++ (p, C) :: [(pb, Tree.empty)] by simp,
+          hsplitC]
+        simp [wordLater, wordAt, wordCols, Tree.empty]
+      rw [h2] at h1
+      simp only [List.append_assoc] at h1
+      exact (List.append_cancel_right h1).symm
+    obtain ⟨R, hRl⟩ := localSuffix_eq_E5 hD
+    rw [hAW, hRl, map_depthShift_word_E5, hdep'] at hwB
+    -- `D = P ⌢ (p, C) ⌢ R_B` with every entry of `R_B` at most `(p, C)` (H)
+    have hDsplit : D = P ++ (p, C) :: D.drop k' := by
+      conv_lhs => rw [← List.take_append_drop k' D, htk]
+      simp
+    have hk'le : k' ≤ D.length := by rw [hD, Option.getD_some] at hk'; exact hk'
+    have hlenP : k' = P.length + 1 := by
+      have := congrArg List.length htk
+      rw [List.length_take] at this
+      simp at this
+      omega
+    have hHle : ∀ i, P.length ≤ i → ∀ x, D[i]? = some x → EntryLe x (p, C) := by
+      intro i hi
+      induction i, hi using Nat.le_induction with
+      | base =>
+        intro x hx
+        rw [hDsplit, List.getElem?_append_right (le_refl _), Nat.sub_self] at hx
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hx
+        subst hx
+        exact Or.inr ⟨rfl, le_rfl⟩
+      | succ i hi ih =>
+        intro x hx
+        have hi' : i < D.length := by
+          by_contra hh
+          rw [List.getElem?_eq_none (by omega)] at hx; cases hx
+        have hxi := ih D[i] (List.getElem?_eq_getElem hi')
+        have hH := hF.2.2.1 c' hc' i D[i] x (by rw [hD]; exact List.getElem?_eq_getElem hi')
+          (by rw [hD]; exact hx)
+        rcases hH with h1 | ⟨h1, h2⟩ <;> rcases hxi with h3 | ⟨h3, h4⟩
+        · exact Or.inl (lt_trans h1 h3)
+        · exact Or.inl (by rw [← h3]; exact h1)
+        · exact Or.inl (by rw [h1]; exact h3)
+        · exact Or.inr ⟨h1.trans h3, le_trans h2 h4⟩
+    have hRB : ∀ x ∈ D.drop k', EntryLe x (p, C) := by
+      intro x hx
+      obtain ⟨i, hi, hix⟩ := List.mem_iff_getElem.1 hx
+      apply hHle (k' + i) (by omega)
+      rw [← hix, List.getElem_drop]
+      exact List.getElem?_eq_getElem _
+    refine ⟨D.drop k', R, S, ?_, hRB, by rw [hdep'] at hS; exact hS,
+      fun s hs => word_wf F s (by rw [hwB]; simp [hs])⟩
+    rw [hwB]
+    congr 3
+    exact hDsplit ▸ rfl
+
+
+/-- T3.8k helper: a column that is not below `M` copies of `x` while all its entries are at most
+`x` starts with those copies. -/
+theorem cmpCol_rep_prefix_E5 (x : Nat × Forest) : ∀ (M : Nat) (D : Column),
+    (∀ y ∈ D, EntryLe y x) → Tree.cmpCol compare (List.replicate M x) D ≠ .gt →
+      List.replicate M x <+: D
+  | 0, D, _, _ => List.nil_prefix
+  | M + 1, [], _, h => absurd rfl (by rw [List.replicate_succ] at h; exact h)
+  | M + 1, (q, H) :: D, hD, h => by
+    obtain ⟨p, C⟩ := x
+    have hx := hD (q, H) (by simp)
+    rw [List.replicate_succ] at h ⊢
+    simp only [Tree.cmpCol] at h
+    rcases hx with h1 | ⟨h1, h2⟩
+    · simp only at h1
+      rw [Nat.compare_eq_gt.2 h1] at h
+      exact absurd rfl h
+    · simp only at h1 h2
+      subst h1
+      rcases lt_or_eq_of_le h2 with h2 | rfl
+      · have h3 : Tree.cmp compare C H = .gt := by
+          rw [Tree.cmp_eq_swap]; have : Tree.cmp compare H C = .lt := h2; rw [this]; rfl
+        rw [Nat.compare_eq_eq.2 rfl, h3] at h
+        exact absurd rfl h
+      · rw [Nat.compare_eq_eq.2 rfl, Tree.cmp_self] at h
+        exact (List.prefix_cons_inj _).2
+          (cmpCol_rep_prefix_E5 (q, H) M D (fun y hy => hD y (by simp [hy])) h)
+
 -- T3.8k (txt:506-510): special outputs
 theorem KS_special {A B : Forest} {n : Nat} (hA : InL A) (hcof : Cof A)
-    (hk : stepKind A = some .special) (hB : expand A n = some B) : KS B := by sorry
+    (hk : stepKind A = some .special) (hB : expand A n = some B) : KS B := by
+  intro c k ρ hup hKL
+  have hBL := inL_expand hA hB
+  have hAne : A ≠ Tree.empty := by
+    rintro rfl; simp [stepKind, stepKindBody, Tree.empty, Tree.cols] at hk
+  have hBA := expand_lt hAne hA.1 hA.2.1 hB
+  obtain ⟨hc, hkc⟩ := colAddrs_of_upward_E5 hup
+  by_cases hend : capPos B c k = mu B
+  · exact covers_of_end_E5 hBL.2.1 hup hKL hend
+  have hlt := lt_of_le_of_ne (capPos_le_mu_E5 hc k) hend
+  have hK0 : ∀ K0, expand (litCap B c k ρ) 0 = some K0 → K0 < B :=
+    fun K0 h0 => expand_zero_litCap_lt hBL.2.1 hup hKL.1 hKL.2.1 h0
+  have hAlast : A.cols.getLast? ≠ some [] := fun h => by
+    rw [(stepKind_deletion_iff A).2 h] at hk; cases hk
+  rcases lt_trichotomy A (litCap B c k ρ) with hAK | hAK | hAK
+  · exact covers_of_gt hcof hKL (litCap_ne_empty_E5 hup) (litCap_last_ne_E5 hup) hAK
+      (le_of_lt hBA) hK0
+  · rw [← hAK]
+    obtain ⟨B', hB'⟩ := Option.isSome_iff_exists.1
+      (expand_isSome hA.1 hA.2.1 hA.2.2.2.1 hA.2.2.2.2 (n + 1))
+    exact ⟨n + 1, B', hB', expand_strictMono hA hAlast hAne (Nat.lt_succ_self n) hB hB'⟩
+  · exfalso
+    have hBK := lt_litCap hup
+    -- the cut atom of `B` is below the cap atom
+    obtain ⟨y, hy⟩ : ∃ y, (word B)[capPos B c k]? = some y :=
+      ⟨_, List.getElem?_eq_getElem hlt⟩
+    have hyz := (isUpward_iff_atom hc hkc).1 hup y hy
+    have hwK := word_litCap hc hkc ρ
+    -- a proper extension of `w(B)` cannot be the cap's word
+    have key : ∀ T, word (litCap B c k ρ) = word B ++ T → False := by
+      intro T hT
+      have h1 : (word (litCap B c k ρ))[capPos B c k]? = some y := by
+        rw [hT, List.getElem?_append_left hlt]; exact hy
+      have hlt' : capPos B c k < (word B).length := hlt
+      rw [hwK, List.getElem?_append_right (by simp), List.length_take,
+        Nat.min_eq_left (le_of_lt hlt'), Nat.sub_self] at h1
+      simp at h1
+      rw [h1] at hyz
+      exact lt_irrefl _ hyz
+    -- the special data of `A`
+    obtain ⟨sd, oe, P, p, Cs, hsd, hhp, hnum, hdpos, hR, hself, hexp⟩ := special_data_E5 hA hk
+    obtain ⟨e, he⟩ : ∃ e, sd.depth - 1 = e := ⟨_, rfl⟩
+    rw [he] at hR hself hexp
+    have hde : sd.depth = e + 1 := by omega
+    have hwZ : ∀ Z, word (replaceAt 0 0 Z e A) =
+        word (replaceAt 0 0 Tree.empty e A) ++ wordAt e Z := by
+      intro Z; unfold word; rw [ker_wordAt_replaceAt Z e A 0 hR, Nat.zero_add]
+    set W := word (replaceAt 0 0 Tree.empty e A) with hW
+    have hw1 : ∀ c : Column, wordAt e (Tree.node [c]) = wordCol e c := by
+      intro c; simp [wordAt, wordCols]
+    set C : Forest := Tree.node Cs with hC
+    set X := W ++ wordCol e (P ++ [(p, C)]) with hX
+    set z : WordAtom := toLex (2 * (e + 1), toLex (1, sd.r)) with hz
+    have hsplitC : ∀ (H : Forest) (R : Column), wordCol e (P ++ (p, H) :: R) =
+        wordCol e (P ++ [(p, Tree.empty)]) ++ wordAt (e + 1) H ++ wordLater e R :=
+      fun H R => wordCol_split_E5 e P p H R
+    have hXC : wordCol e (P ++ [(p, C)]) =
+        wordCol e (P ++ [(p, Tree.empty)]) ++ wordAt (e + 1) C := by
+      rw [hsplitC]; simp [wordLater]
+    have hwA : word A = X ++ [z] := by
+      conv_lhs => rw [← hself]
+      rw [hwZ, hw1, hsplitC, hX, hXC]
+      simp [wordLater, wordAt, wordCols_append, wordCols, wordCol, Tree.empty, hz, List.append_assoc]
+      rfl
+    rw [hexp n, Option.some.injEq] at hB
+    subst hB
+    set N := n + if P = [] then 1 else 0 with hN
+    have hwB : word (replaceAt 0 0 (Tree.node [P ++ List.replicate N (p, C)]) e A) =
+        W ++ wordCol e (P ++ List.replicate N (p, C)) := by rw [hwZ, hw1]
+    rw [hwB] at hy hwK key
+    rw [← word_lt_iff, hwA] at hAK
+    rw [← word_lt_iff, hwB] at hBK
+    by_cases hN0 : N = 0
+    · -- `P ≠ []`, `n = 0`: `w(B)` is a prefix of `w(A)`, so `A < K`
+      have hP : P ≠ [] := by intro h; rw [hN, if_pos h] at hN0; omega
+      have hrep : List.replicate N (p, C) = [] := by rw [hN0]; rfl
+      simp only [hrep, List.append_nil] at hy hwK hBK key hAK ⊢
+      have hwA' : X ++ [z] = (W ++ wordCol e P) ++ wordLater e [(p, Tree.node (Cs ++ [[(sd.r, Tree.empty)]]))] := by
+        rw [← hwA]
+        conv_lhs => rw [← hself]
+        rw [hwZ, hw1, ker_wordCol_append e hP, List.append_assoc]
+      rw [hwA'] at hAK
+      apply lt_asymm hAK
+      rw [hwK]
+      obtain ⟨hlt', -⟩ := List.getElem?_eq_some_iff.1 hy
+      set π := capPos (replaceAt 0 0 (Tree.node [P]) e A) c k with hπ
+      conv_lhs => rw [← List.take_append_drop π (W ++ wordCol e P)]
+      rw [List.append_assoc, ker_append_lt_append_iff, List.drop_eq_getElem_cons hlt']
+      have : (W ++ wordCol e P)[π] = y := by
+        rw [List.getElem?_eq_getElem hlt'] at hy; exact Option.some.inj hy
+      rw [this, List.cons_append]
+      exact List.cons_lt_cons_iff.2 (Or.inl hyz)
+    · obtain ⟨M, hM⟩ : ∃ M, N = M + 1 := ⟨N - 1, by omega⟩
+      have hwBX : W ++ wordCol e (P ++ List.replicate N (p, C)) =
+          X ++ wordLater e (List.replicate M (p, C)) := by
+        rw [hM, List.replicate_succ, hsplitC, hX, hXC]
+        simp only [List.append_assoc]
+      rw [hwBX] at hBK
+      rcases split_E5 X _ z hAK with h | h | ⟨y', L', hKw, hyz'⟩
+      · exact lt_asymm (lt_append_of_lt_E5 h _) hBK
+      · rw [h] at hBK
+        exact list_not_lt_prefix (List.prefix_append _ _) hBK
+      · obtain ⟨D, R, S, hwK', hD, hS, hSw⟩ :=
+          special_decode_E5 hKL hsd hhp hnum hde hR hself (by rw [hKw]) hyz'
+        rw [← hwBX, hwK', List.append_assoc, ker_append_lt_append_iff] at hBK
+        conv_lhs at hBK => rw [← List.append_nil (wordCol e (P ++ List.replicate N (p, C))), ← hw1]
+        rw [wordAt_append_lt_iff_E5 _ _ _ (by simp) hSw (by simp) hS] at hBK
+        -- `M` copies start `D`
+        have hpre : List.replicate M (p, C) <+: D := by
+          rcases hBK with h | ⟨h, -⟩
+          · apply cmpCol_rep_prefix_E5 (p, C) M D hD
+            intro hgt
+            have h' : Tree.cmpCols compare [P ++ List.replicate N (p, C)]
+                ((P ++ (p, C) :: D) :: R) = .lt := h
+            simp only [Tree.cmpCols] at h'
+            rw [hM, List.replicate_succ, show P ++ (p, C) :: List.replicate M (p, C) =
+              (P ++ [(p, C)]) ++ List.replicate M (p, C) by simp,
+              show P ++ (p, C) :: D = (P ++ [(p, C)]) ++ D by simp,
+              ker_cmpCol_append_left, hgt] at h'
+            cases h'
+          · simp only [Tree.node.injEq, List.cons.injEq] at h
+            rw [hM, List.replicate_succ] at h
+            have := List.append_cancel_left h.1
+            simp only [List.cons.injEq] at this
+            rw [this.2]
+        obtain ⟨D', rfl⟩ := hpre
+        apply key (wordLater e D' ++ wordCols e R ++ S)
+        rw [hwK']
+        have hne : P ++ List.replicate N (p, C) ≠ [] := by rw [hM]; simp
+        rw [show P ++ (p, C) :: (List.replicate M (p, C) ++ D') =
+          (P ++ List.replicate N (p, C)) ++ D' by rw [hM, List.replicate_succ]; simp]
+        simp only [wordAt, wordCols]
+        rw [ker_wordCol_append e hne]
+        simp only [List.append_assoc]
+        rfl
 
 /-- T3.8l (txt:511-643): the setting of the ordinary induction step. -/
 structure OrdStep where
