@@ -592,32 +592,212 @@ theorem sign_of_agreement_compare (r t : Nat) {A₁ A₂ J : Forest} (hlen : mu 
 
 /-! ## D1.5a — shifts and the continuation hole (S-6) -/
 
-theorem shiftVal_zero (r p : Nat) : shiftVal r 0 p = p := by sorry
+theorem shiftVal_zero (r p : Nat) : shiftVal r 0 p = p := by
+  unfold shiftVal; split <;> rfl
+
+/-- D1.5a helper: `shiftVal r 0` is the identity function. -/
+theorem shiftVal_zero_fun (r : Nat) : shiftVal r 0 = id := funext (shiftVal_zero r)
+
+mutual
+/-- D1.5a helper: `Tree.map id` is the identity. -/
+theorem treeMap_id {α : Type} : (t : Tree α) → Tree.map id t = t
+  | .node cols => by
+    simp only [Tree.map]; rw [treeMapCols_id]
+theorem treeMapCols_id {α : Type} :
+    (cs : List (List (α × Tree α))) → Tree.mapCols id cs = cs
+  | [] => rfl
+  | c :: cs => by
+    simp only [Tree.mapCols]; rw [treeMapCol_id, treeMapCols_id]
+theorem treeMapCol_id {α : Type} :
+    (c : List (α × Tree α)) → Tree.mapCol id c = c
+  | [] => rfl
+  | (p, h) :: es => by
+    simp only [Tree.mapCol]; rw [treeMap_id, treeMapCol_id]; rfl
+end
 
 /-- D1.5a. -/
-theorem shift_zero (r : Nat) (F : Forest) : shift r 0 F = F := by sorry
+theorem shift_zero (r : Nat) (F : Forest) : shift r 0 F = F := by
+  unfold shift; rw [shiftVal_zero_fun]; exact treeMap_id F
+
+mutual
+/-- D1.5a helper: relabellings compose. -/
+theorem treeMap_map {α β γ : Type} (f : β → γ) (g : α → β) :
+    (t : Tree α) → Tree.map f (Tree.map g t) = Tree.map (f ∘ g) t
+  | .node cols => by
+    simp only [Tree.map]; rw [treeMapCols_map]
+theorem treeMapCols_map {α β γ : Type} (f : β → γ) (g : α → β) :
+    (cs : List (List (α × Tree α))) → Tree.mapCols f (Tree.mapCols g cs) = Tree.mapCols (f ∘ g) cs
+  | [] => rfl
+  | c :: cs => by
+    simp only [Tree.mapCols]; rw [treeMapCol_map, treeMapCols_map]
+theorem treeMapCol_map {α β γ : Type} (f : β → γ) (g : α → β) :
+    (c : List (α × Tree α)) → Tree.mapCol f (Tree.mapCol g c) = Tree.mapCol (f ∘ g) c
+  | [] => rfl
+  | (p, h) :: es => by
+    simp only [Tree.mapCol]; rw [treeMap_map, treeMapCol_map]; rfl
+end
+
+/-- D1.5a helper: `shiftVal` at one threshold composes additively. -/
+theorem shiftVal_add (r d d' : Nat) : shiftVal r d ∘ shiftVal r d' = shiftVal r (d + d') := by
+  funext p; simp only [Function.comp, shiftVal]; split_ifs <;> omega
 
 /-- D1.5a: shifts at one threshold compose additively. -/
 theorem shift_add (r d d' : Nat) (F : Forest) : shift r d (shift r d' F) = shift r (d + d') F := by
-  sorry
+  unfold shift; rw [treeMap_map, shiftVal_add]
 
 /-- D1.5a: `mapLast` (locked) in list form. -/
 theorem mapLast_eq {γ δ : Type} (f g : γ → δ) (l : List γ) :
-    mapLast f g l = l.dropLast.map f ++ (l.getLast?.map g).toList := by sorry
+    mapLast f g l = l.dropLast.map f ++ (l.getLast?.map g).toList :=
+  match l with
+  | [] => by simp [mapLast]
+  | [x] => by simp [mapLast]
+  | x :: y :: ys => by rw [mapLast, mapLast_eq f g (y :: ys)]; simp
 
 /-- D1.5a: the unshifted placement of `Z` into the hole (`A_{0,0,depth,Z}`). -/
 def Hole.put (h : Hole) (Z : Forest) : Forest := replaceAt 0 0 Z h.depth h.outer
 
+/-- D1.5a helper: `Tree.mapCols` in list form. -/
+theorem treeMapCols_eq_map {α β : Type} (f : α → β) (cs : List (List (α × Tree α))) :
+    Tree.mapCols f cs = cs.map (Tree.mapCol f) := by
+  induction cs with
+  | nil => rfl
+  | cons c cs ih => simp only [Tree.mapCols, List.map_cons, ih]
+
+/-- D1.5a helper: `Tree.mapCol` in list form. -/
+theorem treeMapCol_eq_map {α β : Type} (f : α → β) (c : List (α × Tree α)) :
+    Tree.mapCol f c = c.map (fun x => (f x.1, Tree.map f x.2)) := by
+  induction c with
+  | nil => rfl
+  | cons x c ih => obtain ⟨p, h⟩ := x; simp only [Tree.mapCol, List.map_cons, ih]
+
+/-- D1.5a helper: `mapLast` after a `map`. -/
+theorem mapLast_map {γ δ ε : Type} (f g : δ → ε) (h : γ → δ) (l : List γ) :
+    mapLast f g (l.map h) = mapLast (f ∘ h) (g ∘ h) l := by
+  rw [mapLast_eq, mapLast_eq]; simp [List.map_dropLast, Option.map_map]
+
+/-- D1.5a helper: `Tree.mapCol id` is the identity function. -/
+theorem treeMapCol_id_fun {α : Type} : Tree.mapCol (α := α) id = id := funext treeMapCol_id
+
+/-- D1.5a helper: `A_{r,d,k,Z}(F) = A_{0,0,k,Z}(T_{r,d}(F))`, by induction on `k` following the
+locked `replaceAt`. -/
+theorem replaceAt_eq_shift (r d : Nat) (Z : Forest) :
+    ∀ (k : Nat) (F : Forest), replaceAt r d Z k F = replaceAt 0 0 Z k (shift r d F)
+  | 0, .node [] => by simp [replaceAt, shift, Tree.map, Tree.mapCols]
+  | 0, .node (c :: cs) => by
+    simp only [replaceAt, shift, Tree.map, Tree.mapCols]
+    rw [shiftVal_zero_fun 0, treeMapCol_id_fun, List.map_id, treeMapCols_eq_map, ← List.map_cons,
+      List.map_dropLast]
+  | k + 1, .node cols => by
+    simp only [replaceAt, shift, Tree.map]
+    rw [shiftVal_zero_fun 0, treeMapCol_id_fun, treeMapCols_eq_map, mapLast_map]
+    congr 1
+    congr 1
+    funext c
+    rw [Function.comp, treeMapCol_eq_map, mapLast_map]
+    congr 1
+    · funext x; simp only [Function.comp, id, treeMap_id]
+    · funext x
+      simp only [Function.comp, id]
+      rw [replaceAt_eq_shift r d Z k x.2]
+      rfl
+
 /-- D1.5a (fill/shift law): `A_{r,d,ℓ,Z}(F)` is `T_{r,d}(F)` with `Z` placed unshifted. -/
 theorem Hole.fill_eq_put (h : Hole) (r d : Nat) (Z : Forest) :
-    h.fill r d Z = (⟨shift r d h.outer, h.depth⟩ : Hole).put Z := by sorry
+    h.fill r d Z = (⟨shift r d h.outer, h.depth⟩ : Hole).put Z :=
+  replaceAt_eq_shift r d Z h.depth h.outer
 
-theorem Hole.fill_zero (h : Hole) (Z : Forest) : h.fill 0 0 Z = h.put Z := by sorry
+theorem Hole.fill_zero (h : Hole) (Z : Forest) : h.fill 0 0 Z = h.put Z := by
+  rw [Hole.fill_eq_put, shift_zero]
+
+/-- D1.5a helper: the word of a list of columns splits over an append. -/
+theorem wordCols_append (e : Nat) (l₁ l₂ : List Column) :
+    wordCols e (l₁ ++ l₂) = wordCols e l₁ ++ wordCols e l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons c l ih => simp only [List.cons_append, wordCols, ih, List.append_assoc]
+
+/-- D1.5a helper: the height of the last later entry is read last. -/
+theorem wordLater_snoc (e : Nat) (l : Column) (q : Nat) (H : Forest) :
+    wordLater e (l ++ [(q, H)]) = wordLater e (l ++ [(q, Tree.empty)]) ++ wordAt (e + 1) H := by
+  induction l with
+  | nil => simp [wordLater, Tree.empty, wordAt, wordCols]
+  | cons x l ih =>
+    obtain ⟨p, h⟩ := x
+    simp only [List.cons_append, wordLater, ih, List.append_assoc]
+
+/-- D1.5a helper: the height of the last entry of a column is read last. -/
+theorem wordCol_snoc (e : Nat) (l : Column) (q : Nat) (H : Forest) :
+    wordCol e (l ++ [(q, H)]) = wordCol e (l ++ [(q, Tree.empty)]) ++ wordAt (e + 1) H := by
+  cases l with
+  | nil => simp [wordCol, wordLater, Tree.empty, wordAt, wordCols]
+  | cons x l =>
+    obtain ⟨p, h⟩ := x
+    simp only [List.cons_append, wordCol]
+    rw [wordLater_snoc]
+    simp only [List.append_assoc]
+
+/-- D1.5a helper: a forest with a nonempty route has columns. -/
+theorem routeColsAux_pos {fuel : Nat} {F : Forest} {π : List (Nat × Nat)}
+    (h : 0 < (routeColsAux fuel F π).length) : F.cols ≠ [] := by
+  cases fuel with
+  | zero => simp [routeColsAux] at h
+  | succ f =>
+    rw [routeColsAux] at h
+    intro hF
+    rw [hF] at h
+    simp at h
+
+/-- D1.5a helper: a route longer than `k + 1` continues into the height of the last entry of a
+nonempty last column. -/
+theorem routeColsAux_succ_lt {fuel : Nat} {F : Forest} {π : List (Nat × Nat)} {k : Nat}
+    (h : k + 1 < (routeColsAux fuel F π).length) :
+    ∃ fuel' col p H, fuel = fuel' + 1 ∧ F.cols.getLast? = some col ∧ col.getLast? = some (p, H) ∧
+      k < (routeColsAux fuel' H (π ++ [(F.cols.length - 1, col.length - 1)])).length := by
+  cases fuel with
+  | zero => simp [routeColsAux] at h
+  | succ f =>
+    rw [routeColsAux] at h
+    cases hc : F.cols.getLast? with
+    | none => simp [hc] at h
+    | some col =>
+      simp only [hc] at h
+      cases hl : col.getLast? with
+      | none => simp [hl] at h
+      | some ph =>
+        obtain ⟨p, H⟩ := ph
+        simp only [hl, List.length_cons] at h
+        exact ⟨f, col, p, H, rfl, rfl, hl, by omega⟩
+
+/-- D1.5a helper: `word_put` at an arbitrary depth coordinate `e` and fuel. -/
+theorem wordAt_replaceAt (Z : Forest) :
+    ∀ (k fuel : Nat) (F : Forest) (π : List (Nat × Nat)) (e : Nat),
+      k < (routeColsAux fuel F π).length →
+      wordAt e (replaceAt 0 0 Z k F) = wordAt e (replaceAt 0 0 Tree.empty k F) ++ wordAt (e + k) Z
+  | 0, fuel, .node cols, π, e, h => by
+    have hne := routeColsAux_pos h
+    obtain ⟨zc⟩ := Z
+    cases cols with
+    | nil => exact absurd rfl hne
+    | cons c cs =>
+      simp only [replaceAt, wordAt, Tree.cols, Tree.empty, List.append_nil, wordCols_append,
+        Nat.add_zero]
+  | k + 1, fuel, .node cols, π, e, h => by
+    obtain ⟨fuel', col, p, H, rfl, hc, hl, hk⟩ := routeColsAux_succ_lt h
+    have ih := wordAt_replaceAt Z k fuel' H _ (e + 1) hk
+    simp only [Tree.cols] at hc
+    simp only [replaceAt, mapLast_eq, hc, hl, Option.map_some, Option.toList_some, wordAt,
+      wordCols_append, wordCols, List.append_nil]
+    rw [wordCol_snoc, wordCol_snoc e _ _ (replaceAt 0 0 Tree.empty k H), ih]
+    simp only [List.append_assoc]
+    rw [show e + 1 + k = e + (k + 1) by omega]
 
 /-- D1.5a: the word of a filled hole is the word with the hole emptied, followed by the word of
 `Z` at the hole's depth (the hole column is the last thing in reading order). -/
 theorem word_put (h : Hole) (Z : Forest) (hd : h.depth < (routeCols h.outer).length) :
-    word (h.put Z) = word (h.put Tree.empty) ++ wordAt h.depth Z := by sorry
+    word (h.put Z) = word (h.put Tree.empty) ++ wordAt h.depth Z := by
+  have := wordAt_replaceAt Z h.depth _ h.outer [] 0 hd
+  rw [Nat.zero_add] at this
+  exact this
 
 /-- D1.5a: the generic word of a shift relabels the generic word. -/
 theorem gword_shift (r d : Nat) (F : Forest) :
@@ -1204,9 +1384,37 @@ theorem firstParent_host {E : Forest} (hV : CondV E) (hI : CondI E) {e : EntryAd
     (he : e ∈ E.entryAddrs) {h : Forest} (hh : E.heightAt e = some h) (hne : h ≠ Tree.empty) :
     ∃ H₀ rest, h.cols.head? = some ((e.col.num 0, H₀) :: rest) := by sorry
 
+/-- D1.5b helper: a `map` after `mapLast`. -/
+theorem map_mapLast {γ δ ε : Type} (f g : γ → δ) (h : δ → ε) (l : List γ) :
+    (mapLast f g l).map h = mapLast (h ∘ f) (h ∘ g) l := by
+  rw [mapLast_eq, mapLast_eq]; cases l.getLast? <;> simp
+
 /-- D1.5b (requested by U2 REQ-U1-7, second form): a shift commutes with an unshifted placement. -/
 theorem shift_replaceAt (r a δ : Nat) (Z G : Forest) :
-    shift r a (replaceAt 0 0 Z δ G) = replaceAt r a (shift r a Z) δ G := by sorry
+    shift r a (replaceAt 0 0 Z δ G) = replaceAt r a (shift r a Z) δ G := by
+  induction δ generalizing G with
+  | zero =>
+    obtain ⟨cols⟩ := G
+    obtain ⟨zc⟩ := Z
+    cases cols with
+    | nil => simp [replaceAt, shift, Tree.map, Tree.mapCols]
+    | cons c cs =>
+      simp only [replaceAt, shift, Tree.map, Tree.cols]
+      rw [shiftVal_zero_fun 0, treeMapCol_id_fun, List.map_id, treeMapCols_eq_map,
+        treeMapCols_eq_map, List.map_append]
+  | succ k ih =>
+    obtain ⟨cols⟩ := G
+    simp only [replaceAt, shift, Tree.map]
+    rw [shiftVal_zero_fun 0, treeMapCol_id_fun, treeMapCols_eq_map, map_mapLast]
+    congr 1
+    congr 1
+    funext c
+    rw [Function.comp, treeMapCol_eq_map, map_mapLast]
+    congr 1
+    · funext x; simp only [Function.comp, id, treeMap_id]
+    · funext x
+      simp only [Function.comp, id]
+      exact Prod.ext rfl (ih x.2)
 
 /-- D1.6d (requested by U5 R3): the closing slot reads the root column and is an entry
 `(r, ∅)`. -/
