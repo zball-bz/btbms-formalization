@@ -5157,7 +5157,20 @@ theorem stage_step (I : Interface.{u}) {n : Nat} (hW : WFit I.toPrims n) {E : Fo
     (hinv : StageInv I.toPrims (Closure.anchor E cap) rs α Λ ν b Fix m G g b')
     (hG' : expand (Closure.anchor E cap) (m + 1) = some G') :
     ∃ g' b'', StageInv I.toPrims (Closure.anchor E cap) rs α Λ ν b Fix (m + 1) G' g' b'' := by
-  sorry
+  have hT := stage_transport I hyp hrs hinv
+  obtain ⟨hG, -, -, -, -, hgpre, hbfix, -⟩ := hinv
+  have hσ : ∀ z, stageFixed (Closure.anchor E cap) rs Fix z →
+      stageSigma α g b' (b ∘ eν) (α rs.R) z = stageSigma α α b (b ∘ eν) (α rs.R) z := by
+    intro z hz
+    cases z with
+    | main x => exact hgpre x hz
+    | lab v => exact hbfix v hz
+    | ref y => exact absurd hz id
+    | qry x => exact absurd hz id
+    | top => exact absurd hz id
+  obtain ⟨a, hfa, hba, hha, hqa⟩ := stage_fit I hW hyp hrs hT rfl hσ
+  exact stage_restore I hyp hrs hG hG' (fun z hz => (hfa z (Or.inl hz)).trans (hσ z hz))
+    (hfa _ (Or.inr rfl)) hba hha hqa
 
 /-- L8.6, `W_{<n} ⇒ D_{<n}` with labels (txt:1250-1323). -/
 theorem dLab_of_wFit (I : Interface.{u}) (n : Nat) (hW : WFit I.toPrims n) :
