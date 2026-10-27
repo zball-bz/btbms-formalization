@@ -2021,6 +2021,240 @@ def IsTmplCol (A : Forest) (sd : StopData) (rd : RootData) (a : ColAddr) : Prop 
 contains the continuation hole). -/
 def OnHoleRoute (sd : StopData) (a : ColAddr) : Prop := a.path <+: sd.col.path
 
+/-! ### T3.2i helpers: numbers of placed addresses -/
+
+theorem ker_num_cons (x : Nat × Nat) (p : List (Nat × Nat)) (c : Nat) :
+    ColAddr.num 0 ⟨x :: p, c⟩ = x.1 + 1 + ColAddr.num 0 ⟨p, c⟩ := by
+  unfold ColAddr.num; simp; omega
+
+theorem ker_num_append (p q : List (Nat × Nat)) (c : Nat) :
+    ColAddr.num 0 ⟨p ++ q, c⟩ = (p.map (·.1 + 1)).sum + ColAddr.num 0 ⟨q, c⟩ := by
+  unfold ColAddr.num; simp [List.map_append, List.sum_append]; omega
+
+theorem ker_num_underCol (h a : ColAddr) : (underCol h a).num 0 = h.num 0 + a.num 0 := by
+  obtain ⟨p, c⟩ := a
+  cases p with
+  | nil => simp only [underCol]; unfold ColAddr.num; simp; omega
+  | cons x rest =>
+    obtain ⟨c0, e0⟩ := x
+    simp only [underCol]
+    rw [ker_num_append, ker_num_cons]
+    unfold ColAddr.num; simp; omega
+
+theorem ker_num_iterate (h : ColAddr) :
+    ∀ (k : Nat) (a : ColAddr), ((underCol h)^[k] a).num 0 = k * h.num 0 + a.num 0
+  | 0, a => by simp
+  | k + 1, a => by
+    rw [Function.iterate_succ_apply', ker_num_underCol, ker_num_iterate h k a, Nat.succ_mul]
+    omega
+
+/-- T3.2i helper: `kerCol` subtracts `t` (Q-material) or `r` (root-tail material) from numbers. -/
+theorem ker_num_kerCol {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) {a a' : ColAddr} (h : kerCol sd rd a = some a') :
+    a'.num 0 + (if isQMat sd a then sd.t else sd.r) = a.num 0 := by
+  obtain ⟨-, -, ht, -⟩ := stopData_spec hsd
+  obtain ⟨-, -, hidx, hnum, -⟩ := rootData_spec hsd hrd
+  have hsplit : ∀ (l : List (Nat × Nat)) (k : Nat), l = l.take k ++ l.drop k :=
+    fun l k => (List.take_append_drop k l).symm
+  unfold kerCol at h
+  by_cases hq : isQMat sd a = true
+  · rw [if_pos hq] at h ⊢
+    have hq' := hq
+    unfold isQMat at hq'
+    rw [Bool.and_eq_true, beq_iff_eq] at hq'
+    obtain ⟨h1, h2⟩ := hq'
+    cases hd : a.path.drop sd.col.path.length with
+    | nil => rw [hd] at h2; cases h2
+    | cons x rest =>
+      obtain ⟨ci, j⟩ := x
+      rw [hd] at h h2
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h2
+      simp only [Option.some.injEq] at h
+      subst h
+      obtain ⟨a1, a2⟩ := a
+      simp only at h1 hd h2 ⊢
+      have hp := hsplit a1 sd.col.path.length
+      rw [h1, hd] at hp
+      rw [ht, hp, ker_num_append, ker_num_cons, ker_num_cons, h2.1]
+      unfold ColAddr.num; omega
+  · rw [if_neg hq] at h ⊢
+    simp only [Bool.not_eq_true] at hq
+    by_cases hρ : a.path.take rd.col.path.length = rd.col.path
+    swap
+    · rw [if_neg hρ] at h; cases h
+    rw [if_pos hρ] at h
+    obtain ⟨a1, a2⟩ := a
+    simp only at hρ h ⊢
+    have hp := hsplit a1 rd.col.path.length
+    rw [hρ] at hp
+    rw [← hnum]
+    cases hd : a1.drop rd.col.path.length with
+    | nil =>
+      rw [hd] at h hp
+      rw [List.append_nil] at hp
+      simp only at h
+      split_ifs at h with hc1 hc2
+      · simp only [Option.some.injEq] at h; subst h
+        rw [hp]; unfold ColAddr.num; simp; omega
+      · simp only [Option.some.injEq] at h; subst h
+        rw [hp]; unfold ColAddr.num; simp; omega
+    | cons x rest =>
+      obtain ⟨ci, e⟩ := x
+      rw [hd] at h hp
+      simp only at h
+      split_ifs at h with hc1 hc2
+      · simp only [Option.some.injEq] at h; subst h
+        rw [hp, ker_num_append, ker_num_cons, ker_num_cons, hc1.1]
+        unfold ColAddr.num; simp; omega
+      · simp only [Option.some.injEq] at h; subst h
+        rw [hp, ker_num_append, ker_num_cons, ker_num_cons]
+        unfold ColAddr.num; simp; omega
+
+/-- T3.2i helper: the kernel is defined on `L`. -/
+theorem ker_kernelDefined {A : Forest} {sd : StopData} {rd : RootData} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) : KernelDefined A rd := by
+  obtain ⟨hV, -, -, hA, hS⟩ := hL
+  intro ho h
+  have := owner_root_nonexhaust hV hA hS hsd hrd ho
+  unfold unconsumed rootCol at h
+  have := congrArg List.length h
+  simp at this
+  omega
+
+/-- T3.2i helper: where the stopping column lies relative to the root column. -/
+theorem ker_stop_path {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) (hkd : KernelDefined A rd) :
+    (rd.owner = false ∧ ((sd.col.path = rd.col.path ∧ rd.idx < sd.col.col) ∨
+        ∃ ci e rest, sd.col.path = rd.col.path ++ (ci, e) :: rest ∧ rd.idx < ci)) ∨
+      (rd.owner = true ∧ ∃ e rest, sd.col.path = rd.col.path ++ (rd.idx, e) :: rest ∧
+        rd.cursor ≤ e ∧ e + 1 = (rootCol A rd).length) := by
+  obtain ⟨-, hnum, hlay, hpre, -, hown, hlen⟩ := rootData_path hsd hrd
+  obtain ⟨-, -, hidx, -, hrt, hmem, -⟩ := rootData_spec hsd hrd
+  obtain ⟨-, hdep, ht, hrmem, -⟩ := stopData_spec hsd
+  obtain ⟨hpath, -⟩ := (Scan.mem_routeCols_iff A sd.col).1 hrmem
+  obtain ⟨t, ht'⟩ := hpre
+  cases t with
+  | nil =>
+    rw [List.append_nil] at ht'
+    left
+    have hown' : rd.owner = false := by
+      cases ho : rd.owner
+      · rfl
+      · exfalso
+        have := hown.1 ho
+        unfold ColAddr.container at this
+        rw [← ht', List.drop_length] at this
+        cases this
+    refine ⟨hown', Or.inl ⟨ht'.symm, ?_⟩⟩
+    rw [hidx]
+    have h1 : rd.col.num 0 < sd.col.num 0 := by rw [hnum, ← ht]; exact hrt
+    unfold ColAddr.num at h1
+    rw [← ht'] at h1
+    omega
+  | cons x rest =>
+    obtain ⟨ci, e⟩ := x
+    have hj : rd.col.path.length < sd.col.path.length := by rw [← ht']; simp
+    obtain ⟨G, hG, hlast⟩ := hpath rd.col.path.length hj
+    have htake : sd.col.path.take rd.col.path.length = rd.col.path := by
+      rw [← ht', List.take_left' rfl]
+    have hstep : sd.col.path[rd.col.path.length]? = some (ci, e) := by
+      rw [← ht', List.getElem?_append_right (le_refl _), Nat.sub_self]; rfl
+    rw [htake] at hG
+    rw [hstep] at hlast
+    -- `ci` is the last column of the root forest
+    have hci : ci + 1 = G.cols.length := by
+      unfold Tree.lastStep? at hlast
+      cases hgc : G.cols.getLast? with
+      | none => rw [hgc] at hlast; cases hlast
+      | some col =>
+        rw [hgc] at hlast
+        simp only [Option.bind_some] at hlast
+        split at hlast
+        · cases hlast
+        · simp only [Option.some.injEq, Prod.mk.injEq] at hlast
+          have : G.cols.length ≠ 0 := by intro h0; rw [List.length_eq_zero_iff] at h0; rw [h0] at hgc; cases hgc
+          omega
+    have hidxlt : rd.idx < G.cols.length := by
+      obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A rd.col).1 hmem)
+      unfold Tree.colAt at hcol
+      rw [hG, Option.bind_some] at hcol
+      rw [hidx]
+      by_contra h; rw [List.getElem?_eq_none (by omega)] at hcol; cases hcol
+    cases ho : rd.owner
+    · left
+      refine ⟨rfl, Or.inr ⟨ci, e, rest, ht'.symm, ?_⟩⟩
+      have hne : ci ≠ rd.idx := by
+        intro hc
+        have hcont : (rd.col.container sd.col).isSome := by
+          unfold ColAddr.container
+          rw [← ht', List.drop_left' rfl, List.take_left' rfl]
+          simp [hc, hidx]
+        rw [← hown] at hcont
+        rw [ho] at hcont; cases hcont
+      omega
+    · right
+      have hcont := hown.1 ho
+      obtain ⟨en, hen⟩ := Option.isSome_iff_exists.1 hcont
+      have hen' := hen
+      unfold ColAddr.container at hen'
+      rw [← ht', List.drop_left' rfl, List.take_left' rfl] at hen'
+      simp only at hen'
+      split_ifs at hen' with hc
+      simp only [Option.some.injEq] at hen'
+      subst hen'
+      have hl := hlen _ hen
+      unfold Packet.rootLenOf at hl
+      refine ⟨rfl, e, rest, ?_, ?_, ?_⟩
+      · rw [← ht', hidx, hc.2]
+      · have hU : unconsumed A rd ≠ [] := hkd ho
+        unfold unconsumed at hU
+        have : rd.cursor < (rootCol A rd).length := by
+          by_contra h; exact hU (List.drop_eq_nil_of_le (by omega))
+        unfold rootCol at this
+        simp only at hl
+        omega
+      · unfold rootCol; simp only at hl; exact hl
+
+/-- T3.2i helper: the hole of the kernel has number `d`. -/
+theorem ker_kerCol_stop {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) (hkd : KernelDefined A rd) :
+    kerCol sd rd sd.col = some (kerHole sd rd) ∧ isQMat sd sd.col = false := by
+  have hq : isQMat sd sd.col = false := by
+    unfold isQMat
+    simp [List.drop_length]
+  refine ⟨?_, hq⟩
+  have hsome : (kerCol sd rd sd.col).isSome := by
+    unfold kerCol
+    rw [if_neg (by simp [hq])]
+    have hidx := (rootData_spec hsd hrd).2.2.1
+    rcases ker_stop_path hsd hrd hkd with ⟨ho, ⟨hp, hlt⟩ | ⟨ci, e, rest, hp, hlt⟩⟩ |
+        ⟨ho, e, rest, hp, hle, -⟩
+    · rw [hp, List.take_length, if_pos rfl, List.drop_length]
+      simp only
+      rw [if_neg (by omega), if_pos ⟨hlt, ho⟩]
+      rfl
+    · rw [hp, List.take_left' rfl, if_pos rfl, List.drop_left' rfl]
+      simp only
+      rw [if_neg (by omega), if_pos ⟨hlt, ho⟩]
+      rfl
+    · rw [hp, List.take_left' rfl, if_pos rfl, List.drop_left' rfl]
+      simp only
+      rw [if_pos (by simp [hle])]
+      rfl
+  obtain ⟨h, hh⟩ := Option.isSome_iff_exists.1 hsome
+  unfold kerHole
+  rw [hh]
+  rfl
+
+theorem ker_num_kerHole {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) (hkd : KernelDefined A rd) :
+    (kerHole sd rd).num 0 + sd.r = sd.t := by
+  obtain ⟨h1, h2⟩ := ker_kerCol_stop hsd hrd hkd
+  have := ker_num_kerCol hsd hrd h1
+  rw [h2, if_neg (by simp)] at this
+  rw [this]
+  exact (stopData_spec hsd).2.2.1.symm
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
@@ -2034,7 +2268,27 @@ theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (
 theorem num_phaseCol {A : Forest} {sd : StopData} {rd : RootData} {i : Nat} {a c : ColAddr}
     (hL : InL A) (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd)
     (hrd : rootData A = some rd) (ha : a = rd.col ∨ IsTmplCol A sd rd a) (hi : 1 ≤ i)
-    (hc : phaseCol sd rd i a = some c) : c.num 0 = a.num 0 + phaseOff sd i a * period sd := by sorry
+    (hc : phaseCol sd rd i a = some c) : c.num 0 = a.num 0 + phaseOff sd i a * period sd := by
+  have hkd := ker_kernelDefined hL hsd hrd
+  have hrt := (rootData_spec hsd hrd).2.2.2.2.1
+  have ht := (stopData_spec hsd).2.2.1
+  unfold phaseCol at hc
+  cases hk' : kerCol sd rd a with
+  | none => rw [hk'] at hc; cases hc
+  | some a' =>
+    rw [hk', Option.map_some, Option.some.injEq] at hc
+    subst hc
+    have h1 := ker_num_kerCol hsd hrd hk'
+    have h2 := ker_num_kerHole hsd hrd hkd
+    rw [ker_num_underCol, ker_num_iterate, show (kerHole sd rd).num 0 = sd.t - sd.r by omega]
+    unfold phaseOff period
+    by_cases hq : isQMat sd a = true
+    · rw [if_pos hq] at h1 ⊢
+      omega
+    · rw [if_neg hq] at h1 ⊢
+      obtain ⟨i', rfl⟩ : ∃ i', i = i' + 1 := ⟨i - 1, by omega⟩
+      rw [Nat.add_sub_cancel, Nat.succ_mul]
+      omega
 
 -- T3.2i: a closed template column is a pure copy (parents and heights shifted by its phase)
 theorem colAt_phaseCol {A B : Forest} {sd : StopData} {rd : RootData} {n i : Nat} {a c : ColAddr}
