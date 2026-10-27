@@ -213,11 +213,111 @@ theorem colAt_of_entryAt {t : Tree α} {e : EntryAddr} {x : α × Tree α} (h : 
     ∃ col, t.colAt e.col = some col ∧ col[e.idx]? = some x := by sorry
 
 -- bridge: holds by `rfl` (SCR-2 applied; checked in scratch/blueprint/all/rfl_check.lean)
-theorem truncAfter_eq_body (t : Tree α) (e : EntryAddr) : t.truncAfter e = t.truncAfterBody e := by
-  sorry
+theorem truncAfter_eq_body (t : Tree α) (e : EntryAddr) : t.truncAfter e = t.truncAfterBody e :=
+  rfl
 -- bridge: holds by `rfl` (SCR-2 applied)
 theorem setHeight_eq_body (t : Tree α) (e : EntryAddr) (h : Tree α) :
-    t.setHeight e h = t.setHeightBody e h := by sorry
+    t.setHeight e h = t.setHeightBody e h := rfl
+
+/-- D1.2c helper: `entryAt` through `forestAt`. -/
+theorem entryAt_eq_bind (t : Tree α) (π : List (Nat × Nat)) (j i : Nat) :
+    t.entryAt ⟨⟨π, j⟩, i⟩ = (t.forestAt π).bind fun f => (f.cols[j]?).bind (·[i]?) := by
+  simp only [entryAt, colAt, Option.bind_assoc]
+
+/-- D1.2c helper: one step of `forestAt`. -/
+theorem forestAt_cons (t : Tree α) (c i₀ : Nat) (rest : List (Nat × Nat)) :
+    t.forestAt ((c, i₀) :: rest) = ((t.cols[c]?).bind (·[i₀]?)).bind fun x => x.2.forestAt rest := by
+  rw [forestAt]
+  generalize (t.cols[c]?).bind (·[i₀]?) = o
+  rcases o with _ | ⟨_, _⟩ <;> rfl
+
+/-- D1.2c helper: the containing step of `truncAux` keeps entry `i₀` of column `c`, with its
+height transformed. -/
+theorem truncStep_getElem? {β : Type} (cols : List (List β)) (c i₀ : Nat) (g : β → β) :
+    ((cols.take c ++ [(cols.getD c []).take i₀ ++ ((cols.getD c [])[i₀]?.map g).toList])[c]?).bind
+      (·[i₀]?) = ((cols[c]?).bind (·[i₀]?)).map g := by
+  rw [List.getD_eq_getElem?_getD]
+  rcases Nat.lt_or_ge c cols.length with hc | hc
+  · rw [List.getElem?_append_right (by simp only [List.length_take]; omega)]
+    simp only [List.length_take, Nat.min_eq_left hc.le, Nat.sub_self, List.getElem?_cons_zero,
+      Option.bind_some, List.getElem?_eq_getElem hc, Option.getD_some]
+    rcases Nat.lt_or_ge i₀ cols[c].length with hi | hi
+    · rw [List.getElem?_append_right (by simp only [List.length_take]; omega)]
+      simp [List.getElem?_eq_getElem hi, Nat.min_eq_left hi.le]
+    · rw [List.getElem?_eq_none (by omega : cols[c].length ≤ i₀)]
+      simp [List.take_of_length_le hi, List.getElem?_eq_none hi]
+  · rw [List.getElem?_eq_none hc, List.take_of_length_le hc]
+    rcases Nat.lt_or_ge cols.length c with hc' | hc'
+    · rw [List.getElem?_eq_none (by simp only [List.length_append, List.length_singleton]; omega)]
+      rfl
+    · have : c = cols.length := by omega
+      subst this
+      simp
+
+/-- D1.2c helper: the last level of `truncAux` keeps entry `i` of column `j`. -/
+theorem truncLast_getElem? {β : Type} (cols : List (List β)) (j i : Nat) :
+    ((cols.take j ++ [(cols.getD j []).take (i + 1)])[j]?).bind (·[i]?) = (cols[j]?).bind (·[i]?) := by
+  rw [List.getD_eq_getElem?_getD]
+  rcases Nat.lt_or_ge j cols.length with hc | hc
+  · rw [List.getElem?_append_right (by simp only [List.length_take]; omega)]
+    simp [List.length_take, Nat.min_eq_left hc.le, List.getElem?_eq_getElem hc]
+  · rw [List.getElem?_eq_none hc, List.take_of_length_le hc]
+    rcases Nat.lt_or_ge cols.length j with hc' | hc'
+    · rw [List.getElem?_eq_none (by simp only [List.length_append, List.length_singleton]; omega)]
+    · have : j = cols.length := by omega
+      subst this
+      simp
+
+/-- D1.2c helper: `truncAux` descends to the forest of the address and truncates there. -/
+theorem forestAt_truncAux : ∀ (π : List (Nat × Nat)) (t : Tree α) (j i : Nat),
+    (truncAux π j i t).forestAt π = (t.forestAt π).map (truncAux [] j i)
+  | [], _, _, _ => rfl
+  | (c, i₀) :: rest, .node cols, j, i => by
+    rw [forestAt_cons, forestAt_cons]
+    simp only [truncAux, Tree.cols]
+    rw [truncStep_getElem?]
+    cases (cols[c]?).bind (·[i₀]?) with
+    | none => rfl
+    | some x => exact forestAt_truncAux rest x.2 j i
+
+/-- D1.2c helper: `truncAux` keeps its target entry. -/
+theorem entryAt_truncAux (π : List (Nat × Nat)) (t : Tree α) (j i : Nat) :
+    (truncAux π j i t).entryAt ⟨⟨π, j⟩, i⟩ = t.entryAt ⟨⟨π, j⟩, i⟩ := by
+  rw [entryAt_eq_bind, entryAt_eq_bind, forestAt_truncAux]
+  cases t.forestAt π with
+  | none => rfl
+  | some f =>
+    obtain ⟨cols⟩ := f
+    simp only [Option.map_some, Option.bind_some, truncAux, Tree.cols]
+    exact truncLast_getElem? cols j i
+
+/-- D1.2c helper: `setAux` descends to the forest of the address and sets the height there. -/
+theorem forestAt_setAux (h : Tree α) : ∀ (π : List (Nat × Nat)) (t : Tree α) (j i : Nat),
+    (setAux h π j i t).forestAt π = (t.forestAt π).map (setAux h [] j i)
+  | [], _, _, _ => rfl
+  | (c, i₀) :: rest, .node cols, j, i => by
+    rw [forestAt_cons, forestAt_cons]
+    simp only [setAux, Tree.cols, List.getElem?_modify_eq]
+    cases hc : cols[c]? with
+    | none => rfl
+    | some col =>
+      simp only [Option.map_eq_map, Option.map_some, Option.bind_some, List.getElem?_modify_eq]
+      cases col[i₀]? with
+      | none => rfl
+      | some x => exact forestAt_setAux h rest x.2 j i
+
+/-- D1.2c helper: `setAux` sets the height of its target entry. -/
+theorem entryAt_setAux (h : Tree α) (π : List (Nat × Nat)) (t : Tree α) (j i : Nat) :
+    (setAux h π j i t).entryAt ⟨⟨π, j⟩, i⟩ = (t.entryAt ⟨⟨π, j⟩, i⟩).map fun x => (x.1, h) := by
+  rw [entryAt_eq_bind, entryAt_eq_bind, forestAt_setAux]
+  cases t.forestAt π with
+  | none => rfl
+  | some f =>
+    obtain ⟨cols⟩ := f
+    simp only [Option.map_some, Option.bind_some, setAux, Tree.cols, List.getElem?_modify_eq]
+    cases cols[j]? with
+    | none => rfl
+    | some col => simp [List.getElem?_modify_eq]
 
 /-- D1.2c (`truncAfter_roles`†): the roles of `truncAfter t e` are the roles of `t` strictly before
 `U_e`, followed by the maximal run of roles inside `e` starting with `U_e`. -/
@@ -228,12 +328,20 @@ theorem truncAfter_roles {t : Tree α} {e : EntryAddr} (he : e ∈ t.entryAddrs)
 
 /-- D1.2c: `truncAfter` keeps `e` and its height. -/
 theorem entryAt_truncAfter {t : Tree α} {e : EntryAddr} (he : e ∈ t.entryAddrs) :
-    (t.truncAfter e).entryAt e = t.entryAt e := by sorry
+    (t.truncAfter e).entryAt e = t.entryAt e := by
+  clear he
+  rw [truncAfter_eq_body, truncAfterBody]
+  split_ifs
+  · exact entryAt_truncAux e.col.path t e.col.col e.idx
+  · rfl
 
 /-- D1.2c: `setHeight` changes only the height of `e`. -/
 theorem entryAt_setHeight {t : Tree α} {e : EntryAddr} {p : α} {H : Tree α}
     (he : t.entryAt e = some (p, H)) (h : Tree α) : (t.setHeight e h).entryAt e = some (p, h) := by
-  sorry
+  rw [setHeight_eq_body, setHeightBody, if_pos (by rw [he]; rfl)]
+  have := entryAt_setAux h e.col.path t e.col.col e.idx
+  rw [he] at this
+  exact this
 
 /-- D1.2d: the last step of the last-column, last-entry route in `F`: `(|F| - 1, |col| - 1)` for
 the last column `col`, if it is nonempty. -/
