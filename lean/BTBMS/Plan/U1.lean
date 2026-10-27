@@ -1679,6 +1679,74 @@ theorem resolve_root_of_condV {E : Forest} (hV : CondV E) {sd : StopData} (h : s
     simp [Tree.entryAt, closingSlot, hcol]
   exact hV _ ((Tree.mem_entryAddrs_iff E _).mpr (by rw [hent]; rfl)) sd.r Tree.empty hent
 
+/-! ### D1.6a — the agreement lemma and the branch contracts (moved from the spine) -/
+
+-- provides: U1, D1.6 (deletion removes the empty last outer column)
+-- Moved from `Spine.lean` (its proof uses D1.6b/D1.6c; nothing in between uses it).
+theorem expand_deletion {E : Forest} (h : stepKind E = some .deletion) (n : Nat) :
+    expand E n = some (.node E.cols.dropLast) := by
+  have hc := (stepKind_deletion_iff E).mp h
+  have hE : E ≠ Tree.empty := by rintro rfl; simp [Tree.empty, Tree.cols] at hc
+  have hneg := (tailLayer_neg_iff hE).mpr hc
+  have hne : E.cols ≠ [] := by intro h0; simp [h0] at hc
+  unfold expand
+  split
+  · rename_i heq; exact absurd heq hne
+  · simp only [hneg, if_true]
+
+-- provides: U1, D1.6a (G-001: agreement on nonempty V ∧ I inputs)
+-- Moved from `Spine.lean` (its proof uses D1.6b/D1.6c; nothing in between uses it).
+theorem expand_eq_paperOp {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E)
+    (n : Nat) : expand E n = paperOp E n := by
+  have hne : E.cols ≠ [] := by
+    obtain ⟨cols⟩ := E
+    rintro (h0 : cols = [])
+    exact hE (by rw [h0]; rfl)
+  obtain ⟨col, hc⟩ : ∃ col, E.cols.getLast? = some col := by
+    cases hx : E.cols.getLast? with
+    | none => simp at hx; exact absurd hx hne
+    | some c => exact ⟨c, rfl⟩
+  by_cases hcol : col = []
+  · subst hcol
+    have hk : stepKind E = some .deletion := (stepKind_deletion_iff E).mpr hc
+    rw [expand_deletion hk, paperOp_deletion hk]
+  · obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_isSome hI hc hcol)
+    cases hs : specialStop sd
+    · obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp (resolve_root_of_condV hV hsd)
+      exact expand_eq_paperOp_ordinary hsd hs ho n
+    · exact expand_eq_paperOp_special hsd hs n
+
+-- provides: U1, D1.6a (on nonempty V ∧ I inputs the paper's route and root lookup are defined)
+-- Moved from `Spine.lean` (its proof uses D1.6b/D1.6c; nothing in between uses it).
+theorem stepKind_isSome {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E) :
+    (stepKind E).isSome := by
+  have hne : E.cols ≠ [] := by
+    obtain ⟨cols⟩ := E
+    rintro (h0 : cols = [])
+    exact hE (by rw [h0]; rfl)
+  obtain ⟨col, hc⟩ : ∃ col, E.cols.getLast? = some col := by
+    cases hx : E.cols.getLast? with
+    | none => simp at hx; exact absurd hx hne
+    | some c => exact ⟨c, rfl⟩
+  by_cases hcol : col = []
+  · subst hcol
+    rw [(stepKind_deletion_iff E).mpr hc]; rfl
+  · obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_isSome hI hc hcol)
+    have hr := resolve_root_of_condV hV hsd
+    rw [stepKind_of_stopData hsd]
+    split_ifs <;> rfl
+
+-- provides: U1, D1.6
+-- Moved from `Spine.lean` (its proof uses D1.6b; nothing in between uses it).
+theorem ownerEntry_of_special {E : Forest} {sd : StopData} (h : stepKind E = some .special)
+    (hsd : stopData E = some sd) : sd.ownerEntry.isSome := by
+  obtain ⟨sd', hsd', hs⟩ := (stepKind_special_iff E).mp h
+  rw [hsd] at hsd'; cases hsd'
+  have hpos : 0 < sd.depth := by
+    simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq] at hs; exact hs.1.1
+  obtain ⟨oe, -, -, hoe, -⟩ := ownerEntry_data hsd hpos
+  rw [hoe]; rfl
+
 /-! ## D2.2a — responses, edges and paths -/
 
 /-- D2.2a: the start `x(c,k)` of the cut-`k` test of column `c` (codex-crosscheck-1 Q2):

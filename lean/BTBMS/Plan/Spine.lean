@@ -704,9 +704,7 @@ def rootData (E : Forest) : Option RootData := rootDataBody E -- body: U1 (SCR-2
 /-- D1.6: the paper's operation `E[n]`, written from §1.2 alone (G-001). -/
 def paperOp (E : Forest) (n : Nat) : Option Forest := paperOpBody E n -- body: U1 (SCR-2)
 
--- provides: U1, D1.6a (G-001: agreement on nonempty V ∧ I inputs)
-theorem expand_eq_paperOp {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E)
-    (n : Nat) : expand E n = paperOp E n := by sorry
+-- (moved to `Plan/U1.lean`, after D1.6c, whose lemmas its proof uses: `Scan.expand_eq_paperOp`)
 
 -- provides: U1, D1.6a (the empty self-loop of the reference)
 theorem expand_empty (n : Nat) : expand Tree.empty n = some Tree.empty := rfl
@@ -715,9 +713,7 @@ theorem expand_empty (n : Nat) : expand Tree.empty n = some Tree.empty := rfl
 theorem expand_isSome {E : Forest} (hV : CondV E) (hI : CondI E) (hA : CondA E) (hS : CondS E)
     (n : Nat) : (expand E n).isSome := by sorry
 
--- provides: U1, D1.6a (on nonempty V ∧ I inputs the paper's route and root lookup are defined)
-theorem stepKind_isSome {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E) :
-    (stepKind E).isSome := by sorry
+-- (moved to `Plan/U1.lean`, after D1.6c, whose lemmas its proof uses: `Scan.stepKind_isSome`)
 
 -- provides: U1, D1.6 (branch data exist)
 theorem stopData_of_stepKind {E : Forest} {k : StepKind} (h : stepKind E = some k)
@@ -748,13 +744,9 @@ theorem rootData_of_ordinary {E : Forest} (h : stepKind E = some .ordinary) :
   obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp hres
   simp [ho]
 
--- provides: U1, D1.6
-theorem ownerEntry_of_special {E : Forest} {sd : StopData} (h : stepKind E = some .special)
-    (hsd : stopData E = some sd) : sd.ownerEntry.isSome := by sorry
+-- (moved to `Plan/U1.lean`, after D1.6c, whose lemmas its proof uses: `Scan.ownerEntry_of_special`)
 
--- provides: U1, D1.6 (deletion removes the empty last outer column)
-theorem expand_deletion {E : Forest} (h : stepKind E = some .deletion) (n : Nat) :
-    expand E n = some (.node E.cols.dropLast) := by sorry
+-- (moved to `Plan/U1.lean`, after D1.6c, whose lemmas its proof uses: `Scan.expand_deletion`)
 
 -- provides: U1, D1.9 (`truncAfter` is a safe prefix)
 theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
