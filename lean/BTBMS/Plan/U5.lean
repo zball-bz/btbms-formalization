@@ -588,27 +588,51 @@ theorem posBlock_vars (K : Key) (sel : Nat) :
 
 /-! ## N5.8 Projections of packet validity -/
 
+/-- N5.8 (helper): the three blocks of the joint diagram hold. -/
+theorem joint_holds {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P) :
+    BaseHolds P (prefixGraph pk.rk.E pk.rk.b) (pk.asg ∘ pk.tgtChart) ∧
+      BaseHolds P (graph pk.rk.F) (pk.asg ∘ pk.srcChart) ∧ pk.aux.Holds P pk.asg := by
+  have hj : pk.joint.Holds P pk.asg := hv.2.2.2.2.1
+  have h1 : (Diagram.ofBase ((prefixGraph pk.rk.E pk.rk.b).map
+      (BaseAtom.map pk.tgtChart))).Holds P pk.asg :=
+    fun x hx => hj x (List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inl hx))))
+  have h2 : (Diagram.ofBase ((graph pk.rk.F).map (BaseAtom.map pk.srcChart))).Holds P pk.asg :=
+    fun x hx => hj x (List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inr hx))))
+  rw [holds_ofBase, baseHolds_map'] at h1 h2
+  exact ⟨h1, h2, fun x hx => hj x (List.mem_append.2 (Or.inr hx))⟩
+
 /-- N5.8: the source context is configured by `asg ∘ srcChart` (Valid clause 4). -/
 theorem valid_src_config {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P) :
-    IsConfig P pk.rk.F (pk.asg ∘ pk.srcChart) := by
-  sorry
+    IsConfig P pk.rk.F (pk.asg ∘ pk.srcChart) :=
+  (joint_holds pk hv).2.1
 
 /-- N5.8: the target prefix graph holds through `tgtChart` (Valid clause 4). -/
 theorem valid_tgt_prefix {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P) :
-    BaseHolds P (prefixGraph pk.rk.E pk.rk.b) (pk.asg ∘ pk.tgtChart) := by
-  sorry
+    BaseHolds P (prefixGraph pk.rk.E pk.rk.b) (pk.asg ∘ pk.tgtChart) :=
+  (joint_holds pk hv).1
 
 /-- N5.8: the auxiliary diagram holds (Valid clause 4). -/
 theorem valid_aux {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P) :
-    pk.aux.Holds P pk.asg := by
-  sorry
+    pk.aux.Holds P pk.asg :=
+  (joint_holds pk hv).2.2
 
 /-- N5.8: the host and the target frame names are low; the owner is not. -/
 theorem lowNames_spec {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
     (hv : pk.Valid P) :
     pk.host ∈ pk.lowNames ∧ (∀ ov ∈ pk.tgtFrame.reps, ov.1 ∈ pk.lowNames ∧ ov.2 ∈ pk.lowNames) ∧
       pk.tgtFrame.host ∈ pk.lowNames ∧ pk.owner ∉ pk.lowNames := by
-  sorry
+  obtain ⟨-, hb, ha, -⟩ := hadm
+  have hlow : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
+  have hT : ∀ x ∈ prefixRoles pk.rk.E pk.rk.b, pk.tgtChart x ∈ pk.lowNames := fun x hx =>
+    List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inl (List.mem_map_of_mem hx))))
+  have hS : ∀ x ∈ prefixRoles pk.rk.F pk.rk.a, pk.srcChart x ∈ pk.lowNames := fun x hx =>
+    List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inr (List.mem_map_of_mem hx))))
+  obtain ⟨hbcol, hbreps⟩ := frameOf_mem_prefix hb
+  refine ⟨hS _ (frameOf_mem_prefix ha).1, fun ov hov => ?_, hT _ hbcol,
+    fun h => lt_irrefl _ (hlow _ h)⟩
+  simp only [SourcePacket.tgtFrame, Frame.map, frameOf, List.mem_map] at hov
+  obtain ⟨ov0, hov0, rfl⟩ := hov
+  exact ⟨hT _ (hbreps ov0 hov0).1, hT _ (hbreps ov0 hov0).2⟩
 
 /-! ## L6.7 Seed lemma -/
 
