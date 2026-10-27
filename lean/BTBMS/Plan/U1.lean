@@ -2145,23 +2145,92 @@ theorem cut_barrier {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E) {e
 
 /-- L2.4b: an unselected column keeps its actual keys. -/
 theorem capKeys_of_not_mem {E : Forest} {sel : List ColAddr} {c : ColAddr} (h : c ∉ sel) :
-    capKeys E sel c = actualKeys E c := by sorry
+    capKeys E sel c = actualKeys E c := by
+  simp [capKeys, h]
 
 /-- L2.4b (txt:222, point 1 of codex Q2): no entry query contains a capped last key. -/
 theorem cutQuery_capKeys (E : Forest) (sel : List ColAddr) (c : ColAddr) {i : Nat}
     (hi : i < ((E.colAt c).getD []).length) :
-    cutQuery (capKeys E sel c) i = cutQuery (actualKeys E c) i := by sorry
+    cutQuery (capKeys E sel c) i = cutQuery (actualKeys E c) i := by
+  by_cases hc : c ∈ sel
+  · have hi' : i < (actualKeys E c).length := by rwa [length_actualKeys]
+    simp only [cutQuery, capKeys, hc, if_true]
+    congr 1
+    rw [List.take_append_of_le_length (by rw [List.length_dropLast]; omega),
+      List.dropLast_eq_take, List.take_take, Nat.min_eq_left (by omega)]
+  · rw [capKeys_of_not_mem hc]
 
 /-- L2.4b: a capped column whose actual scan is not exhausted gives the actual response
 (L2.5 (2)). -/
 theorem resp_capKeys {E : Forest} {sel : List ColAddr} {o : ColAddr} {W : List (WithTop Key)}
     (hnx : cursor (actualKeys E o) W < (actualKeys E o).length) :
-    resp E (capKeys E sel) o W = resp E (actualKeys E) o W := by sorry
+    resp E (capKeys E sel) o W = resp E (actualKeys E) o W := by
+  by_cases ho : o ∈ sel
+  · have hne : actualKeys E o ≠ [] := by
+      intro h; rw [h] at hnx; simp at hnx
+    have hks : capKeys E sel o = (actualKeys E o).dropLast ++ [⊤] := by
+      obtain ⟨y, hy⟩ := Option.ne_none_iff_exists'.1 (mt List.getLast?_eq_none_iff.1 hne)
+      simp [capKeys, ho, hy]
+    have := cursor_eq_of_trace_eq (trace_cap_top hne hnx)
+    simp only [resp, hks, this]
+  · simp only [resp, capKeys_of_not_mem ho]
 
 /-- L2.4b (point 2 of codex Q2): a route column visible from a column of `E` contains it. -/
 theorem routeCols_visible {E : Forest} {c a : ColAddr} {z : Nat} (hc : c ∈ E.colAddrs)
     (ha : a ∈ routeCols E) (hres : c.resolve 0 z = some a) :
-    ∃ v, (⟨a, v⟩ : EntryAddr) ∈ E.entryAddrs ∧ (⟨a, v⟩ : EntryAddr).Contains c := by sorry
+    ∃ v, (⟨a, v⟩ : EntryAddr) ∈ E.entryAddrs ∧ (⟨a, v⟩ : EntryAddr).Contains c := by
+  obtain ⟨hst, -⟩ := (ColAddr.resolve_spec 0 c a z).1 hres
+  obtain ⟨-, F, hF, hFl⟩ := (Scan.mem_routeCols_iff E a).1 ha
+  have hcol := hc
+  rw [Tree.mem_colAddrs_iff, Option.isSome_iff_exists] at hcol
+  obtain ⟨col, hcol⟩ := hcol
+  rcases hst with ⟨k, ck, ik, hk, hap, hle⟩ | ⟨hap, hlt⟩
+  · have hk' : k < c.path.length := (List.getElem?_eq_some_iff.1 hk).1
+    have htake : c.path.take (k + 1) = a.path ++ [(ck, ik)] := by
+      rw [List.take_add_one, hk, hap]; rfl
+    have hG : (E.forestAt (c.path.take (k + 1))).isSome := by
+      unfold Tree.colAt at hcol
+      rw [← List.take_append_drop (k + 1) c.path, Tree.forestAt_append] at hcol
+      cases h : E.forestAt (c.path.take (k + 1)) with
+      | none => rw [h] at hcol; simp at hcol
+      | some _ => rfl
+    rw [htake, Tree.forestAt_append, hF, Option.bind_some, Tree.forestAt_cons] at hG
+    have hck : ck < F.cols.length := by
+      cases h : F.cols[ck]? with
+      | none => rw [h] at hG; simp at hG
+      | some _ => exact (List.getElem?_eq_some_iff.1 h).1
+    have hac : a.col = ck := by omega
+    have hcont : (⟨a, ik⟩ : EntryAddr).Contains c := by
+      show a.path ++ [(a.col, ik)] <+: c.path
+      rw [hac, ← htake]
+      exact List.take_prefix _ _
+    exact ⟨ik, mem_entryAddrs_of_contains hc hcont, hcont⟩
+  · exfalso
+    unfold Tree.colAt at hcol
+    rw [← hap, hF, Option.bind_some] at hcol
+    have := (List.getElem?_eq_some_iff.1 hcol).1
+    omega
+
+/-- L2.4b helper (the edge step of items 5 and L2.4a item 1): along an actual cut path whose
+containing entries satisfy their cut bounds, the capped and actual responses at the reached
+vertex agree. -/
+theorem resp_cap_eq_of_path {E : Forest} {sel : List ColAddr}
+    (hsel : ∀ a ∈ sel, a ∈ routeCols E) {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
+    (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {z : Nat}
+    (hz : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) z)
+    {o : ColAddr} (ho : c.resolve 0 z = some o) :
+    resp E (capKeys E sel) o (cutQuery (actualKeys E c) k) =
+      resp E (actualKeys E) o (cutQuery (actualKeys E c) k) := by
+  by_cases hos : o ∈ sel
+  · obtain ⟨v, hv, hvc⟩ := routeCols_visible hc (hsel o hos) ho
+    have hoz : o.num 0 = z := ColAddr.resolve_num ho
+    have hb := hcut _ hv hvc (hoz ▸ hz)
+    rw [boundary_eq_cutQuery] at hb
+    have hvl : v < (actualKeys E o).length := by
+      rw [length_actualKeys]; exact idx_lt_of_mem_entryAddrs hv
+    exact resp_capKeys
+      (lt_of_le_of_lt (cursor_le_of_lt_cutQuery (cutQuery_noninc _ _) hvl hb) hvl)
+  · simp only [resp, capKeys_of_not_mem hos]
 
 /-- L2.4b: at a cut whose containing entries satisfy their cut bounds, actual paths are capped
 paths (forward direction). -/
@@ -2169,18 +2238,37 @@ theorem capped_path_of_actual {E : Forest} (hV : CondV E) {sel : List ColAddr}
     (hsel : ∀ a ∈ sel, a ∈ routeCols E) {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
     (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {y : Nat}
     (h : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y) :
-    Path E (capKeys E sel) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by sorry
+    Path E (capKeys E sel) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail hxz hzy ih =>
+    obtain ⟨o, ho, hr⟩ := hzy
+    exact ih.tail ⟨o, ho, (resp_cap_eq_of_path hsel hc hcut hxz ho).trans hr⟩
 
 /-- L2.4a (first divergence): under the same cut bounds, capped paths are actual paths. -/
 theorem actual_path_of_capped {E : Forest} (hV : CondV E) {sel : List ColAddr}
     (hsel : ∀ a ∈ sel, a ∈ routeCols E) {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
     (hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c k) {y : Nat}
     (h : Path E (capKeys E sel) c (cutQuery (actualKeys E c) k) (cutStart E c k) y) :
-    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by sorry
+    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ hzy ih =>
+    obtain ⟨o, ho, hr⟩ := hzy
+    exact ih.tail ⟨o, ho, (resp_cap_eq_of_path hsel hc hcut ih ho).symm.trans hr⟩
 
 /-- L2.4: forward capping. -/
 theorem capping_forward {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E)
-    {sel : List ColAddr} (hsel : ∀ a ∈ sel, a ∈ routeCols E) : CondAK E (capKeys E sel) := by sorry
+    {sel : List ColAddr} (hsel : ∀ a ∈ sel, a ∈ routeCols E) : CondAK E (capKeys E sel) := by
+  rw [condAK_iff]
+  intro c hc i p hp
+  have hi : i < ((E.colAt c).getD []).length := by
+    have := (List.getElem?_eq_some_iff.1 hp).1
+    simpa [parents] using this
+  rw [cutQuery_capKeys E sel c hi]
+  exact capped_path_of_actual hV hsel hc
+    (fun e he hec => (barrier_joint hV hA hS he hc hec (by simpa [parents] using hi.le)).1)
+    ((condAK_iff _ _).1 hA c hc i p hp)
 
 /-- L2.4a: the reverse-capping predicate at `(c, i)`: actual A at entry `i` together with the
 actual return bounds of that entry for every containing entry (codex-crosscheck-1 Q2). -/
@@ -2192,23 +2280,46 @@ theorem revPred_step {E : Forest} (hV : CondV E) (hS : CondS E) {sel : List ColA
     (hsel : ∀ a ∈ sel, a ∈ routeCols E) (hA : CondAK E (capKeys E sel)) {c : ColAddr}
     (hc : c ∈ E.colAddrs) (i : Nat)
     (ihlow : ∀ o ∈ E.colAddrs, o.num 0 < c.num 0 → ∀ v, RevPred E o v)
-    (ihprev : ∀ i' < i, RevPred E c i') : RevPred E c i := by sorry
+    (ihprev : ∀ i' < i, RevPred E c i') : RevPred E c i := by
+  by_cases hi : i < (parents E c).length
+  · have hcut : ∀ e ∈ E.entryAddrs, e.Contains c → CutBound E e c i := fun e he hec =>
+      cutBound_of_returns hV he hc hec hi.le
+        (fun o ho heo hlt v => (ihlow o ho hlt v).2 e he heo)
+        (fun k' hk' => (ihprev k' hk').2 e he hec)
+    have hAA : AAt E (actualKeys E) c i := by
+      intro p hp
+      have hcap := (condAK_iff _ _).1 hA c hc i p hp
+      rw [cutQuery_capKeys E sel c (by simpa [parents] using hi)] at hcap
+      exact actual_path_of_capped hV hsel hc hcut hcap
+    exact ⟨hAA, fun e he hec => returnBound_of_cutBound hS he hc hec hAA (hcut e he hec)⟩
+  · have hnone : (parents E c)[i]? = none := List.getElem?_eq_none (by omega)
+    refine ⟨fun p hp => ?_, fun e _ _ hp => ?_⟩ <;> rw [hnone] at hp <;> cases hp
 
 /-- L2.4a: the reverse joint induction on `(c.num 0, i)`: actual A together with the actual
 return bounds. -/
 theorem capping_reverse_joint {E : Forest} (hV : CondV E) (hS : CondS E) {sel : List ColAddr}
     (hsel : ∀ a ∈ sel, a ∈ routeCols E) (hA : CondAK E (capKeys E sel)) {c : ColAddr}
     (hc : c ∈ E.colAddrs) (i : Nat) :
-    AAt E (actualKeys E) c i ∧ ∀ e ∈ E.entryAddrs, e.Contains c → ReturnBound E e c i := by sorry
+    AAt E (actualKeys E) c i ∧ ∀ e ∈ E.entryAddrs, e.Contains c → ReturnBound E e c i := by
+  suffices H : ∀ N, ∀ c ∈ E.colAddrs, c.num 0 = N → ∀ i, RevPred E c i from H _ c hc rfl i
+  intro N
+  induction N using Nat.strong_induction_on with
+  | _ N ihN =>
+    intro c hc hN i
+    induction i using Nat.strong_induction_on with
+    | _ i ihi =>
+      exact revPred_step hV hS hsel hA hc i (fun o ho hlt v => ihN _ (hN ▸ hlt) o ho rfl v) ihi
 
 /-- L2.4a: reverse capping. -/
 theorem capping_reverse {E : Forest} (hV : CondV E) (hS : CondS E) {sel : List ColAddr}
-    (hsel : ∀ a ∈ sel, a ∈ routeCols E) (hA : CondAK E (capKeys E sel)) : CondA E := by sorry
+    (hsel : ∀ a ∈ sel, a ∈ routeCols E) (hA : CondAK E (capKeys E sel)) : CondA E :=
+  (condAK_iff _ _).2 fun _ hc i => (capping_reverse_joint hV hS hsel hA hc i).1
 
 /-- L2.4 (`capping_iff`†, txt:223-224): on V, S inputs, A is equivalent to A in every
 independently capped system on the terminal route. -/
 theorem capping_iff {E : Forest} (hV : CondV E) (hS : CondS E) {sel : List ColAddr}
-    (hsel : ∀ a ∈ sel, a ∈ routeCols E) : CondA E ↔ CondAK E (capKeys E sel) := by sorry
+    (hsel : ∀ a ∈ sel, a ∈ routeCols E) : CondA E ↔ CondAK E (capKeys E sel) :=
+  ⟨fun hA => capping_forward hV hA hS hsel, capping_reverse hV hS hsel⟩
 
 /-! ## L2.4c — every operation is defined on V, I, A, S -/
 
