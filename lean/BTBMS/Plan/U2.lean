@@ -4985,6 +4985,41 @@ theorem admCap_query {E : Forest} (hE : InL E) (w : AdmCap E) {sd : StopData}
   · simp only; rw [hcol, Option.getD_some, List.getElem?_take_of_lt hj]
 
 
+theorem mem_takeWhile_ne_of_lt {α : Type} [DecidableEq α] :
+    ∀ (l : List α) {z y : α} {i j : Nat}, l.Nodup → l[j]? = some z → i < j → l[i]? = some y →
+      y ∈ l.takeWhile (· != z)
+  | [], _, _, _, _, _, h, _, _ => by simp at h
+  | a :: l, z, y, i, j, hnd, hj, hij, hi => by
+    rcases j with _ | j
+    · omega
+    have haz : a ≠ z := by
+      intro h; subst h
+      have := List.mem_of_getElem? (show l[j]? = some a by simpa using hj)
+      exact (List.nodup_cons.1 hnd).1 this
+    rw [List.takeWhile_cons, if_pos (by simp [haz])]
+    rcases i with _ | i
+    · simp at hi; subst hi; simp
+    · exact List.mem_cons_of_mem _ (mem_takeWhile_ne_of_lt l (i := i) (j := j) (List.nodup_cons.1 hnd).2
+        (by simpa using hj) (by omega) (by simpa using hi))
+
+theorem lt_of_mem_takeWhile_ne {α : Type} [DecidableEq α] :
+    ∀ (l : List α) {z x : α}, x ∈ l.takeWhile (· != z) → z ∈ l →
+      ∃ i j : Nat, l[i]? = some x ∧ l[j]? = some z ∧ i < j
+  | [], _, _, h, _ => by simp at h
+  | a :: l, z, x, hx, hz => by
+    by_cases haz : a = z
+    · subst haz; simp at hx
+    · rw [List.takeWhile_cons, if_pos (by simp [haz])] at hx
+      have hz' : z ∈ l := by
+        rcases List.mem_cons.1 hz with h | h
+        · exact absurd h.symm haz
+        · exact h
+      rcases List.mem_cons.1 hx with rfl | hx
+      · obtain ⟨j, hj⟩ := List.mem_iff_getElem?.1 hz'
+        exact ⟨0, j + 1, rfl, by simpa using hj, by omega⟩
+      · obtain ⟨i, j, h1, h2, h3⟩ := lt_of_mem_takeWhile_ne l hx hz'
+        exact ⟨i + 1, j + 1, by simpa using h1, by simpa using h2, by omega⟩
+
 -- provides: U2, D3.1d (requested by U5 R16): the origin of the stopping role exists, the origin map
 -- is injective, and every pre-stop role of the anchor has an origin strictly before the origin of
 -- the stopping role.
@@ -4994,7 +5029,54 @@ theorem anchorOrigin_prefix {E : Forest} {cap : Option (AdmCap E)} (hE : InL (an
     ∃ T', anchorOrigin E cap (.ord sd.col) = some T' ∧
     (∀ x x' y, anchorOrigin E cap x = some y → anchorOrigin E cap x' = some y → x = x') ∧
     ∀ x ∈ Packet.rolesBefore (anchor E cap) (.ord sd.col),
-      ∃ y, anchorOrigin E cap x = some y ∧ y ∈ Packet.rolesBefore E T' ∧ y ∈ E.roles := by sorry
+      ∃ y, anchorOrigin E cap x = some y ∧ y ∈ Packet.rolesBefore E T' ∧ y ∈ E.roles := by
+  cases cap with
+  | none =>
+    refine ⟨.ord sd.col, rfl, fun x x' y h1 h2 => ?_, fun x hx => ⟨x, rfl, hx, ?_⟩⟩
+    · simp only [anchorOrigin] at h1 h2; exact (Option.some.inj h1).trans (Option.some.inj h2).symm
+    · exact (List.takeWhile_sublist _).subset hx
+  | some w =>
+    simp only [anchor] at hsd ⊢
+    obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 w.upward
+    obtain ⟨c', hsd', hord, hslot⟩ := adm_stop (k := w.cut) (p := w.par) hcol w.moves w.movesValid
+    have : sd = _ := Option.some.inj (hsd.symm.trans hsd')
+    subst this
+    have hosd : w.origin (.ord c') = some (.ord w.col) := by
+      rw [originBody_eq, hord, if_neg (by simp)]
+    refine ⟨.ord w.col, hosd, fun x x' y h1 h2 => ?_, fun x hx => ?_⟩
+    · simp only [anchorOrigin, originBody_eq] at h1 h2
+      split_ifs at h1 h2
+      exact backRole_injective _ ((Option.some.inj h1).trans (Option.some.inj h2).symm)
+    · simp only [anchorOrigin]
+      -- `x` precedes the stopping column, hence is not the closing slot
+      have hmem : Role.ord c' ∈ w.H.roles := by
+        have := stopData_col_mem hsd; exact this
+      obtain ⟨i, j, hi, hj, hij⟩ := lt_of_mem_takeWhile_ne _ hx hmem
+      have hxm : x ∈ w.H.roles := List.mem_of_getElem? hi
+      obtain ⟨-, -, -, -, -, qs, hqs, -⟩ := stopData_roles hsd
+      have hnd := Tree.roles_nodup w.H
+      let sd0 : StopData := ⟨w.col.path.length, c', ColAddr.num 0 w.col, w.par, List.take w.cut col⟩
+      have hxc : x ≠ .slot (closingSlot sd0) := by
+        rintro rfl
+        rw [hqs] at hnd
+        have h1 : Role.slot (closingSlot sd0) ∈ Packet.rolesBefore w.H (.ord c') := hx
+        have h2 := List.nodup_append.1 hnd
+        exact h2.2.2 _ h1 _ (List.mem_cons_of_mem _ (List.mem_append_right _ (List.mem_singleton_self _))) rfl
+      obtain ⟨-, hnone, -, -⟩ := origin_spec w
+      have hxs : (w.origin x).isSome := by
+        cases h : w.origin x with
+        | some _ => rfl
+        | none =>
+          obtain ⟨sd2, hsd2, rfl⟩ := (hnone x hxm).1 h
+          rw [hsd] at hsd2; obtain rfl := Option.some.inj hsd2
+          exact absurd rfl hxc
+      obtain ⟨y, hy⟩ := Option.isSome_iff_exists.1 hxs
+      obtain ⟨i', j', hi', hj', hij'⟩ := origin_order w x (.ord c') ⟨i, j, hi, hj, hij⟩ hxs
+        (by rw [hosd]; rfl)
+      simp only [Packet.anchorD, anchorOrigin, hy, hosd, Option.getD_some] at hi' hj'
+      exact ⟨y, hy, mem_takeWhile_ne_of_lt _ (Tree.roles_nodup E) hj' hij' hi',
+        List.mem_of_getElem? hi'⟩
+
 
 /-! ### D3.1d helpers: legal moves raise the expression -/
 
