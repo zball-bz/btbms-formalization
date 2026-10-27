@@ -283,7 +283,18 @@ def tagBound (l : List Name) : Nat :=
 
 /-- N5.5: names with tag `tagBound l` are fresh for `l`. -/
 theorem tagBound_fresh (l : List Name) (r : Role) : Name.role (tagBound l) r ∉ l := by
-  sorry
+  have key : ∀ (l : List Name) (t : Nat) (r' : Role), Name.role t r' ∈ l → t < tagBound l := by
+    intro l
+    induction l with
+    | nil => intro t r' h; simp at h
+    | cons n rest ih =>
+      intro t r' h
+      simp only [tagBound, List.foldr_cons] at ih ⊢
+      rcases List.mem_cons.1 h with rfl | h
+      · exact lt_max_of_lt_right (Nat.lt_succ_self t)
+      · exact lt_max_of_lt_left (ih t r' h)
+  intro h
+  exact lt_irrefl _ (key l _ r h)
 
 /-! ## N5.6 Prefix monotonicity of free blocks -/
 
