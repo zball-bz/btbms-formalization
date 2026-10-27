@@ -9876,25 +9876,6 @@ theorem cof_of_KS {B : Forest} (hB : InL B) (hKS : KS B) : Cof B := by
   · obtain ⟨n, E', -, -, hE', hBE'⟩ := bound_of_KS hB hKS hE hlt hlast
     exact ⟨n, E', hE', le_of_lt hBE', expand_lt hEne hE.1 hE.2.1 hE'⟩
 
--- L3.6a (txt:463-465): reversing one repair: the complete old suffixes compare `Y_i ≥ Y_j`
-theorem repair_suffix_ge {B : Forest} (hH : CondH B) {cj ci : ColAddr} {k p : Nat}
-    (hj : IsUpward B cj k p) (hi : IsUpward B ci k p)
-    (hmove : ∃ m, MoveOK (litCap B cj k p) m ∧ applyMove (litCap B cj k p) m = litCap B ci k p) :
-    localSuffix B cj ≤ localSuffix B ci := by sorry
-
--- L3.6b (txt:466-481): success transfers backward through one legal move
--- VERIFY-U2 (F5): `hP` added; step 1 gets S of the cap from L3.1e, which needs P of `B`
-theorem success_unmove {B : Forest} (hL : InL B) (hP : CondP B) {cj ci : ColAddr} {k p : Nat}
-    (hj : IsUpward B cj k p) (hi : IsUpward B ci k p)
-    (hjV : CondV (litCap B cj k p)) (hjI : CondI (litCap B cj k p))
-    (hjA : CondAK (litCap B cj k p) (capKeys (litCap B cj k p) (routeCols (litCap B cj k p))))
-    (hmove : ∃ m, MoveOK (litCap B cj k p) m ∧ applyMove (litCap B cj k p) m = litCap B ci k p)
-    (hsucc : Success (litCap B ci k p) (localSuffix B ci)) :
-    Success (litCap B cj k p) (localSuffix B cj) := by sorry
-
--- provides: U2, L3.6 (txt:459-481): cap completion
-theorem cap_completion {B : Forest} (hL : InL B) (hP : CondP B) (hcof : Cof B) : CC B := by sorry
-
 /-- T3.8j helper: the complete local suffix starts with the cap column. -/
 theorem localSuffix_eq_E5 {B : Forest} {c : ColAddr} {col : Column} (hcol : B.colAt c = some col) :
     ∃ R, localSuffix B c = Tree.node (col :: R) := by
@@ -10008,6 +9989,121 @@ theorem covers_of_end_E5 {B : Forest} (hB : CondI B) {c : ColAddr} {k p : Nat}
   (covers_iff_success hB hup hKL.1 hKL.2.1 (fun _ hrd => kernelDefined_of_inL_E5 hKL
     (litCap_ordinary hB hup hKL.1 hKL.2.1) (stopData_litCap hup) hrd)).2
     (fullCut_success hup hKL hend)
+
+-- L3.6a (txt:463-465): reversing one repair: the complete old suffixes compare `Y_i ≥ Y_j`
+theorem repair_suffix_ge {B : Forest} (hH : CondH B) {cj ci : ColAddr} {k p : Nat}
+    (hj : IsUpward B cj k p) (hi : IsUpward B ci k p)
+    (hmove : ∃ m, MoveOK (litCap B cj k p) m ∧ applyMove (litCap B cj k p) m = litCap B ci k p) :
+    localSuffix B cj ≤ localSuffix B ci := by sorry
+
+-- L3.6b (txt:466-481): success transfers backward through one legal move
+-- VERIFY-U2 (F5): `hP` added; step 1 gets S of the cap from L3.1e, which needs P of `B`
+theorem success_unmove {B : Forest} (hL : InL B) (hP : CondP B) {cj ci : ColAddr} {k p : Nat}
+    (hj : IsUpward B cj k p) (hi : IsUpward B ci k p)
+    (hjV : CondV (litCap B cj k p)) (hjI : CondI (litCap B cj k p))
+    (hjA : CondAK (litCap B cj k p) (capKeys (litCap B cj k p) (routeCols (litCap B cj k p))))
+    (hmove : ∃ m, MoveOK (litCap B cj k p) m ∧ applyMove (litCap B cj k p) m = litCap B ci k p)
+    (hsucc : Success (litCap B ci k p) (localSuffix B ci)) :
+    Success (litCap B cj k p) (localSuffix B cj) := by sorry
+
+/-- L3.6 helper: a literal cap determines its column. -/
+theorem litCap_inj_E5 {B : Forest} {c₁ c₂ : ColAddr} {k p : Nat} (h₁ : IsUpward B c₁ k p)
+    (h₂ : IsUpward B c₂ k p) (h : litCap B c₁ k p = litCap B c₂ k p) : c₁ = c₂ := by
+  have e₁ := stopData_litCap h₁
+  have e₂ := stopData_litCap h₂
+  rw [h, e₂] at e₁
+  have := congrArg StopData.col (Option.some.inj e₁)
+  exact this.symm
+
+
+/-- L3.6 helper: prefixes of a valid move list are valid. -/
+theorem movesValid_take_E5 {K : Forest} {ms : List Move} (h : MovesValid K ms) (s : Nat) :
+    MovesValid K (ms.take s) := by
+  intro idx hidx
+  have hidx' : idx < ms.length := by simp at hidx; omega
+  have := h idx hidx'
+  rw [List.take_take, Nat.min_eq_left (by simp at hidx; omega)]
+  simpa using this
+
+
+theorem applyMoves_take_succ_E5 (K : Forest) (ms : List Move) {s : Nat} (hs : s < ms.length) :
+    applyMoves K (ms.take (s + 1)) = applyMove (applyMoves K (ms.take s)) ms[s] := by
+  unfold applyMoves
+  rw [List.take_add_one, List.getElem?_eq_getElem hs, Option.toList_some, List.foldl_append]
+  rfl
+
+-- provides: U2, L3.6 (txt:459-481): cap completion
+theorem cap_completion {B : Forest} (hL : InL B) (hP : CondP B) (hcof : Cof B) : CC B := by
+  intro c k p hup hKV hKI hKA
+  obtain ⟨w, hwc, hwk, hwp, -, c', hup', hwH⟩ := repair hL hP hup hKV hKI hKA
+  have hH : applyMoves (litCap B c k p) w.moves = litCap B c' k p := by
+    rw [← hwH]; unfold AdmCap.H; rw [hwc, hwk, hwp]
+  have hMV : MovesValid (litCap B c k p) w.moves := by
+    have := w.movesValid; rwa [hwc, hwk, hwp] at this
+  have hHL : InL (litCap B c' k p) := by
+    have := w.inL; rw [hwc, hwk, hwp, hH] at this; exact this
+  -- the last cap succeeds
+  have hcov : Covers (litCap B c' k p) B :=
+    covers_of_gt hcof hHL (litCap_ne_empty_E5 hup') (litCap_last_ne_E5 hup') (lt_litCap hup')
+      le_rfl (fun K0 h0 => expand_zero_litCap_lt hL.2.1 hup' hHL.1 hHL.2.1 h0)
+  have hsuccEnd := (covers_iff_success hL.2.1 hup' hHL.1 hHL.2.1 (fun _ hrd =>
+    kernelDefined_of_inL_E5 hHL (litCap_ordinary hL.2.1 hup' hHL.1 hHL.2.1) (stopData_litCap hup')
+      hrd)).1 hcov
+  -- the intermediate caps are upward literal caps with V, I and decorated A
+  have hfwd : ∀ s, ∃ cs, IsUpward B cs k p ∧
+      applyMoves (litCap B c k p) (w.moves.take s) = litCap B cs k p ∧
+      CondV (litCap B cs k p) ∧ CondI (litCap B cs k p) ∧
+      CondAK (litCap B cs k p) (capKeys (litCap B cs k p) (routeCols (litCap B cs k p))) := by
+    intro s
+    induction s with
+    | zero => exact ⟨c, hup, by simp [applyMoves], hKV, hKI, hKA⟩
+    | succ s ih =>
+      obtain ⟨cs, hups, heqs, hVs, hIs, hAs⟩ := ih
+      obtain ⟨c'', hup'', heq'', -⟩ :=
+        applyMoves_litCap hL.2.2.1 hup (movesValid_take_E5 hMV (s + 1))
+      refine ⟨c'', hup'', heq'', ?_⟩
+      by_cases hs : s < w.moves.length
+      · have hok : MoveOK (litCap B cs k p) w.moves[s] := by
+          have := hMV s hs; rwa [heqs] at this
+        obtain ⟨hV', hI', hA'⟩ := decoratedA_applyMove hok hVs hAs
+        rw [← heq'', applyMoves_take_succ_E5 _ _ hs, heqs]
+        exact ⟨hV', hI' hIs, hA'⟩
+      · have h1 : w.moves.take (s + 1) = w.moves.take s := by
+          rw [List.take_of_length_le (by omega), List.take_of_length_le (by omega)]
+        rw [h1, heqs] at heq''
+        rw [← heq'']
+        exact ⟨hVs, hIs, hAs⟩
+  choose cs hups heqs hVs hIs hAs using hfwd
+  -- backward induction through the moves
+  have hback : ∀ t, t ≤ w.moves.length →
+      Success (litCap B (cs (w.moves.length - t)) k p) (localSuffix B (cs (w.moves.length - t))) := by
+    intro t
+    induction t with
+    | zero =>
+      intro _
+      have h1 := heqs w.moves.length
+      rw [List.take_length, hH] at h1
+      rw [Nat.sub_zero, ← litCap_inj_E5 hup' (hups _) h1]
+      exact hsuccEnd
+    | succ t ih =>
+      intro ht
+      have ih := ih (by omega)
+      set s := w.moves.length - (t + 1) with hsdef
+      have hs : s < w.moves.length := by omega
+      have hs1 : w.moves.length - t = s + 1 := by omega
+      rw [hs1] at ih
+      have hok : MoveOK (litCap B (cs s) k p) w.moves[s] := by
+        have := hMV s hs; rwa [heqs] at this
+      have hmv : applyMove (litCap B (cs s) k p) w.moves[s] = litCap B (cs (s + 1)) k p := by
+        rw [← heqs s, ← heqs (s + 1), applyMoves_take_succ_E5 _ _ hs]
+      exact success_unmove hL hP (hups s) (hups (s + 1)) (hVs s) (hIs s) (hAs s)
+        ⟨w.moves[s], hok, hmv⟩ ih
+  have h0 := hback w.moves.length le_rfl
+  rw [Nat.sub_self] at h0
+  have he0 := heqs 0
+  simp only [List.take_zero, applyMoves, List.foldl_nil] at he0
+  rw [litCap_inj_E5 hup (hups 0) he0]
+  exact h0
 
 /-- T3.8i helper: the full cut of a branch column appends one atom to the word. -/
 theorem branch_litCap_E5 (p : Nat) : ∀ (l i k e : Nat), l ≤ k →
