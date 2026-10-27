@@ -561,9 +561,210 @@ theorem gword_eq_map_word (E : Forest) : gword E = (word E).map toGAtom :=
 theorem mu_eq_length_gword (E : Forest) : mu E = (gword E).length := by
   rw [gword_eq_map_word, List.length_map]; rfl
 
+mutual
+/-- C1.8a helper: `gwordAt_fst_ge` together with its column, entry and later-entry forms. -/
+theorem gwordAt_fst_ge' {α : Type} : (e : Nat) → (t : Tree α) → ∀ A ∈ gwordAt e t, 2 * e ≤ (ofLex A).1
+  | e, .node cols => by simp only [gwordAt]; exact gwordCols_fst_ge e cols
+theorem gwordCols_fst_ge {α : Type} :
+    (e : Nat) → (cs : List (List (α × Tree α))) → ∀ A ∈ gwordCols e cs, 2 * e ≤ (ofLex A).1
+  | _, [] => by simp [gwordCols]
+  | e, c :: cs => by
+    simp only [gwordCols, List.mem_append]
+    rintro A (hA | hA)
+    · exact gwordCol_fst_ge e c A hA
+    · exact gwordCols_fst_ge e cs A hA
+theorem gwordCol_fst_ge {α : Type} :
+    (e : Nat) → (c : List (α × Tree α)) → ∀ A ∈ gwordCol e c, 2 * e ≤ (ofLex A).1
+  | e, [] => by simp [gwordCol]
+  | e, (p, h) :: es => by
+    simp only [gwordCol, List.mem_cons, List.mem_append]
+    rintro A (rfl | hA | hA)
+    · simp
+    · have := gwordAt_fst_ge' (e + 1) h A hA; omega
+    · exact gwordLater_fst_ge e es A hA
+theorem gwordLater_fst_ge {α : Type} :
+    (e : Nat) → (c : List (α × Tree α)) → ∀ A ∈ gwordLater e c, 2 * e ≤ (ofLex A).1
+  | _, [] => by simp [gwordLater]
+  | e, (p, h) :: es => by
+    simp only [gwordLater, List.mem_cons, List.mem_append]
+    rintro A (rfl | hA | hA)
+    · simp
+    · have := gwordAt_fst_ge' (e + 1) h A hA; omega
+    · exact gwordLater_fst_ge e es A hA
+end
+
 /-- C1.8a: every atom of `gwordAt e t` has depth coordinate at least `2e`. -/
 theorem gwordAt_fst_ge {α : Type} (e : Nat) (t : Tree α) :
-    ∀ A ∈ gwordAt e t, 2 * e ≤ (ofLex A).1 := by sorry
+    ∀ A ∈ gwordAt e t, 2 * e ≤ (ofLex A).1 := gwordAt_fst_ge' e t
+
+/-- C1.8a helper: the three-way reading of a comparison `o` of `X` with `Y`; `Q` is what an
+`.eq` comparison yields. -/
+def CmpTri {β : Type} [LT β] (o : Ordering) (X Y : β) (Q : Prop) : Prop :=
+  (o = .lt → X < Y) ∧ (o = .gt → Y < X) ∧ (o = .eq → Q)
+
+theorem CmpTri.mono {β : Type} [LT β] {o : Ordering} {X Y : β} {Q Q' : Prop}
+    (h : CmpTri o X Y Q) (hQ : Q → Q') : CmpTri o X Y Q' :=
+  ⟨h.1, h.2.1, fun ho => hQ (h.2.2 ho)⟩
+
+/-- C1.8a helper: a common prefix does not change a list comparison. -/
+theorem list_append_lt_append_left {β : Type} [LinearOrder β] (l : List β) {xs ys : List β} :
+    l ++ xs < l ++ ys ↔ xs < ys := by
+  induction l with
+  | nil => rfl
+  | cons a l ih => rw [List.cons_append, List.cons_append, List.cons_lt_cons_iff, ih]; simp
+
+/-- C1.8a helper: a lexicographic `then` of two three-way comparisons, the second read after a
+common (on `.eq`) prefix. -/
+theorem CmpTri.then {β : Type} [LinearOrder β] {o₁ o₂ : Ordering} {P P' X Y : List β}
+    {Qa Qb : Prop} (h₁ : CmpTri o₁ (P ++ X) (P' ++ Y) Qa) (hP : Qa → P = P')
+    (h₂ : CmpTri o₂ X Y Qb) : CmpTri (o₁.then o₂) (P ++ X) (P' ++ Y) (Qa ∧ Qb) := by
+  cases o₁ with
+  | lt => exact ⟨fun _ => h₁.1 rfl, fun h => by simp [Ordering.then] at h,
+      fun h => by simp [Ordering.then] at h⟩
+  | gt => exact ⟨fun h => by simp [Ordering.then] at h, fun _ => h₁.2.1 rfl,
+      fun h => by simp [Ordering.then] at h⟩
+  | eq =>
+    have hQa := h₁.2.2 rfl
+    obtain rfl := hP hQa
+    simp only [Ordering.then]
+    exact ⟨fun h => (list_append_lt_append_left P).mpr (h₂.1 h),
+      fun h => (list_append_lt_append_left P).mpr (h₂.2.1 h), fun h => ⟨hQa, h₂.2.2 h⟩⟩
+
+/-- C1.8a helper: a continuation whose head is below `b` precedes a list starting at depth
+coordinate `≥ b`. -/
+theorem headLt_lt {α : Type} [LinearOrder α] {b : Nat} {xs : List (GAtom α)}
+    (hxs : ∀ A ∈ xs.head?, (ofLex A).1 < b) {A : GAtom α} (hA : b ≤ (ofLex A).1)
+    (Y : List (GAtom α)) : xs < A :: Y := by
+  cases xs with
+  | nil => exact List.nil_lt_cons _ _
+  | cons x xs =>
+    have hx := hxs x (by simp)
+    exact List.cons_lt_cons_iff.mpr (Or.inl (Prod.Lex.lt_iff.mpr (Or.inl (by omega))))
+
+/-- C1.8a helper: an entry atom against an entry atom at the same position. -/
+theorem cmpTri_atom {α : Type} [LinearOrder α] (n m : Nat) (p q : α) (X Y : List (GAtom α)) :
+    CmpTri (compare p q) ([toLex (n, toLex (m, (p : WithBot α)))] ++ X)
+      ([toLex (n, toLex (m, (q : WithBot α)))] ++ Y) (p = q) := by
+  refine ⟨fun h => ?_, fun h => ?_, compare_eq_iff_eq.mp⟩
+  · have h := compare_lt_iff_lt.mp h
+    refine List.cons_lt_cons_iff.mpr (Or.inl ?_)
+    simp only [Prod.Lex.toLex_lt_toLex, lt_irrefl, false_or, true_and]
+    exact WithBot.coe_lt_coe.mpr h
+  · have h := compare_gt_iff_gt.mp h
+    refine List.cons_lt_cons_iff.mpr (Or.inl ?_)
+    simp only [Prod.Lex.toLex_lt_toLex, lt_irrefl, false_or, true_and]
+    exact WithBot.coe_lt_coe.mpr h
+
+/-- C1.8a helper: the head of a column's word has depth coordinate `2e`. -/
+theorem gwordCol_head {α : Type} (e : Nat) (c : List (α × Tree α)) :
+    ∃ A rest, gwordCol e c = A :: rest ∧ (ofLex A).1 = 2 * e := by
+  cases c with
+  | nil => exact ⟨_, _, rfl, rfl⟩
+  | cons x es => obtain ⟨p, h⟩ := x; exact ⟨_, _, rfl, rfl⟩
+
+theorem headLt_gwordCols_append {α : Type} (e : Nat) (cs : List (List (α × Tree α)))
+    {xs : List (GAtom α)} (hxs : ∀ A ∈ xs.head?, (ofLex A).1 < 2 * e) :
+    ∀ A ∈ (gwordCols e cs ++ xs).head?, (ofLex A).1 < 2 * e + 1 := by
+  cases cs with
+  | nil => intro A hA; have := hxs A hA; omega
+  | cons c cs =>
+    obtain ⟨B, rest, hc, hB⟩ := gwordCol_head e c
+    intro A hA
+    simp only [gwordCols, hc, List.cons_append, List.head?_cons, Option.mem_def,
+      Option.some.injEq] at hA
+    subst hA; omega
+
+theorem headLt_gwordLater_append {α : Type} (e : Nat) (es : List (α × Tree α))
+    {xs : List (GAtom α)} (hxs : ∀ A ∈ xs.head?, (ofLex A).1 < 2 * e + 1) :
+    ∀ A ∈ (gwordLater e es ++ xs).head?, (ofLex A).1 < 2 * (e + 1) := by
+  cases es with
+  | nil => intro A hA; have := hxs A hA; omega
+  | cons x es =>
+    obtain ⟨p, h⟩ := x
+    intro A hA
+    simp only [gwordLater, List.cons_append, List.head?_cons, Option.mem_def,
+      Option.some.injEq] at hA
+    subst hA; simp; omega
+
+mutual
+/-- C1.8a helper: the three-way form of `gwordAt_append_lt_iff`/`gwordAt_append_inj`, by mutual
+structural induction on the left tree (statements Cols(e), Col(e), Later(e) of the plan). -/
+theorem gwordAt_tri {α : Type} [LinearOrder α] : (e : Nat) → (s : Tree α) →
+    ∀ (t : Tree α) (xs ys : List (GAtom α)), (∀ A ∈ xs.head?, (ofLex A).1 < 2 * e) →
+      (∀ A ∈ ys.head?, (ofLex A).1 < 2 * e) →
+      CmpTri (Tree.cmp compare s t) (gwordAt e s ++ xs) (gwordAt e t ++ ys) (s = t)
+  | e, .node a, .node b, xs, ys, hxs, hys => by
+    simp only [Tree.cmp, gwordAt]
+    exact (gwordCols_tri e a b xs ys hxs hys).mono fun h => h ▸ rfl
+theorem gwordCols_tri {α : Type} [LinearOrder α] : (e : Nat) → (as : List (List (α × Tree α))) →
+    ∀ (bs : List (List (α × Tree α))) (xs ys : List (GAtom α)),
+      (∀ A ∈ xs.head?, (ofLex A).1 < 2 * e) → (∀ A ∈ ys.head?, (ofLex A).1 < 2 * e) →
+      CmpTri (Tree.cmpCols compare as bs) (gwordCols e as ++ xs) (gwordCols e bs ++ ys) (as = bs)
+  | _, [], [], _, _, _, _ => ⟨fun h => by simp [Tree.cmpCols] at h,
+      fun h => by simp [Tree.cmpCols] at h, fun _ => rfl⟩
+  | e, [], b :: bs, xs, ys, hxs, _ => by
+    obtain ⟨B, rest, hb, hB⟩ := gwordCol_head e b
+    refine ⟨fun _ => ?_, fun h => by simp [Tree.cmpCols] at h, fun h => by simp [Tree.cmpCols] at h⟩
+    simp only [gwordCols, hb, List.cons_append, List.nil_append]
+    exact headLt_lt hxs (by omega) _
+  | e, a :: as, [], xs, ys, _, hys => by
+    obtain ⟨B, rest, ha, hB⟩ := gwordCol_head e a
+    refine ⟨fun h => by simp [Tree.cmpCols] at h, fun _ => ?_, fun h => by simp [Tree.cmpCols] at h⟩
+    simp only [gwordCols, ha, List.cons_append, List.nil_append]
+    exact headLt_lt hys (by omega) _
+  | e, a :: as, b :: bs, xs, ys, hxs, hys => by
+    have h₁ := gwordCol_tri e a b (gwordCols e as ++ xs) (gwordCols e bs ++ ys)
+      (headLt_gwordCols_append e as hxs) (headLt_gwordCols_append e bs hys)
+    have h₂ := gwordCols_tri e as bs xs ys hxs hys
+    simp only [Tree.cmpCols, gwordCols, List.append_assoc]
+    exact (h₁.then (fun h => h ▸ rfl) h₂).mono fun ⟨h₁, h₂⟩ => h₁ ▸ h₂ ▸ rfl
+theorem gwordCol_tri {α : Type} [LinearOrder α] : (e : Nat) → (a : List (α × Tree α)) →
+    ∀ (b : List (α × Tree α)) (xs ys : List (GAtom α)),
+      (∀ A ∈ xs.head?, (ofLex A).1 < 2 * e + 1) → (∀ A ∈ ys.head?, (ofLex A).1 < 2 * e + 1) →
+      CmpTri (Tree.cmpCol compare a b) (gwordCol e a ++ xs) (gwordCol e b ++ ys) (a = b)
+  | _, [], [], _, _, _, _ => ⟨fun h => by simp [Tree.cmpCol] at h,
+      fun h => by simp [Tree.cmpCol] at h, fun _ => rfl⟩
+  | e, [], (q, k) :: fs, xs, ys, _, _ => by
+    refine ⟨fun _ => ?_, fun h => by simp [Tree.cmpCol] at h, fun h => by simp [Tree.cmpCol] at h⟩
+    simp only [gwordCol, List.cons_append, List.nil_append]
+    exact List.cons_lt_cons_iff.mpr (Or.inl (by simp [Prod.Lex.toLex_lt_toLex]))
+  | e, (p, h) :: es, [], xs, ys, _, _ => by
+    refine ⟨fun h => by simp [Tree.cmpCol] at h, fun _ => ?_, fun h => by simp [Tree.cmpCol] at h⟩
+    simp only [gwordCol, List.cons_append, List.nil_append]
+    exact List.cons_lt_cons_iff.mpr (Or.inl (by simp [Prod.Lex.toLex_lt_toLex]))
+  | e, (p, h) :: es, (q, k) :: fs, xs, ys, hxs, hys => by
+    have h₀ := cmpTri_atom (2 * e) 1 p q (gwordAt (e + 1) h ++ (gwordLater e es ++ xs))
+      (gwordAt (e + 1) k ++ (gwordLater e fs ++ ys))
+    have h₁ := gwordAt_tri (e + 1) h k (gwordLater e es ++ xs) (gwordLater e fs ++ ys)
+      (headLt_gwordLater_append e es hxs) (headLt_gwordLater_append e fs hys)
+    have h₂ := gwordLater_tri e es fs xs ys hxs hys
+    simp only [Tree.cmpCol, gwordCol, List.cons_append, List.append_assoc, Ordering.then_assoc]
+    exact (h₀.then (fun h => h ▸ rfl) (h₁.then (fun h => h ▸ rfl) h₂)).mono
+      fun ⟨h₀, h₁, h₂⟩ => h₀ ▸ h₁ ▸ h₂ ▸ rfl
+theorem gwordLater_tri {α : Type} [LinearOrder α] : (e : Nat) → (a : List (α × Tree α)) →
+    ∀ (b : List (α × Tree α)) (xs ys : List (GAtom α)),
+      (∀ A ∈ xs.head?, (ofLex A).1 < 2 * e + 1) → (∀ A ∈ ys.head?, (ofLex A).1 < 2 * e + 1) →
+      CmpTri (Tree.cmpCol compare a b) (gwordLater e a ++ xs) (gwordLater e b ++ ys) (a = b)
+  | _, [], [], _, _, _, _ => ⟨fun h => by simp [Tree.cmpCol] at h,
+      fun h => by simp [Tree.cmpCol] at h, fun _ => rfl⟩
+  | e, [], (q, k) :: fs, xs, ys, hxs, _ => by
+    refine ⟨fun _ => ?_, fun h => by simp [Tree.cmpCol] at h, fun h => by simp [Tree.cmpCol] at h⟩
+    simp only [gwordLater, List.cons_append, List.nil_append]
+    exact headLt_lt hxs (by simp) _
+  | e, (p, h) :: es, [], xs, ys, _, hys => by
+    refine ⟨fun h => by simp [Tree.cmpCol] at h, fun _ => ?_, fun h => by simp [Tree.cmpCol] at h⟩
+    simp only [gwordLater, List.cons_append, List.nil_append]
+    exact headLt_lt hys (by simp) _
+  | e, (p, h) :: es, (q, k) :: fs, xs, ys, hxs, hys => by
+    have h₀ := cmpTri_atom (2 * e + 1) 0 p q (gwordAt (e + 1) h ++ (gwordLater e es ++ xs))
+      (gwordAt (e + 1) k ++ (gwordLater e fs ++ ys))
+    have h₁ := gwordAt_tri (e + 1) h k (gwordLater e es ++ xs) (gwordLater e fs ++ ys)
+      (headLt_gwordLater_append e es hxs) (headLt_gwordLater_append e fs hys)
+    have h₂ := gwordLater_tri e es fs xs ys hxs hys
+    simp only [Tree.cmpCol, gwordLater, List.cons_append, List.append_assoc, Ordering.then_assoc]
+    exact (h₀.then (fun h => h ▸ rfl) (h₁.then (fun h => h ▸ rfl) h₂)).mono
+      fun ⟨h₀, h₁, h₂⟩ => h₀ ▸ h₁ ▸ h₂ ▸ rfl
+end
 
 /-- C1.8a (txt:147-151): with continuations whose first atoms have depth coordinate below `2e`,
 comparison of words followed by continuations is comparison of the trees, then of the
@@ -572,19 +773,48 @@ theorem gwordAt_append_lt_iff {α : Type} [LinearOrder α] (e : Nat) (s t : Tree
     {xs ys : List (GAtom α)} (hxs : ∀ A ∈ xs.head?, (ofLex A).1 < 2 * e)
     (hys : ∀ A ∈ ys.head?, (ofLex A).1 < 2 * e) :
     gwordAt e s ++ xs < gwordAt e t ++ ys ↔
-      Tree.cmp compare s t = .lt ∨ (s = t ∧ xs < ys) := by sorry
+      Tree.cmp compare s t = .lt ∨ (s = t ∧ xs < ys) := by
+  obtain ⟨hlt, hgt, heq⟩ := gwordAt_tri e s t xs ys hxs hys
+  constructor
+  · intro h
+    cases hc : Tree.cmp compare s t with
+    | lt => exact Or.inl rfl
+    | gt => exact absurd (hgt hc) (lt_asymm h)
+    | eq =>
+      obtain rfl := heq hc
+      exact Or.inr ⟨rfl, (list_append_lt_append_left _).mp h⟩
+  · rintro (h | ⟨rfl, h⟩)
+    · exact hlt h
+    · exact (list_append_lt_append_left _).mpr h
 
 /-- C1.8a: injectivity with continuations. -/
 theorem gwordAt_append_inj {α : Type} (e : Nat) {s t : Tree α} {xs ys : List (GAtom α)}
     (hxs : ∀ A ∈ xs.head?, (ofLex A).1 < 2 * e) (hys : ∀ A ∈ ys.head?, (ofLex A).1 < 2 * e)
-    (h : gwordAt e s ++ xs = gwordAt e t ++ ys) : s = t ∧ xs = ys := by sorry
+    (h : gwordAt e s ++ xs = gwordAt e t ++ ys) : s = t ∧ xs = ys := by
+  -- any linear order on the labels will do
+  letI : LinearOrder α := IsWellOrder.linearOrder WellOrderingRel
+  obtain ⟨hlt, hgt, heq⟩ := gwordAt_tri e s t xs ys hxs hys
+  cases hc : Tree.cmp compare s t with
+  | lt => exact absurd (h ▸ hlt hc) (lt_irrefl _)
+  | gt => exact absurd (h ▸ hgt hc) (lt_irrefl _)
+  | eq =>
+    obtain rfl := heq hc
+    exact ⟨rfl, List.append_cancel_left h⟩
 
 /-- C1.8a: the generic word is an order embedding. -/
 theorem gword_lt_iff {α : Type} [LinearOrder α] (s t : Tree α) :
-    gword s < gword t ↔ Tree.cmp compare s t = .lt := by sorry
+    gword s < gword t ↔ Tree.cmp compare s t = .lt := by
+  have := gwordAt_append_lt_iff (xs := []) (ys := []) 0 s t (by simp) (by simp)
+  simp only [List.append_nil] at this
+  unfold gword
+  rw [this]
+  simp
 
 theorem gword_injective {α : Type} : Function.Injective (gword : Tree α → List (GAtom α)) := by
-  sorry
+  intro s t h
+  have h' : gwordAt 0 s ++ [] = gwordAt 0 t ++ [] := by
+    simp only [List.append_nil]; exact h
+  exact (gwordAt_append_inj 0 (by simp) (by simp) h').1
 
 /-- N1.3: a map strictly increasing on the letters that occur preserves list order. -/
 theorem list_map_lt_iff {γ δ : Type} [LinearOrder γ] [LinearOrder δ] {f : γ → δ} {S : Set γ}
