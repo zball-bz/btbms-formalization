@@ -419,24 +419,181 @@ def kerSigma (sd : StopData) (rd : RootData) (A : WordAtom) : WordAtom :=
 /-- D3.3b: depth translation of an atom by `e` levels. -/
 def depthShift (e : Nat) (A : WordAtom) : WordAtom := toLex ((ofLex A).1 + 2 * e, (ofLex A).2)
 
+/-! ### D3.3a helpers: the loop identity -/
+
+/-- D3.3a helper: the columns of a relabelled tree. -/
+theorem ker_map_cols {α β : Type} (f : α → β) (T : Tree α) :
+    (Tree.map f T).cols = T.cols.map (Tree.mapCol f) := by
+  obtain ⟨cs⟩ := T
+  simp only [Tree.map, Tree.cols]
+  exact treeMapCols_eq_map f cs
+
+/-- D3.3a helper: a shift of a node. -/
+theorem ker_shift_node (r a : Nat) (cs : List Column) :
+    shift r a (Tree.node cs) = Tree.node (cs.map (Tree.mapCol (shiftVal r a))) := by
+  simp only [shift, Tree.map]
+  rw [treeMapCols_eq_map]
+
+/-- D3.3a helper: `mapCol` distributes over an append. -/
+theorem ker_mapCol_append {α β : Type} (f : α → β) (l₁ l₂ : List (α × Tree α)) :
+    Tree.mapCol f (l₁ ++ l₂) = Tree.mapCol f l₁ ++ Tree.mapCol f l₂ := by
+  rw [treeMapCol_eq_map, treeMapCol_eq_map, treeMapCol_eq_map, List.map_append]
+
+/-- D3.3a helper: `mapCol (shiftVal r 0)` is the identity. -/
+theorem ker_mapCol_zero (r : Nat) (l : Column) : Tree.mapCol (shiftVal r 0) l = l := by
+  rw [shiftVal_zero_fun, treeMapCol_id]
+
+/-- D3.3a helper: a shift fixes the outer parents `< r` of a column whose heights are shifted. -/
+theorem ker_mapCol_heights {r a b : Nat} {l : Column} (hl : ∀ x ∈ l, x.1 < r) :
+    Tree.mapCol (shiftVal r a) (l.map fun x => (x.1, shift r b x.2)) =
+      l.map fun x => (x.1, shift r (a + b) x.2) := by
+  rw [treeMapCol_eq_map, List.map_map]
+  apply List.map_congr_left
+  intro x hx
+  simp only [Function.comp]
+  have h1 : shiftVal r a x.1 = x.1 := by
+    have := hl x hx
+    unfold shiftVal; rw [if_neg (by omega)]
+  rw [h1]
+  exact Prod.ext rfl (shift_add r a b x.2)
+
+/-- D3.3a helper: a shift composes with a shifted placement. -/
+theorem ker_shift_replaceAt (r a b k : Nat) (Y G : Forest) :
+    shift r a (replaceAt r b Y k G) = replaceAt r (a + b) (shift r a Y) k G := by
+  rw [replaceAt_eq_shift r b, shift_replaceAt, replaceAt_eq_shift r a, shift_add,
+    ← replaceAt_eq_shift]
+
+/-- D3.3a helper: the outer parents of the unconsumed root suffix are `< r` (V). -/
+theorem ker_unconsumed_lt {E : Forest} {sd : StopData} {rd : RootData} (hV : CondV E)
+    (hsd : stopData E = some sd) (hrd : rootData E = some rd) :
+    ∀ x ∈ unconsumed E rd, x.1 < sd.r := by
+  intro x hx
+  obtain ⟨-, -, -, hnum, -, hmem, -⟩ := rootData_spec hsd hrd
+  have hx' : x ∈ rootCol E rd := List.mem_of_mem_drop hx
+  unfold rootCol at hx'
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E rd.col).1 hmem)
+  rw [hcol, Option.getD_some] at hx'
+  obtain ⟨i, hi, hxi⟩ := List.getElem_of_mem hx'
+  have he : E.entryAt ⟨rd.col, i⟩ = some x := by
+    simp only [Tree.entryAt, hcol, Option.bind_some, List.getElem?_eq_getElem hi, hxi]
+  have hmemE : (⟨rd.col, i⟩ : EntryAddr) ∈ E.entryAddrs :=
+    (Tree.mem_entryAddrs_iff _ _).2 (by rw [he]; rfl)
+  have := (condV_iff_lt E).1 hV ⟨rd.col, i⟩ hmemE x.1 x.2 he
+  rw [hnum] at this
+  exact this
+
+/-- D3.3a helper: pass `k + 1` of the loop on a `τ_{kd}`-shifted input is the `τ_{kd}`-shift of
+pass `1` (outer parents of `U` are `< r`). -/
+theorem ker_ordStep_shift {sd : StopData} {rd : RootData} {F : Forest} {U : Column}
+    (hU : ∀ x ∈ U, x.1 < sd.r) (k : Nat) (Y : Forest) :
+    ordStep sd rd F U (k + 1) (shift sd.r (k * (sd.t - sd.r)) Y) =
+      shift sd.r (k * (sd.t - sd.r)) (ordStep sd rd F U 1 Y) := by
+  unfold ordStep
+  simp only [Nat.add_sub_cancel, Nat.sub_self, Nat.zero_mul, Nat.one_mul, ker_mapCol_zero]
+  have hkd : (k + 1) * (sd.t - sd.r) = k * (sd.t - sd.r) + (sd.t - sd.r) := Nat.succ_mul _ _
+  by_cases ho : rd.owner = true
+  · simp only [ho, if_true]
+    rw [ker_shift_node, List.map_cons, List.map_nil, ker_mapCol_append, ker_mapCol_append]
+    have hdl : ∀ x ∈ U.dropLast, x.1 < sd.r := fun x hx => hU x (List.mem_of_mem_dropLast hx)
+    rw [ker_mapCol_heights hdl, ← hkd]
+    congr 3
+    cases hl : U.getLast? with
+    | none => rfl
+    | some u =>
+      have hu := hU u (List.mem_of_getLast? hl)
+      simp only [Option.map_some, Option.toList_some, Tree.mapCol]
+      have h1 : shiftVal sd.r (k * (sd.t - sd.r)) u.1 = u.1 := by
+        unfold shiftVal; rw [if_neg (by omega)]
+      rw [h1]
+      congr 2
+      show replaceAt _ _ _ _ _ = shift sd.r _ (replaceAt _ _ _ _ _)
+      rw [ker_shift_replaceAt, hkd]
+  · simp only [ho, Bool.false_eq_true, if_false]
+    rw [ker_shift_node, List.map_cons, ker_mapCol_append, ker_mapCol_heights hU, ← hkd]
+    congr 2
+    rw [← ker_map_cols]
+    show (replaceAt _ _ _ _ _).cols = (shift sd.r _ (replaceAt _ _ _ _ _)).cols
+    rw [ker_shift_replaceAt, hkd]
+
+/-- D3.3a helper: pass `1` on a `T_d`-shifted input is the kernel. -/
+theorem ker_ordStep_one (E : Forest) (sd : StopData) (rd : RootData) (X : Forest) :
+    ordStep sd rd (rootForest E rd) (unconsumed E rd) 1 (shift sd.r (sd.t - sd.r) X) =
+      kernel E sd rd X := by
+  unfold ordStep kernel
+  simp only [Nat.sub_self, Nat.zero_mul, Nat.one_mul, ker_mapCol_zero]
+  by_cases ho : rd.owner = true
+  · simp only [ho, if_true, mapLast_eq, List.append_assoc]
+    rfl
+  · simp only [ho, Bool.false_eq_true, if_false]
+    rfl
+
+/-- D3.3a helper: after the passes `k, …, 1` on `τ_{kd}(F^m ∅)` the loop variable is
+`F^{m+k} ∅`. -/
+theorem ker_ordLoop {E : Forest} {sd : StopData} {rd : RootData}
+    (hU : ∀ x ∈ unconsumed E rd, x.1 < sd.r) :
+    ∀ (k m : Nat), ordLoop (ordStep sd rd (rootForest E rd) (unconsumed E rd)) k
+      (shift sd.r (k * (sd.t - sd.r)) ((kernel E sd rd)^[m] Tree.empty)) =
+        (kernel E sd rd)^[m + k] Tree.empty
+  | 0, m => by simp only [ordLoop, Nat.zero_mul, shift_zero, Nat.add_zero]
+  | k + 1, m => by
+    simp only [ordLoop]
+    rw [Nat.succ_mul, ← shift_add, ker_ordStep_shift hU, ker_ordStep_one,
+      ← Function.iterate_succ_apply' (kernel E sd rd) m, ker_ordLoop hU k (m + 1)]
+    rw [Nat.add_assoc, Nat.add_comm 1 k]
+
+/-- D3.3a helper: the final loop variable of an ordinary step is the `n`-th kernel iterate. -/
+theorem ker_ordZ {E : Forest} {sd : StopData} {rd : RootData} (hV : CondV E)
+    (hsd : stopData E = some sd) (hrd : rootData E = some rd) (n : Nat) :
+    ordZ E sd rd n = (kernel E sd rd)^[n] Tree.empty := by
+  have h := ker_ordLoop (ker_unconsumed_lt hV hsd hrd) n 0
+  rw [Function.iterate_zero_apply, Nat.zero_add] at h
+  have he : shift sd.r (n * (sd.t - sd.r)) Tree.empty = Tree.empty := rfl
+  rw [he] at h
+  exact h
+
 -- provides: U2, D3.3a (txt:422: `H[q] = C_H(F_H^q(∅))`)
 theorem expand_eq_iterate {E : Forest} {sd : StopData} {rd : RootData} (hE : E ≠ Tree.empty)
     (hV : CondV E) (hI : CondI E) (hk : stepKind E = some .ordinary)
     (hsd : stopData E = some sd) (hrd : rootData E = some rd) (hdef : KernelDefined E rd)
-    (n : Nat) : expand E n = some (context E sd ((kernel E sd rd)^[n] Tree.empty)) := by sorry
+    (n : Nat) : expand E n = some (context E sd ((kernel E sd rd)^[n] Tree.empty)) := by
+  rw [expand_eq_paperOp hE hV hI, paperOp_ordinary hk hsd hrd]
+  have hc : (rd.owner && n != 0 && (((E.colAt rd.col).getD []).drop rd.cursor).isEmpty) = false := by
+    by_cases ho : rd.owner = true
+    · have hU : unconsumed E rd ≠ [] := hdef ho
+      unfold unconsumed rootCol at hU
+      simp [hU]
+    · simp [ho]
+  simp only [hc, Bool.false_eq_true, if_false]
+  rw [← ker_ordZ hV hsd hrd]
+  rfl
 
 -- D3.3a: the exhausted owner root is the only undefined case
 theorem expand_none_iff {E : Forest} {sd : StopData} {rd : RootData} (hE : E ≠ Tree.empty)
     (hV : CondV E) (hI : CondI E) (hk : stepKind E = some .ordinary)
     (hsd : stopData E = some sd) (hrd : rootData E = some rd) (n : Nat) :
-    expand E n = none ↔ (1 ≤ n ∧ ¬ KernelDefined E rd) := by sorry
+    expand E n = none ↔ (1 ≤ n ∧ ¬ KernelDefined E rd) := by
+  rw [expand_eq_paperOp hE hV hI, paperOp_ordinary hk hsd hrd]
+  unfold KernelDefined unconsumed rootCol
+  by_cases hc : (rd.owner && n != 0 && (((E.colAt rd.col).getD []).drop rd.cursor).isEmpty) = true
+  · rw [if_pos hc]
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, List.isEmpty_iff] at hc
+    obtain ⟨⟨ho, hn⟩, hU⟩ := hc
+    simp only [true_iff]
+    exact ⟨by omega, fun h => h ho hU⟩
+  · rw [if_neg hc]
+    simp only [reduceCtorEq, false_iff, not_and, not_not]
+    intro hn ho
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, List.isEmpty_iff, not_and] at hc
+    exact hc ⟨ho, by omega⟩
 
 -- VERIFY-U2 (F2): D3.3a part 3: at parameter `0` the ordinary output is `C_E(∅)` with no
 -- `KernelDefined` hypothesis (the exhausted owner root only matters for `n ≥ 1`); needed by
 -- T3.2g and `expand_lt` (V, I only) and by T3.8c.3
 theorem expand_zero_eq_context {E : Forest} {sd : StopData} (hE : E ≠ Tree.empty)
     (hV : CondV E) (hI : CondI E) (hk : stepKind E = some .ordinary)
-    (hsd : stopData E = some sd) : expand E 0 = some (context E sd Tree.empty) := by sorry
+    (hsd : stopData E = some sd) : expand E 0 = some (context E sd Tree.empty) := by
+  rw [expand_eq_paperOp hE hV hI, paperOp_ordinary_zero hk hsd]
+  rfl
 
 -- D3.3b: the context appends the word of its filling at depth `ℓ`
 theorem word_context {E : Forest} {sd : StopData} (hsd : stopData E = some sd) (Z : Forest) :
