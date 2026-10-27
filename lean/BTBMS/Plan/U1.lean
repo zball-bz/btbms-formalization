@@ -916,6 +916,17 @@ theorem toGAtom_strictMonoOn : StrictMonoOn toGAtom {A : WordAtom | A.WF} := by
       rw [if_neg hz, if_neg hz]
       exact WithBot.coe_lt_coe.mpr h
 
+-- provides: U1, C1.8 (moved from `Spine.lean`: the proof uses N1.2, N1.3 and C1.8a)
+theorem word_lt_iff (E F : Forest) : word E < word F ↔ E < F := by
+  rw [← list_map_lt_iff toGAtom_strictMonoOn (word_wf E) (word_wf F), ← gword_eq_map_word,
+    ← gword_eq_map_word]
+  exact gword_lt_iff E F
+-- provides: U1, C1.8 (moved from `Spine.lean`)
+theorem word_injective : Function.Injective word := by
+  intro E F h
+  apply gword_injective
+  rw [gword_eq_map_word, gword_eq_map_word, h]
+
 -- bridge: holds by `rfl` (SCR-2 applied)
 theorem safePrefix_eq_body (E : Forest) (k : Nat) : safePrefix E k = safePrefixBody E k := by sorry
 

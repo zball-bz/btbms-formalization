@@ -518,10 +518,8 @@ def safePrefixBody (E : Forest) (k : Nat) : Forest := (spF k E).1
 /-- D1.9: the safe prefix keeping the first `k` atoms of `w(E)` and closing its containers. -/
 def safePrefix (E : Forest) (k : Nat) : Forest := safePrefixBody E k -- body: U1 (SCR-2)
 
--- provides: U1, C1.8
-theorem word_lt_iff (E F : Forest) : word E < word F ↔ E < F := by sorry
--- provides: U1, C1.8
-theorem word_injective : Function.Injective word := by sorry
+-- `word_lt_iff`, `word_injective` (provides: U1, C1.8) moved to `Plan/U1.lean`, after the generic
+-- word (N1.2, N1.3, C1.8a) that their proofs use; nothing in between uses them.
 -- provides: U1, D1.9
 theorem word_safePrefix (E : Forest) (k : Nat) : word (safePrefix E k) = (word E).take k := by
   sorry
