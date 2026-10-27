@@ -855,13 +855,57 @@ theorem transfer {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
     (p : V → S) (hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ' x)
     (bd : S) :
     D.RealizableBelow prims F σ (bd : M w).val → D.RealizableBelow prims F σ' (π bd).val := by
-  sorry
+  intro h
+  have h1 : D.RealizableBelow prims F (fixAsg D F (fun x => (p x.1 : M w))) (bd : M w).val := by
+    refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h
+    intro x hx hF
+    simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).1]
+  rw [← realize_realFml D F (k := 0) 0 0 (fun _ => (bd : M w)) (fun x => (p x.1 : M w))] at h1
+  have e1 : (Sum.elim (fun _ => (bd : M w)) (fun x => (p x.1 : M w)) : Fin 1 ⊕ FixT D F → M w) =
+      ((↑) : S → M w) ∘ Sum.elim (fun _ => bd) (fun x => p x.1) := by
+    funext i; cases i <;> rfl
+  have e2 : (π ∘ Sum.elim (fun _ : Fin 1 => bd) (fun x : FixT D F => p x.1)) =
+      Sum.elim (fun _ => π bd) (fun x => π (p x.1)) := by
+    funext i; cases i <;> rfl
+  rw [e1, realize_elemIso S π, e2, realize_realFml] at h1
+  refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h1
+  intro x hx hF
+  simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).2]
 
 /-- N4.8: the same with the top bound `w ↦ ν`. -/
 theorem transfer_top {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
     (π : S ≃[lang] M ν) {V : Type} (D : Diagram V) (F : V → Prop) (σ σ' : V → Ordinal.{u})
     (p : V → S) (hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ' x) :
-    D.RealizableBelow prims F σ w → D.RealizableBelow prims F σ' ν := by sorry
+    D.RealizableBelow prims F σ w → D.RealizableBelow prims F σ' ν := by
+  intro h
+  by_cases hS : Nonempty S
+  · obtain ⟨s₀⟩ := hS
+    have h1 : D.RealizableBelow prims F (fixAsg D F (fun x => (p x.1 : M w))) w := by
+      refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h
+      intro x hx hF
+      simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).1]
+    rw [← realize_realTopFml D F (fun _ => (s₀ : M w)) (fun x => (p x.1 : M w))] at h1
+    have e1 : (Sum.elim (fun _ => (s₀ : M w)) (fun x => (p x.1 : M w)) :
+        Fin 1 ⊕ FixT D F → M w) =
+        ((↑) : S → M w) ∘ Sum.elim (fun _ => s₀) (fun x => p x.1) := by
+      funext i; cases i <;> rfl
+    have e2 : (π ∘ Sum.elim (fun _ : Fin 1 => s₀) (fun x : FixT D F => p x.1)) =
+        Sum.elim (fun _ => π s₀) (fun x => π (p x.1)) := by
+      funext i; cases i <;> rfl
+    rw [e1, realize_elemIso S π, e2, realize_realTopFml] at h1
+    refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h1
+    intro x hx hF
+    simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).2]
+  · -- an empty elementary substructure only occurs in the empty structure `M 0`
+    have hw : w = 0 := by
+      by_contra hw
+      haveI : Nonempty (M w) := ⟨⟨0, pos_iff_ne_zero.2 hw⟩⟩
+      exact hS inferInstance
+    subst hw
+    obtain ⟨a, -, ha, hD⟩ := h
+    have hv : ∀ x ∈ D.vars, False := fun x hx => not_lt_zero (ha x hx)
+    exact ⟨σ', fun _ _ => rfl, fun x hx => (hv x hx).elim,
+      (Diagram.holds_congr prims D a σ' (fun x hx => (hv x hx).elim)).1 hD⟩
 
 /-! ## N4.9: (13) and (14) for the reflection hierarchy -/
 
