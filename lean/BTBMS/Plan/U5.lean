@@ -1480,6 +1480,134 @@ def IsFreeReal (P : Prims.{u}) (K : Key) (fr : BlkVar → Option Ordinal.{u}) (L
 noncomputable def blkMax (K : Key) (β : BlkVar → Ordinal.{u}) : Ordinal.{u} :=
   ((BlkVar.owner :: K.roles.map BlkVar.inner).map β).foldr max 0
 
+/-- L8.3 (helper): a `foldr max 0` over a nonempty list is attained. -/
+theorem foldr_max_mem : ∀ (x : Ordinal.{u}) (l : List Ordinal.{u}), (x :: l).foldr max 0 ∈ x :: l
+  | x, [] => by simp
+  | x, y :: l => by
+    have ih := foldr_max_mem y l
+    rw [List.foldr_cons]
+    rcases max_choice x ((y :: l).foldr max 0) with h | h
+    · rw [h]; exact List.mem_cons_self
+    · rw [h]; exact List.mem_cons_of_mem _ ih
+
+/-- L8.3 (helper): every element is at most the `foldr max 0`. -/
+theorem le_foldr_max {l : List Ordinal.{u}} {x : Ordinal.{u}} (hx : x ∈ l) :
+    x ≤ l.foldr max 0 := by
+  induction l with
+  | nil => simp at hx
+  | cons y l ih =>
+    rw [List.foldr_cons]
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact le_max_left _ _
+    · exact (ih hx).trans (le_max_right _ _)
+
+/-- L8.3 (helper): the `foldr max 0` is the least upper bound. -/
+theorem foldr_max_le {l : List Ordinal.{u}} {c : Ordinal.{u}} (h : ∀ x ∈ l, x ≤ c) :
+    l.foldr max 0 ≤ c := by
+  induction l with
+  | nil => exact zero_le
+  | cons y l ih =>
+    rw [List.foldr_cons]
+    exact max_le (h y List.mem_cons_self) (ih fun x hx => h x (List.mem_cons_of_mem _ hx))
+
+/-- L8.3 (helper): the owner is below the block maximum. -/
+theorem le_blkMax_owner (K : Key) (β : BlkVar → Ordinal.{u}) : β .owner ≤ blkMax K β :=
+  le_foldr_max (List.mem_map_of_mem List.mem_cons_self)
+
+/-- L8.3 (helper): internal roles are below the block maximum. -/
+theorem le_blkMax_inner {K : Key} (β : BlkVar → Ordinal.{u}) {r : Role} (hr : r ∈ K.roles) :
+    β (.inner r) ≤ blkMax K β :=
+  le_foldr_max (List.mem_map_of_mem (List.mem_cons_of_mem _ (List.mem_map_of_mem hr)))
+
+/-- L8.3 (helper): a bound on the owner and the internal roles bounds the block maximum. -/
+theorem blkMax_le {K : Key} {β : BlkVar → Ordinal.{u}} {c : Ordinal.{u}} (ho : β .owner ≤ c)
+    (hi : ∀ r ∈ K.roles, β (.inner r) ≤ c) : blkMax K β ≤ c := by
+  refine foldr_max_le fun x hx => ?_
+  simp only [List.map_cons, List.map_map, List.mem_cons, List.mem_map, Function.comp] at hx
+  rcases hx with rfl | ⟨r, hr, rfl⟩
+  · exact ho
+  · exact hi r hr
+
+/-- L8.3 (helper): the block maximum is attained at the owner or at an internal role. -/
+theorem blkMax_attained (K : Key) (β : BlkVar → Ordinal.{u}) :
+    blkMax K β = β .owner ∨ ∃ r ∈ K.roles, blkMax K β = β (.inner r) := by
+  have h := foldr_max_mem (β .owner) ((K.roles.map BlkVar.inner).map β)
+  rw [← List.map_cons] at h
+  change blkMax K β ∈ _ at h
+  simp only [List.map_cons, List.map_map, List.mem_cons, List.mem_map, Function.comp] at h
+  rcases h with h | ⟨r, hr, h⟩
+  · exact Or.inl h
+  · exact Or.inr ⟨r, hr, h.symm⟩
+
+/-- L8.3 (helper): the owner is a variable of the free block. -/
+theorem owner_mem_freeBlock (K : Key) : BlkVar.owner ∈ baseVars (freeBlock K) :=
+  List.mem_flatMap.2 ⟨BaseAtom.lim .owner, by simp [freeBlock], by simp [BaseAtom.vars]⟩
+
+/-- L8.3 (helper): internal roles are variables of the free block. -/
+theorem inner_mem_freeBlock {K : Key} {r : Role} (hr : r ∈ K.roles) :
+    BlkVar.inner r ∈ baseVars (freeBlock K) :=
+  List.mem_flatMap.2 ⟨BaseAtom.lim (.inner r), by
+    simp only [freeBlock, List.mem_append, List.mem_cons, List.mem_map]
+    exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, ⟨r, hr, rfl⟩, rfl⟩))), by simp [BaseAtom.vars]⟩
+
+/-- L8.3 (helper): an `inner` variable of the free block is an internal role (N5.6). -/
+theorem inner_of_mem_freeBlock {K : Key} {r : Role}
+    (hr : BlkVar.inner r ∈ baseVars (freeBlock K)) : r ∈ K.roles := by
+  have h : BlkVar.inner r ∈ baseVars (posBlock K 0) := by
+    simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]
+    exact Or.inl hr
+  rcases posBlock_vars K 0 _ h with h | h | ⟨q, h | h⟩ | ⟨r', hr', h⟩
+  · cases h
+  · cases h
+  · cases h
+  · cases h
+  · cases h; exact hr'
+
+/-- L8.3 (helper): the two-candidate fact for an ordered pair of candidates: `A` before `B` in
+the lexicographic order of (block maximum, owner). -/
+theorem two_candidates_aux (I : Interface.{u}) {K : Key} {fr : BlkVar → Option Ordinal.{u}}
+    {L : Ordinal.{u}} {A B : BlkVar → Ordinal.{u}}
+    (hA : IsFreeReal I.toPrims K fr L A) (hB : IsFreeReal I.toPrims K fr L B)
+    (hpB : ∀ r ∈ K.roles, I.Elem (B .owner) (B (.inner r)))
+    (hfr : ∀ w ∈ baseVars (freeBlock K), ∀ o, fr w = some o → o ≤ L)
+    (hnew : ∀ w ∈ baseVars (freeBlock K), fr w = none → w = .owner ∨ ∃ r, w = .inner r)
+    (hle : blkMax K A ≤ blkMax K B) (heq : blkMax K A = blkMax K B → A .owner ≤ B .owner) :
+    ∃ β, IsFreeReal I.toPrims K fr L β ∧ β .owner ≤ A .owner ∧ β .owner ≤ B .owner ∧
+      blkMax K β ≤ blkMax K A ∧ blkMax K β ≤ blkMax K B := by
+  by_cases hown : A .owner ≤ B .owner
+  · exact ⟨A, hA, le_rfl, hown, le_rfl, hle⟩
+  push Not at hown
+  have hlt : blkMax K A < blkMax K B :=
+    lt_of_le_of_ne hle fun h => absurd (heq h) (not_le.2 hown)
+  have hom := owner_mem_freeBlock K
+  have hfo : fr .owner = none := by
+    cases hf : fr .owner with
+    | none => rfl
+    | some o => exact absurd ((hB.1 _ _ hf).trans (hA.1 _ _ hf).symm) (ne_of_lt hown)
+  have hLB : L < B .owner := hB.2.1 _ hom hfo
+  have hAo : A .owner ≤ blkMax K A := le_blkMax_owner K A
+  obtain ⟨r, hr, hBr⟩ : ∃ r ∈ K.roles, blkMax K B = B (.inner r) := by
+    rcases blkMax_attained K B with h | h
+    · exact absurd (h ▸ hown.trans_le (hAo.trans hlt.le)) (lt_irrefl _)
+    · exact h
+  have hel : I.Elem (B .owner) (blkMax K B) := hBr ▸ hpB r hr
+  have hblk : BlockAbove I.toPrims (freeBlock K) fr L (blkMax K B) := by
+    refine ⟨A, hA.1, hA.2.1, fun w hw => ?_, hA.2.2⟩
+    cases hfw : fr w with
+    | some o =>
+      rw [hA.1 w o hfw]
+      exact (hfr w hw o hfw).trans_lt (hLB.trans (hown.trans (hAo.trans_lt hlt)))
+    | none =>
+      rcases hnew w hw hfw with rfl | ⟨r', rfl⟩
+      · exact hAo.trans_lt hlt
+      · exact (le_blkMax_inner A (inner_of_mem_freeBlock hw)).trans_lt hlt
+  obtain ⟨β, hfix, hnewβ, hltβ, hholds⟩ := blockAbove_capture I hel hLB
+    (fun w hw o hfw => (hfr w hw o hfw).trans_lt hLB) hblk
+  have hβB : blkMax K β ≤ B .owner :=
+    blkMax_le (hltβ _ hom).le fun r hr => (hltβ _ (inner_mem_freeBlock hr)).le
+  exact ⟨β, ⟨hfix, hnewβ, hholds⟩, (hltβ _ hom).le.trans hown.le, (hltβ _ hom).le,
+    hβB.trans (hown.le.trans hAo), hβB.trans (le_blkMax_owner K B)⟩
+
 /-- L8.3, two-candidate fact (txt:1201-1210). Given two realizations of the same free problem
 above the same floor, with owner paths and frame values at most the floor, some realization has
 owner and maximum no larger than either candidate's. -/
@@ -1492,7 +1620,20 @@ theorem two_candidates (I : Interface.{u}) {K : Key} {fr : BlkVar → Option Ord
     (hnew : ∀ w ∈ baseVars (freeBlock K), fr w = none → w = .owner ∨ ∃ r, w = .inner r) :
     ∃ β, IsFreeReal I.toPrims K fr L β ∧ β .owner ≤ βX .owner ∧ β .owner ≤ βY .owner ∧
       blkMax K β ≤ blkMax K βX ∧ blkMax K β ≤ blkMax K βY := by
-  sorry
+  by_cases h : blkMax K βX < blkMax K βY ∨ (blkMax K βX = blkMax K βY ∧ βX .owner ≤ βY .owner)
+  · refine two_candidates_aux I hX hY hpY hfr hnew ?_ ?_
+    · rcases h with h | h
+      · exact h.le
+      · exact h.1.le
+    · intro he
+      rcases h with h | h
+      · exact absurd he (ne_of_lt h)
+      · exact h.2
+  · push Not at h
+    obtain ⟨h1, h2⟩ := h
+    obtain ⟨β, hβ, h3, h4, h5, h6⟩ := two_candidates_aux I hY hX hpX hfr hnew h1
+      (fun he => (h2 he.symm).le)
+    exact ⟨β, hβ, h4, h3, h6, h5⟩
 
 /-- L8.4, base `S_0` (txt:1211-1214; S-3 rejected: the capture along `J_u ≺ J_b` is kept). -/
 theorem sStrict_zero (I : Interface.{u}) : SStrict I.toPrims 0 := by
