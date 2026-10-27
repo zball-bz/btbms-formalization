@@ -339,7 +339,7 @@ theorem admitted_src_ne {rk : SrcRecord} (h : rk.Admitted) : rk.srcHeight ≠ Tr
 /-! ## L4.2  First differences: the classifier, κ-transfer, path transfer, cap legality -/
 
 -- SCR2 applied at integration: the bridge holds by `rfl`
-theorem firstDiff_eq_def (rk : SrcRecord) : rk.firstDiff = firstDiffDef rk := by sorry
+theorem firstDiff_eq_def (rk : SrcRecord) : rk.firstDiff = firstDiffDef rk := rfl
 
 /-- L4.2: the part of a tree strictly before a position: the containing structure along `π`,
 the columns `0 … j-1` of the forest at `π`, and (if `k = some k'`) the first `k'` entries of
@@ -354,6 +354,172 @@ def cutBefore {α : Type} : List (Nat × Nat) → Nat → Option Nat → Tree α
       | some (l, h) => .node (cols.take ci ++ [col.take ii ++ [(l, cutBefore rest j k h)]])
       | none => .node cols
     | none => .node cols
+
+/-- D4.1a helper: the meaning of a `diff` result of the walker at absolute path `π` on the keys
+`X` (target) and `Y` (source). -/
+def FDSpec_D8 (t : Nat) (π : List (Nat × Nat)) (top : Bool) (X Y : Key) :
+    SrcRecord.FirstDiff → Prop
+  | .wholeEnds => top = true ∧ X.cols <+: Y.cols ∧ X.cols.length < Y.cols.length
+  | .childEnds π' => ∃ ρ X0 Y0, π' = π ++ ρ ∧ (top = true → ρ ≠ []) ∧
+      X.forestAt ρ = some X0 ∧ Y.forestAt ρ = some Y0 ∧ X0.cols.length < Y0.cols.length ∧
+      cutBefore ρ X0.cols.length none X = cutBefore ρ X0.cols.length none Y
+  | .capAt c k p => ∃ ρ, c.path = π ++ ρ ∧
+      cutBefore ρ c.col (some k) X = cutBefore ρ c.col (some k) Y ∧
+      (X.colAt ⟨ρ, c.col⟩).isSome ∧
+      ((X.entryAt ⟨⟨ρ, c.col⟩, k⟩ = none ∧ ∃ l hs, Y.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (l, hs) ∧
+          p = labelAbs t l) ∨
+       (∃ l₁ h₁ l₂ h₂, X.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (l₁, h₁) ∧
+          Y.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (l₂, h₂) ∧ keyLabelCmp l₁ l₂ = .lt ∧
+          p = labelAbs t l₂))
+
+/-- D4.1a helper: the three outcomes of a walker step. -/
+def FDRes_D8 (r : FDStep) (eqP gtP : Prop) (spec : SrcRecord.FirstDiff → Prop) : Prop :=
+  match r with
+  | .same => eqP
+  | .stop => gtP
+  | .diff d => spec d
+
+/-- D4.1a helper: the forest reached through entry `(|pre|, |cpre|)` is that entry's height. -/
+theorem forestAt_lift_D8 {α : Type} (pre : List (List (α × Tree α))) (cpre es : List (α × Tree α))
+    (xs : List (List (α × Tree α))) (l : α) (h : Tree α) (ρ : List (Nat × Nat)) :
+    (Tree.node (pre ++ (cpre ++ (l, h) :: es) :: xs)).forestAt ((pre.length, cpre.length) :: ρ) =
+      h.forestAt ρ := by
+  simp [Tree.forestAt, Tree.cols]
+
+/-- D4.1a helper: `cutBefore` through entry `(|pre|, |cpre|)`. -/
+theorem cutBefore_lift_D8 {α : Type} (pre : List (List (α × Tree α))) (cpre es : List (α × Tree α))
+    (xs : List (List (α × Tree α))) (l : α) (h : Tree α) (ρ : List (Nat × Nat)) (j : Nat)
+    (k : Option Nat) :
+    cutBefore ((pre.length, cpre.length) :: ρ) j k (Tree.node (pre ++ (cpre ++ (l, h) :: es) :: xs)) =
+      .node (pre ++ [cpre ++ [(l, cutBefore ρ j k h)]]) := by
+  simp [cutBefore]
+
+/-- D4.1a helper: a difference found inside the height of a common entry is a difference of the
+surrounding forests. -/
+theorem fd_lift_D8 (t : Nat) (π : List (Nat × Nat)) (top : Bool)
+    (pre : List (List ((Bool × Nat) × Key))) (cpre es fs : List ((Bool × Nat) × Key))
+    (xs ys : List (List ((Bool × Nat) × Key))) (l : Bool × Nat) (h1 h2 : Key) (d : SrcRecord.FirstDiff)
+    (hd : FDSpec_D8 t (π ++ [(pre.length, cpre.length)]) false h1 h2 d) :
+    FDSpec_D8 t π top (.node (pre ++ (cpre ++ (l, h1) :: es) :: xs))
+      (.node (pre ++ (cpre ++ (l, h2) :: fs) :: ys)) d := by
+  match d, hd with
+  | .wholeEnds, hd => exact absurd hd.1 (by simp)
+  | .childEnds π', ⟨ρ, X0, Y0, hπ, _, hX, hY, hlt, hcut⟩ =>
+    refine ⟨(pre.length, cpre.length) :: ρ, X0, Y0, by simp [hπ], fun _ => by simp, ?_, ?_, hlt, ?_⟩
+    · rw [forestAt_lift_D8]; exact hX
+    · rw [forestAt_lift_D8]; exact hY
+    · rw [cutBefore_lift_D8, cutBefore_lift_D8, hcut]
+  | .capAt c k p, ⟨ρ, hπ, hcut, hcol, hent⟩ =>
+    refine ⟨(pre.length, cpre.length) :: ρ, by simp [hπ], ?_, ?_, ?_⟩
+    · rw [cutBefore_lift_D8, cutBefore_lift_D8, hcut]
+    · simpa [Tree.colAt, forestAt_lift_D8] using hcol
+    · simpa [Tree.entryAt, Tree.colAt, forestAt_lift_D8] using hent
+
+mutual
+/-- D4.1a helper: the walker's outcomes (`same`: equal; `stop`: target larger; `diff d`: the
+meaning `FDSpec_D8`), by mutual structural recursion on the target key. -/
+theorem fdForest_spec_D8 (t : Nat) (π : List (Nat × Nat)) (top : Bool) :
+    (X Y : Key) → FDRes_D8 (fdForest t π top X Y) (X = Y) (keyCmp X Y = .gt)
+      (FDSpec_D8 t π top X Y)
+  | .node xs, .node ys => by
+    have := fdCols_spec_D8 t π top 0 xs ys [] rfl
+    simp only [fdForest, keyCmp, Tree.cmp]
+    revert this
+    cases fdCols t π top 0 xs ys <;> simp [FDRes_D8]
+termination_by structural X _ => X
+
+theorem fdCols_spec_D8 (t : Nat) (π : List (Nat × Nat)) (top : Bool) :
+    (ci : Nat) → (xs ys : List (List ((Bool × Nat) × Key))) →
+    (pre : List (List ((Bool × Nat) × Key))) → pre.length = ci →
+    FDRes_D8 (fdCols t π top ci xs ys) (xs = ys) (Tree.cmpCols keyLabelCmp xs ys = .gt)
+      (FDSpec_D8 t π top (.node (pre ++ xs)) (.node (pre ++ ys)))
+  | _, [], [], _, _ => by simp [fdCols, FDRes_D8]
+  | ci, [], y :: ys, pre, hpre => by
+    simp only [fdCols, FDRes_D8]
+    cases top
+    · refine ⟨[], .node pre, .node (pre ++ y :: ys), by simp, by simp, by simp [Tree.forestAt],
+        by simp [Tree.forestAt], by simp [Tree.cols], ?_⟩
+      simp [cutBefore, Tree.cols]
+    · exact ⟨rfl, by simp [Tree.cols], by simp [Tree.cols]⟩
+  | _, _ :: _, [], _, _ => by simp [fdCols, FDRes_D8, Tree.cmpCols]
+  | ci, x :: xs, y :: ys, pre, hpre => by
+    have hc := fdCol_spec_D8 t π ci 0 x y pre [] xs ys top hpre rfl
+    simp only [List.nil_append] at hc
+    simp only [fdCols]
+    revert hc
+    cases hr : fdCol t π ci 0 x y with
+    | same =>
+      intro hc
+      simp only [FDRes_D8] at hc
+      subst hc
+      have := fdCols_spec_D8 t π top (ci + 1) xs ys (pre ++ [x]) (by simp [hpre])
+      simp only [List.append_assoc, List.cons_append, List.nil_append] at this
+      revert this
+      cases fdCols t π top (ci + 1) xs ys <;>
+        simp [FDRes_D8, Tree.cmpCols, Tree.cmpCol_self]
+    | stop =>
+      intro hc
+      simp only [FDRes_D8] at hc ⊢
+      simp [Tree.cmpCols, hc]
+    | diff d =>
+      intro hc
+      exact hc
+termination_by structural _ xs => xs
+
+theorem fdCol_spec_D8 (t : Nat) (π : List (Nat × Nat)) :
+    (ci k : Nat) → (es fs : List ((Bool × Nat) × Key)) →
+    (pre : List (List ((Bool × Nat) × Key))) → (cpre : List ((Bool × Nat) × Key)) →
+    (xs ys : List (List ((Bool × Nat) × Key))) → (top : Bool) → pre.length = ci → cpre.length = k →
+    FDRes_D8 (fdCol t π ci k es fs) (es = fs) (Tree.cmpCol keyLabelCmp es fs = .gt)
+      (FDSpec_D8 t π top (.node (pre ++ (cpre ++ es) :: xs)) (.node (pre ++ (cpre ++ fs) :: ys)))
+  | _, _, [], [], _, _, _, _, _, _, _ => by simp [fdCol, FDRes_D8]
+  | ci, k, [], (l, hs) :: fs, pre, cpre, xs, ys, top, hpre, hcpre => by
+    simp only [fdCol, FDRes_D8]
+    refine ⟨[], by simp, ?_, ?_, Or.inl ⟨?_, l, hs, ?_, rfl⟩⟩
+    · subst hpre hcpre; simp [cutBefore]
+    · subst hpre; simp [Tree.colAt, Tree.forestAt, Tree.cols]
+    · subst hpre hcpre; simp [Tree.entryAt, Tree.colAt, Tree.forestAt, Tree.cols]
+    · subst hpre hcpre; simp [Tree.entryAt, Tree.colAt, Tree.forestAt, Tree.cols]
+  | _, _, _ :: _, [], _, _, _, _, _, _, _ => by simp [fdCol, FDRes_D8, Tree.cmpCol]
+  | ci, k, (l1, h1) :: es, (l2, h2) :: fs, pre, cpre, xs, ys, top, hpre, hcpre => by
+    simp only [fdCol]
+    cases hl : keyLabelCmp l1 l2 with
+    | lt =>
+      simp only [FDRes_D8]
+      refine ⟨[], by simp, ?_, ?_, Or.inr ⟨l1, h1, l2, h2, ?_, ?_, hl, rfl⟩⟩
+      · subst hpre hcpre; simp [cutBefore]
+      · subst hpre; simp [Tree.colAt, Tree.forestAt, Tree.cols]
+      · subst hpre hcpre; simp [Tree.entryAt, Tree.colAt, Tree.forestAt, Tree.cols]
+      · subst hpre hcpre; simp [Tree.entryAt, Tree.colAt, Tree.forestAt, Tree.cols]
+    | gt => simp [FDRes_D8, Tree.cmpCol, hl]
+    | eq =>
+      have hl' : l1 = l2 := Std.LawfulEqCmp.eq_of_compare hl
+      subst hl'
+      simp only
+      have hf := fdForest_spec_D8 t (π ++ [(ci, k)]) false h1 h2
+      revert hf
+      cases hr : fdForest t (π ++ [(ci, k)]) false h1 h2 with
+      | same =>
+        intro hf
+        simp only [FDRes_D8] at hf
+        subst hf
+        have := fdCol_spec_D8 t π ci (k + 1) es fs pre (cpre ++ [(l1, h1)]) xs ys top hpre
+          (by simp [hcpre])
+        simp only [List.append_assoc, List.cons_append, List.nil_append] at this
+        revert this
+        cases fdCol t π ci (k + 1) es fs <;>
+          simp [FDRes_D8, Tree.cmpCol, Tree.cmp_self, hl]
+      | stop =>
+        intro hf
+        simp only [FDRes_D8] at hf ⊢
+        simp [Tree.cmpCol, hl, show Tree.cmp keyLabelCmp h1 h2 = .gt from hf]
+      | diff d =>
+        intro hf
+        simp only [FDRes_D8] at hf ⊢
+        subst hpre hcpre
+        exact fd_lift_D8 t π top pre cpre es fs xs ys l1 h1 h2 d hf
+termination_by structural _ _ es => es
+end
 
 -- provides: U3, L4.2 (meaning of the classifier)
 theorem firstDiff_spec {rk : SrcRecord} (h : rk.Admitted) :
@@ -370,7 +536,31 @@ theorem firstDiff_spec {rk : SrcRecord} (h : rk.Admitted) :
           p = labelAbs (rk.b.col.num 0) l) ∨
        (∃ l₁ h₁ l₂ h₂, rk.tgtKey.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (l₁, h₁) ∧
           rk.srcKey.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (l₂, h₂) ∧ keyLabelCmp l₁ l₂ = .lt ∧
-          p = labelAbs (rk.b.col.num 0) l₂))) := by sorry
+          p = labelAbs (rk.b.col.num 0) l₂))) := by
+  have hlt : keyCmp rk.tgtKey rk.srcKey = .lt := h.2.2.2.2.2.1
+  have hs := fdForest_spec_D8 (rk.b.col.num 0) rk.b.heightPath true rk.tgtKey rk.srcKey
+  have hfd : rk.firstDiff = match fdForest (rk.b.col.num 0) rk.b.heightPath true rk.tgtKey
+      rk.srcKey with
+    | .diff d => d
+    | _ => .wholeEnds := rfl
+  revert hs hfd
+  cases fdForest (rk.b.col.num 0) rk.b.heightPath true rk.tgtKey rk.srcKey with
+  | same =>
+    intro hs; simp only [FDRes_D8] at hs
+    rw [hs, keyCmp, Tree.cmp_self] at hlt; exact absurd hlt (by decide)
+  | stop =>
+    intro hs; simp only [FDRes_D8] at hs
+    rw [hs] at hlt; exact absurd hlt (by decide)
+  | diff d =>
+    intro hs hfd
+    simp only [FDRes_D8] at hs hfd
+    rw [hfd]
+    refine ⟨fun hd => ?_, fun π hd => ?_, fun c k p hd => ?_⟩
+    · subst hd; exact hs.2
+    · subst hd
+      obtain ⟨ρ, X0, Y0, hπ, hne, hX, hY, hl, hc⟩ := hs
+      exact ⟨ρ, X0, Y0, hπ, hne rfl, hX, hY, hl, hc⟩
+    · subst hd; exact hs
 
 /-- L4.2a: the label map `κ` from source normalization (threshold `≥ r`) to target normalization
 (threshold shifted by `t - r`): false fields below `r` are fixed, other false fields move by
