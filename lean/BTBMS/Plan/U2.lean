@@ -1235,9 +1235,482 @@ theorem safePrefix_condA {E : Forest} (hL : InL E) (k : Nat) : CondA (safePrefix
   exact key p hAE
 
 
+/-! T3.2f helpers: profiles of safe prefixes, pure towers. -/
+
+/-- The profile recursion started `e` levels deeper adds `e` to the depth. -/
+theorem spx_profileAux_add (e : Nat) (d : Nat) (H : Forest) :
+    profileAux (d + e) H = toLex ((ofLex (profileAux d H)).1 + e, (ofLex (profileAux d H)).2) := by
+  induction d, H using profileAux.induct with
+  | case1 d p rest tail => simp [profileAux]
+  | case2 d p rest tail head tail_1 ih =>
+    rw [profileAux, profileAux, show d + e + 1 = d + 1 + e by omega]; exact ih
+  | case3 d cols hne =>
+    match cols, hne with
+    | [], _ => simp [profileAux]
+    | [] :: cs, _ => simp [profileAux]
+    | ((p, h) :: rest) :: cs, hne => exact absurd rfl (hne p h rest cs)
+
+theorem spx_profile_node {cols : List Column} (h : cols ≠ []) :
+    profile (Tree.node cols) = ((profileAux 0 (Tree.node cols) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  cases cols with
+  | nil => exact absurd rfl h
+  | cons x xs => rfl
+
+theorem spx_profileAux_one (H : Forest) :
+    profileAux 1 H = toLex ((ofLex (profileAux 0 H)).1 + 1, (ofLex (profileAux 0 H)).2) :=
+  spx_profileAux_add 1 0 H
+
+/-- A pure tower: singleton levels with parents `ps`, ending in `m` entries `(q, ∅)`. -/
+def spxTower : List Nat → Nat → Nat → Forest
+  | [], q, m => .node [List.replicate m (q, Tree.empty)]
+  | p :: ps, q, m => .node [[(p, spxTower ps q m)]]
+
+theorem spx_tower_ne (ps : List Nat) (q m : Nat) : (spxTower ps q m).cols ≠ [] := by
+  cases ps <;> simp [spxTower, Tree.cols]
+
+theorem spx_profileAux_cons (d p : Nat) {h : Forest} (hh : h.cols ≠ []) (rest : Column)
+    (tail : List Column) :
+    profileAux d (Tree.node (((p, h) :: rest) :: tail)) = profileAux (d + 1) h := by
+  obtain ⟨hc⟩ := h
+  cases hc with
+  | nil => simp [Tree.cols] at hh
+  | cons x xs => rw [profileAux]
+
+theorem spx_eta (T : Forest) : T = Tree.node T.cols := by cases T; rfl
+
+theorem spx_profileAux_tower : ∀ (ps : List Nat) (q m : Nat),
+    profileAux 0 (spxTower ps q (m + 1)) = toLex (ps.length, m + 1)
+  | [], q, m => by
+    show profileAux 0 (Tree.node [((q, Tree.node []) :: List.replicate m (q, Tree.node []))]) = _
+    rw [profileAux]
+    have : (List.replicate m (q, (Tree.node [] : Forest))).takeWhile (fun x => x.1 == q) =
+        List.replicate m (q, Tree.node []) := by
+      induction m with
+      | zero => rfl
+      | succ m ih => simp only [List.replicate_succ, List.takeWhile_cons, beq_self_eq_true,
+          if_true, ih]
+    rw [this, List.length_replicate]; simp; omega
+  | p :: ps, q, m => by
+    simp only [spxTower]
+    rw [spx_profileAux_cons 0 p (spx_tower_ne ps q (m + 1)), spx_profileAux_one,
+      spx_profileAux_tower ps q m]
+    simp
+
+theorem spx_profile_tower (ps : List Nat) (q m : Nat) :
+    profile (spxTower ps q (m + 1)) = ((toLex (ps.length, m + 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  rw [spx_eta (spxTower ps q (m + 1)), spx_profile_node (spx_tower_ne ps q (m + 1)), ← spx_eta]
+  exact congrArg _ (spx_profileAux_tower ps q m)
+
+theorem spx_colAt_empty (c : ColAddr) : (Tree.empty : Forest).colAt c = none := by
+  obtain ⟨P, j⟩ := c
+  cases P with
+  | nil => simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols]
+  | cons x xs => obtain ⟨a, b⟩ := x; simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols]
+
+/-- Every column of a tower is nonempty with constant parents. -/
+theorem spx_tower_col : ∀ (ps : List Nat) (q m : Nat) (ρ : List (Nat × Nat)) (j : Nat) (col : Column),
+    (spxTower ps q (m + 1)).colAt ⟨ρ, j⟩ = some col →
+      ∃ q₀ H₀ rest, col = (q₀, H₀) :: rest ∧ ∀ x ∈ col, x.1 = q₀
+  | [], q, m, [], j, col, h => by
+    simp only [spxTower, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    cases j with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      exact ⟨q, _, _, rfl, fun x hx => by rw [(List.eq_of_mem_replicate hx)]⟩
+    | succ j => simp at h
+  | [], q, m, (a, b) :: ρ, j, col, h => by
+    rw [Tree.colAt_cons] at h
+    simp only [spxTower, Tree.cols] at h
+    cases a with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.bind_some] at h
+      cases hb : (List.replicate (m + 1) (q, (Tree.empty : Forest)))[b]? with
+      | none => rw [hb] at h; simp at h
+      | some x =>
+        rw [hb, Option.bind_some] at h
+        have := List.eq_of_mem_replicate (List.mem_of_getElem? hb)
+        rw [this] at h
+        rw [spx_colAt_empty] at h; simp at h
+    | succ a => simp at h
+  | p :: ps, q, m, [], j, col, h => by
+    simp only [spxTower, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    cases j with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      exact ⟨p, _, _, rfl, fun x hx => by simp at hx; rw [hx]⟩
+    | succ j => simp at h
+  | p :: ps, q, m, (a, b) :: ρ, j, col, h => by
+    rw [Tree.colAt_cons] at h
+    simp only [spxTower, Tree.cols] at h
+    cases a with
+    | zero =>
+      cases b with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.bind_some] at h
+        exact spx_tower_col ps q m ρ j col h
+      | succ b => simp at h
+    | succ a => simp at h
+
+/-- The heights of the outer entries of a tower have smaller profile. -/
+theorem spx_tower_outer {ps : List Nat} {q m j i q' : Nat} {J : Forest}
+    (h : (spxTower ps q (m + 1)).entryAt ⟨⟨[], j⟩, i⟩ = some (q', J)) :
+    profile J < profile (spxTower ps q (m + 1)) := by
+  rw [spx_profile_tower]
+  cases ps with
+  | nil =>
+    simp only [spxTower, Tree.entryAt, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    cases j with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.bind_some] at h
+      have := List.eq_of_mem_replicate (List.mem_of_getElem? h)
+      simp only [Prod.mk.injEq] at this
+      rw [this.2]
+      exact WithBot.bot_lt_coe _
+    | succ j => simp at h
+  | cons p ps =>
+    simp only [spxTower, Tree.entryAt, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    cases j with
+    | zero =>
+      cases i with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.bind_some, Option.some.injEq,
+          Prod.mk.injEq] at h
+        rw [← h.2, spx_profile_tower]
+        exact WithBot.coe_lt_coe.2 (Prod.Lex.toLex_lt_toLex.2 (Or.inl (by simp)))
+      | succ i => simp at h
+    | succ j => simp at h
+
+theorem spx_spF_emptyF (k : Nat) : spF k (Tree.empty : Forest) = (Tree.empty, k) := by
+  simp [Tree.empty, spF, spCols]
+
+theorem spx_spLater_zero (col : Column) : spLater 0 col = ([], 0) := by
+  cases col <;> simp [spLater]
+
+theorem spx_spCols_zero (cols : List Column) : spCols 0 cols = ([], 0) := by
+  cases cols <;> simp [spCols]
+
+theorem spx_spLater_fst : ∀ (k : Nat) (col : Column),
+    (spLater k col).1.map Prod.fst <+: col.map Prod.fst
+  | k, [] => by simp [spLater]
+  | k, (q, h) :: rest => by
+    by_cases hk : k = 0
+    · simp [spLater, hk]
+    · simp only [spLater, hk, if_false, List.map_cons]
+      exact (List.prefix_cons_inj _).2 (spx_spLater_fst _ rest)
+
+theorem spx_spLater_short : ∀ (k : Nat) (col : Column),
+    (spLater k col).1.length < col.length → (spLater k col).2 = 0
+  | k, [] => by simp [spLater]
+  | k, (q, h) :: rest => by
+    by_cases hk : k = 0
+    · simp [spLater, hk]
+    · simp only [spLater, hk, if_false, List.length_cons]
+      intro hl
+      exact spx_spLater_short _ rest (by omega)
+
+/-- Runs of a parent in a prefix of the parent list. -/
+theorem spx_takeWhile_prefix (p : Nat) : ∀ (l' l : Column), l'.map Prod.fst <+: l.map Prod.fst →
+    (l'.takeWhile fun x => x.1 == p).length ≤ (l.takeWhile fun x => x.1 == p).length ∧
+    ((l'.takeWhile fun x => x.1 == p).length < (l.takeWhile fun x => x.1 == p).length →
+      (∀ x ∈ l', x.1 = p) ∧ l'.length < l.length)
+  | [], l, _ => by
+    refine ⟨by simp, fun h => ⟨by simp, ?_⟩⟩
+    cases l with
+    | nil => simp at h
+    | cons x xs => simp
+  | x' :: xs', [], h => by simp at h
+  | x' :: xs', x :: xs, h => by
+    simp only [List.map_cons, List.cons_prefix_cons] at h
+    obtain ⟨hx, h⟩ := h
+    have ih := spx_takeWhile_prefix p xs' xs h
+    by_cases hp : x'.1 = p
+    · have hp' : x.1 = p := hx ▸ hp
+      have e1 : (x' :: xs').takeWhile (fun x => x.1 == p) = x' :: xs'.takeWhile (fun x => x.1 == p) := by
+        simp [hp]
+      have e2 : (x :: xs).takeWhile (fun x => x.1 == p) = x :: xs.takeWhile (fun x => x.1 == p) := by
+        simp [hp']
+      rw [e1, e2, List.length_cons, List.length_cons]
+      refine ⟨Nat.succ_le_succ ih.1, fun hl => ⟨?_, ?_⟩⟩
+      · intro y hy
+        rcases List.mem_cons.1 hy with rfl | hy
+        · exact hp
+        · exact (ih.2 (Nat.lt_of_succ_lt_succ hl)).1 y hy
+      · simp only [List.length_cons]
+        exact Nat.succ_lt_succ (ih.2 (Nat.lt_of_succ_lt_succ hl)).2
+    · have hp' : ¬ x.1 = p := hx ▸ hp
+      have e1 : (x' :: xs').takeWhile (fun x => x.1 == p) = [] := by
+        simp [hp]
+      have e2 : (x :: xs).takeWhile (fun x => x.1 == p) = [] := by
+        simp [hp']
+      rw [e1, e2]; simp
+
+/-- Nonincreasing columns. -/
+def spxNoninc (col : Column) : Prop :=
+  ∀ i x y, col[i]? = some x → col[i + 1]? = some y → EntryLe y x
+
+theorem spx_le_empty {X : Forest} (h : X ≤ Tree.empty) : X = Tree.empty := by
+  by_contra hne
+  exact absurd h (not_le.2 (Forest.empty_lt hne))
+
+/-- Under H the run of the first parent after an entry with empty height has empty heights. -/
+theorem spx_run_empty (p : Nat) : ∀ (rest : Column), spxNoninc ((p, Tree.empty) :: rest) →
+    ∀ x ∈ rest.takeWhile (fun x => x.1 == p), x = (p, Tree.empty)
+  | [], _ => by simp
+  | y :: ys, h => by
+    by_cases hy : y.1 = p
+    · have hle := h 0 (p, Tree.empty) y rfl rfl
+      have hy2 : y.2 = Tree.empty := by
+        rcases hle with hlt | ⟨-, hle⟩
+        · exact absurd hlt (by simp [hy])
+        · exact spx_le_empty hle
+      have hyy : y = (p, Tree.empty) := Prod.ext hy hy2
+      have h' : spxNoninc ((p, Tree.empty) :: ys) := by
+        intro i x z hx hz
+        apply h (i + 1) x z
+        · cases i with
+          | zero => simpa [hyy] using hx
+          | succ i => simpa using hx
+        · simpa using hz
+      intro x hx
+      simp only [List.takeWhile_cons, hy, beq_self_eq_true, if_true, List.mem_cons] at hx
+      rcases hx with rfl | hx
+      · exact hyy
+      · exact spx_run_empty p ys h' x hx
+    · simp [hy]
+
+theorem spx_condH_col {T : Forest} (hH : CondH T) {c : ColAddr} {col : Column}
+    (hc : T.colAt c = some col) : spxNoninc col := by
+  intro i x y hx hy
+  have := hH c ((Tree.mem_colAddrs_iff T c).2 (by rw [hc]; rfl)) i x y
+  rw [hc, Option.getD_some] at this
+  exact this hx hy
+
+theorem spx_colAt_append (t : Forest) (π ρ : List (Nat × Nat)) (j : Nat) :
+    t.colAt ⟨π ++ ρ, j⟩ = (t.forestAt π).bind fun F => F.colAt ⟨ρ, j⟩ := by
+  simp only [Tree.colAt, Tree.forestAt_append, Option.bind_assoc]
+
+/-- H passes to heights. -/
+theorem spx_condH_height {T : Forest} (hH : CondH T) {g : EntryAddr} {G : Forest}
+    (hg : T.heightAt g = some G) : CondH G := by
+  intro c hc i x y hx hy
+  have hcol : T.colAt ⟨g.heightPath ++ c.path, c.col⟩ = G.colAt c := by
+    rw [spx_colAt_append, Tree.forestAt_heightPath, hg]; rfl
+  obtain ⟨col, hcol'⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff G c).1 hc)
+  rw [hcol'] at hcol hx hy
+  exact spx_condH_col hH hcol i x y hx hy
+
+/-- Profiles of safe prefixes: never larger, and when changed (and nonempty) a pure tower. -/
+theorem spx_profile_sp (d : Nat) (H : Forest) : ∀ k, CondH H →
+    profile (safePrefix H k) ≤ profile H ∧
+      (profile (safePrefix H k) = profile H ∨
+        (∃ ps q m, safePrefix H k = spxTower ps q (m + 1)) ∨ safePrefix H k = Tree.empty) := by
+  induction d, H using profileAux.induct with
+  | case1 d p rest tail =>
+    intro k hH
+    rcases Nat.eq_zero_or_pos k with rfl | hk
+    · have : safePrefix (Tree.node (((p, Tree.node []) :: rest) :: tail)) 0 = Tree.empty := by
+        simp [safePrefix, safePrefixBody, spF, spCols, Tree.empty]
+      rw [this]; exact ⟨by simp [profile, profileBody, Tree.empty], Or.inr (Or.inr rfl)⟩
+    · have hsp : safePrefix (Tree.node (((p, Tree.node []) :: rest) :: tail)) k =
+          Tree.node (((p, Tree.node []) :: (spLater (k - 1) rest).1) ::
+            (spCols (spLater (k - 1) rest).2 tail).1) := by
+        show (spF k _).1 = _
+        have := spx_spF_emptyF (k - 1)
+        simp only [Tree.empty] at this
+        simp only [spF, spCols, Nat.pos_iff_ne_zero.1 hk, if_false, spCol]
+      rw [hsp, spx_profile_node (by simp), spx_profile_node (by simp), profileAux, profileAux]
+      obtain ⟨hle, hlt⟩ := spx_takeWhile_prefix p _ rest (spx_spLater_fst (k - 1) rest)
+      refine ⟨WithBot.coe_le_coe.2 (Prod.Lex.toLex_le_toLex.2 (Or.inr ⟨rfl,
+        Nat.add_le_add_left hle 1⟩)), ?_⟩
+      by_cases heq : ((spLater (k - 1) rest).1.takeWhile fun x => x.1 == p).length =
+          (rest.takeWhile fun x => x.1 == p).length
+      · left; rw [heq]
+      · right; left
+        obtain ⟨hall, hshort⟩ := hlt (Nat.lt_of_le_of_ne hle heq)
+        have hrun := spx_run_empty p rest (spx_condH_col hH (c := ⟨[], 0⟩) rfl)
+        have hb := spx_spLater_short _ _ hshort
+        have hit : (spLater (k - 1) rest).1.length < (rest.takeWhile fun x => x.1 == p).length := by
+          have e : ((spLater (k - 1) rest).1.takeWhile fun x => x.1 == p) =
+              (spLater (k - 1) rest).1 := takeWhile_eq_self_of (fun x hx => by simp [hall x hx])
+          rw [e] at hle heq; exact Nat.lt_of_le_of_ne hle heq
+        have hkept : (spLater (k - 1) rest).1 =
+            List.replicate (spLater (k - 1) rest).1.length (p, Tree.empty) := by
+          apply List.ext_getElem (by simp)
+          intro i hi _
+          rw [List.getElem_replicate]
+          obtain ⟨⟨q, h'⟩, hx⟩ : ∃ x, (spLater (k - 1) rest).1[i]? = some x :=
+            ⟨_, List.getElem?_eq_getElem hi⟩
+          obtain ⟨h₀, k', hr, rfl, -⟩ := spx_spLater_get _ _ i q h' hx
+          have hq : q = p := hall _ (List.mem_of_getElem? hx)
+          have hmem : (q, h₀) ∈ rest.takeWhile fun x => x.1 == p := by
+            apply List.mem_of_getElem? (i := i)
+            rw [List.prefix_iff_eq_take.1 (List.takeWhile_prefix _), List.getElem?_take,
+              if_pos (by omega)]
+            exact hr
+          have := hrun _ hmem
+          simp only [Prod.mk.injEq] at this
+          rw [List.getElem?_eq_getElem hi] at hx
+          rw [Option.some.inj hx, this.2, hq, spx_spF_emptyF]
+        refine ⟨[], p, (spLater (k - 1) rest).1.length, ?_⟩
+        rw [hb, spx_spCols_zero, hkept]
+        simp only [spxTower, List.replicate_succ, List.length_replicate, Tree.empty]
+  | case2 d p rest tail head tail_1 ih =>
+    intro k hH
+    have hHh : CondH (Tree.node (head :: tail_1)) := spx_condH_height hH (g := ⟨⟨[], 0⟩, 0⟩) rfl
+    have ih' := ih
+    generalize hh : Tree.node (head :: tail_1) = h at hHh ih'
+    have hne : h.cols ≠ [] := by rw [← hh]; simp [Tree.cols]
+    have hprof : profile (Tree.node (((p, h) :: rest) :: tail)) =
+        ((profileAux 1 h : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+      rw [spx_profile_node (by simp), spx_profileAux_cons 0 p hne]
+    rcases Nat.eq_zero_or_pos k with rfl | hk
+    · have : safePrefix (Tree.node (((p, h) :: rest) :: tail)) 0 = Tree.empty := by
+        simp [safePrefix, safePrefixBody, spF, spCols, Tree.empty]
+      rw [this]; exact ⟨by simp [profile, profileBody, Tree.empty], Or.inr (Or.inr rfl)⟩
+    · have hsp : safePrefix (Tree.node (((p, h) :: rest) :: tail)) k =
+          Tree.node (((p, (spF (k - 1) h).1) :: (spLater (spF (k - 1) h).2 rest).1) ::
+            (spCols (spLater (spF (k - 1) h).2 rest).2 tail).1) := by
+        show (spF k _).1 = _
+        simp only [spF, spCols, Nat.pos_iff_ne_zero.1 hk, if_false, spCol]
+      rw [hsp, hprof]
+      by_cases hb : (spF (k - 1) h).2 = 0
+      · rw [hb, spx_spLater_zero, spx_spCols_zero]
+        obtain ⟨ihle, ihc⟩ := ih' (k - 1) hHh
+        by_cases he : (spF (k - 1) h).1 = Tree.empty
+        · rw [he]
+          have ht : (Tree.node [[(p, Tree.empty)]] : Forest) = spxTower [] p (0 + 1) := rfl
+          rw [ht, spx_profile_tower]
+          refine ⟨WithBot.coe_le_coe.2 ?_, Or.inr (Or.inl ⟨[], p, 0, rfl⟩)⟩
+          rw [spx_profileAux_one, Prod.Lex.toLex_le_toLex]
+          left; simp
+        · have hne' : (spF (k - 1) h).1.cols ≠ [] := by
+            intro h0; apply he; rw [spx_eta (spF (k - 1) h).1, h0]; rfl
+          have e1 : profile (Tree.node [[(p, (spF (k - 1) h).1)]]) =
+              ((profileAux 1 (spF (k - 1) h).1 : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+            rw [spx_profile_node (by simp), spx_profileAux_cons 0 p hne']
+          have e2 : profile (spF (k - 1) h).1 =
+              ((profileAux 0 (spF (k - 1) h).1 : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+            rw [spx_eta (spF (k - 1) h).1, spx_profile_node hne', ← spx_eta]
+          have e3 : profile h = ((profileAux 0 h : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+            rw [spx_eta h, spx_profile_node hne, ← spx_eta]
+          have ihle' : profile (spF (k - 1) h).1 ≤ profile h := ihle
+          rw [e2, e3, WithBot.coe_le_coe] at ihle'
+          rw [e1]
+          refine ⟨WithBot.coe_le_coe.2 ?_, ?_⟩
+          · rw [spx_profileAux_one, spx_profileAux_one]
+            rw [Prod.Lex.le_iff] at ihle'
+            rw [Prod.Lex.toLex_le_toLex]
+            simp only at ihle' ⊢
+            omega
+          · rcases ihc with heq | ⟨ps, q, m, htw⟩ | hemp
+            · left
+              change profile (spF (k - 1) h).1 = profile h at heq
+              rw [e2, e3, WithBot.coe_inj] at heq
+              rw [spx_profileAux_one, spx_profileAux_one, heq]
+            · right; left
+              change (spF (k - 1) h).1 = _ at htw
+              exact ⟨p :: ps, q, m, by rw [htw]; rfl⟩
+            · exact absurd hemp he
+      · rw [spx_spF_full hb]
+        have e1 : profile (Tree.node (((p, h) :: (spLater (spF (k - 1) h).2 rest).1) ::
+            (spCols (spLater (spF (k - 1) h).2 rest).2 tail).1)) =
+            ((profileAux 1 h : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+          rw [spx_profile_node (by simp), spx_profileAux_cons 0 p hne]
+        rw [e1]
+        exact ⟨le_refl _, Or.inl rfl⟩
+  | case3 d cols hne =>
+    intro k hH
+    match cols, hne with
+    | [], _ =>
+      have : safePrefix (Tree.node []) k = Tree.empty := by
+        have := spx_spF_emptyF k; simp only [Tree.empty] at this
+        show (spF k _).1 = _; rw [this]; rfl
+      rw [this]; exact ⟨le_of_eq (by rfl), Or.inr (Or.inr rfl)⟩
+    | [] :: cs, _ =>
+      rcases Nat.eq_zero_or_pos k with rfl | hk
+      · have : safePrefix (Tree.node ([] :: cs)) 0 = Tree.empty := by
+          simp [safePrefix, safePrefixBody, spF, spCols, Tree.empty]
+        rw [this]; exact ⟨by simp [profile, profileBody, Tree.empty], Or.inr (Or.inr rfl)⟩
+      · have hsp : safePrefix (Tree.node ([] :: cs)) k =
+            Tree.node ([] :: (spCols (k - 1) cs).1) := by
+          show (spF k _).1 = _
+          simp only [spF, spCols, Nat.pos_iff_ne_zero.1 hk, if_false, spCol]
+        rw [hsp, spx_profile_node (by simp), spx_profile_node (by simp), profileAux, profileAux]
+        all_goals first | exact ⟨le_refl _, Or.inl rfl⟩ | simp
+    | ((p, h) :: rest) :: cs, hne => exact absurd rfl (hne p h rest cs)
+
 -- T3.2f (txt:314-318): safe prefixes keep P
 theorem safePrefix_condP {E : Forest} (hL : InL E) (hP : CondP E) (k : Nat) :
-    CondP (safePrefix E k) := by sorry
+    CondP (safePrefix E k) := by
+  obtain ⟨-, hI, hH, -, -⟩ := hL
+  have hI' : CondI (safePrefix E k) := safePrefix_condI hI k
+  intro e0 he0 e he hret
+  obtain ⟨⟨ρ, hρ⟩, q, J', hJ', hres⟩ := hret
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  dsimp only at hρ
+  subst hρ
+  obtain ⟨x0, hx0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ e0).1 he0)
+  obtain ⟨p0, H'⟩ := x0
+  obtain ⟨H, k₀, hH0, rfl, -⟩ := spx_entryAt (k := k) (T := E) hx0
+  have hJ'' := hJ'
+  rw [spx_entryAt_inside, Tree.heightAt, hx0] at hJ''
+  simp only [Option.map_some, Option.bind_some] at hJ''
+  obtain ⟨J, k₁, hJ, rfl, hk⟩ := spx_entryAt hJ''
+  have hEe : E.entryAt ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩ = some (q, J) := by
+    rw [spx_entryAt_inside, Tree.heightAt, hH0]; simpa using hJ
+  have hretE : IsOwnerReturn E e0 ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩ := ⟨⟨ρ, rfl⟩, q, J, hEe, hres⟩
+  have hPE := hP e0 ((Tree.mem_entryAddrs_iff E e0).2 (by rw [hH0]; rfl)) _
+    ((Tree.mem_entryAddrs_iff E _).2 (by rw [hEe]; rfl)) hretE
+  rw [Tree.heightAt, Tree.heightAt, hEe, hH0] at hPE
+  simp only [Option.map_some, Option.getD_some] at hPE
+  rw [Tree.heightAt, Tree.heightAt, hJ', hx0]
+  simp only [Option.map_some, Option.getD_some]
+  have hHH : CondH H := spx_condH_height hH (g := e0) (by rw [Tree.heightAt, hH0]; rfl)
+  have hHJ : CondH J :=
+    spx_condH_height hH (g := ⟨⟨e0.heightPath ++ ρ, j⟩, i⟩) (by rw [Tree.heightAt, hEe]; rfl)
+  obtain ⟨-, hcase⟩ := spx_profile_sp 0 H k₀ hHH
+  rcases hcase with hsame | ⟨ps, q', m, htw⟩ | hemp
+  · exact lt_of_le_of_lt (spx_profile_sp 0 J k₁ hHJ).1 (hsame ▸ hPE)
+  · -- the prefix of `H` is a pure tower: only its outer entries can return to its host
+    have htw' : (spF k₀ H).1 = spxTower ps q' (m + 1) := htw
+    rw [htw'] at hJ'' ⊢
+    rcases List.eq_nil_or_concat ρ with rfl | ⟨ρ₀, ⟨c₁, i₁⟩, rfl⟩
+    · exact spx_tower_outer hJ''
+    · exfalso
+      obtain ⟨col, hcol, hci⟩ := Tree.colAt_of_entryAt hJ''
+      obtain ⟨q₀, H₀, rest, rfl, hconst⟩ := spx_tower_col ps q' m _ j _ hcol
+      have hqq : q = q₀ := hconst _ (List.mem_of_getElem? hci)
+      -- the entry `g` whose height holds the returning column
+      let g : EntryAddr := ⟨⟨e0.heightPath ++ ρ₀, c₁⟩, i₁⟩
+      have hgp : g.heightPath = e0.heightPath ++ (ρ₀ ++ [(c₁, i₁)]) := by
+        simp [g, EntryAddr.heightPath]
+      have hcolE : (safePrefix E k).colAt ⟨g.heightPath, j⟩ = some ((q₀, H₀) :: rest) := by
+        rw [hgp, spx_colAt_append, Tree.forestAt_heightPath, Tree.heightAt, hx0]
+        simp only [Option.map_some, Option.bind_some]
+        rw [htw']; simpa using hcol
+      rw [Tree.colAt, Tree.forestAt_heightPath, Tree.heightAt] at hcolE
+      obtain ⟨G, hG, hGc⟩ := Option.bind_eq_some_iff.1 hcolE
+      obtain ⟨⟨pg, G'⟩, hgE, hGG⟩ := Option.map_eq_some_iff.1 hG
+      simp only at hGG
+      subst hGG
+      have hGne : G' ≠ Tree.empty := by
+        intro h0; rw [h0] at hGc; simp [Tree.empty, Tree.cols] at hGc
+      obtain ⟨q'', H'', rest'', hc'', hle⟩ := hI' g ((Tree.mem_entryAddrs_iff _ g).2
+        (by rw [hgE]; rfl)) pg G' hgE hGne _ (List.mem_of_getElem? hGc)
+      simp only [List.cons.injEq, Prod.mk.injEq] at hc''
+      have hnum : e0.col.num 0 = q := ColAddr.resolve_num hres
+      have hg : e0.col.num 0 + 1 ≤ g.col.num 0 := by
+        simp only [g, ColAddr.num, EntryAddr.heightPath, List.map_append, List.sum_append,
+          List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
+        omega
+      omega
+  · have htw' : (spF k₀ H).1 = Tree.empty := hemp
+    rw [htw'] at hJ''
+    obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hJ''
+    rw [spx_colAt_empty] at hcol; cases hcol
+
 
 -- T3.2g: deletion steps and ordinary steps at parameter 0 are safe prefixes
 theorem expand_safePrefix {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV : CondV E)
