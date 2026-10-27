@@ -1298,18 +1298,181 @@ theorem word_injective : Function.Injective word := by
   rw [gword_eq_map_word, gword_eq_map_word, h]
 
 -- bridge: holds by `rfl` (SCR-2 applied)
-theorem safePrefix_eq_body (E : Forest) (k : Nat) : safePrefix E k = safePrefixBody E k := by sorry
+theorem safePrefix_eq_body (E : Forest) (k : Nat) : safePrefix E k = safePrefixBody E k := rfl
+
+mutual
+/-- D1.9a helper: `spF_spec` with its column, entry and later-entry forms. -/
+theorem spF_spec' : (e k : Nat) → (E : Forest) →
+    wordAt e (spF k E).1 = (wordAt e E).take k ∧ (spF k E).2 = k - (wordAt e E).length
+  | e, k, .node cols => by simp only [spF, wordAt]; exact spCols_spec e k cols
+theorem spCols_spec : (e k : Nat) → (cs : List Column) →
+    wordCols e (spCols k cs).1 = (wordCols e cs).take k ∧ (spCols k cs).2 = k - (wordCols e cs).length
+  | _, k, [] => by simp [spCols, wordCols]
+  | e, k, col :: rest => by
+    by_cases hk : k = 0
+    · subst hk; simp [spCols, wordCols]
+    · obtain ⟨h1, h2⟩ := spCol_spec e k col (by omega)
+      obtain ⟨h3, h4⟩ := spCols_spec e (spCol k col).2 rest
+      simp only [spCols, if_neg hk, wordCols, List.take_append, List.length_append]
+      rw [h1, h3, h4, h2]
+      exact ⟨rfl, by omega⟩
+theorem spCol_spec : (e k : Nat) → (col : Column) → 1 ≤ k →
+    wordCol e (spCol k col).1 = (wordCol e col).take k ∧ (spCol k col).2 = k - (wordCol e col).length
+  | e, k, [], hk => by
+    obtain ⟨k, rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    simp [spCol, wordCol]
+  | e, k, (p, h) :: rest, hk => by
+    obtain ⟨k, rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    obtain ⟨h1, h2⟩ := spF_spec' (e + 1) k h
+    obtain ⟨h3, h4⟩ := spLater_spec e (spF k h).2 rest
+    simp only [spCol, wordCol, Nat.add_sub_cancel, List.take_succ_cons, List.take_append,
+      List.length_cons, List.length_append]
+    rw [h1, h3, h4, h2]
+    exact ⟨rfl, by omega⟩
+theorem spLater_spec : (e k : Nat) → (col : Column) →
+    wordLater e (spLater k col).1 = (wordLater e col).take k ∧
+      (spLater k col).2 = k - (wordLater e col).length
+  | _, k, [] => by simp [spLater, wordLater]
+  | e, k, (p, h) :: rest => by
+    by_cases hk : k = 0
+    · subst hk; simp [spLater, wordLater]
+    · obtain ⟨k, rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+      obtain ⟨h1, h2⟩ := spF_spec' (e + 1) k h
+      obtain ⟨h3, h4⟩ := spLater_spec e (spF k h).2 rest
+      simp only [spLater, if_neg hk, wordLater, Nat.add_sub_cancel, List.take_succ_cons,
+        List.take_append, List.length_cons, List.length_append]
+      rw [h1, h3, h4, h2]
+      exact ⟨rfl, by omega⟩
+end
 
 /-- D1.9a: the budget bookkeeping of `spF` (the invariant behind `word_safePrefix`):
 `word (spF k E).1 = (word E).take k` and the unused budget is `k - µ(E)`. -/
 theorem spF_spec (e k : Nat) (E : Forest) :
-    wordAt e (spF k E).1 = (wordAt e E).take k ∧ (spF k E).2 = k - (wordAt e E).length := by sorry
+    wordAt e (spF k E).1 = (wordAt e E).take k ∧ (spF k E).2 = k - (wordAt e E).length :=
+  spF_spec' e k E
+
+-- provides: U1, D1.9 (moved from `Spine.lean`: the proof uses `spF_spec`)
+theorem word_safePrefix (E : Forest) (k : Nat) : word (safePrefix E k) = (word E).take k :=
+  (spF_spec 0 k E).1
 
 /-- D1.9: a safe prefix of full length is the whole forest. -/
-theorem safePrefix_of_le {E : Forest} {k : Nat} (hk : mu E ≤ k) : safePrefix E k = E := by sorry
+theorem safePrefix_of_le {E : Forest} {k : Nat} (hk : mu E ≤ k) : safePrefix E k = E := by
+  apply word_injective
+  rw [word_safePrefix]
+  exact List.take_of_length_le hk
+
+/-- D1.9 helper: a list is never smaller than one of its prefixes. -/
+theorem list_not_lt_prefix {β : Type} [LinearOrder β] {p l : List β} (h : p <+: l) : ¬ l < p := by
+  obtain ⟨r, rfl⟩ := h
+  induction p with
+  | nil => exact List.not_lt_nil _
+  | cons a p ih => rw [List.cons_append, List.cons_lt_cons_iff]; simpa using ih
 
 /-- D1.9: a safe prefix is `≤` the forest (by `word_safePrefix` and `word_lt_iff`). -/
-theorem safePrefix_le (E : Forest) (k : Nat) : safePrefix E k ≤ E := by sorry
+theorem safePrefix_le (E : Forest) (k : Nat) : safePrefix E k ≤ E := by
+  rw [Forest.le_iff_cmp]
+  intro hgt
+  have h := (gwordAt_tri 0 (safePrefix E k) E [] [] (by simp) (by simp)).2.1 hgt
+  simp only [List.append_nil] at h
+  change gword E < gword (safePrefix E k) at h
+  rw [gword_eq_map_word, gword_eq_map_word, word_safePrefix] at h
+  exact list_not_lt_prefix ((List.take_prefix k (word E)).map toGAtom) h
+
+/-- D1.9 helper: kept later entries keep their parent; their heights are budgeted walks. -/
+theorem spLater_getElem? : ∀ (k : Nat) (es : Column) (n : Nat) (x' : Nat × Forest),
+    (spLater k es).1[n]? = some x' → ∃ x k', es[n]? = some x ∧ x' = (x.1, (spF k' x.2).1)
+  | _, [], n, x', h => by simp [spLater] at h
+  | k, (p, H) :: rest, n, x', h => by
+    by_cases hk : k = 0
+    · subst hk; simp [spLater] at h
+    · simp only [spLater, if_neg hk] at h
+      cases n with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+        exact ⟨(p, H), k - 1, rfl, h.symm⟩
+      | succ n =>
+        simp only [List.getElem?_cons_succ] at h
+        obtain ⟨x, k', h1, h2⟩ := spLater_getElem? _ rest n x' h
+        exact ⟨x, k', by simpa using h1, h2⟩
+
+theorem spLater_length : ∀ (k : Nat) (es : Column), (spLater k es).1.length ≤ es.length
+  | _, [] => by simp [spLater]
+  | k, (p, H) :: rest => by
+    by_cases hk : k = 0
+    · subst hk; simp [spLater]
+    · simp only [spLater, if_neg hk, List.length_cons]
+      have := spLater_length (spF (k - 1) H).2 rest
+      omega
+
+/-- D1.9 helper: kept entries of a column keep their parent; their heights are budgeted walks. -/
+theorem spCol_getElem? (k : Nat) (col : Column) (n : Nat) (x' : Nat × Forest)
+    (h : (spCol k col).1[n]? = some x') : ∃ x k', col[n]? = some x ∧ x' = (x.1, (spF k' x.2).1) := by
+  cases col with
+  | nil => simp [spCol] at h
+  | cons x rest =>
+    obtain ⟨p, H⟩ := x
+    simp only [spCol] at h
+    cases n with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      exact ⟨(p, H), k - 1, rfl, h.symm⟩
+    | succ n =>
+      simp only [List.getElem?_cons_succ] at h
+      obtain ⟨x, k', h1, h2⟩ := spLater_getElem? _ rest n x' h
+      exact ⟨x, k', by simpa using h1, h2⟩
+
+theorem spCol_length (k : Nat) (col : Column) : (spCol k col).1.length ≤ col.length := by
+  cases col with
+  | nil => simp [spCol]
+  | cons x rest =>
+    obtain ⟨p, H⟩ := x
+    simp only [spCol, List.length_cons]
+    have := spLater_length (spF (k - 1) H).2 rest
+    omega
+
+theorem spCol_eq_nil (k : Nat) (col : Column) (h : (spCol k col).1 = []) : col = [] := by
+  cases col with
+  | nil => rfl
+  | cons x rest => obtain ⟨p, H⟩ := x; simp [spCol] at h
+
+/-- D1.9 helper: kept columns are budgeted walks of the columns with a positive budget. -/
+theorem spCols_getElem? : ∀ (k : Nat) (cs : List Column) (n : Nat) (col' : Column),
+    (spCols k cs).1[n]? = some col' → ∃ col k', 1 ≤ k' ∧ cs[n]? = some col ∧ col' = (spCol k' col).1
+  | _, [], n, col', h => by simp [spCols] at h
+  | k, col :: rest, n, col', h => by
+    by_cases hk : k = 0
+    · subst hk; simp [spCols] at h
+    · simp only [spCols, if_neg hk] at h
+      cases n with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+        exact ⟨col, k, by omega, rfl, h.symm⟩
+      | succ n =>
+        simp only [List.getElem?_cons_succ] at h
+        obtain ⟨c, k', h0, h1, h2⟩ := spCols_getElem? _ rest n col' h
+        exact ⟨c, k', h0, by simpa using h1, h2⟩
+
+/-- D1.9 helper: every forest of a safe prefix is a budgeted walk of the forest at the same
+address. -/
+theorem forestAt_spF : ∀ (ρ : List (Nat × Nat)) (k : Nat) (E F' : Forest),
+    (spF k E).1.forestAt ρ = some F' → ∃ F k', E.forestAt ρ = some F ∧ F' = (spF k' F).1
+  | [], k, E, F', h => ⟨E, k, rfl, (Option.some.inj h).symm⟩
+  | (c, i) :: ρ, k, .node cols, F', h => by
+    rw [Tree.forestAt_cons] at h
+    rw [Tree.forestAt_cons]
+    simp only [spF, Tree.cols] at h ⊢
+    cases hc : (spCols k cols).1[c]? with
+    | none => rw [hc] at h; simp at h
+    | some col' =>
+      obtain ⟨col, k₁, -, hcol, rfl⟩ := spCols_getElem? k cols c col' hc
+      rw [hc, Option.bind_some] at h
+      cases hi : (spCol k₁ col).1[i]? with
+      | none => rw [hi] at h; simp at h
+      | some x' =>
+        obtain ⟨x, k₂, hx, rfl⟩ := spCol_getElem? k₁ col i x' hi
+        rw [hi, Option.bind_some] at h
+        obtain ⟨F, k', hF, rfl⟩ := forestAt_spF ρ k₂ x.2 F' h
+        exact ⟨F, k', by simp [hcol, hx, hF], rfl⟩
 
 /-- D1.9 (txt:152-153): every column of a safe prefix is a prefix of the corresponding column,
 nonempty if the original column is nonempty; every kept entry keeps its parent and its height is
@@ -1318,11 +1481,112 @@ theorem colAt_safePrefix {E : Forest} {k : Nat} {c : ColAddr} {col' : Column}
     (h : (safePrefix E k).colAt c = some col') :
     ∃ col, E.colAt c = some col ∧ col'.length ≤ col.length ∧ (col' = [] → col = []) ∧
       ∀ (i p' : Nat) (H' : Forest), col'[i]? = some (p', H') →
-        ∃ (H : Forest) (j : Nat), col[i]? = some (p', H) ∧ H' = safePrefix H j := by sorry
+        ∃ (H : Forest) (j : Nat), col[i]? = some (p', H) ∧ H' = safePrefix H j := by
+  unfold Tree.colAt at h
+  cases hf : (safePrefix E k).forestAt c.path with
+  | none => rw [hf] at h; simp at h
+  | some F' =>
+    rw [hf, Option.bind_some] at h
+    obtain ⟨⟨cols⟩, k', hF, rfl⟩ := forestAt_spF c.path k E F' hf
+    simp only [spF, Tree.cols] at h
+    obtain ⟨col, k₁, -, hcol, rfl⟩ := spCols_getElem? k' cols c.col col' h
+    refine ⟨col, by simp only [Tree.colAt, hF, Option.bind_some]; exact hcol,
+      spCol_length k₁ col, spCol_eq_nil k₁ col,
+      fun i p' H' hi => ?_⟩
+    obtain ⟨x, k₂, hx, hx'⟩ := spCol_getElem? k₁ col i _ hi
+    obtain ⟨q, H⟩ := x
+    simp only [Prod.mk.injEq] at hx'
+    obtain ⟨rfl, rfl⟩ := hx'
+    exact ⟨H, k₂, hx, rfl⟩
+
+/-- D1.9a helper: the word of a list of columns splits over an append (the D1.5a helper
+`wordCols_append` comes later in the file). -/
+theorem wordCols_append' (d : Nat) (l₁ l₂ : List Column) :
+    wordCols d (l₁ ++ l₂) = wordCols d l₁ ++ wordCols d l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons c l ih => simp only [List.cons_append, wordCols, ih, List.append_assoc]
+
+/-- D1.9a helper: the word of later entries splits over an append. -/
+theorem wordLater_append (d : Nat) (l₁ l₂ : Column) :
+    wordLater d (l₁ ++ l₂) = wordLater d l₁ ++ wordLater d l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons x l ih => obtain ⟨p, h⟩ := x; simp only [List.cons_append, wordLater, ih, List.append_assoc]
+
+/-- D1.9a helper: the word of a column with a nonempty first part. -/
+theorem wordCol_append_of_ne_nil (d : Nat) {l₁ : Column} (h : l₁ ≠ []) (l₂ : Column) :
+    wordCol d (l₁ ++ l₂) = wordCol d l₁ ++ wordLater d l₂ := by
+  cases l₁ with
+  | nil => exact absurd rfl h
+  | cons x l => obtain ⟨p, H⟩ := x; simp only [List.cons_append, wordCol, wordLater_append, List.append_assoc]
+
+/-- D1.9a helper: cutting a column after entry `|es₁|`, whose height is replaced by one with a
+prefix word, gives a prefix of the column's word. -/
+theorem wordCol_cut_prefix (d : Nat) (es₁ : Column) (q : Nat) {H H' : Forest} (es₂ : Column)
+    (hH : wordAt (d + 1) H' <+: wordAt (d + 1) H) :
+    wordCol d (es₁ ++ [(q, H')]) <+: wordCol d (es₁ ++ (q, H) :: es₂) := by
+  cases es₁ with
+  | nil =>
+    simp only [List.nil_append, wordCol, wordLater, List.append_nil, List.cons_prefix_cons, true_and]
+    exact hH.trans (List.prefix_append _ _)
+  | cons x l =>
+    rw [wordCol_append_of_ne_nil d (List.cons_ne_nil x l),
+      wordCol_append_of_ne_nil d (List.cons_ne_nil x l), List.prefix_append_right_inj]
+    simp only [wordLater, List.append_nil, List.cons_prefix_cons, true_and]
+    exact hH.trans (List.prefix_append _ _)
+
+/-- D1.9a helper: `truncAux` at a present entry gives a prefix of the word, at every depth. -/
+theorem wordAt_truncAux_prefix : ∀ (ρ : List (Nat × Nat)) (s : Forest) (j i d : Nat)
+    (x : Nat × Forest), s.entryAt ⟨⟨ρ, j⟩, i⟩ = some x → wordAt d (Tree.truncAux ρ j i s) <+: wordAt d s
+  | [], .node cols, j, i, d, x, he => by
+    rw [Tree.entryAt_eq_bind] at he
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols] at he
+    cases hc : cols[j]? with
+    | none => rw [hc] at he; simp at he
+    | some col =>
+      rw [hc, Option.bind_some] at he
+      obtain ⟨cols₁, cols₂, rfl, rfl⟩ := Tree.exists_split_of_getElem? hc
+      obtain ⟨es₁, es₂, rfl, rfl⟩ := Tree.exists_split_of_getElem? he
+      obtain ⟨q, H⟩ := x
+      simp [Tree.truncAux, wordAt, wordCols_append', wordCols, List.getD_eq_getElem?_getD,
+        List.take_append, List.take_of_length_le]
+      exact (wordCol_cut_prefix d es₁ q es₂ (List.prefix_refl _)).trans (List.prefix_append _ _)
+  | (c₀, i₀) :: ρ, .node cols, j, i, d, x, he => by
+    rw [Tree.entryAt_eq_bind, Tree.forestAt_cons] at he
+    simp only [Tree.cols] at he
+    cases hc : cols[c₀]? with
+    | none => rw [hc] at he; simp at he
+    | some col =>
+      rw [hc, Option.bind_some] at he
+      cases hi : col[i₀]? with
+      | none => rw [hi] at he; simp at he
+      | some y =>
+        obtain ⟨p₀, h₀⟩ := y
+        rw [hi, Option.bind_some] at he
+        replace he : h₀.entryAt ⟨⟨ρ, j⟩, i⟩ = some x := by rw [Tree.entryAt_eq_bind]; exact he
+        have ih := wordAt_truncAux_prefix ρ h₀ j i (d + 1) x he
+        obtain ⟨cols₁, cols₂, rfl, rfl⟩ := Tree.exists_split_of_getElem? hc
+        obtain ⟨es₁, es₂, rfl, rfl⟩ := Tree.exists_split_of_getElem? hi
+        simp [Tree.truncAux, wordAt, wordCols_append', wordCols, List.getD_eq_getElem?_getD]
+        exact (wordCol_cut_prefix d es₁ p₀ es₂ ih).trans (List.prefix_append _ _)
 
 /-- D1.9a: the word of a truncation after an entry is a prefix of the word. -/
 theorem word_truncAfter_prefix (E : Forest) (e : EntryAddr) : word (E.truncAfter e) <+: word E := by
-  sorry
+  rw [Tree.truncAfter_eq_body, Tree.truncAfterBody]
+  split_ifs with hs
+  · obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hs
+    exact wordAt_truncAux_prefix e.col.path E e.col.col e.idx 0 x hx
+  · exact List.prefix_refl _
+
+-- provides: U1, D1.9 (`truncAfter` is a safe prefix; moved from `Spine.lean`: the proof uses
+-- `word_truncAfter_prefix`, `word_safePrefix` and `word_injective`)
+theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
+    ∃ k, E.truncAfter e = safePrefix E k := by
+  clear he
+  refine ⟨(word (E.truncAfter e)).length, word_injective ?_⟩
+  rw [word_safePrefix]
+  exact List.prefix_iff_eq_take.mp (word_truncAfter_prefix E e)
 
 /-- L2.5c (`sign_of_agreement`†, txt:246-249): if two height words agree for more atoms than the
 length of a query height, their normalized comparisons with it have the same strict sign; the
