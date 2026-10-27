@@ -3802,6 +3802,360 @@ theorem marked_height_mono {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p
     bm ∈ rk.E.entryAddrs ∧
     rk.tgtHeight ≤ (rk.E.heightAt bm).getD Tree.empty := by sorry
 
+/-! ### G-012 helpers, moved up from L7.5d (names and statements unchanged; used by L4.3
+`repair_output` and L7.5a `frame_repair`) -/
+
+end Packet
+
+namespace Tree
+
+/-- D1.2g helper (G-012): `takeWhile` passes a block all of whose members satisfy the test. -/
+theorem takeWhile_append_of_forall {p : Role → Bool} :
+    ∀ (l₁ l₂ : List Role), (∀ a ∈ l₁, p a = true) → (l₁ ++ l₂).takeWhile p = l₁ ++ l₂.takeWhile p
+  | [], _, _ => rfl
+  | a :: l₁, l₂, h => by
+    have ha : p a = true := h a (List.mem_cons_self ..)
+    have ih := takeWhile_append_of_forall l₁ l₂ (fun b hb => h b (List.mem_cons_of_mem _ hb))
+    simp only [List.cons_append, List.takeWhile_cons, ha, if_true, ih]
+
+/-- D1.2g helper (G-012): a role of `t` whose path extends `e.heightPath` is a role of the height
+of `e`, placed under `e.heightPath`. -/
+theorem mem_under_of_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {x : Role}
+    (hx : x ∈ t.roles) (hpath : e.heightPath <+: x.path) :
+    x ∈ ((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) := by
+  obtain ⟨h, hh⟩ : ∃ h, t.heightAt e = some h := by
+    have h1 := (mem_entryAddrs_iff _ _).mp he
+    cases hE : t.entryAt e with
+    | none => simp [hE] at h1
+    | some v => exact ⟨v.2, by simp [Tree.heightAt, hE]⟩
+  rw [hh, Option.getD_some, List.mem_map]
+  obtain ⟨π', hπ'⟩ := hpath
+  have hcol : ∀ d : ColAddr, d.path = e.heightPath ++ π' →
+      t.colAt d = h.colAt ⟨π', d.col⟩ := by
+    intro d hd
+    unfold Tree.colAt
+    rw [hd, forestAt_append, forestAt_heightPath, hh]
+    rfl
+  cases x with
+  | ord d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.ord ⟨π', d.col⟩, ?_, ?_⟩
+    · have hx' := (mem_roles_iff _ _).mp hx
+      rw [mem_roles_iff]
+      simp only at hx' ⊢
+      rwa [hcol d hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+  | slot d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.slot ⟨⟨π', d.col.col⟩, d.idx⟩, ?_, ?_⟩
+    · have hx' := (mem_roles_iff _ _).mp hx
+      rw [mem_roles_iff]
+      simp only at hx' ⊢
+      unfold Tree.entryAt at hx' ⊢
+      rwa [hcol d.col hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+
+/-- D1.2g item 2 (G-012): no role of the prefix `P(t, e)` lies inside `e`. -/
+theorem not_inEntry_of_mem_prefix {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
+    {y : Role} (hy : y ∈ Packet.prefixRoles t e) : y.inEntry e = false := by
+  obtain ⟨post, hroles, -⟩ := roles_entry he
+  have hnd := roles_nodup t
+  rw [hroles] at hnd
+  have hdis := List.disjoint_of_nodup_append hnd
+  have hyt : y ∈ t.roles := (List.takeWhile_sublist _).subset hy
+  by_contra hin
+  have hin' : y.inEntry e = true := by simpa using hin
+  have hne : y ≠ .slot e := by
+    rintro rfl
+    exact hdis hy (List.mem_cons_self ..)
+  have hpath : e.heightPath <+: y.path := by
+    simpa [Role.inEntry, hne, List.isPrefixOf_iff_prefix] using hin'
+  exact hdis hy (List.mem_cons_of_mem _ (List.mem_append_left _ (mem_under_of_inEntry he hyt hpath)))
+
+/-- D1.2g item 1 (G-012): the prefix of an entry and its slot precede every other role inside
+the entry. -/
+theorem prefix_slot_before_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
+    {x : Role} (hx : x ∈ t.roles) (hin : x.inEntry e = true) (hne : x ≠ .slot e) :
+    Packet.prefixRoles t e ++ [.slot e] <+: Packet.rolesBefore t x := by
+  obtain ⟨post, hroles, -⟩ := roles_entry he
+  have hxP : x ∉ Packet.prefixRoles t e := fun h => by
+    have h1 := not_inEntry_of_mem_prefix he h
+    rw [hin] at h1
+    exact absurd h1 (by decide)
+  unfold Packet.rolesBefore
+  rw [hroles, takeWhile_append_of_forall]
+  · simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, Ne.symm hne, not_false_eq_true,
+      if_true]
+    exact ⟨_, by rw [List.append_assoc]; rfl⟩
+  · intro a ha
+    simp only [bne_iff_ne, ne_eq]
+    rintro rfl
+    exact hxP ha
+
+end Tree
+
+namespace Packet
+
+open Hier
+
+/-- L7.5a-1 (G-012): a repair step that retains `e` (or a container of `e`) is undone by the
+backward index map, on `U_e` and on `A_{e.col}`. -/
+theorem mapEntry_bwd_fwd {K : Forest} {e : EntryAddr} {m : Closure.Move}
+    (h : Closure.RepairStepOK K e m) :
+    m.mapEntry m.bwdIdx (m.mapEntry m.fwdIdx e) = e ∧
+      m.mapRole m.bwdIdx (m.mapRole m.fwdIdx (.ord e.col)) = .ord e.col := by
+  obtain ⟨col, -, hij, -, -, -, hret⟩ := h
+  rcases hret with hret | ⟨ρ, hρ⟩
+  · -- the retained entry is `e` itself: `e.col = m.col`, `e.idx = m.j`
+    subst hret
+    have hp : ∀ g : Nat → Nat, m.mapPath g m.col.path = m.col.path := by
+      intro g; unfold Closure.Move.mapPath; simp
+    have hc : (⟨m.col.path, m.col.col⟩ : ColAddr) = m.col := rfl
+    refine ⟨?_, ?_⟩
+    · simp only [Closure.Move.mapEntry, hp, hc, if_true]
+      congr 1
+      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
+      split <;> split <;> omega
+    · simp only [Closure.Move.mapRole, hp]
+  · -- the retained entry contains `e.col`: `e.col.path = m.col.path ++ (m.col.col, m.j) :: ρ`
+    obtain ⟨⟨π, cc⟩, idx⟩ := e
+    simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
+    subst hρ
+    have hmp : ∀ (g : Nat → Nat) (x : Nat),
+        m.mapPath g (m.col.path ++ (m.col.col, x) :: ρ) = m.col.path ++ (m.col.col, g x) :: ρ := by
+      intro g x; unfold Closure.Move.mapPath; simp
+    have hne : ∀ x : Nat, (⟨m.col.path ++ (m.col.col, x) :: ρ, cc⟩ : ColAddr) ≠ m.col := by
+      intro x h
+      have h' := congrArg (fun c : ColAddr => c.path.length) h
+      simp at h'
+    have hji : m.bwdIdx (m.fwdIdx m.j) = m.j := by
+      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
+      split <;> split <;> omega
+    refine ⟨?_, ?_⟩
+    · simp only [Closure.Move.mapEntry, hmp, if_neg (hne _), hji]
+    · simp only [Closure.Move.mapRole, hmp, hji]
+
+/-- L7.5a-1 (G-012): along a repair list for `b`, undoing the moves (last first) sends the moved
+slot and host column back to `U_b` and `A_{b.col}`. -/
+theorem foldr_bwd_moveAddr {K : Forest} {b : EntryAddr} {ms : List Closure.Move}
+    (h : Closure.RepairList K b ms) :
+    ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.slot (Closure.moveAddr ms b)) = .slot b ∧
+      ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.ord (Closure.moveAddr ms b).col) =
+        .ord b.col := by
+  induction ms using List.reverseRecOn with
+  | nil => exact ⟨rfl, rfl⟩
+  | append_singleton ms m ih =>
+    -- the prefix is a repair list, and the last step retains the current marked entry
+    have hpre : Closure.RepairList K b ms := by
+      intro idx hidx
+      have h' := h idx (by simp; omega)
+      rwa [List.take_append_of_le_length (by omega), List.getElem_append_left hidx] at h'
+    have hlast : Closure.RepairStepOK (Closure.applyMoves K ms) (Closure.moveAddr ms b) m := by
+      have h' := h ms.length (by simp)
+      simpa using h'
+    obtain ⟨ih1, ih2⟩ := ih hpre
+    obtain ⟨hb1, hb2⟩ := mapEntry_bwd_fwd hlast
+    have hma : Closure.moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (Closure.moveAddr ms b) := by
+      show Closure.moveAddrBody _ _ = _
+      simp [Closure.moveAddrBody, List.foldl_append]; rfl
+    have hcol : ∀ (g : Nat → Nat) (e : EntryAddr),
+        (m.mapEntry g e).col = ⟨m.mapPath g e.col.path, e.col.col⟩ := by
+      intro g e
+      unfold Closure.Move.mapEntry
+      dsimp only
+      split <;> rfl
+    rw [hma, List.foldr_append, List.foldr_append]
+    constructor
+    · simp only [List.foldr_cons, List.foldr_nil, Closure.Move.mapRole, hb1]
+      exact ih1
+    · have hb2' : m.mapRole m.bwdIdx (.ord (m.mapEntry m.fwdIdx (Closure.moveAddr ms b)).col) =
+          .ord (Closure.moveAddr ms b).col := by
+        rw [hcol]; exact hb2
+      simp only [List.foldr_cons, List.foldr_nil, hb2']
+      exact ih2
+
+/-- L7.5a-2 (G-012; consumers L7.5d `marked_slot`, `marked_host`): the moved marked entry and its
+host column have origins `U_b` and `A_{b.col}`. -/
+theorem origin_moveAddr {E : Forest} (hE : Scan.InL E) (w : Closure.AdmCap E) {b : EntryAddr}
+    (hbc : b.heightPath <+: w.col.path) (hout : Closure.MovesOutside w.moves b) :
+    w.origin (.slot (Closure.moveAddr w.moves b)) = some (.slot b) ∧
+      w.origin (.ord (Closure.moveAddr w.moves b).col) = some (.ord b.col) := by
+  obtain ⟨h1, h2⟩ := foldr_bwd_moveAddr (Closure.moves_spec hE w b hbc hout).1
+  have hne : (Role.slot b) ≠ .slot ⟨w.col, w.cut⟩ := by
+    intro h
+    have hb : b = ⟨w.col, w.cut⟩ := Role.slot.inj h
+    have hlen := hbc.length_le
+    simp [hb, EntryAddr.heightPath] at hlen
+  constructor
+  · show Closure.originBody w _ = _
+    simp only [Closure.originBody, h1, if_neg hne]
+  · show Closure.originBody w _ = _
+    simp only [Closure.originBody, h2]
+    simp
+
+/-- L7.5a-3 (G-012; consumers L7.5d `marked_mem`, `stop_inside`, `marked_prefix`): the moved
+marked entry `bm` is an entry of `w.H`; `w.H` is the literal cap at the relocated column `c'`
+inside `bm`; the stopping column and the closing slot lie inside `bm`; every role of `P(w.H, bm)`
+has an origin. -/
+theorem marked_entry_cap {E : Forest} (hE : IsStd E) (w : Closure.AdmCap E) {b : EntryAddr}
+    (hb : b ∈ E.entryAddrs) (hbc : b.heightPath <+: w.col.path)
+    (hout : Closure.MovesOutside w.moves b) :
+    Closure.moveAddr w.moves b ∈ w.H.entryAddrs ∧
+    w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
+      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par ∧
+    (∀ sd, Scan.stopData w.H = some sd →
+      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
+        w.col.col⟩ ∧
+      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
+      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true) ∧
+    ∀ x ∈ prefixRoles w.H (Closure.moveAddr w.moves b), (w.origin x).isSome := by
+  have hL : Scan.InL E := Closure.std_inL hE
+  obtain ⟨-, -, -, hG, hH⟩ := Closure.moves_spec hL w b hbc hout
+  -- `bm` is an entry of `w.H` (U2 `moves_spec` items 4-5, U1 `setHeight_basic`)
+  have hbE : (E.heightAt b).isSome := by
+    have h := (Tree.mem_entryAddrs_iff _ _).mp hb
+    simpa [Tree.heightAt] using h
+  have hbmG : Closure.moveAddr w.moves b ∈
+      (Closure.applyMoves (E.truncAfter b) w.moves).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]
+    have h : ((Closure.applyMoves (E.truncAfter b) w.moves).heightAt
+        (Closure.moveAddr w.moves b)).isSome := by rw [hG]; exact hbE
+    simpa [Tree.heightAt] using h
+  have hmem : Closure.moveAddr w.moves b ∈ w.H.entryAddrs := by
+    rw [hH]; exact (Tree.setHeight_basic _ _ _ hbmG).1
+  -- `w.H` is the literal cap at the relocated column (U2 `applyMoves_litCap_addr`, all moves)
+  obtain ⟨hup', hlit, -⟩ :=
+    Closure.applyMoves_litCap_addr hL.2.2.1 w hbc hout w.moves.length le_rfl
+  rw [List.take_length] at hup' hlit
+  have hwH : w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
+      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par := hlit
+  -- the stopping column and the closing slot lie inside `bm` (U2 T3.8c `stopData_litCap`)
+  have hin : ∀ sd, Scan.stopData w.H = some sd →
+      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
+        w.col.col⟩ ∧
+      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
+      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true := by
+    intro sd hsd
+    rw [hwH, Closure.stopData_litCap hup'] at hsd
+    obtain rfl := Option.some.inj hsd
+    refine ⟨rfl, ?_, ?_⟩ <;>
+      simp [Role.inEntry, Role.path, Scan.closingSlot, List.isPrefixOf_iff_prefix]
+  refine ⟨hmem, hwH, hin, ?_⟩
+  -- origins on the prefix: `none` only at the closing slot (U2 `origin_spec_full` item 2), which
+  -- is inside `bm`, hence not in `P(w.H, bm)` (D1.2g item 2)
+  intro x hx
+  by_contra hno
+  have hxH : x ∈ w.H.roles := (List.takeWhile_sublist _).subset hx
+  obtain ⟨sd, hsd, rfl⟩ := ((Closure.origin_spec_full hL w).2.1 x hxH).mp
+    (Option.not_isSome_iff_eq_none.mp hno)
+  have h1 := Tree.not_inEntry_of_mem_prefix hmem hx
+  rw [(hin sd hsd).2.2] at h1
+  exact absurd h1 (by decide)
+
+/-- L4.3 helper: a literal cap through a containing entry is the tree truncated after that
+entry, with the entry's height replaced by the relative literal cap. -/
+theorem litCapAux_split_E1 (k p : Nat) (R : List (Nat × Nat)) (j : Nat) :
+    ∀ (Q : List (Nat × Nat)) (t : Forest) (j' i' q : Nat) (h : Forest),
+      t.entryAt ⟨⟨Q, j'⟩, i'⟩ = some (q, h) →
+      Closure.litCapAux k p (Q ++ (j', i') :: R) j t =
+        Tree.setAux (Closure.litCapAux k p R j h) Q j' i' (Tree.truncAux Q j' i' t)
+  | [], .node cols, j', i', q, h, he => by
+    rw [Tree.entryAt_eq_bind] at he
+    simp only [Tree.forestAt, Option.bind_some, Tree.cols] at he
+    obtain ⟨col, hc, hx⟩ : ∃ col, cols[j']? = some col ∧ col[i']? = some (q, h) := by
+      cases hc : cols[j']? with
+      | none => simp [hc] at he
+      | some col => exact ⟨col, rfl, by simpa [hc] using he⟩
+    have hgd : cols.getD j' [] = col := by simp [List.getD, hc]
+    simp only [List.nil_append, Closure.litCapAux, hgd, hx, Tree.truncAux,
+      take_succ_of_getElem?_E1 hx, Tree.setAux]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hx)]
+  | (a, b) :: Q, .node cols, j', i', q, h, he => by
+    rw [Tree.entryAt_cons] at he
+    obtain ⟨col, hc, y, hy, hyr⟩ : ∃ col, cols[a]? = some col ∧ ∃ y, col[b]? = some y ∧
+        y.2.entryAt ⟨⟨Q, j'⟩, i'⟩ = some (q, h) := by
+      simp only [Tree.cols] at he
+      cases hc : cols[a]? with
+      | none => simp [hc] at he
+      | some col =>
+        cases hy : col[b]? with
+        | none => simp [hc, hy] at he
+        | some y => exact ⟨col, rfl, y, hy, by simpa [hc, hy] using he⟩
+    have hgd : cols.getD a [] = col := by simp [List.getD, hc]
+    have ih := litCapAux_split_E1 k p R j Q y.2 j' i' q h hyr
+    simp only [List.cons_append, Closure.litCapAux, hgd, hy, Tree.truncAux, Option.map_some,
+      Option.toList_some, Tree.setAux, ih]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hy)]
+
+/-- L4.3 helper: an entry containing a column of `E` is an entry of `E`. -/
+theorem mem_entryAddrs_of_container_E1 {E : Forest} {c : ColAddr} {e : EntryAddr}
+    (hc : c ∈ E.colAddrs) (he : e.heightPath <+: c.path) : e ∈ E.entryAddrs := by
+  rw [Tree.mem_entryAddrs_iff]
+  have h1 := (Tree.mem_colAddrs_iff _ _).mp hc
+  obtain ⟨ρ, hρ⟩ := he
+  unfold Tree.colAt at h1
+  rw [← hρ, Tree.forestAt_append, Tree.forestAt_heightPath] at h1
+  unfold Tree.heightAt at h1
+  cases hx : E.entryAt e with
+  | none => simp [hx] at h1
+  | some _ => rfl
+
+/-- L4.3 helper: the literal cap at a column inside the height of `e` is `E` truncated after `e`
+with the height of `e` replaced. -/
+theorem litCap_eq_setHeight_E1 {E : Forest} {c : ColAddr} {e : EntryAddr} (hc : c ∈ E.colAddrs)
+    (he : e.heightPath <+: c.path) (k p : Nat) :
+    Closure.litCap E c k p = (E.truncAfter e).setHeight e
+      (Closure.litCapAux k p (c.path.drop e.heightPath.length) c.col
+        ((E.heightAt e).getD Tree.empty)) := by
+  have heE := mem_entryAddrs_of_container_E1 hc he
+  have hs : (E.entryAt e).isSome := (Tree.mem_entryAddrs_iff _ _).mp heE
+  obtain ⟨⟨q, h⟩, hqh⟩ := Option.isSome_iff_exists.mp hs
+  have hcs : (E.colAt c).isSome := (Tree.mem_colAddrs_iff _ _).mp hc
+  obtain ⟨ρ, hρ⟩ := he
+  have hpath : c.path = e.col.path ++ (e.col.col, e.idx) :: ρ := by
+    rw [← hρ]; simp [EntryAddr.heightPath]
+  have htr : E.truncAfter e = Tree.truncAux e.col.path e.col.col e.idx E := by
+    rw [Tree.truncAfter_eq_body]; simp [Tree.truncAfterBody, hs]
+  have hts : ((Tree.truncAux e.col.path e.col.col e.idx E).entryAt e).isSome := by
+    rw [← htr, Tree.entryAt_truncAfter heE]; exact hs
+  have hdrop : c.path.drop e.heightPath.length = ρ := by
+    rw [← hρ]; simp
+  rw [hdrop]
+  simp only [Closure.litCap, Closure.litCapBody, hcs, if_true]
+  rw [hpath, litCapAux_split_E1 k p ρ c.col e.col.path E e.col.col e.idx q h hqh]
+  rw [htr]
+  simp only [Tree.setHeight, Tree.setHeightBody, hts, if_true, Tree.heightAt, hqh,
+    Option.map_some, Option.getD_some]
+
+/-- L4.3 helper: setting a container's height in a literal cap is setting it in `E` truncated
+after that container. -/
+theorem litCap_setHeight_E1 {E : Forest} {c : ColAddr} {e : EntryAddr} (hc : c ∈ E.colAddrs)
+    (he : e.heightPath <+: c.path) (k p : Nat) (X : Forest) :
+    (Closure.litCap E c k p).setHeight e X = (E.truncAfter e).setHeight e X := by
+  have heE := mem_entryAddrs_of_container_E1 hc he
+  rw [litCap_eq_setHeight_E1 hc he k p]
+  exact (Tree.setHeight_basic _ e _ (Tree.truncAfter_spec E e heE).2.1).2.2.1 X
+
+/-- L4.3 helper: a literal cap is truncated after each container of its column. -/
+theorem litCap_truncAfter_E1 {E : Forest} {c : ColAddr} {e : EntryAddr} (hc : c ∈ E.colAddrs)
+    (he : e.heightPath <+: c.path) (k p : Nat) :
+    (Closure.litCap E c k p).truncAfter e = Closure.litCap E c k p := by
+  have heE := mem_entryAddrs_of_container_E1 hc he
+  rw [litCap_eq_setHeight_E1 hc he k p]
+  exact (Tree.setHeight_basic _ e _ (Tree.truncAfter_spec E e heE).2.1).2.2.2.2.1
+    (Tree.truncAfter_spec E e heE).1
+
+
+/-- L4.3 helper: on a tree truncated after `a`, `setHeight a` is strictly monotone. -/
+theorem setHeight_lt_iff_E1 {F : Forest} {a : EntryAddr} (ha : a ∈ F.entryAddrs)
+    (htr : F.truncAfter a = F) (X Y : Forest) : F.setHeight a X < F.setHeight a Y ↔ X < Y := by
+  rw [← Scan.word_lt_iff, word_setHeight_E1 ha htr X, word_setHeight_E1 ha htr Y,
+    Scan.list_append_lt_append_left, wordAt_lt_iff_E1]
+
 -- provides: U3, L4.3 (the spine's `repair_output`†; consumer: U5 L8.8 Case 3)
 theorem repair_output {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
     (hfd : rk.firstDiff = .capAt c k p) (w : Closure.AdmCap rk.E)
@@ -3813,7 +4167,86 @@ theorem repair_output {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Na
     rk.tgtHeight < (Hk.heightAt bm).getD Tree.empty ∧
     ({ E := rk.E, b := rk.b, F := Hk.truncAfter bm, a := bm, kind := .repair w.moves } :
       SrcRecord).Admitted := by
-  sorry
+  intro bm
+  have hstd : IsStd rk.E := h.1
+  have hL : Scan.InL rk.E := Closure.std_inL hstd
+  obtain ⟨hbc, -⟩ := firstDiff_cap h hfd
+  have hbc' : rk.b.heightPath <+: w.col.path := hw.1 ▸ hbc
+  have hout := repair_moves_outside h hfd w hw
+  have hMH := marked_height_mono h hfd w hw
+  dsimp only at hMH
+  obtain ⟨⟨hlit, hup', hnum⟩, hbmE, hBle⟩ := hMH
+  obtain ⟨hmem, -, hin, -⟩ := marked_entry_cap hstd w h.2.1 hbc' hout
+  -- the cap column `c'` lies inside `bm`
+  set c' : ColAddr := ⟨bm.heightPath ++ c.path.drop rk.b.heightPath.length, c.col⟩ with hc'
+  have hc'E : c' ∈ rk.E.colAddrs := by
+    rw [Tree.mem_colAddrs_iff]
+    unfold Closure.IsUpward at hup'
+    split at hup'
+    · rename_i col hcol; rw [hcol]; rfl
+    · exact hup'.elim
+  have hbmc' : bm.heightPath <+: c'.path := ⟨_, rfl⟩
+  have htrH : w.H.truncAfter bm = w.H := by
+    rw [hlit]; exact litCap_truncAfter_E1 hc'E hbmc' k p
+  -- the step of `w.H` is confined to `bm`
+  have hHL : Scan.InL w.H := w.inL
+  have hord : Scan.stepKind w.H = some .ordinary := by
+    rw [hlit] at hHL ⊢
+    exact Closure.litCap_ordinary hL.2.1 hup' hHL.1 hHL.2.1
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (Scan.stopData_of_stepKind hord (by decide))
+  have hconf : Confined w.H bm := by
+    refine ⟨sd, hsd, ?_, fun hsp => by rw [hord] at hsp; cases hsp⟩
+    have h1 := (hin sd hsd).2.1
+    have hne : Role.ord sd.col ≠ Role.slot bm := by simp
+    simpa [Role.inEntry, hne, Role.path, List.isPrefixOf_iff_prefix] using h1
+  obtain ⟨B', hHk, hB'lt⟩ := expand_confined hHL hmem htrH hconf hexp
+  have hSB := Tree.setHeight_basic w.H bm B' hmem
+  have hHkB' : (Hk.heightAt bm).getD Tree.empty = B' := by rw [hHk, hSB.2.1]; rfl
+  have hHkmem : bm ∈ Hk.entryAddrs := hHk ▸ hSB.1
+  have hHktr : Hk.truncAfter bm = Hk := hHk ▸ hSB.2.2.2.2.1 htrH
+  -- comparison with `E`: `Hk = (E.truncAfter bm).setHeight bm B'`
+  have hHkE : Hk = (rk.E.truncAfter bm).setHeight bm B' := by
+    rw [hHk, hlit]; exact litCap_setHeight_E1 hc'E hbmc' k p B'
+  have hgood : (rk.E.heightAt bm).getD Tree.empty < B' := by
+    by_contra hcon
+    have hle : B' ≤ (rk.E.heightAt bm).getD Tree.empty := le_of_not_gt hcon
+    have hTspec := Tree.truncAfter_spec rk.E bm hbmE
+    have hT : (rk.E.truncAfter bm).setHeight bm ((rk.E.heightAt bm).getD Tree.empty) =
+        rk.E.truncAfter bm := by
+      rw [← hTspec.2.2.1]; exact setHeight_heightAt_self_E1 hTspec.2.1
+    have h1 : Hk ≤ rk.E.truncAfter bm := by
+      rw [hHkE]
+      rcases hle.lt_or_eq with hlt | heq
+      · conv_rhs => rw [← hT]
+        exact le_of_lt ((setHeight_lt_iff_E1 hTspec.2.1 hTspec.1 _ _).mpr hlt)
+      · rw [heq, hT]
+    obtain ⟨m, hm⟩ := Scan.truncAfter_safePrefix hbmE
+    have h2 : rk.E.truncAfter bm ≤ rk.E := hm ▸ Scan.safePrefix_le _ _
+    exact absurd (lt_of_lt_of_le habove (le_trans h1 h2)) (lt_irrefl _)
+  -- admission of the repair record
+  obtain ⟨hRL, -, -, hY, hH5⟩ := Closure.moves_spec hL w rk.b hbc' hout
+  set Y := Closure.applyMoves (rk.E.truncAfter rk.b) w.moves with hYdef
+  have hbmY : bm ∈ Y.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]
+    have : (Y.heightAt bm).isSome := by
+      rw [hY]
+      have := (Tree.mem_entryAddrs_iff _ _).mp h.2.1
+      simpa [Tree.heightAt] using this
+    simpa [Tree.heightAt] using this
+  refine ⟨hHkmem, hHktr, hHkB' ▸ hgood, hHkB' ▸ lt_of_le_of_lt hBle hgood, ?_⟩
+  refine ⟨hstd, h.2.1, hHktr.symm ▸ hHkmem, hHktr.symm ▸ Closure.inL_expand hHL hexp,
+    by rw [hHktr, hHktr], ?_, hRL, rfl, ?_⟩
+  · show relKey (rk.b.col.num 0) rk.tgtHeight <
+      relKey (bm.col.num 0) (((Hk.truncAfter bm).heightAt bm).getD Tree.empty)
+    rw [hHktr, hHkB', hnum, relKey_lt_iff]
+    exact lt_of_le_of_lt hBle hgood
+  · show (Hk.truncAfter bm).setHeight bm rk.tgtHeight = Y
+    rw [hHktr, hHk, hSB.2.2.1, hH5, (Tree.setHeight_basic Y bm _ hbmY).2.2.1]
+    apply (Tree.setHeight_basic Y bm _ hbmY).2.2.2.1
+    rw [hY]
+    have := (Tree.mem_entryAddrs_iff _ _).mp h.2.1
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp this
+    simp [SrcRecord.tgtHeight, Tree.heightAt, hx]
 
 -- provides: U3, L4.3 (cofinality supplies a positive output above `E`)
 theorem repair_output_exists {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
@@ -4540,255 +4973,6 @@ structure CapData (P : Prims.{u}) (pk : SourcePacket.{u}) where
 /-! ### L7.5d helpers (G-012; `blueprint/repairs/lean/G012.lean`, adapted to the integrated
 contracts `Closure.MovesOutside`, `Closure.moves_spec`, `Closure.applyMoves_litCap_addr`,
 `repair_moves_outside`) -/
-
-end Packet
-
-namespace Tree
-
-/-- D1.2g helper (G-012): `takeWhile` passes a block all of whose members satisfy the test. -/
-theorem takeWhile_append_of_forall {p : Role → Bool} :
-    ∀ (l₁ l₂ : List Role), (∀ a ∈ l₁, p a = true) → (l₁ ++ l₂).takeWhile p = l₁ ++ l₂.takeWhile p
-  | [], _, _ => rfl
-  | a :: l₁, l₂, h => by
-    have ha : p a = true := h a (List.mem_cons_self ..)
-    have ih := takeWhile_append_of_forall l₁ l₂ (fun b hb => h b (List.mem_cons_of_mem _ hb))
-    simp only [List.cons_append, List.takeWhile_cons, ha, if_true, ih]
-
-/-- D1.2g helper (G-012): a role of `t` whose path extends `e.heightPath` is a role of the height
-of `e`, placed under `e.heightPath`. -/
-theorem mem_under_of_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {x : Role}
-    (hx : x ∈ t.roles) (hpath : e.heightPath <+: x.path) :
-    x ∈ ((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) := by
-  obtain ⟨h, hh⟩ : ∃ h, t.heightAt e = some h := by
-    have h1 := (mem_entryAddrs_iff _ _).mp he
-    cases hE : t.entryAt e with
-    | none => simp [hE] at h1
-    | some v => exact ⟨v.2, by simp [Tree.heightAt, hE]⟩
-  rw [hh, Option.getD_some, List.mem_map]
-  obtain ⟨π', hπ'⟩ := hpath
-  have hcol : ∀ d : ColAddr, d.path = e.heightPath ++ π' →
-      t.colAt d = h.colAt ⟨π', d.col⟩ := by
-    intro d hd
-    unfold Tree.colAt
-    rw [hd, forestAt_append, forestAt_heightPath, hh]
-    rfl
-  cases x with
-  | ord d =>
-    simp only [Role.path] at hπ'
-    refine ⟨.ord ⟨π', d.col⟩, ?_, ?_⟩
-    · have hx' := (mem_roles_iff _ _).mp hx
-      rw [mem_roles_iff]
-      simp only at hx' ⊢
-      rwa [hcol d hπ'.symm] at hx'
-    · simp only [Role.under]
-      rw [hπ']
-  | slot d =>
-    simp only [Role.path] at hπ'
-    refine ⟨.slot ⟨⟨π', d.col.col⟩, d.idx⟩, ?_, ?_⟩
-    · have hx' := (mem_roles_iff _ _).mp hx
-      rw [mem_roles_iff]
-      simp only at hx' ⊢
-      unfold Tree.entryAt at hx' ⊢
-      rwa [hcol d.col hπ'.symm] at hx'
-    · simp only [Role.under]
-      rw [hπ']
-
-/-- D1.2g item 2 (G-012): no role of the prefix `P(t, e)` lies inside `e`. -/
-theorem not_inEntry_of_mem_prefix {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
-    {y : Role} (hy : y ∈ Packet.prefixRoles t e) : y.inEntry e = false := by
-  obtain ⟨post, hroles, -⟩ := roles_entry he
-  have hnd := roles_nodup t
-  rw [hroles] at hnd
-  have hdis := List.disjoint_of_nodup_append hnd
-  have hyt : y ∈ t.roles := (List.takeWhile_sublist _).subset hy
-  by_contra hin
-  have hin' : y.inEntry e = true := by simpa using hin
-  have hne : y ≠ .slot e := by
-    rintro rfl
-    exact hdis hy (List.mem_cons_self ..)
-  have hpath : e.heightPath <+: y.path := by
-    simpa [Role.inEntry, hne, List.isPrefixOf_iff_prefix] using hin'
-  exact hdis hy (List.mem_cons_of_mem _ (List.mem_append_left _ (mem_under_of_inEntry he hyt hpath)))
-
-/-- D1.2g item 1 (G-012): the prefix of an entry and its slot precede every other role inside
-the entry. -/
-theorem prefix_slot_before_inEntry {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
-    {x : Role} (hx : x ∈ t.roles) (hin : x.inEntry e = true) (hne : x ≠ .slot e) :
-    Packet.prefixRoles t e ++ [.slot e] <+: Packet.rolesBefore t x := by
-  obtain ⟨post, hroles, -⟩ := roles_entry he
-  have hxP : x ∉ Packet.prefixRoles t e := fun h => by
-    have h1 := not_inEntry_of_mem_prefix he h
-    rw [hin] at h1
-    exact absurd h1 (by decide)
-  unfold Packet.rolesBefore
-  rw [hroles, takeWhile_append_of_forall]
-  · simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, Ne.symm hne, not_false_eq_true,
-      if_true]
-    exact ⟨_, by rw [List.append_assoc]; rfl⟩
-  · intro a ha
-    simp only [bne_iff_ne, ne_eq]
-    rintro rfl
-    exact hxP ha
-
-end Tree
-
-namespace Packet
-
-open Hier
-
-/-- L7.5a-1 (G-012): a repair step that retains `e` (or a container of `e`) is undone by the
-backward index map, on `U_e` and on `A_{e.col}`. -/
-theorem mapEntry_bwd_fwd {K : Forest} {e : EntryAddr} {m : Closure.Move}
-    (h : Closure.RepairStepOK K e m) :
-    m.mapEntry m.bwdIdx (m.mapEntry m.fwdIdx e) = e ∧
-      m.mapRole m.bwdIdx (m.mapRole m.fwdIdx (.ord e.col)) = .ord e.col := by
-  obtain ⟨col, -, hij, -, -, -, hret⟩ := h
-  rcases hret with hret | ⟨ρ, hρ⟩
-  · -- the retained entry is `e` itself: `e.col = m.col`, `e.idx = m.j`
-    subst hret
-    have hp : ∀ g : Nat → Nat, m.mapPath g m.col.path = m.col.path := by
-      intro g; unfold Closure.Move.mapPath; simp
-    have hc : (⟨m.col.path, m.col.col⟩ : ColAddr) = m.col := rfl
-    refine ⟨?_, ?_⟩
-    · simp only [Closure.Move.mapEntry, hp, hc, if_true]
-      congr 1
-      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
-      split <;> split <;> omega
-    · simp only [Closure.Move.mapRole, hp]
-  · -- the retained entry contains `e.col`: `e.col.path = m.col.path ++ (m.col.col, m.j) :: ρ`
-    obtain ⟨⟨π, cc⟩, idx⟩ := e
-    simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
-    subst hρ
-    have hmp : ∀ (g : Nat → Nat) (x : Nat),
-        m.mapPath g (m.col.path ++ (m.col.col, x) :: ρ) = m.col.path ++ (m.col.col, g x) :: ρ := by
-      intro g x; unfold Closure.Move.mapPath; simp
-    have hne : ∀ x : Nat, (⟨m.col.path ++ (m.col.col, x) :: ρ, cc⟩ : ColAddr) ≠ m.col := by
-      intro x h
-      have h' := congrArg (fun c : ColAddr => c.path.length) h
-      simp at h'
-    have hji : m.bwdIdx (m.fwdIdx m.j) = m.j := by
-      simp only [Closure.Move.fwdIdx, Closure.Move.bwdIdx]
-      split <;> split <;> omega
-    refine ⟨?_, ?_⟩
-    · simp only [Closure.Move.mapEntry, hmp, if_neg (hne _), hji]
-    · simp only [Closure.Move.mapRole, hmp, hji]
-
-/-- L7.5a-1 (G-012): along a repair list for `b`, undoing the moves (last first) sends the moved
-slot and host column back to `U_b` and `A_{b.col}`. -/
-theorem foldr_bwd_moveAddr {K : Forest} {b : EntryAddr} {ms : List Closure.Move}
-    (h : Closure.RepairList K b ms) :
-    ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.slot (Closure.moveAddr ms b)) = .slot b ∧
-      ms.foldr (fun m y => m.mapRole m.bwdIdx y) (.ord (Closure.moveAddr ms b).col) =
-        .ord b.col := by
-  induction ms using List.reverseRecOn with
-  | nil => exact ⟨rfl, rfl⟩
-  | append_singleton ms m ih =>
-    -- the prefix is a repair list, and the last step retains the current marked entry
-    have hpre : Closure.RepairList K b ms := by
-      intro idx hidx
-      have h' := h idx (by simp; omega)
-      rwa [List.take_append_of_le_length (by omega), List.getElem_append_left hidx] at h'
-    have hlast : Closure.RepairStepOK (Closure.applyMoves K ms) (Closure.moveAddr ms b) m := by
-      have h' := h ms.length (by simp)
-      simpa using h'
-    obtain ⟨ih1, ih2⟩ := ih hpre
-    obtain ⟨hb1, hb2⟩ := mapEntry_bwd_fwd hlast
-    have hma : Closure.moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (Closure.moveAddr ms b) := by
-      show Closure.moveAddrBody _ _ = _
-      simp [Closure.moveAddrBody, List.foldl_append]; rfl
-    have hcol : ∀ (g : Nat → Nat) (e : EntryAddr),
-        (m.mapEntry g e).col = ⟨m.mapPath g e.col.path, e.col.col⟩ := by
-      intro g e
-      unfold Closure.Move.mapEntry
-      dsimp only
-      split <;> rfl
-    rw [hma, List.foldr_append, List.foldr_append]
-    constructor
-    · simp only [List.foldr_cons, List.foldr_nil, Closure.Move.mapRole, hb1]
-      exact ih1
-    · have hb2' : m.mapRole m.bwdIdx (.ord (m.mapEntry m.fwdIdx (Closure.moveAddr ms b)).col) =
-          .ord (Closure.moveAddr ms b).col := by
-        rw [hcol]; exact hb2
-      simp only [List.foldr_cons, List.foldr_nil, hb2']
-      exact ih2
-
-/-- L7.5a-2 (G-012; consumers L7.5d `marked_slot`, `marked_host`): the moved marked entry and its
-host column have origins `U_b` and `A_{b.col}`. -/
-theorem origin_moveAddr {E : Forest} (hE : Scan.InL E) (w : Closure.AdmCap E) {b : EntryAddr}
-    (hbc : b.heightPath <+: w.col.path) (hout : Closure.MovesOutside w.moves b) :
-    w.origin (.slot (Closure.moveAddr w.moves b)) = some (.slot b) ∧
-      w.origin (.ord (Closure.moveAddr w.moves b).col) = some (.ord b.col) := by
-  obtain ⟨h1, h2⟩ := foldr_bwd_moveAddr (Closure.moves_spec hE w b hbc hout).1
-  have hne : (Role.slot b) ≠ .slot ⟨w.col, w.cut⟩ := by
-    intro h
-    have hb : b = ⟨w.col, w.cut⟩ := Role.slot.inj h
-    have hlen := hbc.length_le
-    simp [hb, EntryAddr.heightPath] at hlen
-  constructor
-  · show Closure.originBody w _ = _
-    simp only [Closure.originBody, h1, if_neg hne]
-  · show Closure.originBody w _ = _
-    simp only [Closure.originBody, h2]
-    simp
-
-/-- L7.5a-3 (G-012; consumers L7.5d `marked_mem`, `stop_inside`, `marked_prefix`): the moved
-marked entry `bm` is an entry of `w.H`; `w.H` is the literal cap at the relocated column `c'`
-inside `bm`; the stopping column and the closing slot lie inside `bm`; every role of `P(w.H, bm)`
-has an origin. -/
-theorem marked_entry_cap {E : Forest} (hE : IsStd E) (w : Closure.AdmCap E) {b : EntryAddr}
-    (hb : b ∈ E.entryAddrs) (hbc : b.heightPath <+: w.col.path)
-    (hout : Closure.MovesOutside w.moves b) :
-    Closure.moveAddr w.moves b ∈ w.H.entryAddrs ∧
-    w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
-      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par ∧
-    (∀ sd, Scan.stopData w.H = some sd →
-      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
-        w.col.col⟩ ∧
-      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
-      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true) ∧
-    ∀ x ∈ prefixRoles w.H (Closure.moveAddr w.moves b), (w.origin x).isSome := by
-  have hL : Scan.InL E := Closure.std_inL hE
-  obtain ⟨-, -, -, hG, hH⟩ := Closure.moves_spec hL w b hbc hout
-  -- `bm` is an entry of `w.H` (U2 `moves_spec` items 4-5, U1 `setHeight_basic`)
-  have hbE : (E.heightAt b).isSome := by
-    have h := (Tree.mem_entryAddrs_iff _ _).mp hb
-    simpa [Tree.heightAt] using h
-  have hbmG : Closure.moveAddr w.moves b ∈
-      (Closure.applyMoves (E.truncAfter b) w.moves).entryAddrs := by
-    rw [Tree.mem_entryAddrs_iff]
-    have h : ((Closure.applyMoves (E.truncAfter b) w.moves).heightAt
-        (Closure.moveAddr w.moves b)).isSome := by rw [hG]; exact hbE
-    simpa [Tree.heightAt] using h
-  have hmem : Closure.moveAddr w.moves b ∈ w.H.entryAddrs := by
-    rw [hH]; exact (Tree.setHeight_basic _ _ _ hbmG).1
-  -- `w.H` is the literal cap at the relocated column (U2 `applyMoves_litCap_addr`, all moves)
-  obtain ⟨hup', hlit, -⟩ :=
-    Closure.applyMoves_litCap_addr hL.2.2.1 w hbc hout w.moves.length le_rfl
-  rw [List.take_length] at hup' hlit
-  have hwH : w.H = Closure.litCap E ⟨(Closure.moveAddr w.moves b).heightPath ++
-      w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par := hlit
-  -- the stopping column and the closing slot lie inside `bm` (U2 T3.8c `stopData_litCap`)
-  have hin : ∀ sd, Scan.stopData w.H = some sd →
-      sd.col = ⟨(Closure.moveAddr w.moves b).heightPath ++ w.col.path.drop b.heightPath.length,
-        w.col.col⟩ ∧
-      (Role.ord sd.col).inEntry (Closure.moveAddr w.moves b) = true ∧
-      (Role.slot (Scan.closingSlot sd)).inEntry (Closure.moveAddr w.moves b) = true := by
-    intro sd hsd
-    rw [hwH, Closure.stopData_litCap hup'] at hsd
-    obtain rfl := Option.some.inj hsd
-    refine ⟨rfl, ?_, ?_⟩ <;>
-      simp [Role.inEntry, Role.path, Scan.closingSlot, List.isPrefixOf_iff_prefix]
-  refine ⟨hmem, hwH, hin, ?_⟩
-  -- origins on the prefix: `none` only at the closing slot (U2 `origin_spec_full` item 2), which
-  -- is inside `bm`, hence not in `P(w.H, bm)` (D1.2g item 2)
-  intro x hx
-  by_contra hno
-  have hxH : x ∈ w.H.roles := (List.takeWhile_sublist _).subset hx
-  obtain ⟨sd, hsd, rfl⟩ := ((Closure.origin_spec_full hL w).2.1 x hxH).mp
-    (Option.not_isSome_iff_eq_none.mp hno)
-  have h1 := Tree.not_inEntry_of_mem_prefix hmem hx
-  rw [(hin sd hsd).2.2] at h1
-  exact absurd h1 (by decide)
 
 /-- L7.5d-1 (G-012): value separation in its exact form. A configuration is strictly increasing
 along the reading order, so a chart `f` through which a configuration `a ∘ f` is read is
