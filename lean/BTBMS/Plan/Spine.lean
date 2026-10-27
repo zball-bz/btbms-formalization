@@ -1199,14 +1199,9 @@ theorem condS_of_condP {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) (hH 
 theorem isStd_iff_paper (E : Forest) :
     IsStd E ↔ (∃ (m : Nat) (ns : List Nat), ns.foldlM (fun F n => Scan.paperOp F n) (seed m) = some E) := by sorry
 
--- provides: U2, T3.8 (cofinality)
-theorem cofinal {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E) :
-    ∃ n E', expand E n = some E' ∧ B ≤ E' ∧ E' < E := by sorry
-
--- provides: U2, T3.8 (the explicit bound when `E` ends in a nonempty outer column)
-theorem cofinal_bound {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E)
-    (hlast : E.cols.getLast? ≠ some []) :
-    ∃ n E', 1 ≤ n ∧ n ≤ Scan.mu B + 1 ∧ expand E n = some E' ∧ B < E' := by sorry
+-- provides: U2, T3.8: `cofinal`, `cofinal_bound` moved to `Plan/U2.lean` (end of §T3.8), after
+-- `KS_std` (T3.8m) that their proofs use (brief rule 5; names and statements unchanged; nothing in
+-- between uses them).
 
 end Closure
 

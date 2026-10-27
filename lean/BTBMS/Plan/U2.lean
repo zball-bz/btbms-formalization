@@ -9895,12 +9895,137 @@ theorem success_unmove {B : Forest} (hL : InL B) (hP : CondP B) {cj ci : ColAddr
 -- provides: U2, L3.6 (txt:459-481): cap completion
 theorem cap_completion {B : Forest} (hL : InL B) (hP : CondP B) (hcof : Cof B) : CC B := by sorry
 
+/-- T3.8j helper: the complete local suffix starts with the cap column. -/
+theorem localSuffix_eq_E5 {B : Forest} {c : ColAddr} {col : Column} (hcol : B.colAt c = some col) :
+    ∃ R, localSuffix B c = Tree.node (col :: R) := by
+  have hcol' := hcol
+  unfold Tree.colAt at hcol'
+  obtain ⟨G, hG⟩ : ∃ G, B.forestAt c.path = some G := by
+    cases h : B.forestAt c.path with
+    | none => rw [h] at hcol'; cases hcol'
+    | some G => exact ⟨G, rfl⟩
+  rw [hG, Option.bind_some] at hcol'
+  have hj : c.col < G.cols.length := by
+    by_contra hh; rw [List.getElem?_eq_none (by omega)] at hcol'; cases hcol'
+  refine ⟨G.cols.drop (c.col + 1), ?_⟩
+  unfold localSuffix
+  rw [hG, Option.getD_some, List.drop_eq_getElem_cons hj]
+  obtain ⟨_, h⟩ := List.getElem?_eq_some_iff.1 hcol'
+  rw [h]
+
+
+/-- T3.8j helper: a cut position lies inside the word. -/
+theorem capPos_le_mu_E5 {B : Forest} {c : ColAddr} (hc : c ∈ B.colAddrs) (k : Nat) :
+    capPos B c k ≤ mu B := by
+  obtain ⟨A, S, hw, -, hcap⟩ := wordDecomp_E5 hc
+  have hcp := capPos_eq_E5 hcap k
+  rw [len_capCol_E5] at hcp
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff B c).1 hc)
+  obtain ⟨R, hR⟩ := localSuffix_eq_E5 hcol
+  rw [hcol, Option.getD_some] at hcp
+  have hmu : mu B = A.length + (wordCol (colDepth c) col).length +
+      (wordCols (colDepth c) R).length + S.length := by
+    unfold mu; rw [hw, map_depthShift_word_E5, hR]
+    simp only [wordAt, wordCols, List.length_append]; omega
+  split_ifs at hcp with h
+  · omega
+  · have hwc : wordCol (colDepth c) col =
+        wordCol (colDepth c) (col.take k) ++ wordLater (colDepth c) (col.drop k) := by
+      conv_lhs => rw [← List.take_append_drop k col]
+      exact ker_wordCol_append _ h _
+    have := congrArg List.length hwc
+    rw [List.length_append] at this
+    omega
+
+
+/-- T3.8j helper: a literal cap ends in a nonempty column. -/
+theorem litCap_last_ne_E5 {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) :
+    (litCap B c k p).cols.getLast? ≠ some [] := by
+  have hc : (B.colAt c).isSome := by
+    unfold IsUpward at hup
+    split at hup
+    · rename_i col hcol; rw [hcol]; rfl
+    · exact hup.elim
+  obtain ⟨g, gs, hg, x, xs, hlast⟩ := ker_litCapAux_ne k p c.path c.col B hc
+  have hK : litCap B c k p = Tree.node (g :: gs) := by
+    unfold litCap litCapBody; rw [if_pos hc]; exact hg
+  rw [hK]
+  show (g :: gs).getLast? ≠ some []
+  rw [hlast]; simp
+
+
+theorem colAddrs_of_upward_E5 {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) :
+    c ∈ B.colAddrs ∧ k ≤ ((B.colAt c).getD []).length := by
+  unfold IsUpward at hup
+  split at hup
+  · rename_i col hcol
+    refine ⟨(Tree.mem_colAddrs_iff B c).2 (by rw [hcol]; rfl), ?_⟩
+    rw [hcol, Option.getD_some]
+    split at hup
+    · rename_i q h hq
+      exact le_of_lt (List.getElem?_eq_some_iff.1 hq).1
+    · exact le_of_eq hup
+  · exact hup.elim
+
+
+/-- T3.8j helper: a cap of `B` whose cut lies before the end of `B` covers once the old target
+`A` (with `w(B) ⊑ w(A)` up to the cut) is covered. -/
+theorem covers_of_prefix_E5 {A B : Forest} (hcof : Cof A) (hB : InL B) (hBA : B ≤ A)
+    (hpre : ∀ i < mu B, (word A)[i]? = (word B)[i]?)
+    {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) (hKL : InL (litCap B c k p))
+    (hlt : capPos B c k < mu B) : Covers (litCap B c k p) B := by
+  obtain ⟨hc, hk⟩ := colAddrs_of_upward_E5 hup
+  have hAK : A < litCap B c k p := by
+    rw [← word_lt_iff, word_litCap hc hk p]
+    obtain ⟨y, hy⟩ : ∃ y, (word B)[capPos B c k]? = some y :=
+      ⟨_, List.getElem?_eq_getElem hlt⟩
+    have hyz := (isUpward_iff_atom hc hk).1 hup y hy
+    have hyA : (word A)[capPos B c k]? = some y := by rw [hpre _ hlt]; exact hy
+    have htake : (word B).take (capPos B c k) = (word A).take (capPos B c k) := by
+      apply List.ext_getElem?
+      intro i
+      rw [List.getElem?_take, List.getElem?_take]
+      split_ifs with hi
+      · exact (hpre i (by omega)).symm
+      · rfl
+    rw [htake]
+    have hlenA : capPos B c k < (word A).length := by
+      by_contra hh; rw [List.getElem?_eq_none (by omega)] at hyA; cases hyA
+    conv_lhs => rw [← List.take_append_drop (capPos B c k) (word A)]
+    rw [ker_append_lt_append_iff, List.drop_eq_getElem_cons hlenA]
+    have : (word A)[capPos B c k] = y := by
+      rw [List.getElem?_eq_getElem hlenA] at hyA; exact Option.some.inj hyA
+    rw [this]
+    exact List.cons_lt_cons_iff.2 (Or.inl hyz)
+  exact covers_of_gt hcof hKL (litCap_ne_empty_E5 hup) (litCap_last_ne_E5 hup) hAK hBA
+    (fun K0 h0 => expand_zero_litCap_lt hB.2.1 hup hKL.1 hKL.2.1 h0)
+
+
+/-- T3.8j helper: a full cut at the end of the target covers it. -/
+theorem covers_of_end_E5 {B : Forest} (hB : CondI B) {c : ColAddr} {k p : Nat}
+    (hup : IsUpward B c k p) (hKL : InL (litCap B c k p)) (hend : capPos B c k = mu B) :
+    Covers (litCap B c k p) B :=
+  (covers_iff_success hB hup hKL.1 hKL.2.1 (fun _ hrd => kernelDefined_of_inL_E5 hKL
+    (litCap_ordinary hB hup hKL.1 hKL.2.1) (stopData_litCap hup) hrd)).2
+    (fullCut_success hup hKL hend)
+
 -- T3.8i (txt:505): seeds
 theorem KS_seed (m : Nat) : KS (seed m) := by sorry
 
 -- T3.8j (txt:505-506): safe prefixes of a covered target
 theorem KS_safePrefix {A : Forest} (hA : InL A) (hcof : Cof A) (k : Nat) : KS (safePrefix A k) := by
-  sorry
+  intro c k' p hup hKL
+  have hB := inL_safePrefix hA k
+  obtain ⟨hc, -⟩ := colAddrs_of_upward_E5 hup
+  by_cases hend : capPos (safePrefix A k) c k' = mu (safePrefix A k)
+  · exact covers_of_end_E5 hB.2.1 hup hKL hend
+  · have hlt := lt_of_le_of_ne (capPos_le_mu_E5 hc k') hend
+    refine covers_of_prefix_E5 hcof hB (safePrefix_le A k) ?_ hup hKL hlt
+    intro i hi
+    have hw := word_safePrefix A k
+    have hik : i < k := by
+      unfold mu at hi; rw [hw, List.length_take] at hi; omega
+    rw [hw, List.getElem?_take, if_pos hik]
 
 -- T3.8k (txt:506-510): special outputs
 theorem KS_special {A B : Forest} {n : Nat} (hA : InL A) (hcof : Cof A)
@@ -13518,8 +13643,51 @@ theorem direct_body (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by sorry
 
+theorem KS_empty_E5 : KS Tree.empty := by
+  intro c k p hup
+  exfalso
+  obtain ⟨P, j⟩ := c
+  unfold IsUpward at hup
+  cases P with
+  | nil => simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hup
+  | cons x P => obtain ⟨a, b⟩ := x; simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hup
+
 -- T3.8m (txt:504): kernel success for every standard target, by induction on generation
-theorem KS_std {B : Forest} (hB : IsStd B) : KS B := by sorry
+theorem KS_std {B : Forest} (hB : IsStd B) : KS B := by
+  induction hB with
+  | seed m => exact KS_seed m
+  | @expand A B' n hA hexp ih =>
+    have hL := std_inL hA
+    have hcof := cof_of_KS hL ih
+    by_cases hA0 : A = Tree.empty
+    · subst hA0
+      rw [expand_empty] at hexp
+      cases hexp
+      exact KS_empty_E5
+    obtain ⟨knd, hknd⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hA0 hL.1 hL.2.1)
+    cases knd with
+    | deletion =>
+      obtain ⟨j, -, rfl⟩ := expand_safePrefix hA0 hL.1 hL.2.1 (Or.inl hknd) hexp
+      exact KS_safePrefix hL hcof j
+    | special => exact KS_special hL hcof hknd hexp
+    | ordinary =>
+      rcases Nat.eq_zero_or_pos n with rfl | hn
+      · obtain ⟨j, -, rfl⟩ := expand_safePrefix hA0 hL.1 hL.2.1 (Or.inr ⟨hknd, rfl⟩) hexp
+        exact KS_safePrefix hL hcof j
+      · obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind hknd (by decide))
+        obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.1 (rootData_of_ordinary hknd)
+        exact KS_ordinary ⟨A, sd, rd, n, B', hA, hL, std_condP hA, hcof, hknd, hsd, hrd, hn, hexp⟩
+
+-- provides: U2, T3.8 (cofinality; moved from `Spine.lean`, brief rule 5)
+theorem cofinal {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E) :
+    ∃ n E', expand E n = some E' ∧ B ≤ E' ∧ E' < E :=
+  cof_of_KS (std_inL hB) (KS_std hB) E hE hlt
+
+-- provides: U2, T3.8 (the explicit bound when `E` ends in a nonempty outer column)
+theorem cofinal_bound {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E)
+    (hlast : E.cols.getLast? ≠ some []) :
+    ∃ n E', 1 ≤ n ∧ n ≤ Scan.mu B + 1 ∧ expand E n = some E' ∧ B < E' :=
+  bound_of_KS (std_inL hB) (KS_std hB) hE hlt hlast
 
 end Closure
 
