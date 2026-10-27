@@ -663,12 +663,63 @@ theorem cursor_mono (ks : List α) {W Z : List α} (hW : Noninc W) (hZ : Noninc 
 /-- L2.1c (txt:174-176): deleting a query letter immediately followed by a larger one does not
 change the final source cursor. -/
 theorem cursor_delete (src A B : List α) {x y : α} (hxy : x < y) :
-    cursor src (A ++ x :: y :: B) = cursor src (A ++ y :: B) := by sorry
+    cursor src (A ++ x :: y :: B) = cursor src (A ++ y :: B) := by
+  induction A generalizing src with
+  | nil =>
+    induction src with
+    | nil => simp [cursor]
+    | cons s ss ih =>
+      simp only [List.nil_append] at ih ⊢
+      rcases lt_trichotomy s x with h | h | h
+      · conv_lhs => rw [cursor, if_pos h]
+        conv_rhs => rw [cursor, if_pos (lt_trans h hxy)]
+        rw [ih]
+      · subst h
+        conv_lhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        conv_rhs => rw [cursor, if_pos hxy]
+      · conv_lhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+  | cons a A ih =>
+    induction src with
+    | nil => simp [cursor]
+    | cons s ss ihs =>
+      simp only [List.cons_append] at ihs ⊢
+      rcases lt_trichotomy s a with h | h | h
+      · conv_lhs => rw [cursor, if_pos h]
+        conv_rhs => rw [cursor, if_pos h]
+        rw [ihs]
+      · subst h
+        conv_lhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        conv_rhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        rw [ih]
+      · conv_lhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+        conv_rhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+        rw [ih]
+
+/-- L2.1c helper: deleting the terminal letters `< y` before `y` does not change the cursor. -/
+theorem cursor_reduce_before (src : List α) (y : α) (C : List α) (acc : List α) :
+    cursor src ((acc.reverse.dropWhile fun z => decide (z < y)).reverse ++ y :: C) =
+      cursor src (acc ++ y :: C) := by
+  induction acc using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton acc d ih =>
+    rw [List.reverse_append, List.reverse_singleton, List.singleton_append, List.dropWhile_cons]
+    by_cases hd : d < y
+    · rw [if_pos (decide_eq_true hd), ih, List.append_assoc, List.singleton_append,
+        cursor_delete src acc C hd]
+    · rw [if_neg (by simpa using hd), List.reverse_cons, List.reverse_reverse, List.append_assoc,
+        List.singleton_append]
 
 -- provides: U1, L2.1 (reducing a query does not change the final source cursor). Moved here from
 -- `Plan/Spine.lean` (brief rule 5): its proof needs `cursor_delete`; nothing in between uses it.
 theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
-    cursor ks (nu W) = cursor ks W := by sorry
+    cursor ks (nu W) = cursor ks W := by
+  suffices h : ∀ C, cursor ks (nu W ++ C) = cursor ks (W ++ C) by simpa using h []
+  induction W using List.reverseRecOn with
+  | nil => intro C; rfl
+  | append_singleton W y ih =>
+    intro C
+    rw [nu_append_singleton, nuStep, List.append_assoc, List.singleton_append,
+      cursor_reduce_before, ih, List.append_assoc, List.singleton_append]
 
 /-- L2.5a: the final state of the trace is `(cursor, qcursor)`. -/
 theorem trace_last (src qry : List α) :
