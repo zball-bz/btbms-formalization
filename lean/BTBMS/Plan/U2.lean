@@ -10009,8 +10009,114 @@ theorem covers_of_end_E5 {B : Forest} (hB : CondI B) {c : ColAddr} {k p : Nat}
     (litCap_ordinary hB hup hKL.1 hKL.2.1) (stopData_litCap hup) hrd)).2
     (fullCut_success hup hKL hend)
 
+/-- T3.8i helper: the full cut of a branch column appends one atom to the word. -/
+theorem branch_litCap_E5 (p : Nat) : ∀ (l i k e : Nat), l ≤ k →
+    wordAt e (litCapAux 1 p (List.replicate l (0, 0)) 0 (Tree.node [branch i k])) =
+      wordAt e (Tree.node [branch i k]) ++ [toLex (2 * (e + l) + 1, toLex (0, p))]
+  | 0, i, k, e, _ => by
+    rw [spx_branch]
+    simp [litCapAux, wordAt, wordCols, wordCol, wordLater, Tree.empty]
+  | l + 1, i, k + 1, e, hl => by
+    have ih := branch_litCap_E5 p l (i + 1) k (e + 1) (by omega)
+    simp only [List.replicate_succ, branch, litCapAux, List.getD_cons_zero, List.getElem?_cons_zero,
+      List.take_zero, List.nil_append]
+    simp only [wordAt, wordCols, wordCol, wordLater, List.append_nil] at ih ⊢
+    rw [ih, show e + 1 + l = e + (l + 1) by omega, List.cons_append]
+  | l + 1, i, 0, e, hl => by omega
+
+
+theorem seed_full_E5 (m : Nat) {c : ColAddr} {col : Column}
+    (hcol : (seed (m + 1)).colAt c = some col) (hne : col ≠ []) :
+    capPos (seed (m + 1)) c 1 = mu (seed (m + 1)) := by
+  have hc : ((seed (m + 1)).colAt c).isSome := by rw [hcol]; rfl
+  unfold capPos litCap litCapBody
+  rw [if_pos hc]
+  unfold mu word
+  obtain ⟨P, j⟩ := c
+  cases P with
+  | nil =>
+    simp only [seed, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at hcol
+    match j, hcol with
+    | 0, h => simp at h; exact absurd h hne
+    | 1, h =>
+      simp only [seed]
+      rw [spx_branch]
+      simp [litCapAux, wordAt, wordCols, wordCol, wordLater, Tree.empty]
+    | j + 2, h => simp at h
+  | cons x P =>
+    obtain ⟨a, b⟩ := x
+    have hcol' := hcol
+    rw [seed, Tree.colAt_cons] at hcol'
+    simp only [Tree.cols] at hcol'
+    match a, b, hcol' with
+    | 0, b, h => simp at h
+    | a + 2, b, h => simp at h
+    | 1, b + 1, h => simp [spx_branch] at h
+    | 1, 0, h =>
+      cases m with
+      | zero => simp [branch, spx_colAt_empty] at h
+      | succ k =>
+        simp only [branch, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.bind_some] at h
+        obtain ⟨l, hl, rfl, rfl, rfl⟩ := spx_branch_colAt k 1 P j col h
+        have := branch_litCap_E5 0 l 1 k 1 hl
+        simp only [seed, branch, litCapAux, List.getD_cons_succ, List.getD_cons_zero,
+          List.getElem?_cons_zero, List.take_zero, List.nil_append, List.take_succ_cons]
+        simp only [Nat.zero_add] at this ⊢
+        simp only [wordAt, wordCols, wordCol, wordLater, List.append_nil,
+          List.cons_append, List.nil_append] at this ⊢
+        rw [this]
+        simp
+
+
+/-- T3.8i helper: V of a cap bounds its closing parent by the cap column's number. -/
+theorem lt_num_of_capV_E5 {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p)
+    (hKV : CondV (litCap B c k p)) : p < c.num 0 := by
+  have hsd := stopData_litCap hup
+  obtain ⟨hcolK, -⟩ := stopData_spec hsd
+  have hent : (litCap B c k p).entryAt ⟨c, (((B.colAt c).getD []).take k).length⟩ =
+      some (p, Tree.empty) := by
+    unfold Tree.entryAt; rw [hcolK]; simp
+  have hmemK := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl)
+  exact (condV_iff_lt _).1 hKV _ hmemK p Tree.empty hent
+
 -- T3.8i (txt:505): seeds
-theorem KS_seed (m : Nat) : KS (seed m) := by sorry
+theorem KS_seed (m : Nat) : KS (seed m) := by
+  intro c k p hup hKL
+  have hp := lt_num_of_capV_E5 hup hKL.1
+  obtain ⟨col, hcol⟩ : ∃ col, (seed m).colAt c = some col := by
+    have := (colAddrs_of_upward_E5 hup).1
+    exact Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 this)
+  have hup' := hup
+  unfold IsUpward at hup'
+  rw [hcol] at hup'
+  cases m with
+  | zero =>
+    exfalso
+    obtain ⟨P, j⟩ := c
+    cases P with
+    | nil =>
+      simp only [seed, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at hcol
+      cases j with
+      | zero => simp [ColAddr.num] at hp
+      | succ j => simp at hcol
+    | cons x P =>
+      obtain ⟨a, b⟩ := x
+      simp only [seed, Tree.colAt, Tree.forestAt, Tree.cols] at hcol
+      cases a with
+      | zero => simp at hcol
+      | succ a => simp at hcol
+  | succ m =>
+    rcases spx_seed_colAt m c col hcol with ⟨rfl, rfl⟩ | ⟨l, hl, hnum, rfl⟩
+    · simp [ColAddr.num] at hp
+    · rw [spx_branch] at hup'
+      cases k with
+      | zero => simp at hup'; omega
+      | succ k =>
+        cases k with
+        | zero =>
+          exact covers_of_end_E5 (seed_inL _).2.1 hup hKL
+            (seed_full_E5 m hcol (by rw [spx_branch]; simp))
+        | succ k => simp at hup'
 
 -- T3.8j (txt:505-506): safe prefixes of a covered target
 theorem KS_safePrefix {A : Forest} (hA : InL A) (hcof : Cof A) (k : Nat) : KS (safePrefix A k) := by
