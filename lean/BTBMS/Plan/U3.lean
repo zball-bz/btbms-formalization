@@ -331,6 +331,75 @@ theorem mem_height_of_prefix {t : Tree α} {e : EntryAddr} {p : α} {H : Tree α
       show (H.entryAt _).isSome; rw [← this]; exact hx
     · simp [Role.under, hσ]
 
+/-! D7.1a helpers on trees: relabelling and reading inside a height. -/
+
+theorem cols_map {β : Type} (f : α → β) (t : Tree α) :
+    (t.map f).cols = t.cols.map (fun col => col.map fun x => (f x.1, x.2.map f)) := by
+  cases t with
+  | node cols =>
+    show Tree.mapCols f cols = _
+    rw [Scan.treeMapCols_eq_map]
+    simp only [Tree.cols]
+    congr 1
+    funext col
+    exact Scan.treeMapCol_eq_map f col
+
+theorem forestAt_map {β : Type} (f : α → β) :
+    ∀ (π : List (Nat × Nat)) (t : Tree α), (t.map f).forestAt π = (t.forestAt π).map (Tree.map f)
+  | [], t => rfl
+  | (c, i) :: rest, t => by
+    rw [forestAt_cons, forestAt_cons, cols_map]
+    cases h : t.cols[c]? with
+    | none => simp [h]
+    | some col =>
+      simp only [List.getElem?_map, h, Option.map_some, Option.bind_some]
+      cases h' : col[i]? with
+      | none => simp
+      | some x => simp [forestAt_map f rest x.2]
+
+theorem colAt_map {β : Type} (f : α → β) (t : Tree α) (c : ColAddr) :
+    (t.map f).colAt c = (t.colAt c).map (fun col => col.map fun x => (f x.1, x.2.map f)) := by
+  unfold colAt
+  rw [forestAt_map]
+  cases t.forestAt c.path with
+  | none => rfl
+  | some F => simp [cols_map]
+
+theorem entryAt_map {β : Type} (f : α → β) (t : Tree α) (e : EntryAddr) :
+    (t.map f).entryAt e = (t.entryAt e).map (fun x => (f x.1, x.2.map f)) := by
+  unfold entryAt
+  rw [colAt_map]
+  cases t.colAt e.col with
+  | none => rfl
+  | some col => simp
+
+/-- D7.1a helper: columns and entries read inside the height of `e`. -/
+theorem colAt_under {t : Tree α} {e : EntryAddr} {B : Tree α} (hB : t.heightAt e = some B)
+    (P : List (Nat × Nat)) (j : Nat) : t.colAt ⟨e.heightPath ++ P, j⟩ = B.colAt ⟨P, j⟩ := by
+  unfold colAt
+  simp only
+  rw [forestAt_append, forestAt_heightPath, hB]
+  rfl
+
+theorem entryAt_under {t : Tree α} {e : EntryAddr} {B : Tree α} (hB : t.heightAt e = some B)
+    (P : List (Nat × Nat)) (j i : Nat) :
+    t.entryAt ⟨⟨e.heightPath ++ P, j⟩, i⟩ = B.entryAt ⟨⟨P, j⟩, i⟩ := by
+  unfold entryAt
+  simp only
+  rw [colAt_under hB]
+
+theorem under_mem_roles {t : Tree α} {e : EntryAddr} {B : Tree α} (hB : t.heightAt e = some B)
+    {r : Role} (hr : r ∈ B.roles) : r.under e.heightPath ∈ t.roles := by
+  cases r with
+  | ord c =>
+    rw [mem_roles_iff] at hr ⊢
+    show (t.colAt ⟨e.heightPath ++ c.path, c.col⟩).isSome
+    rw [colAt_under hB]; exact hr
+  | slot e' =>
+    rw [mem_roles_iff] at hr ⊢
+    show (t.entryAt ⟨⟨e.heightPath ++ e'.col.path, e'.col.col⟩, e'.idx⟩).isSome
+    rw [entryAt_under hB]; exact hr
+
 end Tree
 
 namespace Packet
@@ -876,69 +945,596 @@ def relRole (pfx : List (Nat × Nat)) : Role → Role
 /-- D7.1a: a column inside the height of `e`, with its address made relative to that height. -/
 def relCol (e : EntryAddr) (d : ColAddr) : ColAddr := ⟨d.path.drop e.heightPath.length, d.col⟩
 
+/-- D7.1a helper: a stack occurrence's path is a prefix of the column's path. -/
+theorem onStack_path_prefix {c o : ColAddr} (h : c.OnStack o) : o.path <+: c.path := by
+  rcases h with ⟨k, -, -, -, hp, -⟩ | ⟨hp, -⟩
+  · rw [hp]; exact List.take_prefix _ _
+  · rw [hp]
+
+-- provides: U3, D7.1a (a visible column sees the same representatives below its own number)
+theorem rep_visible (c o : ColAddr) (ho : c.resolve 0 (o.num 0) = some o) :
+    ∀ q, q < o.num 0 → o.rep 0 q = c.rep 0 q := by
+  intro q hq
+  have hs : c.OnStack o := ((ColAddr.resolve_spec 0 c o _).1 ho).1
+  unfold ColAddr.rep
+  rw [ColAddr.resolve_of_resolve_lt ho hq]
+  cases hr : c.resolve 0 q with
+  | none => rfl
+  | some r =>
+    have hrq : r.num 0 = q := ColAddr.resolve_num hr
+    have hcont : r.container o = r.container c := by
+      apply Option.ext
+      intro e
+      rw [ColAddr.container_spec, ColAddr.container_spec]
+      constructor
+      · rintro ⟨h1, h2⟩; exact ⟨h1, h2.trans (onStack_path_prefix hs)⟩
+      · rintro ⟨h1, h2⟩
+        refine ⟨h1, EntryAddr.contains_of_resolve (c := c) h2 ho ?_⟩
+        rw [h1, hrq]; exact hq
+    simp only [Option.map_some, hcont]
+
+/-- D7.1a helper: `resolveAux` passes the levels below the number it resolves. -/
+theorem resolveAux_skip (rest : List (Nat × Nat)) (j q : Nat) :
+    ∀ (π pre : List (Nat × Nat)) (start : Nat), start + (π.map (·.1 + 1)).sum ≤ q →
+      ColAddr.resolveAux start pre (π ++ rest) j q =
+        ColAddr.resolveAux (start + (π.map (·.1 + 1)).sum) (pre ++ π) rest j q
+  | [], pre, start, _ => by simp
+  | (ck, ik) :: π, pre, start, h => by
+    simp only [List.map_cons, List.sum_cons] at h
+    simp only [List.cons_append, ColAddr.resolveAux]
+    rw [if_neg (by omega), resolveAux_skip rest j q π (pre ++ [(ck, ik)]) (start + ck + 1) (by omega)]
+    simp only [List.map_cons, List.sum_cons, List.append_assoc, List.singleton_append]
+    congr 1
+    omega
+
+/-- D7.1a helper: `resolveAux` commutes with prefixing a path and shifting the numbers. -/
+theorem resolveAux_shift (π : List (Nat × Nat)) (j k : Nat) :
+    ∀ (rest pre : List (Nat × Nat)) (start q : Nat),
+      ColAddr.resolveAux (start + k) (π ++ pre) rest j (q + k) =
+        (ColAddr.resolveAux start pre rest j q).map (fun o => ⟨π ++ o.path, o.col⟩)
+  | [], pre, start, q => by
+    simp only [ColAddr.resolveAux]
+    by_cases h : start ≤ q ∧ q < start + j
+    · rw [if_pos (by omega), if_pos h]
+      simp only [Option.map_some]
+      congr 2; omega
+    · rw [if_neg (by omega), if_neg h]; rfl
+  | (ck, ik) :: rest, pre, start, q => by
+    simp only [ColAddr.resolveAux]
+    by_cases h : start ≤ q ∧ q ≤ start + ck
+    · rw [if_pos (by omega), if_pos h]
+      simp only [Option.map_some]
+      congr 2; omega
+    · rw [if_neg (by omega), if_neg h]
+      have := resolveAux_shift π j k rest (pre ++ [(ck, ik)]) (start + ck + 1) q
+      rw [← this, List.append_assoc]
+      congr 1
+      omega
+
+/-- D7.1a helper: containers read under a common path prefix. -/
+theorem container_under (σ τ : List (Nat × Nat)) (o : ColAddr) (dc : Nat) :
+    ColAddr.container ⟨σ ++ o.path, o.col⟩ ⟨σ ++ τ, dc⟩ =
+      (o.container ⟨τ, dc⟩).map (fun e' => ⟨⟨σ ++ e'.col.path, e'.col.col⟩, e'.idx⟩) := by
+  apply Option.ext
+  intro E
+  rw [ColAddr.container_spec]
+  constructor
+  · rintro ⟨h1, h2⟩
+    refine Option.mem_map.2 ⟨⟨o, E.idx⟩, ?_, ?_⟩
+    · show o.container ⟨τ, dc⟩ = some ⟨o, E.idx⟩
+      rw [ColAddr.container_spec]
+      refine ⟨rfl, ?_⟩
+      simp only [EntryAddr.heightPath, h1, List.append_assoc] at h2
+      exact (List.prefix_append_right_inj σ).1 h2
+    · obtain ⟨⟨Ep, Ec⟩, Ei⟩ := E
+      simp only at h1
+      cases h1
+      rfl
+  · intro h
+    obtain ⟨e', he', rfl⟩ := Option.mem_map.1 h
+    have he'' : o.container ⟨τ, dc⟩ = some e' := he'
+    rw [ColAddr.container_spec] at he''
+    have he' := he''
+    obtain ⟨h1, h2⟩ := he'
+    subst h1
+    refine ⟨rfl, ?_⟩
+    simp only [EntryAddr.heightPath, List.append_assoc]
+    exact (List.prefix_append_right_inj σ).2 h2
+
 -- provides: U3, D7.1a (the visible stack seen from inside the height of `e`)
 theorem rep_inside (e : EntryAddr) (d : ColAddr) (hd : e.heightPath <+: d.path) :
     (∀ q, q < e.col.num 0 → d.rep 0 q = e.col.rep 0 q) ∧
     d.rep 0 (e.col.num 0) = some (.ord e.col, .slot e) ∧
     (∀ w, 1 ≤ w → d.rep 0 (e.col.num 0 + w) =
       ((relCol e d).rep 1 w).map fun ov => (Role.under e.heightPath ov.1, Role.under e.heightPath ov.2)) ∧
-    d.num 0 = e.col.num 0 + (relCol e d).num 1 := by sorry
-
--- provides: U3, D7.1a (a visible column sees the same representatives below its own number)
-theorem rep_visible (c o : ColAddr) (ho : c.resolve 0 (o.num 0) = some o) :
-    ∀ q, q < o.num 0 → o.rep 0 q = c.rep 0 q := by sorry
+    d.num 0 = e.col.num 0 + (relCol e d).num 1 := by
+  have hc : e.Contains d := hd
+  have hres := EntryAddr.resolve_host hc
+  obtain ⟨dp, dc⟩ := d
+  obtain ⟨σ, hσ⟩ := hd
+  simp only at hσ
+  subst hσ
+  have hrel : relCol e ⟨e.heightPath ++ σ, dc⟩ = ⟨σ, dc⟩ := by simp [relCol]
+  have hwid : (e.heightPath.map (·.1 + 1)).sum = e.col.num 0 + 1 := by
+    simp [EntryAddr.heightPath, ColAddr.num]; omega
+  refine ⟨fun q hq => (rep_visible _ e.col hres q hq).symm, ?_, ?_, ?_⟩
+  · unfold ColAddr.rep
+    rw [hres]
+    simp only [Option.map_some, (EntryAddr.contains_iff_container e _).1 hc]
+  · intro w hw
+    have hr : ColAddr.resolve 0 ⟨e.heightPath ++ σ, dc⟩ (e.col.num 0 + w) =
+        ((ColAddr.resolve 1 ⟨σ, dc⟩ w)).map (fun o => ⟨e.heightPath ++ o.path, o.col⟩) := by
+      unfold ColAddr.resolve
+      simp only
+      rw [resolveAux_skip σ dc _ e.heightPath [] 0 (by omega)]
+      have := resolveAux_shift e.heightPath dc (e.col.num 0) σ [] 1 w
+      simp only [List.append_nil] at this
+      rw [← this]
+      congr 1
+      · omega
+      · omega
+    unfold ColAddr.rep
+    rw [hr, hrel]
+    cases (ColAddr.resolve 1 ⟨σ, dc⟩ w) with
+    | none => rfl
+    | some o =>
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
+      refine ⟨rfl, ?_⟩
+      rw [container_under e.heightPath σ o dc]
+      cases o.container ⟨σ, dc⟩ with
+      | none => rfl
+      | some e' => rfl
+  · rw [hrel]
+    simp only [ColAddr.num, EntryAddr.heightPath, List.map_append, List.sum_append]
+    simp
+    omega
 
 /-- D7.1a: the first `m` columns of a forest (the "proper prefix" of Case 1). -/
 def takeCols (X : Forest) (m : Nat) : Forest := .node (X.cols.take m)
+
+theorem rep_isSome_iff (c : ColAddr) (q : Nat) : (c.rep 0 q).isSome ↔ q < c.num 0 := by
+  unfold ColAddr.rep
+  rw [Option.isSome_map, ColAddr.resolve_isSome_iff]
+  omega
+
+theorem takeCols_roles_prefix (B : Forest) (m : Nat) : (takeCols B m).roles <+: B.roles := by
+  cases B with
+  | node cols =>
+    show Tree.rolesCols [] 0 (cols.take m) <+: Tree.rolesCols [] 0 cols
+    conv_rhs => rw [← List.take_append_drop m cols, Tree.rolesCols_append]
+    exact List.prefix_append _ _
+
+theorem takeCols_entryAt (B : Forest) (m : Nat) (e' : EntryAddr) (y : Nat × Forest)
+    (h : (takeCols B m).entryAt e' = some y) : B.entryAt e' = some y := by
+  cases B with
+  | node cols =>
+    obtain ⟨⟨P, j⟩, i⟩ := e'
+    cases P with
+    | nil =>
+      rw [takeCols, Tree.entryAt_nil, Option.bind_eq_some_iff] at h
+      obtain ⟨col, hcol, hy⟩ := h
+      simp only [Tree.cols] at hcol
+      rw [Tree.entryAt_nil, Tree.getElem?_take_bind hcol]; exact hy
+    | cons ab P =>
+      obtain ⟨a, b⟩ := ab
+      rw [takeCols, Tree.entryAt_cons, Option.bind_eq_some_iff] at h
+      obtain ⟨z, hz, hy⟩ := h
+      simp only [Tree.cols, Option.bind_eq_some_iff] at hz
+      obtain ⟨col, hcol, hz⟩ := hz
+      rw [Tree.entryAt_cons, Option.bind_eq_some_iff]
+      exact ⟨z, by simp [Tree.cols, Tree.getElem?_take_bind hcol, hz], hy⟩
+
+theorem takeCols_length (B : Forest) : takeCols B B.cols.length = B := by
+  cases B with
+  | node cols => simp [takeCols, Tree.cols]
+
+/-- D7.1a helper: entries of a relative key of a column prefix of the height of `e`, read in `F`. -/
+theorem key_entry {F : Forest} {e : EntryAddr} {B : Forest} (hB : F.heightAt e = some B) (m : Nat)
+    {e' : EntryAddr} {lab : Bool × Nat} {hh : Key}
+    (h : (relKey (e.col.num 0) (takeCols B m)).entryAt e' = some (lab, hh)) :
+    ∃ p h₀, F.entryAt ⟨⟨e.heightPath ++ e'.col.path, e'.col.col⟩, e'.idx⟩ = some (p, h₀) ∧
+      lab = (if p < e.col.num 0 then (false, p) else (true, p - e.col.num 0)) := by
+  rw [relKey, Tree.entryAt_map] at h
+  obtain ⟨⟨p, h₀⟩, hp, hy⟩ := Option.map_eq_some_iff.1 h
+  simp only [Prod.mk.injEq] at hy
+  refine ⟨p, h₀, ?_, hy.1.symm⟩
+  rw [Tree.entryAt_under hB]
+  exact takeCols_entryAt B m e' _ hp
+
+theorem relCol_under (e : EntryAddr) (c : ColAddr) :
+    relCol e ⟨e.heightPath ++ c.path, c.col⟩ = c := by
+  simp [relCol]
+
+/-- D7.1a helper: the edges read by an internal entry, in the three cases of its key label. -/
+theorem inner_edges {e : EntryAddr} (e' : EntryAddr) (p : Nat) :
+    let E' : EntryAddr := ⟨⟨e.heightPath ++ e'.col.path, e'.col.col⟩, e'.idx⟩
+    (p < e.col.num 0 → E'.col.rep 0 p = e.col.rep 0 p) ∧
+    (p = e.col.num 0 → E'.col.rep 0 p = some (.ord e.col, .slot e)) ∧
+    (∀ v, p = e.col.num 0 + (v + 1) → E'.col.rep 0 p =
+      (e'.col.rep 1 (v + 1)).map fun ov => (Role.under e.heightPath ov.1, Role.under e.heightPath ov.2)) := by
+  intro E'
+  have hd : e.heightPath <+: E'.col.path := List.prefix_append _ _
+  obtain ⟨h1, h2, h3, -⟩ := rep_inside e E'.col hd
+  refine ⟨h1 p, fun h => h ▸ h2, fun v hv => ?_⟩
+  rw [hv, h3 (v + 1) (by omega)]
+  simp only [E', relCol_under]
 
 -- provides: U3, D7.1a (a free block of a column prefix of a height lies in the graph)
 theorem freeBlock_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
     (m : Nat) :
     ∀ a ∈ freeBlock (relKey (e.col.num 0) (takeCols ((F.heightAt e).getD Tree.empty) m)),
-      a.map (blockMap e) ∈ graph F := by sorry
+      a.map (blockMap e) ∈ graph F := by
+  obtain ⟨post, hr, -⟩ := Tree.roles_entry he
+  have he' := he
+  rw [Tree.mem_entryAddrs_iff] at he'
+  obtain ⟨⟨p0, B⟩, hx⟩ := Option.isSome_iff_exists.1 he'
+  have hB : F.heightAt e = some B := by simp [Tree.heightAt, hx]
+  rw [hB, Option.getD_some] at hr ⊢
+  have hslot : Role.slot e ∈ F.roles := by rw [hr]; simp
+  have hKr : ∀ r, r ∈ (relKey (e.col.num 0) (takeCols B m)).roles → r.under e.heightPath ∈ F.roles :=
+    fun r h => Tree.under_mem_roles hB ((takeCols_roles_prefix B m).mem (by rwa [relKey_roles] at h))
+  intro a ha
+  unfold freeBlock at ha
+  simp only [List.mem_cons, List.mem_append, List.mem_map, List.mem_filterMap,
+    List.mem_flatMap] at ha
+  rw [mem_graph_iff]
+  rcases ha with ((((rfl | ⟨r, hr', rfl⟩) | ⟨⟨x, y⟩, hxy, rfl⟩) | ⟨c, hc, hc'⟩) | ⟨e', he', ha⟩)
+  · exact Or.inl ⟨_, hslot, rfl⟩
+  · obtain ⟨r', hr'', rfl⟩ := hr'
+    exact Or.inl ⟨_, hKr r' hr'', rfl⟩
+  · -- order atoms: consecutive in `slot e :: K.roles.map (under hp)`, a segment of `F.roles`
+    set rs := (relKey (e.col.num 0) (takeCols B m)).roles.map BlkVar.inner
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hxy
+    have hrs : rs = (BlkVar.owner :: rs).tail := rfl
+    rw [hrs, List.getElem?_zip_eq_some, List.getElem?_tail] at hi
+    have hM : (BlkVar.owner :: rs).map (blockMap e) =
+        Role.slot e :: (takeCols B m).roles.map (Role.under e.heightPath) := by
+      simp only [rs, List.map_cons, List.map_map, relKey_roles]
+      rfl
+    obtain ⟨X, hX⟩ := takeCols_roles_prefix B m
+    have hF : F.roles = prefixRoles F e ++ ((BlkVar.owner :: rs).map (blockMap e) ++
+        (X.map (Role.under e.heightPath) ++ post)) := by
+      rw [hM, hr, ← hX]; simp
+    have hget : ∀ k z, (BlkVar.owner :: rs)[k]? = some z →
+        F.roles[(prefixRoles F e).length + k]? = some (blockMap e z) := by
+      intro k z hz
+      rw [hF, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
+        List.getElem?_append_left (by
+          have := (List.getElem?_eq_some_iff.1 hz).1
+          simpa using this), List.getElem?_map, hz]
+      rfl
+    refine Or.inr (Or.inl ⟨(prefixRoles F e).length + i, _, _, hget i x hi.1,
+      by rw [show (prefixRoles F e).length + i + 1 = (prefixRoles F e).length + (i + 1) by omega];
+         exact hget (i + 1) y hi.2, rfl⟩)
+  · split_ifs at hc' with h
+    cases hc'
+    rw [Tree.mem_colAddrs_iff] at hc
+    refine Or.inr (Or.inr (Or.inl ⟨⟨e.heightPath ++ c.path, c.col⟩, ?_, ?_, rfl⟩))
+    · exact hKr (.ord c) (by rw [Tree.mem_roles_iff]; exact hc)
+    · exact hKr (.ord ⟨c.path, c.col + 1⟩) (by rw [Tree.mem_roles_iff]; exact h)
+  · rw [Tree.mem_entryAddrs_iff] at he'
+    obtain ⟨⟨lab, hh⟩, hK⟩ := Option.isSome_iff_exists.1 he'
+    obtain ⟨p, h₀, hE, hlab⟩ := key_entry hB m hK
+    rw [hK] at ha
+    obtain ⟨hlt, heq, hgt⟩ := inner_edges (e := e) e' p
+    refine Or.inr (Or.inr (Or.inr ⟨⟨⟨e.heightPath ++ e'.col.path, e'.col.col⟩, e'.idx⟩, p, ?_⟩))
+    rw [hE]
+    by_cases hpa : p < e.col.num 0
+    · rw [if_pos hpa] at hlab
+      subst hlab
+      obtain ⟨⟨o, v⟩, hov⟩ := Option.isSome_iff_exists.1 ((rep_isSome_iff e.col p).2 hpa)
+      refine ⟨o, v, rfl, by rw [hlt hpa, hov], ?_⟩
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+      rcases ha with rfl | rfl
+      · left; simp [BaseAtom.map, blockMap, hov, Role.under]
+      · right; simp [BaseAtom.map, blockMap, hov, Role.under]
+    · rw [if_neg hpa] at hlab
+      subst hlab
+      obtain ⟨v, hv⟩ : ∃ v, p - e.col.num 0 = v := ⟨_, rfl⟩
+      cases v with
+      | zero =>
+        rw [hv] at ha
+        refine ⟨.ord e.col, .slot e, rfl, heq (by omega), ?_⟩
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+        rcases ha with rfl | rfl
+        · left; rfl
+        · right; rfl
+      | succ v =>
+        rw [hv] at ha
+        simp only at ha
+        cases hr1 : e'.col.rep 1 (v + 1) with
+        | none => rw [hr1] at ha; simp at ha
+        | some ow =>
+          obtain ⟨o, w⟩ := ow
+          rw [hr1] at ha
+          refine ⟨o.under e.heightPath, w.under e.heightPath, rfl,
+            by rw [hgt v (by omega), hr1]; rfl, ?_⟩
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at ha
+          rcases ha with rfl | rfl
+          · left; rfl
+          · right; rfl
 
 -- provides: U3, D7.1a (the two heads of the positive block are the entry's own heads)
 theorem posBlock_heads_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs)
     (hV : Scan.CondV F) :
     ∀ a ∈ posBlock (relKey (e.col.num 0) ((F.heightAt e).getD Tree.empty))
         (((F.entryAt e).map Prod.fst).getD 0),
-      a.map (blockMap e) ∈ graph F := by sorry
+      a.map (blockMap e) ∈ graph F := by
+  intro a ha
+  unfold posBlock at ha
+  rcases List.mem_append.1 ha with ha | ha
+  · have := freeBlock_graph he hV ((F.heightAt e).getD Tree.empty).cols.length a
+    rw [takeCols_length] at this
+    exact this ha
+  · have he' := he
+    rw [Tree.mem_entryAddrs_iff] at he'
+    obtain ⟨⟨p0, B⟩, hx⟩ := Option.isSome_iff_exists.1 he'
+    have hres := hV e he p0 B hx
+    obtain ⟨⟨o, v⟩, hov⟩ := Option.isSome_iff_exists.1
+      ((rep_isSome_iff e.col p0).2 ((ColAddr.resolve_isSome_iff 0 e.col p0).1 hres).2)
+    rw [hx] at ha
+    rw [mem_graph_iff]
+    refine Or.inr (Or.inr (Or.inr ⟨e, p0, o, v, by rw [hx]; rfl, hov, ?_⟩))
+    simp only [Option.map_some, Option.getD_some, List.mem_cons, List.not_mem_nil, or_false] at ha
+    rcases ha with rfl | rfl
+    · left; simp [BaseAtom.map, blockMap, hov]
+    · right; simp [BaseAtom.map, blockMap, hov]
 
 -- provides: U3, D7.1a (converse: every atom owned by the slot of `e` or by a role inside its
 -- height is the image of an atom of the positive block)
 theorem graph_owned_block {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
     (z : Role) (hz : z = .slot e ∨ e.heightPath <+: z.path) :
     ∀ a ∈ ownedBy (graph F) z, ∃ a₀ ∈ posBlock (relKey (e.col.num 0) ((F.heightAt e).getD Tree.empty))
-      (((F.entryAt e).map Prod.fst).getD 0), a = a₀.map (blockMap e) := by sorry
+      (((F.entryAt e).map Prod.fst).getD 0), a = a₀.map (blockMap e) := by
+  have he' := he
+  rw [Tree.mem_entryAddrs_iff] at he'
+  obtain ⟨⟨p0, B⟩, hx⟩ := Option.isSome_iff_exists.1 he'
+  have hB : F.heightAt e = some B := by simp [Tree.heightAt, hx]
+  rw [hB, hx, Option.getD_some]
+  simp only [Option.map_some, Option.getD_some]
+  set K := relKey (e.col.num 0) B with hKdef
+  have hKroles : K.roles = B.roles := relKey_roles _ _
+  have hKcol : ∀ c, (K.colAt c).isSome = (B.colAt c).isSome := by
+    intro c; rw [hKdef, relKey, Tree.colAt_map]; cases B.colAt c <;> rfl
+  have hKent : ∀ e', K.entryAt e' = (B.entryAt e').map
+      (fun x => (if x.1 < e.col.num 0 then (false, x.1) else (true, x.1 - e.col.num 0),
+        relKey (e.col.num 0) x.2)) := by
+    intro e'; rw [hKdef, relKey, Tree.entryAt_map]; rfl
+  have hfree : ∀ a₀, a₀ ∈ freeBlock K → a₀ ∈ posBlock K p0 := fun a₀ h =>
+    List.mem_append_left _ h
+  intro a ha
+  unfold ownedBy at ha
+  rw [List.mem_filter, beq_iff_eq] at ha
+  obtain ⟨ha, hown⟩ := ha
+  rcases (mem_graph_iff F a).1 ha with ⟨x, hx', rfl⟩ | ⟨i, x, y, -, -, rfl⟩ | ⟨c, hc, hc', rfl⟩ |
+    ⟨E', p, o, v, hp, hov, ha'⟩
+  · simp only [atomOwner, Option.some.injEq] at hown
+    subst hown
+    rcases hz with rfl | hz
+    · exact ⟨.lim .owner, hfree _ (by unfold freeBlock; simp), rfl⟩
+    · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 (Tree.mem_height_of_prefix hx hx' hz)
+      refine ⟨.lim (.inner r), hfree _ ?_, rfl⟩
+      unfold freeBlock
+      simp only [List.mem_cons, List.mem_append, List.mem_map]
+      exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, ⟨r, by rw [hKroles]; exact hr, rfl⟩, rfl⟩)))
+  · simp [atomOwner] at hown
+  · simp only [atomOwner, Option.some.injEq] at hown
+    subst hown
+    rcases hz with h | hz
+    · cases h
+    · obtain ⟨τ, hτ⟩ := hz
+      simp only [Role.path] at hτ
+      obtain ⟨cp, cc⟩ := c
+      simp only at hτ hc hc' ⊢
+      subst hτ
+      rw [Tree.mem_roles_iff] at hc hc'
+      change (F.colAt ⟨e.heightPath ++ τ, cc⟩).isSome at hc
+      change (F.colAt ⟨e.heightPath ++ τ, cc + 1⟩).isSome at hc'
+      rw [Tree.colAt_under hB] at hc hc'
+      refine ⟨.elem (.inner (.ord ⟨τ, cc⟩)) (.inner (.ord ⟨τ, cc + 1⟩)), hfree _ ?_, rfl⟩
+      unfold freeBlock
+      simp only [List.mem_cons, List.mem_append, List.mem_filterMap]
+      refine Or.inl (Or.inr ⟨⟨τ, cc⟩, ?_, ?_⟩)
+      · rw [Tree.mem_colAddrs_iff, hKcol]; exact hc
+      · rw [if_pos (by rw [hKcol]; exact hc')]
+  · have hown' : z = .slot E' := by
+      rcases ha' with rfl | rfl <;> simpa [atomOwner] using hown.symm
+    subst hown'
+    obtain ⟨⟨p', H'⟩, hE', rfl⟩ := Option.map_eq_some_iff.1 hp
+    rcases hz with h | hz
+    · cases h
+      rw [hx] at hE'
+      cases hE'
+      simp only at hov
+      rcases ha' with rfl | rfl
+      · exact ⟨.edge .owner .host (.ord p0), List.mem_append_right _ (List.mem_cons_self ..),
+          by simp [BaseAtom.map, blockMap, hov]⟩
+      · exact ⟨.edge .owner .host (.cur p0),
+          List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self ..)),
+          by simp [BaseAtom.map, blockMap, hov]⟩
+    · obtain ⟨τ, hτ⟩ := hz
+      obtain ⟨⟨Ep, cc⟩, ii⟩ := E'
+      simp only [Role.path] at hτ
+      subst hτ
+      have hBe : B.entryAt ⟨⟨τ, cc⟩, ii⟩ = some (p', H') := by
+        rw [← Tree.entryAt_under hB]; exact hE'
+      have hKe := hKent ⟨⟨τ, cc⟩, ii⟩
+      rw [hBe] at hKe
+      simp only [Option.map_some] at hKe
+      have hmem : (⟨⟨τ, cc⟩, ii⟩ : EntryAddr) ∈ K.entryAddrs := by
+        rw [Tree.mem_entryAddrs_iff, hKe]; rfl
+      obtain ⟨hlt, heq, hgt⟩ := inner_edges (e := e) ⟨⟨τ, cc⟩, ii⟩ p'
+      simp only at hlt heq hgt hov
+      have hfb : ∀ a₀, (a₀ ∈ (match K.entryAt ⟨⟨τ, cc⟩, ii⟩ with
+          | some ((false, q), _) => [BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+              (BlkVar.inner (.ord ⟨τ, cc⟩)) (.ord q), BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+              (BlkVar.inner (.ord ⟨τ, cc⟩)) (.cur q)]
+          | some ((true, 0), _) => [BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+              (BlkVar.inner (.ord ⟨τ, cc⟩)) .host, BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+              (BlkVar.inner (.ord ⟨τ, cc⟩)) .owner]
+          | some ((true, v + 1), _) =>
+            match (ColAddr.mk τ cc).rep 1 (v + 1) with
+            | some (o, w) => [BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+                (BlkVar.inner (.ord ⟨τ, cc⟩)) (.inner o), BaseAtom.edge (BlkVar.inner (.slot ⟨⟨τ, cc⟩, ii⟩))
+                (BlkVar.inner (.ord ⟨τ, cc⟩)) (.inner w)]
+            | none => []
+          | none => [] : List (BaseAtom BlkVar))) → a₀ ∈ posBlock K p0 := by
+        intro a₀ ha₀
+        apply hfree
+        unfold freeBlock
+        simp only [List.mem_cons, List.mem_append, List.mem_flatMap]
+        exact Or.inr ⟨_, hmem, ha₀⟩
+      by_cases hpa : p' < e.col.num 0
+      · rw [if_pos hpa] at hKe
+        rw [hlt hpa] at hov
+        rcases ha' with rfl | rfl
+        · exact ⟨_, hfb _ (by simp only [hKe]; exact List.mem_cons_self ..),
+            by simp [BaseAtom.map, blockMap, Role.under, hov]⟩
+        · exact ⟨_, hfb _ (by simp only [hKe]; exact List.mem_cons_of_mem _ (List.mem_cons_self ..)),
+            by simp [BaseAtom.map, blockMap, Role.under, hov]⟩
+      · rw [if_neg hpa] at hKe
+        obtain ⟨w, hw⟩ : ∃ w, p' - e.col.num 0 = w := ⟨_, rfl⟩
+        cases w with
+        | zero =>
+          rw [hw] at hKe
+          rw [heq (by omega)] at hov
+          simp only [Option.some.injEq, Prod.mk.injEq] at hov
+          obtain ⟨rfl, rfl⟩ := hov
+          rcases ha' with rfl | rfl
+          · exact ⟨_, hfb _ (by simp only [hKe]; exact List.mem_cons_self ..),
+              by simp [BaseAtom.map, blockMap, Role.under]⟩
+          · exact ⟨_, hfb _ (by simp only [hKe]; exact List.mem_cons_of_mem _ (List.mem_cons_self ..)),
+              by simp [BaseAtom.map, blockMap, Role.under]⟩
+        | succ w =>
+          rw [hw] at hKe
+          rw [hgt w (by omega)] at hov
+          obtain ⟨⟨o₁, v₁⟩, hr1, hov'⟩ := Option.map_eq_some_iff.1 hov
+          simp only [Prod.mk.injEq] at hov'
+          obtain ⟨rfl, rfl⟩ := hov'
+          rcases ha' with rfl | rfl
+          · exact ⟨_, hfb _ (by simp only [hKe, hr1]; exact List.mem_cons_self ..),
+              by simp [BaseAtom.map, blockMap, Role.under]⟩
+          · exact ⟨_, hfb _ (by simp only [hKe, hr1]; exact List.mem_cons_of_mem _ (List.mem_cons_self ..)),
+              by simp [BaseAtom.map, blockMap, Role.under]⟩
 
 /-! ## N3.1  Finite-name amalgamation and packing (S-6) -/
 
 -- provides: U3, N3.1
 theorem _root_.BTBMS.Hier.BaseAtom.holds_map {V W : Type} (P : Prims.{u}) (f : V → W) (a : W → Ordinal.{u})
-    (x : BaseAtom V) : (x.map f).Holds P a ↔ x.Holds P (a ∘ f) := by sorry
+    (x : BaseAtom V) : (x.map f).Holds P a ↔ x.Holds P (a ∘ f) := by
+  cases x <;> rfl
 
 -- provides: U3, N3.1
 theorem _root_.BTBMS.Hier.baseHolds_map {V W : Type} (P : Prims.{u}) (f : V → W) (D : List (BaseAtom V))
     (a : W → Ordinal.{u}) : BaseHolds P (D.map (BaseAtom.map f)) a ↔ BaseHolds P D (a ∘ f) := by
-  sorry
+  unfold BaseHolds
+  simp only [List.forall_mem_map, BaseAtom.holds_map]
 
 -- provides: U3, N3.1
 theorem _root_.BTBMS.Hier.Diagram.holds_append {V : Type} (P : Prims.{u}) (a : V → Ordinal.{u})
-    (D₁ D₂ : Diagram V) : (D₁ ++ D₂).Holds P a ↔ D₁.Holds P a ∧ D₂.Holds P a := by sorry
+    (D₁ D₂ : Diagram V) : (D₁ ++ D₂).Holds P a ↔ D₁.Holds P a ∧ D₂.Holds P a := by
+  unfold Diagram.Holds
+  exact List.forall_mem_append
 
 -- provides: U3, N3.1
 theorem _root_.BTBMS.Hier.Diagram.holds_map {V W : Type} (P : Prims.{u}) (f : V → W) (a : W → Ordinal.{u})
-    (D : Diagram V) : (D.map f).Holds P a ↔ D.Holds P (a ∘ f) := by sorry
+    (D : Diagram V) : (D.map f).Holds P a ↔ D.Holds P (a ∘ f) := by
+  unfold Diagram.Holds Diagram.map
+  simp only [List.forall_mem_map]
+  apply forall_congr'; intro x; apply imp_congr_right; intro _
+  cases x with
+  | base b => exact BaseAtom.holds_map P f a b
+  | noReal D fr u L =>
+    simp only [Atom.map, Atom.Holds, Option.map_map]
+    rfl
+
+/-- N3.1 helper: a base atom reads only its variables. -/
+theorem amalg_baseAtom_congr {V : Type} (P : Prims.{u}) {a a' : V → Ordinal.{u}}
+    (x : BaseAtom V) (h : ∀ v ∈ x.vars, a v = a' v) : x.Holds P a ↔ x.Holds P a' := by
+  cases x <;> simp_all [BaseAtom.vars, BaseAtom.Holds]
+
+theorem amalg_baseHolds_congr {V : Type} (P : Prims.{u}) {a a' : V → Ordinal.{u}}
+    (D : List (BaseAtom V)) (h : ∀ v ∈ baseVars D, a v = a' v) : BaseHolds P D a ↔ BaseHolds P D a' := by
+  unfold BaseHolds
+  apply forall_congr'; intro x; apply imp_congr_right; intro hx
+  exact amalg_baseAtom_congr P x fun v hv => h v (List.mem_flatMap.2 ⟨x, hx, hv⟩)
+
+/-- N3.1 helper: `BlockAbove` reads the frame only on the variables of the block. -/
+theorem amalg_blockAbove_congr {W : Type} (P : Prims.{u}) (D : List (BaseAtom W))
+    {fr fr' : W → Option Ordinal.{u}} (hfr : ∀ x ∈ baseVars D, fr x = fr' x) (L w : Ordinal.{u}) :
+    BlockAbove P D fr L w → BlockAbove P D fr' L w := by
+  classical
+  rintro ⟨β, h1, h2, h3, h4⟩
+  refine ⟨fun x => if x ∈ baseVars D then β x else (fr' x).getD 0, ?_, ?_, ?_, ?_⟩
+  · intro x o hx
+    by_cases hm : x ∈ baseVars D
+    · simp only [if_pos hm]; exact h1 x o (by rw [hfr x hm]; exact hx)
+    · simp only [if_neg hm, hx]; rfl
+  · intro x hx hn
+    simp only [if_pos hx]; exact h2 x hx (by rw [hfr x hx]; exact hn)
+  · intro x hx
+    simp only [if_pos hx]; exact h3 x hx
+  · exact (amalg_baseHolds_congr P D fun v hv => by simp only [if_pos hv]).1 h4
+
+/-- N3.1 helper: an atom reads only its variables. -/
+theorem amalg_atom_congr {V : Type} (P : Prims.{u}) {a a' : V → Ordinal.{u}}
+    (x : Atom V) (h : ∀ v ∈ x.vars, a v = a' v) : x.Holds P a ↔ x.Holds P a' := by
+  cases x with
+  | base b => exact amalg_baseAtom_congr P b h
+  | noReal D fr u L =>
+    simp only [Atom.vars, List.mem_cons, forall_eq_or_imp] at h
+    obtain ⟨hu, hL, hr⟩ := h
+    simp only [Atom.Holds, hu, hL]
+    have hfr : ∀ x ∈ baseVars D, (fr x).map a = (fr x).map a' := by
+      intro x hx
+      cases hf : fr x with
+      | none => rfl
+      | some v => simp [hr v (List.mem_filterMap.2 ⟨x, hx, hf⟩)]
+    exact not_congr ⟨amalg_blockAbove_congr P D hfr _ _,
+      amalg_blockAbove_congr P D (fun x hx => (hfr x hx).symm) _ _⟩
 
 -- provides: U3, N3.1
 theorem _root_.BTBMS.Hier.Diagram.amalgamate {V : Type} [DecidableEq V] (P : Prims.{u}) (D₁ D₂ : Diagram V)
     (a₁ a₂ : V → Ordinal.{u}) (h₁ : D₁.Holds P a₁) (h₂ : D₂.Holds P a₂)
     (hshare : ∀ x ∈ D₁.vars, x ∈ D₂.vars → a₁ x = a₂ x) :
-    (D₁ ++ D₂).Holds P (fun x => if x ∈ D₁.vars then a₁ x else a₂ x) := by sorry
+    (D₁ ++ D₂).Holds P (fun x => if x ∈ D₁.vars then a₁ x else a₂ x) := by
+  rw [Diagram.holds_append]
+  constructor
+  · intro x hx
+    refine (amalg_atom_congr P x fun v hv => ?_).2 (h₁ x hx)
+    have : v ∈ D₁.vars := List.mem_flatMap.2 ⟨x, hx, hv⟩
+    simp [this]
+  · intro x hx
+    refine (amalg_atom_congr P x fun v hv => ?_).2 (h₂ x hx)
+    have : v ∈ D₂.vars := List.mem_flatMap.2 ⟨x, hx, hv⟩
+    by_cases h : v ∈ D₁.vars
+    · simp [h, hshare v h this]
+    · simp [h]
+
+/-- N3.1 helper: facts about `foldr max`. -/
+theorem foldr_max_spec {L : Ordinal.{u}} :
+    ∀ l : List Ordinal.{u}, L ≤ l.foldr max L ∧ ∀ x ∈ l, x ≤ l.foldr max L
+  | [] => ⟨le_rfl, by simp⟩
+  | y :: l => by
+    obtain ⟨h1, h2⟩ := foldr_max_spec (L := L) l
+    refine ⟨h1.trans (le_max_right _ _), fun x hx => ?_⟩
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact le_max_left _ _
+    · exact (h2 x hx).trans (le_max_right _ _)
+
+theorem foldr_max_lt {L θ : Ordinal.{u}} (hL : L < θ) :
+    ∀ l : List Ordinal.{u}, (∀ x ∈ l, x < θ) → l.foldr max L < θ
+  | [], _ => hL
+  | y :: l, hl => max_lt (hl y (List.mem_cons_self ..))
+      (foldr_max_lt hL l fun x hx => hl x (List.mem_cons_of_mem _ hx))
 
 -- provides: U3, N3.1 (finitely many coordinates below a limit fit below one stage above a floor)
 theorem pack_below {u' L : Ordinal.{u}} (hu : IsLim u') (hL : L < u') (l : List Ordinal.{u})
-    (hl : ∀ x ∈ l, x < u') : ∃ β, L ≤ β ∧ β < u' ∧ ∀ x ∈ l, x < β := by sorry
+    (hl : ∀ x ∈ l, x < u') : ∃ β, L ≤ β ∧ β < u' ∧ ∀ x ∈ l, x < β := by
+  obtain ⟨hLm, hm⟩ := foldr_max_spec (L := L) l
+  refine ⟨Order.succ (l.foldr max L), hLm.trans (Order.le_succ _),
+    hu.1.succ_lt (foldr_max_lt hL l hl), fun x hx => ?_⟩
+  exact Order.lt_succ_iff.2 (hm x hx)
 
 /-! ## D4.1b  Facts about admitted records -/
 
@@ -1397,26 +1993,103 @@ theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i 
 /-! ## Integration additions (nodes D7.1b, L6.2e, L6.2f, D7.2d, L7.6b, L4.3d, L7.5d; requested
 by U5 R10, R18, R19, R22, R23, R25–R27, R29, R30; formerly stubs in `U5.lean`) -/
 
+/-- D7.1b helper: `filterMap` over a range whose values are all defined. -/
+theorem filterMap_range_getElem? {β : Type} (f : Nat → Option β) :
+    ∀ n, (∀ q < n, (f q).isSome) → ∀ q, ((List.range n).filterMap f)[q]? = if q < n then f q else none
+  | 0, _, q => by simp
+  | n + 1, h, q => by
+    rw [List.range_succ, List.filterMap_append]
+    obtain ⟨b, hb⟩ := Option.isSome_iff_exists.1 (h n (by omega))
+    have hl : ((List.range n).filterMap f).length = n := by
+      have := filterMap_range_getElem? f n (fun q hq => h q (by omega))
+      apply Nat.le_antisymm
+      · by_contra hc
+        have h1 := this n
+        rw [if_neg (by omega), List.getElem?_eq_none_iff] at h1
+        omega
+      · by_contra hc
+        have h1 := this (n - 1)
+        rw [if_pos (by omega), List.getElem?_eq_none (by omega)] at h1
+        have := h (n - 1) (by omega)
+        rw [← h1] at this
+        simp at this
+    simp only [List.filterMap_cons, List.filterMap_nil, hb]
+    rw [List.getElem?_append]
+    split_ifs with h1 h2 h3
+    · rw [filterMap_range_getElem? f n (fun q hq => h q (by omega)), if_pos (by omega)]
+    · omega
+    · have : q = n := by omega
+      subst this; simp [hl, hb]
+    · rw [List.getElem?_singleton, if_neg (by omega)]
+
+-- Moved up from after `reps0_length` (unchanged): `blockMap_frame` and `reps0_length` use it.
+theorem reps0_getElem? (c : ColAddr) (q : Nat) : c.reps0[q]? = c.rep 0 q := by
+  unfold ColAddr.reps0
+  rw [filterMap_range_getElem? _ _ (fun q hq => (rep_isSome_iff c q).2 hq)]
+  split_ifs with h
+  · rfl
+  · cases hr : c.rep 0 q with
+    | none => rfl
+    | some _ =>
+      have := (rep_isSome_iff c q).1 (by rw [hr]; rfl)
+      omega
+
 -- provides: U3, D7.1b (requested by U5 R18, second conjunct): the block map agrees with the frame
 -- of `e` on every frame variable.
 theorem blockMap_frame (e : EntryAddr) :
-    ∀ w x, (frameOf e).toFr w = some x → blockMap e w = x := by sorry
+    ∀ w x, (frameOf e).toFr w = some x → blockMap e w = x := by
+  intro w x hw
+  cases w with
+  | host => simpa [frameOf, Frame.toFr, blockMap] using hw
+  | ord q =>
+    simp only [frameOf, Frame.toFr, reps0_getElem?] at hw
+    simp [blockMap, hw]
+  | cur q =>
+    simp only [frameOf, Frame.toFr, reps0_getElem?] at hw
+    simp [blockMap, hw]
+  | owner => simp [Frame.toFr] at hw
+  | inner r => simp [Frame.toFr] at hw
 
 -- provides: U3, D7.1b (requested by U5 R10): every number below a column's printed number is
 -- visible, so `reps0` has one pair per number, and `reps0[q]? = rep 0 q`.
-theorem reps0_length (c : ColAddr) : c.reps0.length = c.num 0 := by sorry
-
-theorem reps0_getElem? (c : ColAddr) (q : Nat) : c.reps0[q]? = c.rep 0 q := by sorry
+theorem reps0_length (c : ColAddr) : c.reps0.length = c.num 0 := by
+  apply Nat.le_antisymm
+  · by_contra hc
+    have h1 := reps0_getElem? c (c.num 0)
+    rw [List.getElem?_eq_getElem (by omega)] at h1
+    have := (rep_isSome_iff c (c.num 0)).1 (by rw [← h1]; rfl)
+    omega
+  · by_contra hc
+    have h1 := reps0_getElem? c (c.num 0 - 1)
+    rw [List.getElem?_eq_none (by omega)] at h1
+    have := (rep_isSome_iff c (c.num 0 - 1)).2 (by omega)
+    rw [← h1] at this
+    simp at this
 
 -- provides: U3, D7.1b (requested by U5 R10): a column whose stack passes through column `c` sees
 -- `c`'s frame below `c`'s number.
 theorem reps0_take {c d : ColAddr} (h : d.resolve 0 (c.num 0) = some c) :
-    d.reps0.take (c.num 0) = c.reps0 := by sorry
+    d.reps0.take (c.num 0) = c.reps0 := by
+  apply List.ext_getElem?
+  intro q
+  rw [List.getElem?_take, reps0_getElem?, reps0_getElem?]
+  split_ifs with hq
+  · exact (rep_visible d c h q hq).symm
+  · cases hr : c.rep 0 q with
+    | none => rfl
+    | some _ =>
+      have := (rep_isSome_iff c q).1 (by rw [hr]; rfl)
+      omega
 
 -- provides: U3, D7.1b (requested by U5 R19): frame roles lie in the prefix `P(E, e)`.
 theorem frameOf_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
     Role.ord e.col ∈ prefixRoles E e ∧
-      ∀ ov ∈ e.col.reps0, ov.1 ∈ prefixRoles E e ∧ ov.2 ∈ prefixRoles E e := by sorry
+      ∀ ov ∈ e.col.reps0, ov.1 ∈ prefixRoles E e ∧ ov.2 ∈ prefixRoles E e := by
+  refine ⟨(Tree.stack_mem_prefix he).1, ?_⟩
+  rintro ⟨o, v⟩ hov
+  obtain ⟨q, hq⟩ := List.mem_iff_getElem?.1 hov
+  rw [reps0_getElem?] at hq
+  exact rep_mem_prefix he hq
 
 -- provides: U3, L6.2e (requested by U5 R22, stage zero): `H[0]` is the restriction to `P`, and
 -- `f_0` is the identity on `D`.
