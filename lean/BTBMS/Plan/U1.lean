@@ -515,11 +515,35 @@ theorem boundary_lt_of_cut {ksc ksa : List α} {k u : Nat} (hk : k < ksc.length)
     boundary ksc k < boundary ksa u := by sorry
 
 /-- L2.1a: the source cursor never exceeds the source length. -/
-theorem cursor_le_length (src qry : List α) : cursor src qry ≤ src.length := by sorry
+theorem cursor_le_length (src qry : List α) : cursor src qry ≤ src.length := by
+  fun_induction cursor src qry with
+  | case1 => simp
+  | case2 => simp
+  | case3 x xs y ys h ih => simp only [List.length_cons]; omega
+  | case4 xs y ys h ih => simp only [List.length_cons]; omega
+  | case5 x xs y ys h1 h2 ih => exact ih
 
 /-- L2.1a: the run on a source prefix is the run on the whole source, stopped at its end. -/
 theorem cursor_take (src qry : List α) (k : Nat) :
-    cursor (src.take k) qry = min k (cursor src qry) := by sorry
+    cursor (src.take k) qry = min k (cursor src qry) := by
+  induction src, qry using cursor.induct generalizing k with
+  | case1 qry => simp [cursor]
+  | case2 x xs => cases k <;> simp [cursor]
+  | case3 x xs y ys h ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k => simp only [List.take_succ_cons, cursor, if_pos h, ih]; omega
+  | case4 xs y ys h ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k => simp only [List.take_succ_cons, cursor, lt_irrefl, if_false, if_true, ih]; omega
+  | case5 x xs y ys h1 h2 ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k =>
+      have := ih (k + 1)
+      simp only [List.take_succ_cons] at this
+      simp only [List.take_succ_cons, cursor, if_neg h1, if_neg h2, this]
 
 /-- L2.1a: the final query cursor of the raw scan (same recursion as `cursor`). -/
 def qcursor : List α → List α → Nat
@@ -531,26 +555,80 @@ def qcursor : List α → List α → Nat
     else qcursor (x :: xs) ys + 1
 termination_by xs ys => xs.length + ys.length
 
-theorem qcursor_le_length (src qry : List α) : qcursor src qry ≤ qry.length := by sorry
+theorem qcursor_le_length (src qry : List α) : qcursor src qry ≤ qry.length := by
+  fun_induction qcursor src qry with
+  | case1 => simp
+  | case2 => simp
+  | case3 x xs y ys h ih => exact ih
+  | case4 xs y ys h ih => simp only [List.length_cons]; omega
+  | case5 x xs y ys h1 h2 ih => simp only [List.length_cons]; omega
 
 /-- L2.1a: a run that exhausts `src` continues on `src'` from the query position it reached. -/
 theorem cursor_append_of_exhausted {src qry : List α} (src' : List α)
     (h : cursor src qry = src.length) :
     cursor (src ++ src') qry = src.length + cursor src' (qry.drop (qcursor src qry)) ∧
       qcursor (src ++ src') qry = qcursor src qry + qcursor src' (qry.drop (qcursor src qry)) := by
-  sorry
+  induction src, qry using cursor.induct with
+  | case1 qry => simp [qcursor]
+  | case2 x xs => simp [cursor] at h
+  | case3 x xs y ys hxy ih =>
+    simp only [cursor, if_pos hxy, List.length_cons] at h
+    obtain ⟨h1, h2⟩ := ih (by omega)
+    simp only [List.cons_append, cursor, qcursor, if_pos hxy, List.length_cons, h1, h2]
+    exact ⟨by omega, trivial⟩
+  | case4 xs y ys hyy ih =>
+    simp only [cursor, lt_irrefl, if_false, if_true, List.length_cons] at h
+    obtain ⟨h1, h2⟩ := ih (by omega)
+    simp only [List.cons_append, cursor, qcursor, lt_irrefl, if_false, if_true, List.length_cons,
+      h1, h2, List.drop_succ_cons]
+    exact ⟨by omega, by omega⟩
+  | case5 x xs y ys h1 h2 ih =>
+    simp only [cursor, if_neg h1, if_neg h2] at h
+    obtain ⟨h3, h4⟩ := ih h
+    simp only [List.cons_append] at h3 h4
+    simp only [List.cons_append, cursor, qcursor, if_neg h1, if_neg h2, List.drop_succ_cons]
+    exact ⟨h3, by omega⟩
 
 /-- L2.1a: a run that stops inside `src` (its query is exhausted) ignores what follows. -/
 theorem cursor_append_of_lt {src qry : List α} (src' : List α) (h : cursor src qry < src.length) :
-    cursor (src ++ src') qry = cursor src qry := by sorry
+    cursor (src ++ src') qry = cursor src qry := by
+  induction src, qry using cursor.induct with
+  | case1 qry => simp at h
+  | case2 x xs => simp [cursor]
+  | case3 x xs y ys hxy ih =>
+    simp only [cursor, if_pos hxy, List.length_cons] at h
+    simp only [List.cons_append, cursor, if_pos hxy, ih (by omega)]
+  | case4 xs y ys hyy ih =>
+    simp only [cursor, lt_irrefl, if_false, if_true, List.length_cons] at h
+    simp only [List.cons_append, cursor, lt_irrefl, if_false, if_true, ih (by omega)]
+  | case5 x xs y ys h1 h2 ih =>
+    simp only [cursor, if_neg h1, if_neg h2] at h
+    have := ih h
+    simp only [List.cons_append] at this
+    simp only [List.cons_append, cursor, if_neg h1, if_neg h2, this]
+
+/-- L2.1a helper: a one-letter source above every query letter is never consumed. -/
+theorem cursor_singleton_of_lt (x : α) : ∀ (V : List α), (∀ v ∈ V, v < x) → cursor [x] V = 0
+  | [], _ => by simp [cursor]
+  | v :: V, h => by
+    have hv : v < x := h v List.mem_cons_self
+    rw [cursor, if_neg (not_lt.2 hv.le), if_neg (ne_of_gt hv)]
+    exact cursor_singleton_of_lt x V fun w hw => h w (List.mem_cons_of_mem _ hw)
 
 /-- L2.1a: a one-letter source against a nonincreasing query `y :: V`. -/
 theorem cursor_singleton_cons (x y : α) (V : List α) (hV : Noninc (y :: V)) :
     (x < y → cursor [x] (y :: V) = 1 ∧ qcursor [x] (y :: V) = 0) ∧
       (x = y → cursor [x] (y :: V) = 1 ∧ qcursor [x] (y :: V) = 1) ∧
-      (y < x → cursor [x] (y :: V) = 0) := by sorry
+      (y < x → cursor [x] (y :: V) = 0) := by
+  refine ⟨fun h => ?_, fun h => ?_, fun h => ?_⟩
+  · simp [cursor, qcursor, h]
+  · subst h; simp [cursor, qcursor]
+  · rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+    rw [Noninc, List.pairwise_cons] at hV
+    exact cursor_singleton_of_lt x V fun v hv => lt_of_le_of_lt (hV.1 v hv) h
 
-theorem cursor_nil_right (src : List α) : cursor src [] = 0 := by sorry
+theorem cursor_nil_right (src : List α) : cursor src [] = 0 := by
+  cases src <;> simp [cursor]
 
 /-- L2.1b (txt:170-173): against a nonincreasing query, exhaustion is lexicographic comparison
 of the reduced source. -/
