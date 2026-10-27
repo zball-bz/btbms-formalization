@@ -1777,9 +1777,8 @@ theorem inner_edges {e : EntryAddr} (e' : EntryAddr) (p : Nat) :
   rw [hv, h3 (v + 1) (by omega)]
   simp only [E', relCol_under]
 
--- provides: U3, D7.1a (a free block of a column prefix of a height lies in the graph)
-theorem freeBlock_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
-    (m : Nat) :
+/-- D7.1a helper: `freeBlock_graph` without condition V (which its proof does not use). -/
+theorem freeBlock_graph_core {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (m : Nat) :
     ∀ a ∈ freeBlock (relKey (e.col.num 0) (takeCols ((F.heightAt e).getD Tree.empty) m)),
       a.map (blockMap e) ∈ graph F := by
   obtain ⟨post, hr, -⟩ := Tree.roles_entry he
@@ -1872,6 +1871,13 @@ theorem freeBlock_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (
           · left; rfl
           · right; rfl
 
+-- provides: U3, D7.1a (a free block of a column prefix of a height lies in the graph)
+theorem freeBlock_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
+    (m : Nat) :
+    ∀ a ∈ freeBlock (relKey (e.col.num 0) (takeCols ((F.heightAt e).getD Tree.empty) m)),
+      a.map (blockMap e) ∈ graph F :=
+  freeBlock_graph_core he m
+
 -- provides: U3, D7.1a (the two heads of the positive block are the entry's own heads)
 theorem posBlock_heads_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs)
     (hV : Scan.CondV F) :
@@ -1881,7 +1887,7 @@ theorem posBlock_heads_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAdd
   intro a ha
   unfold posBlock at ha
   rcases List.mem_append.1 ha with ha | ha
-  · have := freeBlock_graph he hV ((F.heightAt e).getD Tree.empty).cols.length a
+  · have := freeBlock_graph_core he ((F.heightAt e).getD Tree.empty).cols.length a
     rw [takeCols_length] at this
     exact this ha
   · have he' := he
@@ -1898,9 +1904,8 @@ theorem posBlock_heads_graph {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAdd
     · left; simp [BaseAtom.map, blockMap, hov]
     · right; simp [BaseAtom.map, blockMap, hov]
 
--- provides: U3, D7.1a (converse: every atom owned by the slot of `e` or by a role inside its
--- height is the image of an atom of the positive block)
-theorem graph_owned_block {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
+/-- D7.1a helper: `graph_owned_block` without condition V (which its proof does not use). -/
+theorem graph_owned_block_core {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs)
     (z : Role) (hz : z = .slot e ∨ e.heightPath <+: z.path) :
     ∀ a ∈ ownedBy (graph F) z, ∃ a₀ ∈ posBlock (relKey (e.col.num 0) ((F.heightAt e).getD Tree.empty))
       (((F.entryAt e).map Prod.fst).getD 0), a = a₀.map (blockMap e) := by
@@ -2034,6 +2039,14 @@ theorem graph_owned_block {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs)
               by simp [BaseAtom.map, blockMap, Role.under]⟩
           · exact ⟨_, hfb _ (by simp only [hKe, hr1]; exact List.mem_cons_of_mem _ (List.mem_cons_self ..)),
               by simp [BaseAtom.map, blockMap, Role.under]⟩
+
+-- provides: U3, D7.1a (converse: every atom owned by the slot of `e` or by a role inside its
+-- height is the image of an atom of the positive block)
+theorem graph_owned_block {F : Forest} {e : EntryAddr} (he : e ∈ F.entryAddrs) (hV : Scan.CondV F)
+    (z : Role) (hz : z = .slot e ∨ e.heightPath <+: z.path) :
+    ∀ a ∈ ownedBy (graph F) z, ∃ a₀ ∈ posBlock (relKey (e.col.num 0) ((F.heightAt e).getD Tree.empty))
+      (((F.entryAt e).map Prod.fst).getD 0), a = a₀.map (blockMap e) :=
+  graph_owned_block_core he z hz
 
 /-! ## N3.1  Finite-name amalgamation and packing (S-6) -/
 
