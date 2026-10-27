@@ -504,15 +504,48 @@ theorem boundary_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMo
     (i : Nat) : boundary (ks.map f) i = (boundary ks i).map f := by
   rw [boundary, boundary, ← List.map_take, nu_map hf]
 
+/-- L2.3b helper: if every letter of `D` is above `J` and `W < D`, then the letters of `W` up
+to the first one below `J`, followed by `J`, are still below `D`. -/
+theorem takeWhile_append_lt {J : α} : ∀ {W D : List α}, (∀ d ∈ D, J < d) → W < D →
+    W.takeWhile (fun y => decide (J ≤ y)) ++ [J] < D
+  | [], D, hD, h => by
+    cases D with
+    | nil => exact absurd h (lt_irrefl _)
+    | cons d D => exact List.cons_lt_cons_iff.2 (Or.inl (hD d List.mem_cons_self))
+  | w :: W, D, hD, h => by
+    cases D with
+    | nil => exact absurd h (List.not_lt_nil _)
+    | cons d D =>
+      rw [List.takeWhile_cons]
+      by_cases hJw : J ≤ w
+      · rw [if_pos (decide_eq_true hJw), List.cons_append]
+        rcases List.cons_lt_cons_iff.1 h with h' | ⟨rfl, h'⟩
+        · exact List.cons_lt_cons_iff.2 (Or.inl h')
+        · exact List.cons_lt_cons_iff.2 (Or.inr ⟨rfl,
+            takeWhile_append_lt (fun d hd => hD d (List.mem_cons_of_mem _ hd)) h'⟩)
+      · rw [if_neg (by simpa using hJw), List.nil_append]
+        exact List.cons_lt_cons_iff.2 (Or.inl (hD d List.mem_cons_self))
+
 /-- L2.3b (word observation, txt:211-213): if `D = ν(P ⌢ [K])`, `W` is nonincreasing, `W < D`
 and `J < K`, then `ν(W ⌢ [J]) < D`. -/
 theorem nu_append_lt {P W : List α} {K J : α} (hW : Noninc W) (hWD : W < nu (P ++ [K]))
-    (hJK : J < K) : nu (W ++ [J]) < nu (P ++ [K]) := by sorry
+    (hJK : J < K) : nu (W ++ [J]) < nu (P ++ [K]) := by
+  rw [nu_append_singleton, nu_of_noninc hW, nuStep_eq_takeWhile hW]
+  refine takeWhile_append_lt (fun d hd => lt_of_lt_of_le hJK ?_) hWD
+  rw [nu_append_singleton] at hd
+  exact le_of_mem_nuStep (nu_noninc P) hd
 
 /-- L2.3b, boundary form: `W(c,k) < B_a(u)` and `K_k < K_u` give `B_c(k) < B_a(u)`. -/
 theorem boundary_lt_of_cut {ksc ksa : List α} {k u : Nat} (hk : k < ksc.length)
     (hu : u < ksa.length) (hW : cutQuery ksc k < boundary ksa u) (hK : ksc[k] < ksa[u]) :
-    boundary ksc k < boundary ksa u := by sorry
+    boundary ksc k < boundary ksa u := by
+  have e1 : boundary ksc k = nu (cutQuery ksc k ++ [ksc[k]]) := by
+    rw [boundary, ← List.take_append_getElem hk, cutQuery, nu_append_nu]
+  have e2 : boundary ksa u = nu (ksa.take u ++ [ksa[u]]) := by
+    rw [boundary, ← List.take_append_getElem hu]
+  rw [e1, e2]
+  rw [e2] at hW
+  exact nu_append_lt (cutQuery_noninc ksc k) hW hK
 
 /-- L2.1a: the source cursor never exceeds the source length. -/
 theorem cursor_le_length (src qry : List α) : cursor src qry ≤ src.length := by
