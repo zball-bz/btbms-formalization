@@ -425,54 +425,148 @@ noncomputable def lev : Ordinal.{u} → LevData.{u} :=
 /-- N4.5: the primitives of the reflection hierarchy. -/
 noncomputable def prims : Prims.{u} := ⟨fun a b => (lev b).1 a, fun c b a => (lev c).2 b a⟩
 
+/-- N4.5 (helper): the unfolding equation of `lev`. -/
+theorem lev_eq (z : Ordinal.{u}) : lev z = step z (below (fun y (_ : y < z) => lev y)) :=
+  Ordinal.lt_wf.fix_eq _ z
+
+/-- N4.5 (helper): the primitives read from the levels below `z` agree with `prims` below `z`. -/
+theorem agreeBelow_below (z : Ordinal.{u}) :
+    AgreeBelow (below (fun y (_ : y < z) => lev y)) prims z :=
+  ⟨fun _ _ _ hy => ⟨fun ⟨_, h⟩ => h, fun h => ⟨hy, h⟩⟩,
+    fun _ _ _ hc _ _ => ⟨fun ⟨_, h⟩ => h, fun h => ⟨hc, h⟩⟩⟩
+
+/-- N4.5 (helper): `Reflects` only reads the primitives below its upper bound. -/
+theorem reflects_congr_below {Q Q' : Prims.{u}} {z a b : Ordinal.{u}} (hQ : AgreeBelow Q Q' z)
+    (ha : a ≤ z) (hb : b ≤ z) : Reflects Q a b ↔ Reflects Q' a b := by
+  constructor
+  · intro h V D F σ hσ hr
+    exact (Diagram.realizableBelow_congr_below hQ ha D F σ).1
+      (h D F σ hσ ((Diagram.realizableBelow_congr_below hQ hb D F σ).2 hr))
+  · intro h V D F σ hσ hr
+    exact (Diagram.realizableBelow_congr_below hQ ha D F σ).2
+      (h D F σ hσ ((Diagram.realizableBelow_congr_below hQ hb D F σ).1 hr))
+
+/-- N4.5 (helper): `Transports` only reads the primitives below its upper bound. -/
+theorem transports_congr_below {Q Q' : Prims.{u}} {z c b a : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (hb : b ≤ z) (hc : c ≤ z) :
+    Transports Q c b a ↔ Transports Q' c b a := by
+  constructor
+  · intro h V _ D F σ t ht hσ hr
+    exact (Diagram.realizableBelow_congr_below hQ hb D _ _).1
+      (h D F σ t ht hσ ((Diagram.realizableBelow_congr_below hQ hc D _ _).2 hr))
+  · intro h V _ D F σ t ht hσ hr
+    exact (Diagram.realizableBelow_congr_below hQ hb D _ _).2
+      (h D F σ t ht hσ ((Diagram.realizableBelow_congr_below hQ hc D _ _).1 hr))
+
 /-- N4.5: unfolding `Elem`. -/
 theorem elem_iff {a b : Ordinal.{u}} :
-    prims.Elem a b ↔ IsLim a ∧ IsLim b ∧ a ≤ b ∧ Reflects prims a b := by sorry
+    prims.Elem a b ↔ IsLim a ∧ IsLim b ∧ a ≤ b ∧ Reflects prims a b := by
+  show (lev b).1 a ↔ _
+  rw [lev_eq b]
+  show IsLim a ∧ IsLim b ∧ a ≤ b ∧ Reflects (below fun y (_ : y < b) => lev y) a b ↔ _
+  constructor
+  · rintro ⟨h₁, h₂, h₃, h₄⟩
+    exact ⟨h₁, h₂, h₃, (reflects_congr_below (agreeBelow_below b) h₃ le_rfl).1 h₄⟩
+  · rintro ⟨h₁, h₂, h₃, h₄⟩
+    exact ⟨h₁, h₂, h₃, (reflects_congr_below (agreeBelow_below b) h₃ le_rfl).2 h₄⟩
 
 /-- N4.5: unfolding `Edge`. -/
 theorem edge_iff {c b a : Ordinal.{u}} :
     prims.Edge c b a ↔ IsLim a ∧ IsLim b ∧ IsLim c ∧ a < b ∧ b < c ∧ prims.Elem a b ∧
-      prims.Elem b c ∧ Transports prims c b a := by sorry
+      prims.Elem b c ∧ Transports prims c b a := by
+  have hE : prims.Elem b c ↔
+      IsLim b ∧ IsLim c ∧ b ≤ c ∧ Reflects (below fun y (_ : y < c) => lev y) b c := by
+    show (lev c).1 b ↔ _
+    rw [lev_eq c]
+    rfl
+  show (lev c).2 b a ↔ _
+  rw [lev_eq c]
+  show (IsLim a ∧ IsLim b ∧ IsLim c ∧ a < b ∧ b < c ∧
+      (below fun y (_ : y < c) => lev y).Elem a b ∧
+      (IsLim b ∧ IsLim c ∧ b ≤ c ∧ Reflects (below fun y (_ : y < c) => lev y) b c) ∧
+      Transports (below fun y (_ : y < c) => lev y) c b a) ↔ _
+  constructor
+  · rintro ⟨h₁, h₂, h₃, h₄, h₅, ⟨_, h₆⟩, h₇, h₈⟩
+    exact ⟨h₁, h₂, h₃, h₄, h₅, h₆, hE.2 h₇,
+      (transports_congr_below (agreeBelow_below c) h₅.le le_rfl).1 h₈⟩
+  · rintro ⟨h₁, h₂, h₃, h₄, h₅, h₆, h₇, h₈⟩
+    exact ⟨h₁, h₂, h₃, h₄, h₅, ⟨h₅, h₆⟩, hE.1 h₇,
+      (transports_congr_below (agreeBelow_below c) h₅.le le_rfl).2 h₈⟩
 
 /-! ## N4.6: the structural laws -/
 
 /-- N4.6: field `elem_le`. -/
-theorem elem_le {a b : Ordinal.{u}} (h : prims.Elem a b) : a ≤ b := by sorry
+theorem elem_le {a b : Ordinal.{u}} (h : prims.Elem a b) : a ≤ b := (elem_iff.1 h).2.2.1
 /-- N4.6: field `elem_lim`. -/
-theorem elem_lim {a b : Ordinal.{u}} (h : prims.Elem a b) : IsLim a ∧ IsLim b := by sorry
+theorem elem_lim {a b : Ordinal.{u}} (h : prims.Elem a b) : IsLim a ∧ IsLim b :=
+  ⟨(elem_iff.1 h).1, (elem_iff.1 h).2.1⟩
 /-- N4.6: field `elem_refl`. -/
-theorem elem_refl {a : Ordinal.{u}} (h : IsLim a) : prims.Elem a a := by sorry
+theorem elem_refl {a : Ordinal.{u}} (h : IsLim a) : prims.Elem a a :=
+  elem_iff.2 ⟨h, h, le_rfl, fun _ _ _ _ hr => hr⟩
 /-- N4.6: field `elem_trans`. -/
 theorem elem_trans {a b c : Ordinal.{u}} (h₁ : prims.Elem a b) (h₂ : prims.Elem b c) :
-    prims.Elem a c := by sorry
+    prims.Elem a c := by
+  obtain ⟨ha, -, hab, r₁⟩ := elem_iff.1 h₁
+  obtain ⟨-, hc, hbc, r₂⟩ := elem_iff.1 h₂
+  exact elem_iff.2 ⟨ha, hc, hab.trans hbc, fun D F σ hσ hr =>
+    r₁ D F σ hσ (r₂ D F σ (fun x hx hF => (hσ x hx hF).trans_le hab) hr)⟩
 /-- N4.6: field `elem_mid`. -/
 theorem elem_mid {a b c : Ordinal.{u}} (h : prims.Elem a c) (hab : a ≤ b) (hbc : b ≤ c)
-    (hb : IsLim b) : prims.Elem a b := by sorry
+    (hb : IsLim b) : prims.Elem a b := by
+  obtain ⟨ha, -, -, r⟩ := elem_iff.1 h
+  refine elem_iff.2 ⟨ha, hb, hab, fun D F σ hσ hr => r D F σ hσ ?_⟩
+  obtain ⟨β, h₁, h₂, h₃⟩ := hr
+  exact ⟨β, h₁, fun x hx => (h₂ x hx).trans_le hbc, h₃⟩
 /-- N4.6: field `edge_lt`. -/
-theorem edge_lt {c b a : Ordinal.{u}} (h : prims.Edge c b a) : a < b ∧ b < c := by sorry
+theorem edge_lt {c b a : Ordinal.{u}} (h : prims.Edge c b a) : a < b ∧ b < c :=
+  ⟨(edge_iff.1 h).2.2.2.1, (edge_iff.1 h).2.2.2.2.1⟩
 /-- N4.6: field `edge_lim`. -/
-theorem edge_lim {c b a : Ordinal.{u}} (h : prims.Edge c b a) : IsLim a ∧ IsLim b ∧ IsLim c := by
-  sorry
+theorem edge_lim {c b a : Ordinal.{u}} (h : prims.Edge c b a) : IsLim a ∧ IsLim b ∧ IsLim c :=
+  ⟨(edge_iff.1 h).1, (edge_iff.1 h).2.1, (edge_iff.1 h).2.2.1⟩
 /-- N4.6: field `edge_elem_low`. -/
-theorem edge_elem_low {c b a : Ordinal.{u}} (h : prims.Edge c b a) : prims.Elem a b := by sorry
+theorem edge_elem_low {c b a : Ordinal.{u}} (h : prims.Edge c b a) : prims.Elem a b :=
+  (edge_iff.1 h).2.2.2.2.2.1
 /-- N4.6: field `edge_elem_high`. -/
-theorem edge_elem_high {c b a : Ordinal.{u}} (h : prims.Edge c b a) : prims.Elem b c := by sorry
+theorem edge_elem_high {c b a : Ordinal.{u}} (h : prims.Edge c b a) : prims.Elem b c :=
+  (edge_iff.1 h).2.2.2.2.2.2.1
 /-- N4.6: field `edge_restrict`. -/
 theorem edge_restrict {c b a d : Ordinal.{u}} (h : prims.Edge c b a) (hd : IsLim d) (hbd : b < d)
-    (hdc : d ≤ c) : prims.Edge d b a := by sorry
+    (hdc : d ≤ c) : prims.Edge d b a := by
+  obtain ⟨ha, hb, -, hab, -, e₁, e₂, tr⟩ := edge_iff.1 h
+  refine edge_iff.2 ⟨ha, hb, hd, hab, hbd, e₁, elem_mid e₂ hbd.le hdc hd, ?_⟩
+  intro V _ D F σ t ht hσ hr
+  refine tr D F σ t ht hσ ?_
+  obtain ⟨β, h₁, h₂, h₃⟩ := hr
+  exact ⟨β, h₁, fun x hx => (h₂ x hx).trans_le hdc, h₃⟩
 /-- N4.6: field `edge_extend`. -/
 theorem edge_extend {c b a d : Ordinal.{u}} (h : prims.Edge c b a) (hcd : prims.Elem c d) :
-    prims.Edge d b a := by sorry
+    prims.Edge d b a := by
+  obtain ⟨ha, hb, -, hab, hbc, e₁, e₂, tr⟩ := edge_iff.1 h
+  obtain ⟨-, hd, hcd', r⟩ := elem_iff.1 hcd
+  refine edge_iff.2 ⟨ha, hb, hd, hab, hbc.trans_le hcd', e₁, elem_trans e₂ hcd, ?_⟩
+  intro V _ D F σ t ht hσ hr
+  refine tr D F σ t ht hσ (r D _ _ ?_ hr)
+  intro x _ hF
+  by_cases hxt : x = t
+  · subst hxt
+    rw [Function.update_self]
+    exact hbc
+  · rw [Function.update_of_ne hxt]
+    rcases hF with hF | hF
+    · exact (hσ x ‹_› hF).trans (hab.trans hbc)
+    · exact absurd hF hxt
 /-- N4.6: field `capture` (by definition of `Elem`). -/
 theorem capture {V : Type} (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u})
     {a b : Ordinal.{u}} (hab : prims.Elem a b) (hσ : ∀ x ∈ D.vars, F x → σ x < a) :
-    D.RealizableBelow prims F σ b → D.RealizableBelow prims F σ a := by sorry
+    D.RealizableBelow prims F σ b → D.RealizableBelow prims F σ a :=
+  (elem_iff.1 hab).2.2.2 D F σ hσ
 /-- N4.6: field `transport` (by definition of `Edge`). -/
 theorem transport {V : Type} [DecidableEq V] (D : Diagram V) (F : V → Prop)
     (σ : V → Ordinal.{u}) (t : V) {c b a : Ordinal.{u}} (h : prims.Edge c b a) (ht : ¬ F t)
     (hσ : ∀ x ∈ D.vars, F x → σ x < a) :
     D.RealizableBelow prims (fun x => F x ∨ x = t) (Function.update σ t b) c →
-      D.RealizableBelow prims (fun x => F x ∨ x = t) (Function.update σ t a) b := by sorry
+      D.RealizableBelow prims (fun x => F x ∨ x = t) (Function.update σ t a) b :=
+  (edge_iff.1 h).2.2.2.2.2.2.2 D F σ t ht hσ
 
 /-! ## N4.7: hulls in `M_w`, collapse and condensation -/
 
