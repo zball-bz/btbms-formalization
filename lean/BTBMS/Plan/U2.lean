@@ -710,15 +710,2116 @@ theorem expand_safePrefix {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV 
     (hI : CondI E) (hk : stepKind E = some .deletion ∨ (stepKind E = some .ordinary ∧ n = 0))
     (h : expand E n = some E') : ∃ k, k < mu E ∧ E' = safePrefix E k := by sorry
 
+/-! ### T3.2k/T3.2x helpers (branch D3): relative V, I, H along the route
+
+The ordinary output is `A_{0,0,ℓ,Z}(A)` with `Z = ordZ A sd rd n` (`paperOp_ordinary`). The
+conditions V, I (and H below) are proved structurally: each is restated relative to the number of
+the first column of a forest (`VRel_D3`, `IRel_D3`), shown stable under shifts and under the
+unshifted route replacement `replaceAt 0 0 Z k` (`*_put_D3`), and carried through the loop
+`ordStep` one phase at a time (`*_ordStep_D3`). -/
+
+theorem num_cons_D3 (b j m : Nat) (P : List (Nat × Nat)) (c : Nat) :
+    ColAddr.num b ⟨(j, m) :: P, c⟩ = ColAddr.num (b + j + 1) ⟨P, c⟩ := by
+  simp only [ColAddr.num, List.map_cons, List.sum_cons]; omega
+
+theorem num_nil_D3 (b c : Nat) : ColAddr.num b ⟨[], c⟩ = b + c := by
+  simp [ColAddr.num]
+
+theorem num_add_D3 (b d : Nat) (c : ColAddr) : c.num (b + d) = c.num b + d := by
+  simp only [ColAddr.num]; omega
+
+theorem entryAt_nil_D3 (cols : List Column) (j m : Nat) :
+    (Tree.node cols).entryAt ⟨⟨[], j⟩, m⟩ = (cols[j]?).bind (·[m]?) := rfl
+
+theorem entryAt_cons_D3 (cols : List Column) (j m : Nat) (P : List (Nat × Nat)) (c i : Nat) :
+    (Tree.node cols).entryAt ⟨⟨(j, m) :: P, c⟩, i⟩ =
+      ((cols[j]?).bind (·[m]?)).bind fun x => x.2.entryAt ⟨⟨P, c⟩, i⟩ :=
+  Tree.entryAt_cons _ _ _ _ _ _
+
+/-- Relative condition V: parents below the printed number, the outer forest starting at `b`. -/
+def VRel_D3 (b : Nat) (F : Forest) : Prop :=
+  ∀ e p h, F.entryAt e = some (p, h) → p < e.col.num b
+
+theorem vrel_node_D3 (b : Nat) (cols : List Column) :
+    VRel_D3 b (.node cols) ↔ ∀ (j : Nat) (col : Column), cols[j]? = some col →
+      ∀ (m p : Nat) (h : Forest), col[m]? = some (p, h) →
+      p < b + j ∧ VRel_D3 (b + j + 1) h := by
+  constructor
+  · intro hV j col hj m p h hm
+    refine ⟨?_, ?_⟩
+    · have := hV ⟨⟨[], j⟩, m⟩ p h (by rw [entryAt_nil_D3, hj]; exact hm)
+      simpa [num_nil_D3] using this
+    · intro e p' h' he
+      obtain ⟨⟨P, c⟩, i⟩ := e
+      have := hV ⟨⟨(j, m) :: P, c⟩, i⟩ p' h' (by rw [entryAt_cons_D3, hj]; simp [hm, he])
+      simpa [num_cons_D3] using this
+  · intro hV e p h he
+    obtain ⟨⟨P, c⟩, i⟩ := e
+    cases P with
+    | nil =>
+      rw [entryAt_nil_D3] at he
+      cases hc : cols[c]? with
+      | none => simp [hc] at he
+      | some col =>
+        simp only [hc, Option.bind_some] at he
+        have := (hV c col hc i p h he).1
+        simpa [num_nil_D3] using this
+    | cons ab P =>
+      obtain ⟨j, m⟩ := ab
+      rw [entryAt_cons_D3] at he
+      cases hc : cols[j]? with
+      | none => simp [hc] at he
+      | some col =>
+        cases hm : col[m]? with
+        | none => simp [hc, hm] at he
+        | some x =>
+          obtain ⟨q, hq⟩ := x
+          simp only [hc, hm, Option.bind_some] at he
+          have := (hV j col hc m q hq hm).2 ⟨⟨P, c⟩, i⟩ p h he
+          simpa [num_cons_D3] using this
+
+theorem condV_iff_vrel_D3 (E : Forest) : CondV E ↔ VRel_D3 0 E := by
+  rw [condV_iff_lt]
+  constructor
+  · intro h e p hh he
+    exact h e ((Tree.mem_entryAddrs_iff E e).2 (by rw [he]; rfl)) p hh he
+  · intro h e _ p hh he
+    exact h e p hh he
+
+
+theorem cols_map_D3 (f : Nat → Nat) (F : Forest) :
+    (Tree.map f F).cols = F.cols.map (Tree.mapCol f) := by
+  obtain ⟨cols⟩ := F; simp [Tree.map, Tree.cols, treeMapCols_eq_map]
+
+theorem forestAt_map_D3 (f : Nat → Nat) : ∀ (π : List (Nat × Nat)) (t : Forest),
+    (Tree.map f t).forestAt π = (t.forestAt π).map (Tree.map f)
+  | [], t => rfl
+  | (c, i) :: rest, t => by
+    rw [Tree.forestAt_cons, Tree.forestAt_cons, cols_map_D3]
+    simp only [List.getElem?_map]
+    cases hc : t.cols[c]? with
+    | none => simp
+    | some col =>
+      simp only [Option.map_some, Option.bind_some, treeMapCol_eq_map, List.getElem?_map]
+      cases hi : col[i]? with
+      | none => simp
+      | some x => simp [forestAt_map_D3 f rest x.2]
+
+theorem colAt_map_D3 (f : Nat → Nat) (t : Forest) (c : ColAddr) :
+    (Tree.map f t).colAt c = (t.colAt c).map (Tree.mapCol f) := by
+  obtain ⟨π, j⟩ := c
+  simp only [Tree.colAt, forestAt_map_D3]
+  cases t.forestAt π with
+  | none => simp
+  | some F => simp [cols_map_D3, List.getElem?_map]
+
+theorem entryAt_map_D3 (f : Nat → Nat) (t : Forest) (e : EntryAddr) :
+    (Tree.map f t).entryAt e = (t.entryAt e).map fun x => (f x.1, Tree.map f x.2) := by
+  obtain ⟨c, i⟩ := e
+  simp only [Tree.entryAt, colAt_map_D3]
+  cases t.colAt c with
+  | none => simp
+  | some col => simp [treeMapCol_eq_map, List.getElem?_map]
+
+theorem shiftVal_le_D3 (r d p : Nat) : shiftVal r d p ≤ p + d := by
+  unfold shiftVal; split <;> omega
+
+theorem le_shiftVal_D3 (r d p : Nat) : p ≤ shiftVal r d p := by
+  unfold shiftVal; split <;> omega
+
+theorem shiftVal_mono_D3 (r d : Nat) {p q : Nat} (h : p ≤ q) : shiftVal r d p ≤ shiftVal r d q := by
+  unfold shiftVal; split <;> split <;> omega
+
+theorem shiftVal_strictMono_D3 (r d : Nat) {p q : Nat} (h : p < q) :
+    shiftVal r d p < shiftVal r d q := by
+  unfold shiftVal; split <;> split <;> omega
+
+theorem vrel_shift_D3 {b : Nat} {F : Forest} (h : VRel_D3 b F) (r d : Nat) :
+    VRel_D3 (b + d) (shift r d F) := by
+  intro e p hh he
+  rw [shift, entryAt_map_D3] at he
+  cases h' : F.entryAt e with
+  | none => simp [h'] at he
+  | some x =>
+    simp only [h', Option.map_some, Option.some.injEq, Prod.mk.injEq] at he
+    obtain ⟨rfl, rfl⟩ := he
+    have := h e x.1 x.2 h'
+    rw [num_add_D3]
+    have := shiftVal_le_D3 r d x.1
+    omega
+
+/-- The last-column, last-entry route reaches depth `k`. -/
+def RouteOK_D3 : Nat → Forest → Prop
+  | 0, F => F.cols ≠ []
+  | k + 1, F => ∃ cs es p h, F = .node (cs ++ [es ++ [(p, h)]]) ∧ RouteOK_D3 k h
+
+/-- The relative number of the route column at depth `k`. -/
+def routeNum_D3 : Nat → Forest → Nat
+  | 0, F => F.cols.length - 1
+  | k + 1, F => F.cols.length + routeNum_D3 k (nextLayer F)
+
+theorem nextLayer_snoc_D3 (cs : List Column) (es : Column) (p : Nat) (h : Forest) :
+    nextLayer (.node (cs ++ [es ++ [(p, h)]])) = h := by
+  simp [nextLayer, lastEntry?, Tree.cols]
+
+theorem put_zero_D3 (Z : Forest) {cols : List Column} (hc : cols ≠ []) :
+    replaceAt 0 0 Z 0 (.node cols) = .node (cols.dropLast ++ Z.cols) := by
+  cases cols with
+  | nil => exact absurd rfl hc
+  | cons c cs =>
+    simp only [replaceAt]
+    rw [shiftVal_zero_fun 0, treeMapCol_id_fun, List.map_id]
+
+theorem put_succ_D3 (Z : Forest) (k : Nat) (cs : List Column) (es : Column) (p : Nat)
+    (h : Forest) :
+    replaceAt 0 0 Z (k + 1) (.node (cs ++ [es ++ [(p, h)]])) =
+      .node (cs ++ [es ++ [(p, replaceAt 0 0 Z k h)]]) := by
+  simp only [replaceAt]
+  rw [shiftVal_zero_fun 0, treeMapCol_id_fun]
+  simp [mapLast_eq, treeMap_id]
+
+theorem vrel_put_D3 (Z : Forest) : ∀ (k : Nat) (F : Forest) (b : Nat), RouteOK_D3 k F →
+    VRel_D3 b F → VRel_D3 (b + routeNum_D3 k F) Z → VRel_D3 b (replaceAt 0 0 Z k F)
+  | 0, .node cols, b, hR, hF, hZ => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 Z hc]
+    obtain ⟨zc⟩ := Z
+    simp only [routeNum_D3, Tree.cols] at hZ ⊢
+    rw [vrel_node_D3] at hF hZ ⊢
+    intro j col hj m p h hm
+    by_cases hjl : j < cols.length - 1
+    · rw [List.getElem?_append_left (by simpa using hjl), List.getElem?_dropLast] at hj
+      simp only [hjl, if_true] at hj
+      exact hF j col hj m p h hm
+    · rw [List.getElem?_append_right (by simp; omega)] at hj
+      simp only [List.length_dropLast] at hj
+      have := hZ _ col hj m p h hm
+      have e : b + (cols.length - 1) + (j - (cols.length - 1)) = b + j := by omega
+      rw [e] at this
+      exact this
+  | k + 1, F, b, hR, hF, hZ => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    simp only [routeNum_D3, nextLayer_snoc_D3, Tree.cols, List.length_append, List.length_singleton]
+      at hZ
+    rw [vrel_node_D3] at hF ⊢
+    intro j col hj m p h hm
+    by_cases hjl : j < cs.length
+    · rw [List.getElem?_append_left hjl] at hj
+      exact hF j col (by rw [List.getElem?_append_left hjl]; exact hj) m p h hm
+    · have hjeq : j = cs.length := by
+        have := (List.getElem?_eq_some_iff.1 hj).1; simp at this; omega
+      subst hjeq
+      simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+        Option.some.injEq] at hj
+      subst hj
+      have hF' := hF cs.length (es ++ [(q, H)]) (by simp)
+      by_cases hml : m < es.length
+      · rw [List.getElem?_append_left hml] at hm
+        exact hF' m p h (by rw [List.getElem?_append_left hml]; exact hm)
+      · have hmeq : m = es.length := by
+          have := (List.getElem?_eq_some_iff.1 hm).1; simp at this; omega
+        subst hmeq
+        simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+          Option.some.injEq, Prod.mk.injEq] at hm
+        obtain ⟨rfl, rfl⟩ := hm
+        have := hF' es.length q H (by simp)
+        refine ⟨this.1, vrel_put_D3 Z k H _ hR' this.2 ?_⟩
+        have e : b + (cs.length + 1 + routeNum_D3 k H) = b + cs.length + 1 + routeNum_D3 k H := by
+          omega
+        rw [e] at hZ; exact hZ
+
+
+/-- Column form of `VRel_D3`: a column numbered `b`. -/
+def VCol_D3 (b : Nat) (col : Column) : Prop := ∀ x ∈ col, x.1 < b ∧ VRel_D3 (b + 1) x.2
+
+/-- List-of-columns form of `VRel_D3`. -/
+def VCols_D3 (b : Nat) (cols : List Column) : Prop :=
+  ∀ (j : Nat) (col : Column), cols[j]? = some col → VCol_D3 (b + j) col
+
+theorem vrel_iff_vcols_D3 (b : Nat) (cols : List Column) :
+    VRel_D3 b (.node cols) ↔ VCols_D3 b cols := by
+  rw [vrel_node_D3]
+  constructor
+  · intro h j col hj x hx
+    obtain ⟨m, hm⟩ := List.getElem?_of_mem hx
+    exact h j col hj m x.1 x.2 hm
+  · intro h j col hj m p hh hm
+    exact h j col hj (p, hh) (List.mem_of_getElem? hm)
+
+theorem vrel_eq_vcols_D3 (b : Nat) (F : Forest) : VRel_D3 b F ↔ VCols_D3 b F.cols := by
+  obtain ⟨cols⟩ := F; exact vrel_iff_vcols_D3 b cols
+
+theorem vcols_nil_D3 (b : Nat) : VCols_D3 b [] := by
+  intro j col hj; simp at hj
+
+theorem vcols_cons_D3 (b : Nat) (c : Column) (cs : List Column) :
+    VCols_D3 b (c :: cs) ↔ VCol_D3 b c ∧ VCols_D3 (b + 1) cs := by
+  constructor
+  · intro h
+    refine ⟨by simpa using h 0 c rfl, fun j col hj => ?_⟩
+    have := h (j + 1) col (by simpa using hj)
+    rwa [show b + (j + 1) = b + 1 + j by omega] at this
+  · rintro ⟨h1, h2⟩ j col hj
+    cases j with
+    | zero => simp at hj; subst hj; simpa using h1
+    | succ j =>
+      have := h2 j col (by simpa using hj)
+      rw [show b + (j + 1) = b + 1 + j by omega]; exact this
+
+theorem vcols_append_D3 (b : Nat) (cs ds : List Column) :
+    VCols_D3 b (cs ++ ds) ↔ VCols_D3 b cs ∧ VCols_D3 (b + cs.length) ds := by
+  induction cs generalizing b with
+  | nil => simp [vcols_nil_D3]
+  | cons c cs ih =>
+    rw [List.cons_append, vcols_cons_D3, vcols_cons_D3, ih]
+    simp only [List.length_cons, show b + 1 + cs.length = b + (cs.length + 1) by omega, and_assoc]
+
+theorem vcols_single_D3 (b : Nat) (c : Column) : VCols_D3 b [c] ↔ VCol_D3 b c := by
+  rw [vcols_cons_D3]; simp [vcols_nil_D3]
+
+theorem vcol_append_D3 (b : Nat) (l₁ l₂ : Column) :
+    VCol_D3 b (l₁ ++ l₂) ↔ VCol_D3 b l₁ ∧ VCol_D3 b l₂ := by
+  simp only [VCol_D3, List.mem_append]
+  constructor
+  · intro h; exact ⟨fun x hx => h x (Or.inl hx), fun x hx => h x (Or.inr hx)⟩
+  · rintro ⟨h1, h2⟩ x (hx | hx); exacts [h1 x hx, h2 x hx]
+
+theorem vcol_mono_D3 {b b' : Nat} (hb : b ≤ b') {col : Column} (h : ∀ x ∈ col, x.1 < b)
+    (h' : ∀ x ∈ col, VRel_D3 (b' + 1) x.2) : VCol_D3 b' col :=
+  fun x hx => ⟨lt_of_lt_of_le (h x hx) hb, h' x hx⟩
+
+theorem vrel_empty_D3 (b : Nat) : VRel_D3 b Tree.empty := by
+  rw [show (Tree.empty : Forest) = .node [] from rfl, vrel_iff_vcols_D3]; exact vcols_nil_D3 b
+
+/-- `VRel` inside a column of a forest. -/
+theorem vrel_colAt_D3 {b : Nat} {F : Forest} (hF : VRel_D3 b F) {c : ColAddr} {col : Column}
+    (hc : F.colAt c = some col) : VCol_D3 (c.num b) col := by
+  intro x hx
+  obtain ⟨m, hm⟩ := List.getElem?_of_mem hx
+  have he : F.entryAt ⟨c, m⟩ = some (x.1, x.2) := by
+    simp [Tree.entryAt, hc, hm]
+  refine ⟨hF _ _ _ he, ?_⟩
+  intro e p h he'
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  have hG : F.forestAt c.path = some (.node ((F.forestAt c.path).getD Tree.empty).cols) := by
+    cases hf : F.forestAt c.path with
+    | none => simp [Tree.colAt, hf] at hc
+    | some G => obtain ⟨gc⟩ := G; rfl
+  have hcol : ((F.forestAt c.path).getD Tree.empty).cols[c.col]? = some col := by
+    simp only [Tree.colAt] at hc
+    cases hf : F.forestAt c.path with
+    | none => simp [hf] at hc
+    | some G => simp only [hf, Option.bind_some] at hc; simpa using hc
+  have hf : F.forestAt (c.path ++ (c.col, m) :: P) = x.2.forestAt P := by
+    rw [Tree.forestAt_append, hG]
+    simp only [Option.bind_some]
+    rw [Tree.forestAt_cons]
+    have e : (Tree.node ((F.forestAt c.path).getD Tree.empty).cols).cols =
+      ((F.forestAt c.path).getD Tree.empty).cols := rfl
+    rw [e, hcol]; simp [hm]
+  have : F.entryAt ⟨⟨c.path ++ (c.col, m) :: P, j⟩, i⟩ = some (p, h) := by
+    rw [Tree.entryAt_eq_bind, hf, ← Tree.entryAt_eq_bind]; exact he'
+  have := hF _ _ _ this
+  simp only [ColAddr.num, List.map_append, List.map_cons, List.sum_append, List.sum_cons] at this ⊢
+  omega
+
+theorem vrel_forestAt_D3 {b : Nat} {F : Forest} (hF : VRel_D3 b F) {π : List (Nat × Nat)}
+    {G : Forest} (hG : F.forestAt π = some G) :
+    VRel_D3 (b + (π.map (·.1 + 1)).sum) G := by
+  intro e p h he
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  have : F.entryAt ⟨⟨π ++ P, j⟩, i⟩ = some (p, h) := by
+    rw [Tree.entryAt_eq_bind, Tree.forestAt_append, hG]
+    simp only [Option.bind_some]
+    rw [Tree.entryAt_eq_bind] at he; exact he
+  have := hF _ _ _ this
+  simp only [ColAddr.num, List.map_append, List.sum_append] at this ⊢
+  omega
+
+theorem vcols_drop_D3 {b : Nat} {cols : List Column} (h : VCols_D3 b cols) (k : Nat) :
+    VCols_D3 (b + k) (cols.drop k) := by
+  intro j col hj
+  rw [List.getElem?_drop] at hj
+  have := h (k + j) col hj
+  rwa [show b + (k + j) = b + k + j by omega] at this
+
+theorem nextLayer_map_D3 (f : Nat → Nat) (F : Forest) :
+    nextLayer (Tree.map f F) = Tree.map f (nextLayer F) := by
+  obtain ⟨cols⟩ := F
+  rcases List.eq_nil_or_concat cols with rfl | ⟨cs, c, rfl⟩
+  · rfl
+  rcases List.eq_nil_or_concat c with rfl | ⟨es, x, rfl⟩
+  · simp [nextLayer, lastEntry?, Tree.map, Tree.cols, treeMapCols_eq_map, treeMapCol_eq_map,
+      Tree.empty, Tree.mapCols]
+  · simp [nextLayer, lastEntry?, Tree.map, Tree.cols, treeMapCols_eq_map, treeMapCol_eq_map]
+
+theorem routeOK_shift_D3 (r d : Nat) : ∀ (k : Nat) (F : Forest),
+    RouteOK_D3 k (shift r d F) ↔ RouteOK_D3 k F
+  | 0, .node cols => by
+    simp [RouteOK_D3, shift, Tree.map, Tree.cols, treeMapCols_eq_map]
+  | k + 1, .node cols => by
+    simp only [RouteOK_D3]
+    constructor
+    · rintro ⟨cs, es, p, h, he, hR⟩
+      simp only [shift, Tree.map, treeMapCols_eq_map, Tree.node.injEq] at he
+      rcases List.eq_nil_or_concat cols with rfl | ⟨cs', c, rfl⟩
+      · simp at he
+      rw [List.concat_eq_append, List.map_append, List.map_singleton] at he
+      obtain ⟨hcs, hc⟩ := List.append_inj' he (by simp)
+      simp only [List.cons.injEq, and_true] at hc
+      rw [treeMapCol_eq_map] at hc
+      rcases List.eq_nil_or_concat c with rfl | ⟨es', x, rfl⟩
+      · simp at hc
+      rw [List.concat_eq_append, List.map_append, List.map_singleton] at hc
+      obtain ⟨-, hx⟩ := List.append_inj' hc (by simp)
+      simp only [List.cons.injEq, and_true, Prod.mk.injEq] at hx
+      refine ⟨cs', es', x.1, x.2, by simp, ?_⟩
+      rw [← routeOK_shift_D3 r d k x.2]
+      have : shift r d x.2 = h := hx.2
+      rw [this]; exact hR
+    · rintro ⟨cs, es, p, h, he, hR⟩
+      cases he
+      refine ⟨cs.map (Tree.mapCol (shiftVal r d)), es.map (fun x => (shiftVal r d x.1, Tree.map (shiftVal r d) x.2)),
+        shiftVal r d p, shift r d h, ?_, (routeOK_shift_D3 r d k h).2 hR⟩
+      simp [shift, Tree.map, treeMapCols_eq_map, treeMapCol_eq_map]
+
+theorem routeNum_shift_D3 (r d : Nat) : ∀ (k : Nat) (F : Forest),
+    routeNum_D3 k (shift r d F) = routeNum_D3 k F
+  | 0, .node cols => by
+    simp [routeNum_D3, shift, Tree.map, Tree.cols, treeMapCols_eq_map]
+  | k + 1, .node cols => by
+    simp only [routeNum_D3]
+    have hlen : (shift r d (.node cols)).cols.length = (Tree.node cols).cols.length := by
+      simp [shift, Tree.map, Tree.cols, treeMapCols_eq_map]
+    have hnext : nextLayer (shift r d (.node cols)) = shift r d (nextLayer (.node cols)) :=
+      nextLayer_map_D3 _ _
+    rw [hlen, hnext, routeNum_shift_D3 r d k]
+
+
+theorem leftCount_succ_D3 (E : Forest) (k : Nat) :
+    leftCount E (k + 1) = leftCount E k + (skipLayers E k).cols.length := by
+  rw [leftCount_eq_sum, leftCount_eq_sum, List.range_succ, List.map_append, List.sum_append]
+  simp
+
+theorem stop_route_D3 {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    ∀ i, i ≤ sd.depth → RouteOK_D3 i (skipLayers E (sd.depth - i)) ∧
+      leftCount E (sd.depth - i) + routeNum_D3 i (skipLayers E (sd.depth - i)) = sd.t := by
+  obtain ⟨h1, h2, h3, h4, h5, -, h7, -⟩ := stopData_core h
+  intro i hi
+  induction i with
+  | zero =>
+    simp only [Nat.sub_zero, RouteOK_D3, routeNum_D3]
+    refine ⟨fun he => by rw [he] at h1; simp at h1, ?_⟩
+    rw [h3, ← h7]; simp only [ColAddr.num]; omega
+  | succ i ih =>
+    obtain ⟨ih1, ih2⟩ := ih (by omega)
+    obtain ⟨col, p, hc, hp, -, -⟩ := h5 (sd.depth - (i + 1)) (by omega)
+    obtain ⟨cs, hcs⟩ := List.getLast?_eq_some_iff.1 hc
+    obtain ⟨es, hes⟩ := List.getLast?_eq_some_iff.1 hp
+    have hk : sd.depth - (i + 1) + 1 = sd.depth - i := by omega
+    rw [hk] at hes
+    have hF : skipLayers E (sd.depth - (i + 1)) = .node (cs ++ [es ++ [(p, skipLayers E (sd.depth - i))]]) := by
+      rw [← hes, ← hcs]; cases skipLayers E (sd.depth - (i + 1)); rfl
+    refine ⟨⟨cs, es, p, _, hF, ih1⟩, ?_⟩
+    simp only [routeNum_D3]
+    rw [hF, nextLayer_snoc_D3, ← hF]
+    have := leftCount_succ_D3 E (sd.depth - (i + 1))
+    rw [hk] at this
+    omega
+
+theorem stop_route_top_D3 {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    RouteOK_D3 sd.depth E ∧ routeNum_D3 sd.depth E = sd.t := by
+  have := stop_route_D3 h sd.depth le_rfl
+  simpa [skipLayers, leftCount] using this
+
+theorem stop_pathSum_D3 {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    ∀ k, k ≤ sd.depth → ((sd.col.path.take k).map (·.1 + 1)).sum = leftCount E k := by
+  obtain ⟨-, h2, -, -, h5, -⟩ := stopData_core h
+  intro k hk
+  induction k with
+  | zero => simp [leftCount]
+  | succ k ih =>
+    obtain ⟨col, p, hc, -, -, hpk⟩ := h5 k (by omega)
+    rw [List.take_add_one, hpk, leftCount_succ_D3, ← ih (by omega)]
+    have hne : (skipLayers E k).cols ≠ [] := by intro he; rw [he] at hc; simp at hc
+    have : 0 < (skipLayers E k).cols.length := List.length_pos_iff.2 hne
+    simp; omega
+
+theorem root_facts_D3 {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
+    (hrd : rootData E = some rd) :
+    rd.layer ≤ sd.depth ∧ E.forestAt rd.col.path = some (skipLayers E rd.layer) ∧
+      sd.r = leftCount E rd.layer + rd.idx ∧ rd.idx < (skipLayers E rd.layer).cols.length ∧
+      (rd.owner = true ↔ rd.idx + 1 = (skipLayers E rd.layer).cols.length) ∧
+      E.colAt rd.col = (skipLayers E rd.layer).cols[rd.idx]? := by
+  obtain ⟨-, hlay, hidx, hnum, -, hmem, -, hown⟩ := rootData_spec hsd hrd
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path hsd hrd
+  have hle := rootData_layer_le hsd hrd
+  have hpath : rd.col.path = sd.col.path.take rd.layer := by
+    obtain ⟨t, ht⟩ := hpre
+    rw [hlay, ← ht, List.take_left' rfl]
+  have hfa : E.forestAt rd.col.path = some (skipLayers E rd.layer) := by
+    rw [hpath]; exact skipLayers_of_stopData hsd hle
+  have hcol : E.colAt rd.col = (skipLayers E rd.layer).cols[rd.idx]? := by
+    simp [Tree.colAt, hfa, hidx]
+  refine ⟨hle, hfa, ?_, ?_, ?_, hcol⟩
+  · rw [← hnum]; simp only [ColAddr.num]
+    rw [hpath, stop_pathSum_D3 hsd _ hle, hidx]; omega
+  · have := (Tree.mem_colAddrs_iff E rd.col).1 hmem
+    rw [hcol] at this
+    by_contra hc
+    rw [List.getElem?_eq_none (by omega)] at this
+    simp at this
+  · rw [hown, hidx]
+    constructor
+    · rintro ⟨F, hF, h⟩; rw [hfa] at hF; cases hF; exact h
+    · intro h; exact ⟨_, hfa, h⟩
+
+
+theorem body_route_D3 {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
+    (hrd : rootData E = some rd) (hown : rd.owner = false) :
+    RouteOK_D3 (sd.depth - rd.layer) (.node ((skipLayers E rd.layer).cols.drop (rd.idx + 1))) ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer)
+        (.node ((skipLayers E rd.layer).cols.drop (rd.idx + 1))) = sd.t := by
+  obtain ⟨hle, -, hr, hidx, howner, -⟩ := root_facts_D3 hsd hrd
+  have hlt : rd.idx + 1 < (skipLayers E rd.layer).cols.length := by
+    have : ¬ rd.idx + 1 = (skipLayers E rd.layer).cols.length := by
+      rw [← howner, hown]; simp
+    omega
+  obtain ⟨hR, hN⟩ := stop_route_D3 hsd (sd.depth - rd.layer) (by omega)
+  rw [show sd.depth - (sd.depth - rd.layer) = rd.layer by omega] at hR hN
+  generalize skipLayers E rd.layer = G at *
+  generalize hi : sd.depth - rd.layer = i at hR hN ⊢
+  cases i with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · show G.cols.drop (rd.idx + 1) ≠ []
+      intro h; rw [List.drop_eq_nil_iff] at h; omega
+    · show sd.r + 1 + ((G.cols.drop (rd.idx + 1)).length - 1) = sd.t
+      simp only [routeNum_D3] at hN
+      rw [List.length_drop]; omega
+  | succ i =>
+    obtain ⟨cs, es, p, h, rfl, hR'⟩ := hR
+    simp only [Tree.cols, List.length_append, List.length_singleton] at hlt
+    have hdrop : (cs ++ [es ++ [(p, h)]]).drop (rd.idx + 1) =
+        cs.drop (rd.idx + 1) ++ [es ++ [(p, h)]] := List.drop_append_of_le_length (by omega)
+    simp only [Tree.cols, hdrop]
+    refine ⟨⟨_, _, _, _, rfl, hR'⟩, ?_⟩
+    simp only [routeNum_D3, nextLayer_snoc_D3, Tree.cols, List.length_append, List.length_singleton,
+      List.length_drop] at hN ⊢
+    omega
+
+theorem owner_route_D3 {E : Forest} {sd : StopData} {rd : RootData} (hsd : stopData E = some sd)
+    (hrd : rootData E = some rd) (hown : rd.owner = true) :
+    ∃ es p h, E.colAt rd.col = some (es ++ [(p, h)]) ∧
+      RouteOK_D3 (sd.depth - rd.layer - 1) h ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer - 1) h = sd.t := by
+  obtain ⟨hle, -, hr, hidx, howner, hcol⟩ := root_facts_D3 hsd hrd
+  have hlt := rootData_layer_lt hsd hrd hown
+  have hidx' := howner.1 hown
+  obtain ⟨hR, hN⟩ := stop_route_D3 hsd (sd.depth - rd.layer) (by omega)
+  rw [show sd.depth - (sd.depth - rd.layer) = rd.layer by omega] at hR hN
+  obtain ⟨i, hi⟩ : ∃ i, sd.depth - rd.layer = i + 1 := ⟨sd.depth - rd.layer - 1, by omega⟩
+  rw [hi] at hR hN
+  obtain ⟨cs, es, p, h, hG, hR'⟩ := hR
+  rw [hG] at hidx' hN hcol
+  simp only [Tree.cols, List.length_append, List.length_singleton] at hidx'
+  refine ⟨es, p, h, ?_, by rw [hi]; exact hR', ?_⟩
+  · rw [hcol]; simp [Tree.cols, show rd.idx = cs.length by omega]
+  · simp only [routeNum_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+      List.length_singleton] at hN
+    rw [show sd.depth - rd.layer - 1 = i by omega]
+    omega
+
+theorem vcol_shift_D3 {b : Nat} {col : Column} (h : VCol_D3 b col) (r d : Nat) :
+    VCol_D3 (b + d) (Tree.mapCol (shiftVal r d) col) := by
+  rw [treeMapCol_eq_map]
+  intro x hx
+  obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+  obtain ⟨h1, h2⟩ := h y hy
+  refine ⟨lt_of_le_of_lt (shiftVal_le_D3 r d y.1) (by omega), ?_⟩
+  have := vrel_shift_D3 h2 r d
+  rwa [show b + 1 + d = b + d + 1 by omega] at this
+
+theorem vcol_shiftH_D3 {b b' : Nat} {col : Column} (h : VCol_D3 b col) (hb : b ≤ b') (r d : Nat)
+    (hd : b' = b + d) :
+    VCol_D3 b' (col.map fun x => (x.1, shift r d x.2)) := by
+  intro x hx
+  obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+  obtain ⟨h1, h2⟩ := h y hy
+  refine ⟨by simp; omega, ?_⟩
+  have := vrel_shift_D3 h2 r d
+  rwa [show b + 1 + d = b' + 1 by omega] at this
+
+theorem vcol_sub_D3 {b : Nat} {l l' : Column} (h : VCol_D3 b l) (hs : ∀ x ∈ l', x ∈ l) :
+    VCol_D3 b l' := fun x hx => h x (hs x hx)
+
+/-- Step `k` of the ordinary loop keeps relative V, one phase down. -/
+theorem vrel_ordStep_D3 {sd : StopData} {rd : RootData} {F : Forest} {U : Column} {k : Nat}
+    {Z : Forest} (hk : 1 ≤ k) (hrt : sd.r < sd.t) (hQ : VCol_D3 sd.t sd.Q) (hU : VCol_D3 sd.r U)
+    (hbody : rd.owner = false →
+      RouteOK_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) ∧
+      VRel_D3 (sd.r + 1) (.node (F.cols.drop (rd.idx + 1))) ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) = sd.t)
+    (howner : rd.owner = true → ∀ x, U.getLast? = some x →
+      RouteOK_D3 (sd.depth - rd.layer - 1) x.2 ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer - 1) x.2 = sd.t)
+    (hZ : VRel_D3 (sd.t + k * (sd.t - sd.r)) Z) :
+    VRel_D3 (sd.r + k * (sd.t - sd.r)) (ordStep sd rd F U k Z) := by
+  have key : sd.t + (k - 1) * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) := by
+    obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    simp only [Nat.add_sub_cancel, Nat.succ_mul]; omega
+  have hQ' : VCol_D3 (sd.r + k * (sd.t - sd.r))
+      (Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q) := by
+    rw [← key]; exact vcol_shift_D3 hQ _ _
+  have hU' : ∀ l : Column, (∀ x ∈ l, x ∈ U) → VCol_D3 (sd.r + k * (sd.t - sd.r))
+      (l.map fun x => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2)) :=
+    fun l hl => vcol_shiftH_D3 (vcol_sub_D3 hU hl) (by omega) _ _ rfl
+  unfold ordStep
+  simp only
+  split
+  · rename_i hown
+    rw [vrel_iff_vcols_D3, vcols_single_D3, vcol_append_D3, vcol_append_D3]
+    refine ⟨⟨hQ', hU' _ (fun x hx => List.mem_of_mem_dropLast hx)⟩, ?_⟩
+    intro x hx
+    cases hl : U.getLast? with
+    | none => simp [hl] at hx
+    | some u =>
+      simp only [hl, Option.map_some, Option.toList_some, List.mem_singleton] at hx
+      subst hx
+      have hu : u ∈ U := List.mem_of_getLast? hl
+      obtain ⟨hR, hN⟩ := howner hown u hl
+      refine ⟨by simp; exact lt_of_lt_of_le (hU u hu).1 (by omega), ?_⟩
+      simp only
+      rw [Hole.fill_eq_put]
+      refine vrel_put_D3 Z _ _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) ?_ ?_
+      · have := vrel_shift_D3 (hU u hu).2 sd.r (k * (sd.t - sd.r))
+        rwa [show sd.r + 1 + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega] at this
+      · rw [routeNum_shift_D3]
+        rwa [show sd.r + k * (sd.t - sd.r) + 1 + routeNum_D3 (sd.depth - rd.layer - 1) u.2 =
+          sd.t + k * (sd.t - sd.r) by omega]
+  · rename_i hown
+    have hown' : rd.owner = false := by simpa using hown
+    obtain ⟨hR, hB, hN⟩ := hbody hown'
+    rw [vrel_iff_vcols_D3, vcols_cons_D3, vcol_append_D3, ← vrel_eq_vcols_D3]
+    refine ⟨⟨hQ', hU' U (fun x hx => hx)⟩, ?_⟩
+    rw [Hole.fill_eq_put]
+    refine vrel_put_D3 Z _ _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) ?_ ?_
+    · have := vrel_shift_D3 hB sd.r (k * (sd.t - sd.r))
+      rwa [show sd.r + 1 + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega] at this
+    · rw [routeNum_shift_D3]
+      rwa [show sd.r + k * (sd.t - sd.r) + 1 + routeNum_D3 (sd.depth - rd.layer)
+        (.node (F.cols.drop (rd.idx + 1))) = sd.t + k * (sd.t - sd.r) by omega]
+
+theorem ordLoop_induct_D3 {step : Nat → Forest → Forest} {P : Nat → Forest → Prop}
+    (hstep : ∀ k Z, 1 ≤ k → P k Z → P (k - 1) (step k Z)) :
+    ∀ m Z, P m Z → P 0 (ordLoop step m Z)
+  | 0, Z, h => h
+  | m + 1, Z, h => ordLoop_induct_D3 hstep m _ (by simpa using hstep (m + 1) Z (by omega) h)
+
+
+theorem ne_empty_of_stepKind_D3 {E : Forest} {k : StepKind} (h : stepKind E = some k) :
+    E ≠ Tree.empty := by
+  rintro rfl; simp [stepKind, stepKindBody, Tree.empty, Tree.cols] at h
+
+/-- The ordinary output, unfolded: `B = A_{0,0,ℓ,Z}(A)` with `Z = ordZ A sd rd n`. -/
+theorem ord_output_D3 {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hB : expand A n = some B) :
+    ∃ sd rd, stopData A = some sd ∧ rootData A = some rd ∧
+      B = replaceAt 0 0 (ordZ A sd rd n) sd.depth A ∧
+      ¬ (rd.owner = true ∧ n ≠ 0 ∧ ((A.colAt rd.col).getD []).drop rd.cursor = []) := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  rw [expand_eq_paperOp (ne_empty_of_stepKind_D3 hk) hL.1 hL.2.1, paperOp_ordinary hk hsd hrd] at hB
+  refine ⟨sd, rd, hsd, hrd, ?_⟩
+  split at hB
+  · cases hB
+  · rename_i hc
+    cases hB
+    refine ⟨rfl, ?_⟩
+    rintro ⟨h1, h2, h3⟩
+    apply hc
+    simp [h1, h2, h3]
+
+/-- The data of an ordinary step used by the structural closure proofs. -/
+theorem ord_vdata_D3 {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    let F := (A.forestAt rd.col.path).getD Tree.empty
+    let U := ((A.colAt rd.col).getD []).drop rd.cursor
+    sd.r < sd.t ∧ VCol_D3 sd.t sd.Q ∧ VCol_D3 sd.r U ∧
+    (rd.owner = false →
+      RouteOK_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) ∧
+      VRel_D3 (sd.r + 1) (.node (F.cols.drop (rd.idx + 1))) ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) = sd.t) ∧
+    (rd.owner = true → ∀ x, U.getLast? = some x →
+      RouteOK_D3 (sd.depth - rd.layer - 1) x.2 ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer - 1) x.2 = sd.t) := by
+  intro F U
+  have hA := (condV_iff_vrel_D3 A).1 hV
+  obtain ⟨-, -, hidx, hnum, hrt, hmem, -, -⟩ := rootData_spec hsd hrd
+  obtain ⟨hle, hfa, hr, -, -, -⟩ := root_facts_D3 hsd hrd
+  obtain ⟨hcolsd, -, ht, -⟩ := stopData_spec hsd
+  have hF : F = skipLayers A rd.layer := by simp [F, hfa]
+  refine ⟨hrt, ?_, ?_, ?_, ?_⟩
+  · have := vrel_colAt_D3 hA hcolsd
+    rw [ht]; exact ((vcol_append_D3 _ _ _).1 this).1
+  · obtain ⟨R, hR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A rd.col).1 hmem)
+    have := vrel_colAt_D3 hA hR
+    rw [show rd.col.num 0 = sd.r from hnum] at this
+    simp only [U, hR, Option.getD_some]
+    exact vcol_sub_D3 this (fun x hx => List.mem_of_mem_drop hx)
+  · intro hown
+    obtain ⟨h1, h2⟩ := body_route_D3 hsd hrd hown
+    rw [hF]
+    refine ⟨h1, ?_, h2⟩
+    have hG := vrel_forestAt_D3 hA hfa
+    have hsum : (rd.col.path.map (·.1 + 1)).sum = leftCount A rd.layer := by
+      have : rd.col.num 0 = (rd.col.path.map (·.1 + 1)).sum + rd.col.col := by
+        simp [ColAddr.num]
+      omega
+    rw [Nat.zero_add, hsum] at hG
+    rw [vrel_eq_vcols_D3] at hG
+    rw [vrel_iff_vcols_D3]
+    have := vcols_drop_D3 hG (rd.idx + 1)
+    rwa [show leftCount A rd.layer + (rd.idx + 1) = sd.r + 1 by omega] at this
+  · intro hown x hx
+    obtain ⟨es, p, h, hc, h1, h2⟩ := owner_route_D3 hsd hrd hown
+    have hx' : x = (p, h) := by
+      simp only [U, hc, Option.getD_some, List.getLast?_drop] at hx
+      split at hx
+      · cases hx
+      · simp at hx; exact hx.symm
+    subst hx'
+    exact ⟨h1, h2⟩
+
+
+/-! ### Relative condition I -/
+
+theorem Tree.treeMapCol_append_D3 (f : Nat → Nat) (l₁ l₂ : Column) :
+    Tree.mapCol f (l₁ ++ l₂) = Tree.mapCol f l₁ ++ Tree.mapCol f l₂ := by
+  simp [treeMapCol_eq_map]
+
+/-- The column's first parent is at least the host (vacuous without a host). -/
+def FirstOK_D3 (host : Option Nat) (col : Column) : Prop :=
+  ∀ a, host = some a → ∃ q H rest, col = (q, H) :: rest ∧ a ≤ q
+
+/-- The host number of column `c` (the outer host `host` at top level). -/
+def hostNum_D3 (b : Nat) (host : Option Nat) (c : ColAddr) : Option Nat :=
+  match c.path.getLast? with
+  | none => host
+  | some x => some (ColAddr.num b ⟨c.path.dropLast, x.1⟩)
+
+/-- Relative condition I: every column's first parent is at least its host. -/
+def IRel_D3 (b : Nat) (host : Option Nat) (F : Forest) : Prop :=
+  ∀ c col, F.colAt c = some col → FirstOK_D3 (hostNum_D3 b host c) col
+
+def ICols_D3 (b : Nat) (host : Option Nat) (cols : List Column) : Prop :=
+  ∀ (j : Nat) (col : Column), cols[j]? = some col →
+    FirstOK_D3 host col ∧ ∀ x ∈ col, IRel_D3 (b + j + 1) (some (b + j)) x.2
+
+theorem hostNum_nil_D3 (b : Nat) (host : Option Nat) (k : Nat) :
+    hostNum_D3 b host ⟨[], k⟩ = host := rfl
+
+theorem hostNum_cons_D3 (b : Nat) (host : Option Nat) (j m : Nat) (P : List (Nat × Nat)) (k : Nat) :
+    hostNum_D3 b host ⟨(j, m) :: P, k⟩ = hostNum_D3 (b + j + 1) (some (b + j)) ⟨P, k⟩ := by
+  rcases List.eq_nil_or_concat' P with rfl | ⟨P', x, rfl⟩
+  · simp [hostNum_D3, ColAddr.num]
+  · simp only [hostNum_D3, ← List.cons_append, List.getLast?_append, List.getLast?_singleton,
+      Option.some_or, List.dropLast_concat]
+    rw [num_cons_D3]
+
+theorem colAt_nil_D3 (cols : List Column) (k : Nat) :
+    (Tree.node cols).colAt ⟨[], k⟩ = cols[k]? := rfl
+
+theorem colAt_cons_D3 (cols : List Column) (j m : Nat) (P : List (Nat × Nat)) (k : Nat) :
+    (Tree.node cols).colAt ⟨(j, m) :: P, k⟩ =
+      ((cols[j]?).bind (·[m]?)).bind fun x => x.2.colAt ⟨P, k⟩ :=
+  Tree.colAt_cons _ _ _ _ _
+
+theorem irel_iff_icols_D3 (b : Nat) (host : Option Nat) (cols : List Column) :
+    IRel_D3 b host (.node cols) ↔ ICols_D3 b host cols := by
+  constructor
+  · intro hI j col hj
+    refine ⟨by simpa [hostNum_nil_D3] using hI ⟨[], j⟩ col (by rw [colAt_nil_D3]; exact hj), ?_⟩
+    intro x hx c col' hc
+    obtain ⟨m, hm⟩ := List.getElem?_of_mem hx
+    obtain ⟨P, k⟩ := c
+    have := hI ⟨(j, m) :: P, k⟩ col' (by rw [colAt_cons_D3, hj]; simp [hm, hc])
+    rwa [hostNum_cons_D3] at this
+  · intro hI c col hc
+    obtain ⟨P, k⟩ := c
+    cases P with
+    | nil =>
+      rw [colAt_nil_D3] at hc
+      rw [hostNum_nil_D3]; exact (hI k col hc).1
+    | cons ab P =>
+      obtain ⟨j, m⟩ := ab
+      rw [colAt_cons_D3] at hc
+      cases hcj : cols[j]? with
+      | none => simp [hcj] at hc
+      | some cj =>
+        cases hm : cj[m]? with
+        | none => simp [hcj, hm] at hc
+        | some x =>
+          simp only [hcj, hm, Option.bind_some] at hc
+          rw [hostNum_cons_D3]
+          exact (hI j cj hcj).2 x (List.mem_of_getElem? hm) _ col hc
+
+theorem irel_eq_icols_D3 (b : Nat) (host : Option Nat) (F : Forest) :
+    IRel_D3 b host F ↔ ICols_D3 b host F.cols := by
+  obtain ⟨cols⟩ := F; exact irel_iff_icols_D3 b host cols
+
+theorem condI_iff_irel_D3 (E : Forest) : CondI E ↔ IRel_D3 0 none E := by
+  constructor
+  · intro hI c col hc a ha
+    obtain ⟨P, k⟩ := c
+    rcases List.eq_nil_or_concat' P with rfl | ⟨π, x, rfl⟩
+    · simp [hostNum_D3] at ha
+    obtain ⟨ci, ei⟩ := x
+    simp only [hostNum_D3, List.getLast?_concat, List.dropLast_concat, Option.some.injEq] at ha
+    subst ha
+    have hfa : E.forestAt (π ++ [(ci, ei)]) = E.heightAt ⟨⟨π, ci⟩, ei⟩ :=
+      Tree.forestAt_heightPath E ⟨⟨π, ci⟩, ei⟩
+    cases hh : E.heightAt ⟨⟨π, ci⟩, ei⟩ with
+    | none => simp [Tree.colAt, hfa, hh] at hc
+    | some h =>
+      simp only [Tree.colAt, hfa, hh, Option.bind_some] at hc
+      obtain ⟨p, hp⟩ : ∃ p, E.entryAt ⟨⟨π, ci⟩, ei⟩ = some (p, h) := by
+        simp only [Tree.heightAt] at hh
+        cases he : E.entryAt ⟨⟨π, ci⟩, ei⟩ with
+        | none => simp [he] at hh
+        | some y => simp [he] at hh; exact ⟨y.1, by rw [← hh]⟩
+      have hne : h ≠ Tree.empty := by
+        rintro rfl; simp [Tree.empty, Tree.cols] at hc
+      exact hI _ ((Tree.mem_entryAddrs_iff E _).2 (by rw [hp]; rfl)) p h hp hne col
+        (List.mem_of_getElem? hc)
+  · intro hI e _ p h he hne col hcol
+    obtain ⟨k, hk⟩ := List.getElem?_of_mem hcol
+    have hc : E.colAt ⟨e.heightPath, k⟩ = some col := by
+      simp only [Tree.colAt, Tree.forestAt_heightPath, Tree.heightAt, he, Option.map_some,
+        Option.bind_some]
+      exact hk
+    have := hI _ col hc (e.col.num 0)
+    apply this
+    simp [hostNum_D3, EntryAddr.heightPath]
+
+theorem firstOK_mono_D3 {a a' : Nat} (h : a' ≤ a) {col : Column} (hc : FirstOK_D3 (some a) col) :
+    FirstOK_D3 (some a') col := by
+  intro x hx; cases hx
+  obtain ⟨q, H, rest, rfl, hq⟩ := hc a rfl
+  exact ⟨q, H, rest, rfl, le_trans h hq⟩
+
+theorem firstOK_none_D3 (col : Column) : FirstOK_D3 none col := by
+  intro a ha; cases ha
+
+theorem firstOK_shift_D3 {host : Option Nat} {col : Column} (h : FirstOK_D3 host col) (r d : Nat) :
+    FirstOK_D3 (host.map (shiftVal r d)) (Tree.mapCol (shiftVal r d) col) := by
+  intro a ha
+  cases host with
+  | none => cases ha
+  | some a0 =>
+    simp only [Option.map_some, Option.some.injEq] at ha; subst ha
+    obtain ⟨q, H, rest, rfl, hq⟩ := h a0 rfl
+    exact ⟨_, _, _, rfl, shiftVal_mono_D3 r d hq⟩
+
+/-- `FirstOK` reads only the first parent. -/
+theorem firstOK_of_fst_D3 {host : Option Nat} {col col' : Column} (h : FirstOK_D3 host col)
+    (hfst : ∀ x, col.head? = some x → ∃ y, col'.head? = some y ∧ y.1 = x.1) :
+    FirstOK_D3 host col' := by
+  intro a ha
+  obtain ⟨q, H, rest, rfl, hq⟩ := h a ha
+  obtain ⟨y, hy, hyq⟩ := hfst _ rfl
+  cases col' with
+  | nil => simp at hy
+  | cons y' ys => simp at hy; subst hy; exact ⟨y'.1, y'.2, ys, rfl, by rw [hyq]; exact hq⟩
+
+theorem hostNum_shift_D3 {b r : Nat} (hrb : r ≤ b) (d : Nat) (host : Option Nat) (c : ColAddr) :
+    hostNum_D3 (b + d) (host.map (shiftVal r d)) c = (hostNum_D3 b host c).map (shiftVal r d) := by
+  simp only [hostNum_D3]
+  cases c.path.getLast? with
+  | none => rfl
+  | some x =>
+    simp only [Option.map_some, Option.some.injEq]
+    rw [num_add_D3]
+    have : b ≤ ColAddr.num b ⟨c.path.dropLast, x.1⟩ := by simp only [ColAddr.num]; omega
+    unfold shiftVal; rw [if_pos (by omega)]
+
+theorem irel_shift_D3 {b : Nat} {host : Option Nat} {F : Forest} (h : IRel_D3 b host F) {r : Nat}
+    (hrb : r ≤ b) (d : Nat) : IRel_D3 (b + d) (host.map (shiftVal r d)) (shift r d F) := by
+  intro c col hc
+  rw [shift, colAt_map_D3] at hc
+  cases h' : F.colAt c with
+  | none => simp [h'] at hc
+  | some col0 =>
+    simp only [h', Option.map_some, Option.some.injEq] at hc
+    subst hc
+    rw [hostNum_shift_D3 hrb]
+    exact firstOK_shift_D3 (h c col0 h') r d
+
+theorem irel_empty_D3 (b : Nat) (host : Option Nat) : IRel_D3 b host Tree.empty := by
+  intro c col hc
+  obtain ⟨P, k⟩ := c
+  cases P with
+  | nil => simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hc
+  | cons ab P => simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hc
+
+theorem icols_nil_D3 (b : Nat) (host : Option Nat) : ICols_D3 b host [] := by
+  intro j col hj; simp at hj
+
+theorem icols_cons_D3 (b : Nat) (host : Option Nat) (c : Column) (cs : List Column) :
+    ICols_D3 b host (c :: cs) ↔
+      (FirstOK_D3 host c ∧ ∀ x ∈ c, IRel_D3 (b + 1) (some b) x.2) ∧ ICols_D3 (b + 1) host cs := by
+  constructor
+  · intro h
+    refine ⟨by simpa using h 0 c rfl, fun j col hj => ?_⟩
+    have := h (j + 1) col (by simpa using hj)
+    rwa [show b + (j + 1) = b + 1 + j by omega] at this
+  · rintro ⟨h1, h2⟩ j col hj
+    cases j with
+    | zero => simp at hj; subst hj; simpa using h1
+    | succ j =>
+      have := h2 j col (by simpa using hj)
+      rw [show b + (j + 1) = b + 1 + j by omega]; exact this
+
+theorem icols_append_D3 (b : Nat) (host : Option Nat) (cs ds : List Column) :
+    ICols_D3 b host (cs ++ ds) ↔ ICols_D3 b host cs ∧ ICols_D3 (b + cs.length) host ds := by
+  induction cs generalizing b with
+  | nil => simp [icols_nil_D3]
+  | cons c cs ih =>
+    rw [List.cons_append, icols_cons_D3, icols_cons_D3, ih]
+    simp only [List.length_cons, show b + 1 + cs.length = b + (cs.length + 1) by omega, and_assoc]
+
+theorem icols_single_D3 (b : Nat) (host : Option Nat) (c : Column) :
+    ICols_D3 b host [c] ↔ FirstOK_D3 host c ∧ ∀ x ∈ c, IRel_D3 (b + 1) (some b) x.2 := by
+  rw [icols_cons_D3]; simp [icols_nil_D3]
+
+theorem icols_drop_D3 {b : Nat} {host : Option Nat} {cols : List Column}
+    (h : ICols_D3 b host cols) (k : Nat) : ICols_D3 (b + k) host (cols.drop k) := by
+  intro j col hj
+  rw [List.getElem?_drop] at hj
+  have := h (k + j) col hj
+  rwa [show b + (k + j) = b + k + j by omega] at this
+
+/-- The host of the route forest at depth `k`. -/
+def routeHost_D3 : Nat → Option Nat → Nat → Forest → Option Nat
+  | _, host, 0, _ => host
+  | b, _, k + 1, F => routeHost_D3 (b + F.cols.length) (some (b + (F.cols.length - 1))) k (nextLayer F)
+
+theorem irel_put_D3 (Z : Forest) : ∀ (k : Nat) (F : Forest) (b : Nat) (host : Option Nat),
+    RouteOK_D3 k F → IRel_D3 b host F →
+    IRel_D3 (b + routeNum_D3 k F) (routeHost_D3 b host k F) Z →
+    IRel_D3 b host (replaceAt 0 0 Z k F)
+  | 0, .node cols, b, host, hR, hF, hZ => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 Z hc]
+    obtain ⟨zc⟩ := Z
+    simp only [routeNum_D3, routeHost_D3, Tree.cols] at hZ ⊢
+    rw [irel_iff_icols_D3] at hF hZ ⊢
+    have hlen : (cols.dropLast).length = cols.length - 1 := List.length_dropLast
+    rw [icols_append_D3, hlen]
+    refine ⟨?_, hZ⟩
+    have := (List.dropLast_append_getLast hc)
+    rw [← this, icols_append_D3] at hF
+    exact hF.1
+  | k + 1, F, b, host, hR, hF, hZ => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    simp only [routeNum_D3, routeHost_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+      List.length_singleton] at hZ
+    rw [irel_iff_icols_D3, icols_append_D3, icols_single_D3] at hF ⊢
+    obtain ⟨hF1, hF2, hF3⟩ := hF
+    refine ⟨hF1, ?_, ?_⟩
+    · refine firstOK_of_fst_D3 hF2 ?_
+      intro x hx
+      cases es with
+      | nil => simp at hx; subst hx; exact ⟨_, rfl, rfl⟩
+      | cons e es => simp at hx; subst hx; exact ⟨_, rfl, rfl⟩
+    · intro x hx
+      rw [List.mem_append, List.mem_singleton] at hx
+      rcases hx with hx | rfl
+      · exact hF3 x (List.mem_append_left _ hx)
+      · refine irel_put_D3 Z k H _ _ hR' (hF3 (q, H) (by simp)) ?_
+        have e1 : b + cs.length + 1 + routeNum_D3 k H = b + (cs.length + 1 + routeNum_D3 k H) := by
+          omega
+        have e2 : b + cs.length + 1 - 1 = b + cs.length := by omega
+        rw [e1]
+        convert hZ using 2
+        · omega
+        · rw [show b + (cs.length + 1 - 1) = b + cs.length by omega]
+
+
+theorem routeHost_split_D3 : ∀ (k1 k2 b : Nat) (h : Option Nat) (F : Forest),
+    routeHost_D3 b h (k1 + k2) F =
+      routeHost_D3 (b + leftCount F k1) (routeHost_D3 b h k1 F) k2 (skipLayers F k1)
+  | 0, k2, b, h, F => by simp [routeHost_D3, leftCount, skipLayers]
+  | k1 + 1, k2, b, h, F => by
+    rw [show k1 + 1 + k2 = (k1 + k2) + 1 by omega]
+    simp only [routeHost_D3, leftCount, skipLayers]
+    rw [routeHost_split_D3 k1 k2]
+    congr 1; omega
+
+theorem routeHost_shiftBase_D3 (δ : Nat) : ∀ (k b : Nat) (X : Option Nat) (F : Forest),
+    routeHost_D3 (b + δ) (X.map (· + δ)) k F = (routeHost_D3 b X k F).map (· + δ)
+  | 0, b, X, F => rfl
+  | k + 1, b, X, F => by
+    simp only [routeHost_D3]
+    have := routeHost_shiftBase_D3 δ k (b + F.cols.length) (some (b + (F.cols.length - 1)))
+      (nextLayer F)
+    simp only [Option.map_some] at this
+    rw [show b + δ + F.cols.length = b + F.cols.length + δ by omega,
+      show b + δ + (F.cols.length - 1) = b + (F.cols.length - 1) + δ by omega]
+    exact this
+
+theorem routeHost_shift_D3 (r d : Nat) : ∀ (k b : Nat) (X : Option Nat) (F : Forest),
+    routeHost_D3 b X k (shift r d F) = routeHost_D3 b X k F
+  | 0, b, X, F => rfl
+  | k + 1, b, X, F => by
+    simp only [routeHost_D3]
+    have hlen : (shift r d F).cols.length = F.cols.length := by
+      obtain ⟨cols⟩ := F; simp [shift, Tree.map, Tree.cols, treeMapCols_eq_map]
+    rw [hlen, show nextLayer (shift r d F) = shift r d (nextLayer F) from nextLayer_map_D3 _ _,
+      routeHost_shift_D3 r d k]
+
+theorem routeHost_bound_D3 : ∀ (k b : Nat) (h : Option Nat) (F : Forest) (a : Nat),
+    RouteOK_D3 k F → routeHost_D3 b h k F = some a →
+      h = some a ∨ (b ≤ a ∧ a < b + leftCount F k)
+  | 0, b, h, F, a, _, hh => Or.inl hh
+  | k + 1, b, h, F, a, hR, hh => by
+    obtain ⟨cs, es, p, H, rfl, hR'⟩ := hR
+    simp only [routeHost_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+      List.length_singleton] at hh
+    rcases routeHost_bound_D3 k _ _ H a hR' hh with h1 | ⟨h1, h2⟩
+    · simp at h1
+      right; simp only [leftCount, Tree.cols, List.length_append, List.length_singleton]; omega
+    · right; simp only [leftCount, Tree.cols, List.length_append, List.length_singleton,
+        nextLayer_snoc_D3]
+      omega
+
+theorem routeOK_le_D3 : ∀ (k : Nat) (F : Forest) (j : Nat), RouteOK_D3 k F → j ≤ k → RouteOK_D3 j F
+  | 0, F, j, h, hj => by rw [show j = 0 by omega]; exact h
+  | k + 1, F, 0, h, _ => by
+    obtain ⟨cs, es, p, H, rfl, -⟩ := h
+    simp [RouteOK_D3, Tree.cols]
+  | k + 1, F, j + 1, h, hj => by
+    obtain ⟨cs, es, p, H, rfl, hR'⟩ := h
+    exact ⟨cs, es, p, H, rfl, routeOK_le_D3 k H j hR' (by omega)⟩
+
+theorem leftCount_mono_D3 (E : Forest) {j k : Nat} (h : j ≤ k) : leftCount E j ≤ leftCount E k := by
+  induction k with
+  | zero => rw [show j = 0 by omega]
+  | succ k ih =>
+    rcases Nat.lt_or_ge j (k + 1) with hj | hj
+    · rw [leftCount_succ_D3]; have := ih (by omega); omega
+    · rw [show j = k + 1 by omega]
+
+theorem irel_skip_D3 : ∀ (k b : Nat) (host : Option Nat) (F : Forest), RouteOK_D3 k F →
+    IRel_D3 b host F → IRel_D3 (b + leftCount F k) (routeHost_D3 b host k F) (skipLayers F k)
+  | 0, b, host, F, _, h => by simpa [leftCount, skipLayers, routeHost_D3] using h
+  | k + 1, b, host, F, hR, h => by
+    obtain ⟨cs, es, p, H, rfl, hR'⟩ := hR
+    simp only [leftCount, skipLayers, routeHost_D3, nextLayer_snoc_D3, Tree.cols,
+      List.length_append, List.length_singleton]
+    rw [irel_iff_icols_D3, icols_append_D3, icols_single_D3] at h
+    have hH := h.2.2 (p, H) (by simp)
+    have := irel_skip_D3 k _ _ H hR' hH
+    rw [show b + (cs.length + 1 + leftCount H k) = b + cs.length + 1 + leftCount H k by omega,
+      show b + (cs.length + 1) = b + cs.length + 1 by omega,
+      show b + (cs.length + 1 - 1) = b + cs.length by omega]
+    exact this
+
+theorem vrel_skip_D3 : ∀ (k b : Nat) (F : Forest), RouteOK_D3 k F →
+    VRel_D3 b F → VRel_D3 (b + leftCount F k) (skipLayers F k)
+  | 0, b, F, _, h => by simpa [leftCount, skipLayers] using h
+  | k + 1, b, F, hR, h => by
+    obtain ⟨cs, es, p, H, rfl, hR'⟩ := hR
+    simp only [leftCount, skipLayers, nextLayer_snoc_D3, Tree.cols,
+      List.length_append, List.length_singleton]
+    rw [vrel_iff_vcols_D3, vcols_append_D3, vcols_single_D3] at h
+    have hH := (h.2 (p, H) (by simp)).2
+    have := vrel_skip_D3 k _ H hR' hH
+    rwa [show b + cs.length + 1 + leftCount H k = b + (cs.length + 1 + leftCount H k) by omega]
+      at this
+
+theorem irel_host_mono_D3 {b : Nat} {h h' : Option Nat} {F : Forest} (hF : IRel_D3 b h F)
+    (hh : ∀ a', h' = some a' → ∃ a, h = some a ∧ a' ≤ a) : IRel_D3 b h' F := by
+  intro c col hc
+  have := hF c col hc
+  simp only [hostNum_D3] at this ⊢
+  cases hl : c.path.getLast? with
+  | none =>
+    rw [hl] at this
+    intro a' ha'
+    obtain ⟨a, rfl, ha⟩ := hh a' ha'
+    exact firstOK_mono_D3 ha this a' rfl
+  | some x => rw [hl] at this; exact this
+
+
+theorem firstOK_map_fst_D3 {host : Option Nat} {col : Column} (h : FirstOK_D3 host col)
+    (g : Nat × Forest → Nat × Forest) (hg : ∀ x, (g x).1 = x.1) : FirstOK_D3 host (col.map g) :=
+  firstOK_of_fst_D3 h (fun x hx => ⟨g x, by cases col <;> simp_all, hg x⟩)
+
+theorem firstOK_append_D3 {host : Option Nat} {l₁ l₂ : Column} (h : FirstOK_D3 host l₁)
+    (hne : l₁ ≠ []) : FirstOK_D3 host (l₁ ++ l₂) :=
+  firstOK_of_fst_D3 h (fun x hx => ⟨x, by cases l₁ <;> simp_all, rfl⟩)
+
+theorem head_mapLast_fst_D3 {col : Column}
+    (f g : Nat × Forest → Nat × Forest) (hf : ∀ x, (f x).1 = x.1) (hg : ∀ x, (g x).1 = x.1) :
+    ∀ x, col.head? = some x → ∃ y, (mapLast f g col).head? = some y ∧ y.1 = x.1 := by
+  intro x hx
+  match col, hx with
+  | [y], hx => simp at hx; subst hx; exact ⟨g y, by simp [mapLast], hg y⟩
+  | y :: z :: zs, hx => simp at hx; subst hx; exact ⟨f y, by simp [mapLast], hf y⟩
+
+/-- Step `k` of the ordinary loop keeps relative I, one phase down. -/
+theorem irel_ordStep_D3 {sd : StopData} {rd : RootData} {F : Forest} {U : Column} {k : Nat}
+    {Z : Forest} {hostSd : Option Nat} (hk : 1 ≤ k) (hrt : sd.r < sd.t)
+    (hlt : ∀ a, hostSd = some a → a < sd.t)
+    (hQ1 : FirstOK_D3 hostSd (sd.Q ++ [(sd.r, Tree.empty)]))
+    (hQ2 : ∀ x ∈ sd.Q, IRel_D3 (sd.t + 1) (some sd.t) x.2)
+    (hU2 : ∀ x ∈ U, IRel_D3 (sd.r + 1) (some sd.r) x.2)
+    (hQnil : sd.Q = [] → ∀ a, hostSd = some a → a < sd.r ∧ FirstOK_D3 (some a) U)
+    (hbodyR : rd.owner = false →
+      RouteOK_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) = sd.t)
+    (hbody0 : rd.owner = false → sd.depth - rd.layer = 0 →
+      IRel_D3 (sd.r + 1) hostSd (.node (F.cols.drop (rd.idx + 1))) ∧
+      ∀ a, hostSd = some a → a < sd.r)
+    (hbody1 : rd.owner = false → 1 ≤ sd.depth - rd.layer →
+      IRel_D3 (sd.r + 1) (some sd.r) (.node (F.cols.drop (rd.idx + 1))) ∧
+      routeHost_D3 (sd.r + 1) (some sd.r) (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) =
+        hostSd ∧ ∀ a, hostSd = some a → sd.r ≤ a)
+    (hownerR : rd.owner = true → ∀ x, U.getLast? = some x →
+      RouteOK_D3 (sd.depth - rd.layer - 1) x.2 ∧
+      sd.r + 1 + routeNum_D3 (sd.depth - rd.layer - 1) x.2 = sd.t)
+    (howner : rd.owner = true → ∀ x, U.getLast? = some x →
+      routeHost_D3 (sd.r + 1) (some sd.r) (sd.depth - rd.layer - 1) x.2 = hostSd ∧
+      ∀ a, hostSd = some a → sd.r ≤ a)
+    (hZ : IRel_D3 (sd.t + k * (sd.t - sd.r)) (hostSd.map (shiftVal sd.r (k * (sd.t - sd.r)))) Z) :
+    IRel_D3 (sd.r + k * (sd.t - sd.r)) (hostSd.map (shiftVal sd.r ((k - 1) * (sd.t - sd.r))))
+      (ordStep sd rd F U k Z) := by
+  have key : sd.t + (k - 1) * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) := by
+    obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    simp only [Nat.add_sub_cancel, Nat.succ_mul]; omega
+  -- the head column's heights
+  have hQh : ∀ x ∈ Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q,
+      IRel_D3 (sd.r + k * (sd.t - sd.r) + 1) (some (sd.r + k * (sd.t - sd.r))) x.2 := by
+    intro x hx
+    rw [treeMapCol_eq_map] at hx
+    obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+    have := irel_shift_D3 (hQ2 y hy) (r := sd.r) (by omega) ((k - 1) * (sd.t - sd.r))
+    simp only [Option.map_some] at this
+    rw [show shiftVal sd.r ((k - 1) * (sd.t - sd.r)) sd.t = sd.t + (k - 1) * (sd.t - sd.r) by
+      unfold shiftVal; rw [if_pos (by omega)]] at this
+    rw [show sd.t + 1 + (k - 1) * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega, key] at this
+    exact this
+  have hUh : ∀ x ∈ U, IRel_D3 (sd.r + k * (sd.t - sd.r) + 1) (some (sd.r + k * (sd.t - sd.r)))
+      (shift sd.r (k * (sd.t - sd.r)) x.2) := by
+    intro x hx
+    have := irel_shift_D3 (hU2 x hx) (r := sd.r) (by omega) (k * (sd.t - sd.r))
+    simp only [Option.map_some] at this
+    rw [show shiftVal sd.r (k * (sd.t - sd.r)) sd.r = sd.r + k * (sd.t - sd.r) by
+      unfold shiftVal; rw [if_pos le_rfl]] at this
+    rwa [show sd.r + 1 + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega] at this
+  -- the head column's first parent
+  have hfirst : ∀ (rest : Column), (∀ x, U.head? = some x → ∃ y, rest.head? = some y ∧ y.1 = x.1) →
+      FirstOK_D3 (hostSd.map (shiftVal sd.r ((k - 1) * (sd.t - sd.r))))
+        (Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q ++ rest) := by
+    intro rest hrest
+    by_cases hQ : sd.Q = []
+    · rw [hQ]
+      simp only [Tree.mapCol, List.nil_append]
+      intro a ha
+      cases hs : hostSd with
+      | none => rw [hs] at ha; cases ha
+      | some a0 =>
+        rw [hs] at ha
+        simp only [Option.map_some, Option.some.injEq] at ha
+        obtain ⟨h1, h2⟩ := hQnil hQ a0 hs
+        rw [show shiftVal sd.r ((k - 1) * (sd.t - sd.r)) a0 = a0 by
+          unfold shiftVal; rw [if_neg (by omega)]] at ha
+        subst ha
+        exact firstOK_of_fst_D3 h2 hrest a0 rfl
+    · have h1 := firstOK_shift_D3 hQ1 sd.r ((k - 1) * (sd.t - sd.r))
+      rw [Tree.treeMapCol_append_D3] at h1
+      have hne : Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q ≠ [] := by
+        rw [treeMapCol_eq_map]; simpa using hQ
+      refine firstOK_of_fst_D3 h1 (fun x hx => ⟨x, ?_, rfl⟩)
+      cases hq : Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q with
+      | nil => exact absurd hq hne
+      | cons y ys => rw [hq] at hx; simp at hx ⊢; exact hx
+  unfold ordStep
+  simp only
+  split
+  · rename_i hown
+    rw [irel_iff_icols_D3, icols_single_D3]
+    refine ⟨?_, ?_⟩
+    · rw [List.append_assoc]
+      refine hfirst _ (fun x hx => ?_)
+      have e := mapLast_eq (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+        (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)) U
+      rw [← e]
+      exact head_mapLast_fst_D3 (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+        (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)) (fun _ => rfl) (fun _ => rfl) x hx
+    · intro x hx
+      rw [List.mem_append, List.mem_append] at hx
+      rcases hx with (hx | hx) | hx
+      · exact hQh x hx
+      · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+        exact hUh y (List.mem_of_mem_dropLast hy)
+      · cases hl : U.getLast? with
+        | none => simp [hl] at hx
+        | some u =>
+          simp only [hl, Option.map_some, Option.toList_some, List.mem_singleton] at hx
+          subst hx
+          have hu : u ∈ U := List.mem_of_getLast? hl
+          obtain ⟨hR, hN⟩ := hownerR hown u hl
+          obtain ⟨hH, hge⟩ := howner hown u hl
+          simp only
+          rw [Hole.fill_eq_put]
+          refine irel_put_D3 Z _ _ _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) (hUh u hu) ?_
+          rw [routeNum_shift_D3, routeHost_shift_D3]
+          have := routeHost_shiftBase_D3 (k * (sd.t - sd.r)) (sd.depth - rd.layer - 1) (sd.r + 1)
+            (some sd.r) u.2
+          simp only [Option.map_some] at this
+          rw [show sd.r + k * (sd.t - sd.r) + 1 = sd.r + 1 + k * (sd.t - sd.r) by omega,
+            show sd.r + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) from rfl]
+          rw [show sd.r + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) from rfl] at this
+          rw [this, hH]
+          rw [show sd.r + 1 + k * (sd.t - sd.r) + routeNum_D3 (sd.depth - rd.layer - 1) u.2 =
+            sd.t + k * (sd.t - sd.r) by omega]
+          have hmap : hostSd.map (· + k * (sd.t - sd.r)) = hostSd.map (shiftVal sd.r (k * (sd.t - sd.r))) := by
+            cases hs : hostSd with
+            | none => rfl
+            | some a =>
+              simp only [Option.map_some, Option.some.injEq]
+              unfold shiftVal; rw [if_pos (hge a hs)]
+          rw [hmap]; exact hZ
+  · rename_i hown
+    have hown' : rd.owner = false := by simpa using hown
+    obtain ⟨hR, hN⟩ := hbodyR hown'
+    rw [irel_iff_icols_D3, icols_cons_D3, ← irel_eq_icols_D3]
+    refine ⟨⟨hfirst _ (fun x hx => ?_), ?_⟩, ?_⟩
+    · cases U with
+      | nil => simp at hx
+      | cons u us =>
+        simp at hx; subst hx
+        exact ⟨(u.1, shift sd.r (k * (sd.t - sd.r)) u.2), by simp, rfl⟩
+    · intro x hx
+      rw [List.mem_append] at hx
+      rcases hx with hx | hx
+      · exact hQh x hx
+      · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+        exact hUh y hy
+    · rw [Hole.fill_eq_put]
+      by_cases hd0 : sd.depth - rd.layer = 0
+      · obtain ⟨hB, hlt'⟩ := hbody0 hown' hd0
+        have hfix : ∀ δ, hostSd.map (shiftVal sd.r δ) = hostSd := by
+          intro δ
+          cases hs : hostSd with
+          | none => rfl
+          | some a =>
+            simp only [Option.map_some, Option.some.injEq]
+            unfold shiftVal; rw [if_neg (by have := hlt' a hs; omega)]
+        rw [hfix]
+        have hB' := irel_shift_D3 hB (r := sd.r) (by omega) (k * (sd.t - sd.r))
+        rw [hfix, show sd.r + 1 + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega] at hB'
+        refine irel_put_D3 Z _ _ _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) hB' ?_
+        rw [routeNum_shift_D3, hd0]
+        simp only [routeHost_D3]
+        rw [hfix] at hZ
+        rw [hd0] at hN
+        rwa [show sd.r + k * (sd.t - sd.r) + 1 + routeNum_D3 0 (.node (F.cols.drop (rd.idx + 1))) =
+          sd.t + k * (sd.t - sd.r) by omega]
+      · obtain ⟨hB, hH, hge⟩ := hbody1 hown' (by omega)
+        have hB' := irel_shift_D3 hB (r := sd.r) (by omega) (k * (sd.t - sd.r))
+        simp only [Option.map_some] at hB'
+        rw [show shiftVal sd.r (k * (sd.t - sd.r)) sd.r = sd.r + k * (sd.t - sd.r) by
+          unfold shiftVal; rw [if_pos le_rfl],
+          show sd.r + 1 + k * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) + 1 by omega] at hB'
+        have hB'' : IRel_D3 (sd.r + k * (sd.t - sd.r) + 1)
+            (hostSd.map (shiftVal sd.r ((k - 1) * (sd.t - sd.r))))
+            (shift sd.r (k * (sd.t - sd.r)) (.node (F.cols.drop (rd.idx + 1)))) := by
+          refine irel_host_mono_D3 hB' (fun a' ha' => ⟨_, rfl, ?_⟩)
+          cases hs : hostSd with
+          | none => rw [hs] at ha'; cases ha'
+          | some a =>
+            rw [hs] at ha'
+            simp only [Option.map_some, Option.some.injEq] at ha'
+            subst ha'
+            have := hlt a hs
+            have := shiftVal_le_D3 sd.r ((k - 1) * (sd.t - sd.r)) a
+            omega
+        refine irel_put_D3 Z _ _ _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) hB'' ?_
+        rw [routeNum_shift_D3, routeHost_shift_D3]
+        obtain ⟨hd', hd'eq⟩ : ∃ hd', sd.depth - rd.layer = hd' + 1 := ⟨_, (Nat.succ_pred_eq_of_ne_zero hd0).symm⟩
+        rw [hd'eq] at hH hN ⊢
+        have hind : ∀ X Y : Option Nat, ∀ b,
+            routeHost_D3 b X (hd' + 1) (.node (F.cols.drop (rd.idx + 1))) =
+            routeHost_D3 b Y (hd' + 1) (.node (F.cols.drop (rd.idx + 1))) := fun _ _ _ => rfl
+        rw [hind _ ((some sd.r).map (· + k * (sd.t - sd.r)))]
+        have := routeHost_shiftBase_D3 (k * (sd.t - sd.r)) (hd' + 1) (sd.r + 1) (some sd.r)
+          (.node (F.cols.drop (rd.idx + 1)))
+        rw [show sd.r + k * (sd.t - sd.r) + 1 = sd.r + 1 + k * (sd.t - sd.r) by omega, this, hH]
+        rw [show sd.r + 1 + k * (sd.t - sd.r) +
+            routeNum_D3 (hd' + 1) (.node (F.cols.drop (rd.idx + 1))) = sd.t + k * (sd.t - sd.r) by
+          omega]
+        have hmap : hostSd.map (· + k * (sd.t - sd.r)) = hostSd.map (shiftVal sd.r (k * (sd.t - sd.r))) := by
+          cases hs : hostSd with
+          | none => rfl
+          | some a =>
+            simp only [Option.map_some, Option.some.injEq]
+            unfold shiftVal; rw [if_pos (hge a hs)]
+        rw [hmap]; exact hZ
+
+
+theorem getElem_of_getLast_D3 {l : List Column} {x : Column} {k : Nat} (h : l.getLast? = some x)
+    (hk : k + 1 = l.length) : l[k]? = some x := by
+  rw [List.getLast?_eq_getElem?] at h; rwa [show k = l.length - 1 by omega]
+
+/-- Data of an ordinary step for relative I, part 1: the stopping column and the root column. -/
+theorem ord_idata1_D3 {A : Forest} {sd : StopData} {rd : RootData} (hI : CondI A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    (∀ a, routeHost_D3 0 none sd.depth A = some a → a < sd.t) ∧
+    FirstOK_D3 (routeHost_D3 0 none sd.depth A) (sd.Q ++ [(sd.r, Tree.empty)]) ∧
+    (∀ x ∈ sd.Q, IRel_D3 (sd.t + 1) (some sd.t) x.2) ∧
+    (∀ x ∈ ((A.colAt rd.col).getD []).drop rd.cursor, IRel_D3 (sd.r + 1) (some sd.r) x.2) := by
+  have hA : IRel_D3 0 none A := (condI_iff_irel_D3 A).1 hI
+  obtain ⟨h1, -, -, h4, -⟩ := stopData_core hsd
+  obtain ⟨hRA, -⟩ := stop_route_top_D3 hsd
+  obtain ⟨-, htd⟩ := stop_route_D3 hsd 0 (Nat.zero_le _)
+  simp only [Nat.sub_zero, routeNum_D3] at htd
+  obtain ⟨hle, -, hr, hidx, -, hcol⟩ := root_facts_D3 hsd hrd
+  have hRj : RouteOK_D3 rd.layer A := routeOK_le_D3 _ _ _ hRA hle
+  have hIj := irel_skip_D3 rd.layer 0 none A hRj hA
+  have hId := irel_skip_D3 sd.depth 0 none A hRA hA
+  rw [Nat.zero_add] at hIj hId
+  rw [irel_eq_icols_D3] at hIj hId
+  have hcolsd := getElem_of_getLast_D3 h4 h1
+  obtain ⟨hQ1, hQ2⟩ := hId _ _ hcolsd
+  refine ⟨?_, hQ1, ?_, ?_⟩
+  · intro a ha
+    rcases routeHost_bound_D3 _ _ _ _ a hRA ha with h | ⟨-, h⟩
+    · cases h
+    · omega
+  · intro x hx
+    have := hQ2 x (List.mem_append_left _ hx)
+    rwa [show leftCount A sd.depth + sd.col.col = sd.t by omega] at this
+  · intro x hx
+    cases hc : A.colAt rd.col with
+    | none => simp [hc] at hx
+    | some R =>
+      rw [hc, Option.getD_some] at hx
+      rw [hcol] at hc
+      have := (hIj _ _ hc).2 x (List.mem_of_mem_drop hx)
+      rwa [← hr] at this
+
+/-- Data of an ordinary step for relative I, part 2: an empty query. -/
+theorem ord_idata2_D3 {A : Forest} {sd : StopData} {rd : RootData} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    sd.Q = [] → ∀ a, routeHost_D3 0 none sd.depth A = some a →
+      a < sd.r ∧ FirstOK_D3 (some a) (((A.colAt rd.col).getD []).drop rd.cursor) := by
+  intro hQ a ha
+  have hA : IRel_D3 0 none A := (condI_iff_irel_D3 A).1 hL.2.1
+  obtain ⟨h1, -, -, h4, h5, -⟩ := stopData_core hsd
+  obtain ⟨hRA, -⟩ := stop_route_top_D3 hsd
+  obtain ⟨-, htd⟩ := stop_route_D3 hsd 0 (Nat.zero_le _)
+  simp only [Nat.sub_zero, routeNum_D3] at htd
+  obtain ⟨hle, -, hr, hidx, -, hcol⟩ := root_facts_D3 hsd hrd
+  obtain ⟨-, hQ1, -, -⟩ := ord_idata1_D3 hL.2.1 hsd hrd
+  have hpos : 0 < sd.depth := by
+    rcases Nat.eq_zero_or_pos sd.depth with h0 | h0
+    · rw [h0] at ha; simp [routeHost_D3] at ha
+    · exact h0
+  -- the host is the last container: `a + 1 = leftCount A depth`
+  have ha1 : a + 1 = leftCount A sd.depth := by
+    have := routeHost_split_D3 (sd.depth - 1) 1 0 none A
+    rw [show sd.depth - 1 + 1 = sd.depth by omega, ha] at this
+    simp only [routeHost_D3, Nat.zero_add] at this
+    obtain ⟨col, p, hc, -⟩ := h5 (sd.depth - 1) (by omega)
+    have hne : (skipLayers A (sd.depth - 1)).cols ≠ [] := by intro he; rw [he] at hc; simp at hc
+    have hlen := List.length_pos_iff.2 hne
+    have := leftCount_succ_D3 A (sd.depth - 1)
+    rw [show sd.depth - 1 + 1 = sd.depth by omega] at this
+    simp only [Option.some.injEq] at *
+    omega
+  have hns := (stepKind_ordinary_iff_unfold (ne_empty_of_stepKind_D3 hk) hL.1 hL.2.1).1 hk
+  obtain ⟨sd', hsd', hspec, -⟩ := hns
+  rw [hsd] at hsd'; cases hsd'
+  have har : a ≤ sd.r := by
+    rw [hQ] at hQ1
+    obtain ⟨q, H, rest, he, hq⟩ := hQ1 a ha
+    simp at he; omega
+  have hne : sd.r ≠ a := by
+    intro he; apply hspec; exact ⟨hpos, hQ, by omega⟩
+  refine ⟨by omega, ?_⟩
+  -- the root lies in the stopping forest
+  have hj : rd.layer = sd.depth := by
+    by_contra hj
+    have := leftCount_succ_D3 A rd.layer
+    have := leftCount_mono_D3 A (show rd.layer + 1 ≤ sd.depth by omega)
+    omega
+  have hcur : rd.cursor = 0 := by
+    obtain ⟨-, -, -, -, -, -, hc, -⟩ := rootData_spec hsd hrd
+    rw [hc, queryKeys, hQ]; exact cursor_nil_right _
+  have hId := irel_skip_D3 sd.depth 0 none A hRA hA
+  rw [Nat.zero_add, irel_eq_icols_D3] at hId
+  rw [hcur, List.drop_zero]
+  have hc' : A.colAt rd.col = (skipLayers A sd.depth).cols[rd.idx]? := by rw [hcol, hj]
+  cases hc : A.colAt rd.col with
+  | none => rw [hc] at hc'; rw [hj] at hidx; rw [List.getElem?_eq_getElem hidx] at hc'; cases hc'
+  | some R =>
+    rw [Option.getD_some]
+    rw [hc] at hc'
+    intro a' ha'; cases ha'
+    exact (hId _ _ hc'.symm).1 a ha
+
+
+/-- Data of an ordinary step for relative I, part 3: the body and the owner's last height. -/
+theorem ord_idata3_D3 {A : Forest} {sd : StopData} {rd : RootData} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    let hostSd := routeHost_D3 0 none sd.depth A
+    let F := (A.forestAt rd.col.path).getD Tree.empty
+    let U := ((A.colAt rd.col).getD []).drop rd.cursor
+    (rd.owner = false → sd.depth - rd.layer = 0 →
+      IRel_D3 (sd.r + 1) hostSd (.node (F.cols.drop (rd.idx + 1))) ∧
+      ∀ a, hostSd = some a → a < sd.r) ∧
+    (rd.owner = false → 1 ≤ sd.depth - rd.layer →
+      IRel_D3 (sd.r + 1) (some sd.r) (.node (F.cols.drop (rd.idx + 1))) ∧
+      routeHost_D3 (sd.r + 1) (some sd.r) (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) =
+        hostSd ∧ ∀ a, hostSd = some a → sd.r ≤ a) ∧
+    (rd.owner = true → ∀ x, U.getLast? = some x →
+      routeHost_D3 (sd.r + 1) (some sd.r) (sd.depth - rd.layer - 1) x.2 = hostSd ∧
+      ∀ a, hostSd = some a → sd.r ≤ a) := by
+  intro hostSd F U
+  have hA : IRel_D3 0 none A := (condI_iff_irel_D3 A).1 hL.2.1
+  obtain ⟨-, -, -, -, h5, -⟩ := stopData_core hsd
+  obtain ⟨hRA, -⟩ := stop_route_top_D3 hsd
+  obtain ⟨hle, hfa, hr, hidx, howner, hcol⟩ := root_facts_D3 hsd hrd
+  obtain ⟨-, -, hidx', hnum, -, -, -, -⟩ := rootData_spec hsd hrd
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path hsd hrd
+  have hF : F = skipLayers A rd.layer := by simp [F, hfa]
+  have hRj : RouteOK_D3 rd.layer A := routeOK_le_D3 _ _ _ hRA hle
+  have hIj := irel_skip_D3 rd.layer 0 none A hRj hA
+  rw [Nat.zero_add, irel_eq_icols_D3] at hIj
+  have hsplit : hostSd = routeHost_D3 (leftCount A rd.layer) (routeHost_D3 0 none rd.layer A)
+      (sd.depth - rd.layer) (skipLayers A rd.layer) := by
+    have := routeHost_split_D3 rd.layer (sd.depth - rd.layer) 0 none A
+    rw [Nat.add_sub_cancel' hle, Nat.zero_add] at this
+    exact this
+  obtain ⟨hRs, -⟩ := stop_route_D3 hsd (sd.depth - rd.layer) (by omega)
+  rw [show sd.depth - (sd.depth - rd.layer) = rd.layer by omega] at hRs
+  rw [hF]
+  refine ⟨?_, ?_, ?_⟩
+  · intro hown hd0
+    rw [hd0] at hsplit
+    simp only [routeHost_D3] at hsplit
+    refine ⟨?_, ?_⟩
+    · rw [irel_iff_icols_D3, hsplit]
+      have := icols_drop_D3 hIj (rd.idx + 1)
+      rwa [show leftCount A rd.layer + (rd.idx + 1) = sd.r + 1 by omega] at this
+    · intro a ha
+      rw [hsplit] at ha
+      rcases routeHost_bound_D3 _ _ _ _ a hRj ha with h | ⟨-, h⟩
+      · cases h
+      · omega
+  · intro hown hd1
+    obtain ⟨i, hi⟩ : ∃ i, sd.depth - rd.layer = i + 1 := ⟨_, (Nat.succ_pred_eq_of_ne_zero (by omega)).symm⟩
+    rw [hi] at hRs hsplit ⊢
+    obtain ⟨cs, es, p, h, hG, hR'⟩ := hRs
+    have hlen : (skipLayers A rd.layer).cols.length = cs.length + 1 := by rw [hG]; simp [Tree.cols]
+    have hlt : rd.idx + 1 < (skipLayers A rd.layer).cols.length := by
+      have : ¬ rd.idx + 1 = (skipLayers A rd.layer).cols.length := by
+        rw [← howner, hown]; simp
+      omega
+    have hdrop : (skipLayers A rd.layer).cols.drop (rd.idx + 1) =
+        cs.drop (rd.idx + 1) ++ [es ++ [(p, h)]] := by
+      rw [hG]; exact List.drop_append_of_le_length (by omega)
+    have hsum : (rd.col.path.map (·.1 + 1)).sum = leftCount A rd.layer := by
+      have : rd.col.num 0 = (rd.col.path.map (·.1 + 1)).sum + rd.col.col := by simp [ColAddr.num]
+      omega
+    refine ⟨?_, ?_, ?_⟩
+    · rw [irel_iff_icols_D3]
+      intro z col hz
+      have hz' : (skipLayers A rd.layer).cols[rd.idx + 1 + z]? = some col := by
+        rw [← List.getElem?_drop]; exact hz
+      have hzlt : rd.idx + 1 + z < (skipLayers A rd.layer).cols.length :=
+        (List.getElem?_eq_some_iff.1 hz').1
+      refine ⟨?_, ?_⟩
+      · -- the body column's first parent is at least `r` (T3.2j)
+        have hres : sd.col.resolve 0 (sd.r + 1 + z) = some ⟨rd.col.path, rd.idx + 1 + z⟩ := by
+          rw [ColAddr.resolve_spec]
+          refine ⟨Or.inl ?_, ?_⟩
+          · obtain ⟨col', p', hc', -, -, hpk⟩ := h5 rd.layer (by omega)
+            refine ⟨rd.layer, _, _, hpk, ?_, ?_⟩
+            · obtain ⟨t, ht⟩ := hpre
+              obtain ⟨-, hlay, -⟩ := rootData_spec hsd hrd
+              show rd.col.path = sd.col.path.take rd.layer
+              rw [hlay, ← ht]; simp
+            · simp only; omega
+          · simp only [ColAddr.num]; omega
+        have htt : sd.t = sd.col.num 0 := (stopData_spec hsd).2.2.1
+        obtain ⟨q, H, rest, hc, hq⟩ := body_firstParent hL hk hsd (x := sd.r + 1 + z) (by omega)
+          (by rw [htt]; exact ColAddr.resolve_lt hres) hres
+        have : A.colAt ⟨rd.col.path, rd.idx + 1 + z⟩ = some col := by
+          simp only [Tree.colAt, hfa, Option.bind_some]; exact hz'
+        rw [this] at hc; cases hc
+        intro a ha; cases ha
+        exact ⟨q, H, rest, rfl, hq⟩
+      · intro x hx
+        have := (hIj _ _ hz').2 x hx
+        rwa [show leftCount A rd.layer + (rd.idx + 1 + z) = sd.r + 1 + z by omega] at this
+    · rw [hsplit, hdrop, hG]
+      simp only [routeHost_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+        List.length_singleton]
+      have e1 : sd.r + 1 + ((cs.drop (rd.idx + 1)).length + 1) = leftCount A rd.layer + (cs.length + 1) := by
+        rw [List.length_drop]; omega
+      have e2 : sd.r + 1 + ((cs.drop (rd.idx + 1)).length + 1 - 1) =
+          leftCount A rd.layer + (cs.length + 1 - 1) := by
+        rw [List.length_drop]; omega
+      rw [e1, e2]
+    · intro a ha
+      rw [hsplit, hG] at ha
+      simp only [routeHost_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+        List.length_singleton] at ha
+      rcases routeHost_bound_D3 _ _ _ _ a hR' ha with h' | ⟨h', -⟩
+      · simp at h'; omega
+      · omega
+  · intro hown x hx
+    have hlt := rootData_layer_lt hsd hrd hown
+    obtain ⟨i, hi⟩ : ∃ i, sd.depth - rd.layer = i + 1 := ⟨_, (Nat.succ_pred_eq_of_ne_zero (by omega)).symm⟩
+    rw [hi] at hRs hsplit
+    obtain ⟨cs, es, p, h, hG, hR'⟩ := hRs
+    have hidx2 := howner.1 hown
+    rw [hG] at hidx2 hcol
+    simp only [Tree.cols, List.length_append, List.length_singleton] at hidx2
+    have hcol' : A.colAt rd.col = some (es ++ [(p, h)]) := by
+      rw [hcol]; simp [Tree.cols, show rd.idx = cs.length by omega]
+    have hx' : x = (p, h) := by
+      simp only [U, hcol', Option.getD_some, List.getLast?_drop] at hx
+      split at hx
+      · cases hx
+      · simp at hx; exact hx.symm
+    subst hx'
+    rw [show sd.depth - rd.layer - 1 = i by omega]
+    rw [hsplit, hG]
+    simp only [routeHost_D3, nextLayer_snoc_D3, Tree.cols, List.length_append,
+      List.length_singleton]
+    refine ⟨?_, ?_⟩
+    · congr 1
+      · omega
+      · congr 1; omega
+    · intro a ha
+      rcases routeHost_bound_D3 _ _ _ _ a hR' ha with h' | ⟨h', -⟩
+      · simp at h'; omega
+      · omega
+
 -- T3.2k (txt:340-344): ordinary outputs satisfy V and I
 theorem condV_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondV B := by sorry
+    (hB : expand A n = some B) : CondV B := by
+  obtain ⟨sd, rd, hsd, hrd, rfl, -⟩ := ord_output_D3 hL hk hB
+  obtain ⟨hrt, hQ, hU, hbody, howner⟩ := ord_vdata_D3 hL.1 hsd hrd
+  obtain ⟨hR, hN⟩ := stop_route_top_D3 hsd
+  rw [condV_iff_vrel_D3]
+  refine vrel_put_D3 _ _ _ _ hR ((condV_iff_vrel_D3 A).1 hL.1) ?_
+  rw [hN, Nat.zero_add]
+  have := ordLoop_induct_D3 (step := ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor))
+    (P := fun k Z => VRel_D3 (sd.t + k * (sd.t - sd.r)) Z) ?_ n Tree.empty (vrel_empty_D3 _)
+  · simpa [ordZ] using this
+  · intro k Z hk1 hZ
+    have := vrel_ordStep_D3 hk1 hrt hQ hU hbody howner hZ
+    have e : sd.t + (k - 1) * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) := by
+      obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+      simp only [Nat.add_sub_cancel, Nat.succ_mul]; omega
+    show VRel_D3 (sd.t + (k - 1) * (sd.t - sd.r)) _
+    rw [e]; exact this
 theorem condI_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondI B := by sorry
+    (hB : expand A n = some B) : CondI B := by
+  obtain ⟨sd, rd, hsd, hrd, rfl, -⟩ := ord_output_D3 hL hk hB
+  obtain ⟨hrt, -, -, hbodyR, hownerR⟩ := ord_vdata_D3 hL.1 hsd hrd
+  obtain ⟨hlt, hQ1, hQ2, hU2⟩ := ord_idata1_D3 hL.2.1 hsd hrd
+  have hQnil := ord_idata2_D3 hL hk hsd hrd
+  obtain ⟨hbody0, hbody1, howner⟩ := ord_idata3_D3 hL hk hsd hrd
+  obtain ⟨hR, hN⟩ := stop_route_top_D3 hsd
+  rw [condI_iff_irel_D3]
+  refine irel_put_D3 _ _ _ _ _ hR ((condI_iff_irel_D3 A).1 hL.2.1) ?_
+  rw [hN, Nat.zero_add]
+  have := ordLoop_induct_D3 (step := ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor))
+    (P := fun k Z => IRel_D3 (sd.t + k * (sd.t - sd.r))
+      ((routeHost_D3 0 none sd.depth A).map (shiftVal sd.r (k * (sd.t - sd.r)))) Z) ?_ n Tree.empty
+    (irel_empty_D3 _ _)
+  · simp only [Nat.zero_mul, Nat.add_zero, shiftVal_zero_fun, Option.map_id] at this
+    simpa [ordZ] using this
+  · intro k Z hk1 hZ
+    have := irel_ordStep_D3 hk1 hrt hlt hQ1 hQ2 hU2 hQnil
+      (fun h => ⟨(hbodyR h).1, (hbodyR h).2.2⟩) hbody0 hbody1 hownerR howner hZ
+    have e : sd.t + (k - 1) * (sd.t - sd.r) = sd.r + k * (sd.t - sd.r) := by
+      obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+      simp only [Nat.add_sub_cancel, Nat.succ_mul]; omega
+    show IRel_D3 (sd.t + (k - 1) * (sd.t - sd.r)) _ _
+    rw [e]; exact this
+
+/-! ### Relative condition H -/
+
+/-- The entries of a column are nonincreasing. -/
+def ColH_D3 (col : Column) : Prop := List.IsChain (fun x y => EntryLe y x) col
+
+def HRel_D3 (F : Forest) : Prop := ∀ c col, F.colAt c = some col → ColH_D3 col
+
+def HCols_D3 (cols : List Column) : Prop :=
+  ∀ (j : Nat) (col : Column), cols[j]? = some col → ColH_D3 col ∧ ∀ x ∈ col, HRel_D3 x.2
+
+theorem hrel_iff_hcols_D3 (cols : List Column) : HRel_D3 (.node cols) ↔ HCols_D3 cols := by
+  constructor
+  · intro hH j col hj
+    refine ⟨hH ⟨[], j⟩ col hj, ?_⟩
+    intro x hx c col' hc
+    obtain ⟨m, hm⟩ := List.getElem?_of_mem hx
+    obtain ⟨P, k⟩ := c
+    exact hH ⟨(j, m) :: P, k⟩ col' (by rw [Tree.colAt_cons]; simp [Tree.cols, hj, hm, hc])
+  · intro hH c col hc
+    obtain ⟨P, k⟩ := c
+    cases P with
+    | nil => exact (hH k col hc).1
+    | cons ab P =>
+      obtain ⟨j, m⟩ := ab
+      rw [Tree.colAt_cons] at hc
+      cases hcj : (Tree.node cols).cols[j]? with
+      | none => simp [hcj] at hc
+      | some cj =>
+        cases hm : cj[m]? with
+        | none => simp [hcj, hm] at hc
+        | some x =>
+          simp only [hcj, hm, Option.bind_some] at hc
+          exact (hH j cj hcj).2 x (List.mem_of_getElem? hm) _ col hc
+
+theorem hrel_eq_hcols_D3 (F : Forest) : HRel_D3 F ↔ HCols_D3 F.cols := by
+  obtain ⟨cols⟩ := F; exact hrel_iff_hcols_D3 cols
+
+theorem condH_iff_hrel_D3 (E : Forest) : CondH E ↔ HRel_D3 E := by
+  constructor
+  · intro hH c col hc
+    have hmem : c ∈ E.colAddrs := (Tree.mem_colAddrs_iff E c).2 (by rw [hc]; rfl)
+    rw [ColH_D3, List.isChain_iff_getElem]
+    intro i hi
+    exact hH c hmem i _ _ (by rw [hc]; simp [List.getElem?_eq_getElem (show i < col.length by omega)])
+      (by rw [hc]; simp [List.getElem?_eq_getElem hi])
+  · intro hH c hc i x y hx hy
+    obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E c).1 hc)
+    rw [hcol, Option.getD_some] at hx hy
+    have := hH c col hcol
+    rw [ColH_D3, List.isChain_iff_getElem] at this
+    obtain ⟨hi, rfl⟩ := List.getElem?_eq_some_iff.1 hy
+    obtain ⟨hi', rfl⟩ := List.getElem?_eq_some_iff.1 hx
+    exact this i hi
+
+theorem hcols_nil_D3 : HCols_D3 [] := by intro j col hj; simp at hj
+
+theorem hcols_cons_D3 (c : Column) (cs : List Column) :
+    HCols_D3 (c :: cs) ↔ (ColH_D3 c ∧ ∀ x ∈ c, HRel_D3 x.2) ∧ HCols_D3 cs := by
+  constructor
+  · intro h
+    exact ⟨h 0 c rfl, fun j col hj => h (j + 1) col (by simpa using hj)⟩
+  · rintro ⟨h1, h2⟩ j col hj
+    cases j with
+    | zero => simp at hj; subst hj; exact h1
+    | succ j => exact h2 j col (by simpa using hj)
+
+theorem hcols_append_D3 (cs ds : List Column) :
+    HCols_D3 (cs ++ ds) ↔ HCols_D3 cs ∧ HCols_D3 ds := by
+  induction cs with
+  | nil => simp [hcols_nil_D3]
+  | cons c cs ih => rw [List.cons_append, hcols_cons_D3, hcols_cons_D3, ih]; simp only [and_assoc]
+
+theorem hcols_single_D3 (c : Column) : HCols_D3 [c] ↔ ColH_D3 c ∧ ∀ x ∈ c, HRel_D3 x.2 := by
+  rw [hcols_cons_D3]; simp [hcols_nil_D3]
+
+theorem hcols_drop_D3 {cols : List Column} (h : HCols_D3 cols) (k : Nat) : HCols_D3 (cols.drop k) := by
+  intro j col hj
+  rw [List.getElem?_drop] at hj
+  exact h (k + j) col hj
+
+theorem hrel_empty_D3 : HRel_D3 Tree.empty := by
+  rw [show (Tree.empty : Forest) = .node [] from rfl, hrel_iff_hcols_D3]; exact hcols_nil_D3
+
+theorem hrel_colAt_D3 {F : Forest} (hF : HRel_D3 F) {c : ColAddr} {col : Column}
+    (hc : F.colAt c = some col) : ColH_D3 col ∧ ∀ x ∈ col, HRel_D3 x.2 := by
+  refine ⟨hF c col hc, ?_⟩
+  intro x hx c' col' hc'
+  obtain ⟨m, hm⟩ := List.getElem?_of_mem hx
+  obtain ⟨P, k⟩ := c'
+  have hG : F.forestAt c.path = some (.node ((F.forestAt c.path).getD Tree.empty).cols) := by
+    cases hf : F.forestAt c.path with
+    | none => simp [Tree.colAt, hf] at hc
+    | some G => obtain ⟨gc⟩ := G; rfl
+  have hcol : ((F.forestAt c.path).getD Tree.empty).cols[c.col]? = some col := by
+    simp only [Tree.colAt] at hc
+    cases hf : F.forestAt c.path with
+    | none => simp [hf] at hc
+    | some G => simp only [hf, Option.bind_some] at hc; simpa using hc
+  have hf : F.forestAt (c.path ++ (c.col, m) :: P) = x.2.forestAt P := by
+    rw [Tree.forestAt_append, hG]
+    simp only [Option.bind_some]
+    rw [Tree.forestAt_cons]
+    have e : (Tree.node ((F.forestAt c.path).getD Tree.empty).cols).cols =
+      ((F.forestAt c.path).getD Tree.empty).cols := rfl
+    rw [e, hcol]; simp [hm]
+  exact hF ⟨c.path ++ (c.col, m) :: P, k⟩ col' (by simp only [Tree.colAt]; rw [hf]; exact hc')
+
+theorem hrel_forestAt_D3 {F : Forest} (hF : HRel_D3 F) {π : List (Nat × Nat)} {G : Forest}
+    (hG : F.forestAt π = some G) : HRel_D3 G := by
+  intro c col hc
+  apply hF ⟨π ++ c.path, c.col⟩ col
+  simp only [Tree.colAt, Tree.forestAt_append, hG, Option.bind_some]
+  exact hc
+
+/-! Shifts are order embeddings of forests. -/
+
+theorem compare_shiftVal_D3 (r d x y : Nat) :
+    compare (shiftVal r d x) (shiftVal r d y) = compare x y := by
+  rcases lt_trichotomy x y with h | rfl | h
+  · rw [compare_lt_iff_lt.2 h, compare_lt_iff_lt.2 (shiftVal_strictMono_D3 r d h)]
+  · simp
+  · rw [compare_gt_iff_gt.2 h, compare_gt_iff_gt.2 (shiftVal_strictMono_D3 r d h)]
+
+theorem cmp_shift_D3 (r d : Nat) (X Y : Forest) :
+    Tree.cmp compare (shift r d X) (shift r d Y) = Tree.cmp compare X Y :=
+  Tree.cmp_map (compare_shiftVal_D3 r d) X Y
+
+theorem shift_le_shift_D3 (r d : Nat) {X Y : Forest} (h : X ≤ Y) : shift r d X ≤ shift r d Y := by
+  show Tree.cmp compare _ _ ≠ .gt
+  rw [cmp_shift_D3]; exact h
+
+theorem entryLe_shift_D3 (r d : Nat) {x y : Nat × Forest} (h : EntryLe y x) :
+    EntryLe (shiftVal r d y.1, shift r d y.2) (shiftVal r d x.1, shift r d x.2) := by
+  rcases h with h | ⟨h1, h2⟩
+  · exact Or.inl (shiftVal_strictMono_D3 r d h)
+  · exact Or.inr ⟨by rw [h1], shift_le_shift_D3 r d h2⟩
+
+theorem colH_shift_D3 {col : Column} (h : ColH_D3 col) (r d : Nat) :
+    ColH_D3 (Tree.mapCol (shiftVal r d) col) := by
+  rw [ColH_D3, treeMapCol_eq_map, List.isChain_map]
+  exact h.imp (fun a b hab => entryLe_shift_D3 r d hab)
+
+theorem colH_shiftH_D3 {col : Column} (h : ColH_D3 col) (r d : Nat) :
+    ColH_D3 (col.map fun x => (x.1, shift r d x.2)) := by
+  rw [ColH_D3, List.isChain_map]
+  refine h.imp (fun a b hab => ?_)
+  rcases hab with h | ⟨h1, h2⟩
+  · exact Or.inl h
+  · exact Or.inr ⟨h1, shift_le_shift_D3 r d h2⟩
+
+theorem hrel_shift_D3 {F : Forest} (h : HRel_D3 F) (r d : Nat) : HRel_D3 (shift r d F) := by
+  intro c col hc
+  rw [shift, colAt_map_D3] at hc
+  cases h' : F.colAt c with
+  | none => simp [h'] at hc
+  | some col0 =>
+    simp only [h', Option.map_some, Option.some.injEq] at hc
+    subst hc
+    exact colH_shift_D3 (h c col0 h') r d
+
+/-! Route replacement and the order. -/
+
+/-- The route column at depth `k`. -/
+def routeCol_D3 (k : Nat) (F : Forest) : Column := ((skipLayers F k).cols.getLast?).getD []
+
+theorem cmpCol_self_D3 (x : Column) : Tree.cmpCol (compare : Nat → Nat → Ordering) x x = .eq := by
+  have : Tree.cmp (compare : Nat → Nat → Ordering) (Tree.node [x]) (Tree.node [x]) = .eq :=
+    Std.ReflCmp.compare_self
+  simp only [Tree.cmp, Tree.cmpCols] at this
+  cases h : Tree.cmpCol compare x x <;> simp_all [Ordering.then]
+
+theorem cmpCols_append_left_D3 (P a b : List Column) :
+    Tree.cmpCols (compare : Nat → Nat → Ordering) (P ++ a) (P ++ b) = Tree.cmpCols compare a b := by
+  induction P with
+  | nil => rfl
+  | cons x P ih => simp only [List.cons_append, Tree.cmpCols, cmpCol_self_D3, ih, Ordering.then]
+
+theorem cmpCol_append_left_D3 (P a b : Column) :
+    Tree.cmpCol (compare : Nat → Nat → Ordering) (P ++ a) (P ++ b) = Tree.cmpCol compare a b := by
+  induction P with
+  | nil => rfl
+  | cons x P ih =>
+    obtain ⟨p, h⟩ := x
+    simp only [List.cons_append, Tree.cmpCol, ih]
+    have : Tree.cmp (compare : Nat → Nat → Ordering) h h = .eq := Std.ReflCmp.compare_self
+    simp [this, Ordering.then]
+
+theorem cmp_put_D3 (Z Z' : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F →
+    Tree.cmp compare (replaceAt 0 0 Z k F) (replaceAt 0 0 Z' k F) = Tree.cmp compare Z Z'
+  | 0, .node cols, hR => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 Z hc, put_zero_D3 Z' hc]
+    obtain ⟨zc⟩ := Z; obtain ⟨zc'⟩ := Z'
+    simp only [Tree.cmp, Tree.cols]
+    exact cmpCols_append_left_D3 _ _ _
+  | k + 1, F, hR => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3, put_succ_D3]
+    simp only [Tree.cmp]
+    rw [cmpCols_append_left_D3]
+    simp only [Tree.cmpCols, cmpCol_append_left_D3, Tree.cmpCol, cmp_put_D3 Z Z' k H hR']
+    rw [show compare q q = Ordering.eq from compare_eq_iff_eq.2 rfl]
+    cases Tree.cmp compare Z Z' <;> rfl
+
+theorem put_self_D3 : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F →
+    replaceAt 0 0 (.node [routeCol_D3 k F]) k F = F
+  | 0, .node cols, hR => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 _ hc]
+    simp only [routeCol_D3, skipLayers, Tree.cols]
+    obtain ⟨l, hl⟩ : ∃ l, cols.getLast? = some l := by
+      cases h : cols.getLast? with
+      | none => simp at h; exact absurd h hc
+      | some l => exact ⟨l, rfl⟩
+    rw [hl, Option.getD_some]
+    obtain ⟨ys, rfl⟩ := List.getLast?_eq_some_iff.1 hl
+    simp
+  | k + 1, F, hR => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    have : routeCol_D3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) = routeCol_D3 k H := by
+      simp only [routeCol_D3, skipLayers, nextLayer_snoc_D3]
+    rw [this, put_self_D3 k H hR']
+
+theorem put_le_D3 {Z : Forest} {k : Nat} {F : Forest} (hR : RouteOK_D3 k F)
+    (hZ : Z ≤ .node [routeCol_D3 k F]) : replaceAt 0 0 Z k F ≤ F := by
+  have h1 := cmp_put_D3 Z (.node [routeCol_D3 k F]) k F hR
+  rw [put_self_D3 k F hR] at h1
+  show Tree.cmp compare _ _ ≠ .gt
+  rw [h1]; exact hZ
+
+theorem put_lt_D3 {Z : Forest} {k : Nat} {F : Forest} (hR : RouteOK_D3 k F)
+    (hZ : Z < .node [routeCol_D3 k F]) : replaceAt 0 0 Z k F < F := by
+  have h1 := cmp_put_D3 Z (.node [routeCol_D3 k F]) k F hR
+  rw [put_self_D3 k F hR] at h1
+  show Tree.cmp compare _ _ = .lt
+  rw [h1]; exact hZ
+
+theorem colH_snoc_D3 {l : Column} {a : Nat × Forest} :
+    ColH_D3 (l ++ [a]) ↔ ColH_D3 l ∧ ∀ x ∈ l.getLast?, EntryLe a x := by
+  rw [ColH_D3, List.isChain_append]
+  simp [ColH_D3]
+
+theorem entryLe_trans_le_D3 {x y : Nat × Forest} {h' : Forest} (h : EntryLe y x)
+    (hh : h' ≤ y.2) : EntryLe (y.1, h') x := by
+  rcases h with h | ⟨h1, h2⟩
+  · exact Or.inl h
+  · exact Or.inr ⟨h1, le_trans hh h2⟩
+
+theorem hrel_put_D3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F → HRel_D3 F →
+    HRel_D3 Z → Z ≤ .node [routeCol_D3 k F] → HRel_D3 (replaceAt 0 0 Z k F)
+  | 0, .node cols, hR, hF, hZ, _ => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 Z hc]
+    obtain ⟨zc⟩ := Z
+    simp only [Tree.cols]
+    rw [hrel_iff_hcols_D3] at hF hZ ⊢
+    rw [hcols_append_D3]
+    refine ⟨?_, hZ⟩
+    rw [← List.dropLast_append_getLast hc, hcols_append_D3] at hF
+    exact hF.1
+  | k + 1, F, hR, hF, hZ, hle => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    have hle' : Z ≤ .node [routeCol_D3 k H] := by
+      simpa [routeCol_D3, skipLayers, nextLayer_snoc_D3] using hle
+    rw [put_succ_D3]
+    rw [hrel_iff_hcols_D3, hcols_append_D3, hcols_single_D3] at hF ⊢
+    obtain ⟨hF1, hF2, hF3⟩ := hF
+    refine ⟨hF1, ?_, ?_⟩
+    · rw [colH_snoc_D3] at hF2 ⊢
+      refine ⟨hF2.1, fun x hx => ?_⟩
+      exact entryLe_trans_le_D3 (hF2.2 x hx) (put_le_D3 hR' hle')
+    · intro x hx
+      rw [List.mem_append, List.mem_singleton] at hx
+      rcases hx with hx | rfl
+      · exact hF3 x (List.mem_append_left _ hx)
+      · exact hrel_put_D3 Z k H hR' (hF3 (q, H) (by simp)) hZ hle'
+
+
+theorem routeCol_shift_D3 (r d : Nat) : ∀ (k : Nat) (F : Forest),
+    routeCol_D3 k (shift r d F) = Tree.mapCol (shiftVal r d) (routeCol_D3 k F)
+  | 0, .node cols => by
+    simp only [routeCol_D3, skipLayers, shift, Tree.map, Tree.cols, treeMapCols_eq_map,
+      List.getLast?_map]
+    cases cols.getLast? <;> rfl
+  | k + 1, F => by
+    simp only [routeCol_D3, skipLayers]
+    rw [show nextLayer (shift r d F) = shift r d (nextLayer F) from nextLayer_map_D3 _ _]
+    exact routeCol_shift_D3 r d k (nextLayer F)
+
+/-- A head column `Q' ⌢ V` whose continuation starts below the closing parent `ρ` is smaller
+than the stopping column `Q' ⌢ [(ρ, ∅)]`. -/
+theorem head_lt_D3 {Q' V : Column} {rest : List Column} {ρ : Nat}
+    (hV : ∀ v ∈ V.head?, v.1 < ρ) :
+    (Tree.node ((Q' ++ V) :: rest) : Forest) < .node [Q' ++ [(ρ, Tree.empty)]] := by
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols, cmpCol_append_left_D3]
+  cases V with
+  | nil => rfl
+  | cons v vs =>
+    have : compare v.1 ρ = .lt := compare_lt_iff_lt.2 (hV v (by simp))
+    obtain ⟨p, h⟩ := v
+    simp only [Tree.cmpCol] at this ⊢
+    rw [this]; rfl
+
+/-- Step `k` of the ordinary loop keeps relative H, and its output lies below the stopping column
+of the previous phase. -/
+theorem hrel_ordStep_D3 {sd : StopData} {rd : RootData} {F : Forest} {U : Column} {k : Nat}
+    {Z : Forest}
+    (hQ : ColH_D3 (sd.Q ++ [(sd.r, Tree.empty)])) (hQh : ∀ x ∈ sd.Q, HRel_D3 x.2)
+    (hU : ColH_D3 U) (hUh : ∀ x ∈ U, HRel_D3 x.2) (hUr : ∀ x ∈ U, x.1 < sd.r)
+    (hbody : rd.owner = false →
+      RouteOK_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) ∧
+      HRel_D3 (.node (F.cols.drop (rd.idx + 1))) ∧
+      routeCol_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) = sd.Q ++ [(sd.r, Tree.empty)])
+    (howner : rd.owner = true → ∀ x, U.getLast? = some x →
+      RouteOK_D3 (sd.depth - rd.layer - 1) x.2 ∧
+      routeCol_D3 (sd.depth - rd.layer - 1) x.2 = sd.Q ++ [(sd.r, Tree.empty)])
+    (hZ : HRel_D3 Z)
+    (hZle : Z ≤ .node [Tree.mapCol (shiftVal sd.r (k * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])]) :
+    HRel_D3 (ordStep sd rd F U k Z) ∧
+      ordStep sd rd F U k Z <
+        .node [Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])] := by
+  set δ := (k - 1) * (sd.t - sd.r) with hδ
+  set Q' := Tree.mapCol (shiftVal sd.r δ) sd.Q with hQ'
+  have hmapQ : Tree.mapCol (shiftVal sd.r δ) (sd.Q ++ [(sd.r, Tree.empty)]) =
+      Q' ++ [(shiftVal sd.r δ sd.r, Tree.empty)] := by
+    simp [hQ', treeMapCol_eq_map, Tree.map, Tree.mapCols, Tree.empty]
+  rw [colH_snoc_D3] at hQ
+  have hQ'c : ColH_D3 Q' := colH_shift_D3 hQ.1 _ _
+  have hQr : ∀ x ∈ Q'.getLast?, sd.r ≤ x.1 := by
+    intro x hx
+    rw [hQ', treeMapCol_eq_map, List.getLast?_map] at hx
+    cases hl : sd.Q.getLast? with
+    | none => rw [hl] at hx; cases hx
+    | some q =>
+      rw [hl] at hx; simp only [Option.map_some, Option.mem_def, Option.some.injEq] at hx
+      subst hx
+      have := hQ.2 q hl
+      have h2 := le_shiftVal_D3 sd.r δ q.1
+      simp only
+      rcases this with h | ⟨h, -⟩ <;> omega
+  have hQ'h : ∀ x ∈ Q', HRel_D3 x.2 := by
+    intro x hx
+    rw [hQ', treeMapCol_eq_map] at hx
+    obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+    exact hrel_shift_D3 (hQh y hy) _ _
+  -- the head: `Q'` followed by a continuation `V` with the parents of `U`
+  have hhead : ∀ V : Column, ColH_D3 V → (∀ v ∈ V.head?, v.1 < sd.r) →
+      ColH_D3 (Q' ++ V) := by
+    intro V hV hVr
+    rw [ColH_D3, List.isChain_append]
+    refine ⟨hQ'c, hV, fun x hx y hy => Or.inl ?_⟩
+    have := hQr x hx; have := hVr y hy; omega
+  have hρ : sd.r ≤ shiftVal sd.r δ sd.r := le_shiftVal_D3 _ _ _
+  unfold ordStep
+  simp only
+  rw [← hδ, ← hQ', hmapQ]
+  split
+  · rename_i hown
+    have hcols : ColH_D3 (U.dropLast.map (fun x => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2)) ++
+        (U.getLast?.map fun x => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)).toList) := by
+      cases hl : U.getLast? with
+      | none =>
+        have : U = [] := by simpa using hl
+        subst this; simp [ColH_D3]
+      | some u =>
+        obtain ⟨R, rfl⟩ := List.getLast?_eq_some_iff.1 hl
+        simp only [List.dropLast_concat, Option.map_some, Option.toList_some]
+        rw [colH_snoc_D3] at hU ⊢
+        refine ⟨colH_shiftH_D3 hU.1 _ _, fun x hx => ?_⟩
+        rw [List.getLast?_map] at hx
+        cases hR : R.getLast? with
+        | none => rw [hR] at hx; cases hx
+        | some w =>
+          rw [hR] at hx; simp only [Option.map_some, Option.mem_def, Option.some.injEq] at hx
+          subst hx
+          obtain ⟨hRo, hRc⟩ := howner hown u (by simp)
+          have hle : Hole.fill ⟨u.2, sd.depth - rd.layer - 1⟩ sd.r (k * (sd.t - sd.r)) Z ≤
+              shift sd.r (k * (sd.t - sd.r)) u.2 := by
+            rw [Hole.fill_eq_put]
+            refine put_le_D3 ((routeOK_shift_D3 _ _ _ _).2 hRo) ?_
+            rw [routeCol_shift_D3, hRc]; exact hZle
+          rcases hU.2 w hR with h | ⟨h1, h2⟩
+          · exact Or.inl h
+          · exact Or.inr ⟨h1, le_trans hle (shift_le_shift_D3 _ _ h2)⟩
+    have hVr : ∀ v ∈ (U.dropLast.map (fun x => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2)) ++
+        (U.getLast?.map fun x => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)).toList).head?, v.1 < sd.r := by
+      intro v hv
+      have e := mapLast_eq (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+        (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)) U
+      rw [← e] at hv
+      cases hU0 : U.head? with
+      | none =>
+        cases U with
+        | nil => simp [mapLast] at hv
+        | cons _ _ => simp at hU0
+      | some u0 =>
+        obtain ⟨y, hy, hyu⟩ := head_mapLast_fst_D3
+          (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+          (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+            (k * (sd.t - sd.r)) Z)) (fun _ => rfl) (fun _ => rfl) u0 hU0
+        rw [hy] at hv; cases hv
+        rw [hyu]; exact hUr u0 (List.mem_of_head? hU0)
+    refine ⟨?_, ?_⟩
+    · rw [hrel_iff_hcols_D3, hcols_single_D3, List.append_assoc]
+      refine ⟨hhead _ hcols hVr, fun x hx => ?_⟩
+      rw [List.mem_append, List.mem_append] at hx
+      rcases hx with hx | hx | hx
+      · exact hQ'h x hx
+      · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+        exact hrel_shift_D3 (hUh y (List.mem_of_mem_dropLast hy)) _ _
+      · cases hl : U.getLast? with
+        | none => simp [hl] at hx
+        | some u =>
+          simp only [hl, Option.map_some, Option.toList_some, List.mem_singleton] at hx
+          subst hx
+          obtain ⟨hRo, hRc⟩ := howner hown u hl
+          simp only
+          rw [Hole.fill_eq_put]
+          refine hrel_put_D3 Z _ _ ((routeOK_shift_D3 _ _ _ _).2 hRo)
+            (hrel_shift_D3 (hUh u (List.mem_of_getLast? hl)) _ _) hZ ?_
+          rw [routeCol_shift_D3, hRc]; exact hZle
+    · rw [List.append_assoc]
+      have := head_lt_D3 (Q' := Q') (rest := []) (ρ := shiftVal sd.r δ sd.r) (fun v hv =>
+        lt_of_lt_of_le (hVr v hv) hρ)
+      exact this
+  · rename_i hown
+    have hown' : rd.owner = false := by simpa using hown
+    obtain ⟨hR, hB, hRc⟩ := hbody hown'
+    have hVr : ∀ v ∈ (U.map fun x => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2)).head?, v.1 < sd.r := by
+      intro v hv
+      cases U with
+      | nil => simp at hv
+      | cons u us => simp at hv; subst hv; exact hUr u (by simp)
+    refine ⟨?_, head_lt_D3 (fun v hv => lt_of_lt_of_le (hVr v hv) hρ)⟩
+    rw [hrel_iff_hcols_D3, hcols_cons_D3, ← hrel_eq_hcols_D3]
+    refine ⟨⟨hhead _ (colH_shiftH_D3 hU _ _) hVr, fun x hx => ?_⟩, ?_⟩
+    · rw [List.mem_append] at hx
+      rcases hx with hx | hx
+      · exact hQ'h x hx
+      · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+        exact hrel_shift_D3 (hUh y hy) _ _
+    · rw [Hole.fill_eq_put]
+      refine hrel_put_D3 Z _ _ ((routeOK_shift_D3 _ _ _ _).2 hR) (hrel_shift_D3 hB _ _) hZ ?_
+      rw [routeCol_shift_D3, hRc]; exact hZle
+
+
+theorem routeCol_skip_D3 (F : Forest) (k : Nat) : routeCol_D3 k F = routeCol_D3 0 (skipLayers F k) := by
+  simp [routeCol_D3, skipLayers]
+
+/-- Data of an ordinary step for relative H. -/
+theorem ord_hdata_D3 {A : Forest} {sd : StopData} {rd : RootData} (hH : CondH A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    let F := (A.forestAt rd.col.path).getD Tree.empty
+    let U := ((A.colAt rd.col).getD []).drop rd.cursor
+    ColH_D3 (sd.Q ++ [(sd.r, Tree.empty)]) ∧ (∀ x ∈ sd.Q, HRel_D3 x.2) ∧
+    ColH_D3 U ∧ (∀ x ∈ U, HRel_D3 x.2) ∧
+    (rd.owner = false → HRel_D3 (.node (F.cols.drop (rd.idx + 1))) ∧
+      routeCol_D3 (sd.depth - rd.layer) (.node (F.cols.drop (rd.idx + 1))) =
+        sd.Q ++ [(sd.r, Tree.empty)]) ∧
+    (rd.owner = true → ∀ x, U.getLast? = some x →
+      routeCol_D3 (sd.depth - rd.layer - 1) x.2 = sd.Q ++ [(sd.r, Tree.empty)]) := by
+  intro F U
+  have hA := (condH_iff_hrel_D3 A).1 hH
+  obtain ⟨h1, -, -, h4, -⟩ := stopData_core hsd
+  obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+  obtain ⟨hle, hfa, hr, hidx, howner, hcol⟩ := root_facts_D3 hsd hrd
+  obtain ⟨-, -, -, -, -, hmem, -, -⟩ := rootData_spec hsd hrd
+  have hF : F = skipLayers A rd.layer := by simp [F, hfa]
+  obtain ⟨hQc, hQh⟩ := hrel_colAt_D3 hA hcolsd
+  obtain ⟨R, hR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A rd.col).1 hmem)
+  obtain ⟨hRc, hRh⟩ := hrel_colAt_D3 hA hR
+  have hU : U = R.drop rd.cursor := by simp [U, hR]
+  have hlast : ∀ m, rd.layer + m = sd.depth → routeCol_D3 m (skipLayers A rd.layer) =
+      sd.Q ++ [(sd.r, Tree.empty)] := by
+    intro m hm
+    rw [routeCol_skip_D3, skipLayers_add, hm]
+    simp [routeCol_D3, skipLayers, h4]
+  refine ⟨hQc, fun x hx => hQh x (List.mem_append_left _ hx), ?_, ?_, ?_, ?_⟩
+  · rw [hU]; exact hRc.drop _
+  · rw [hU]; exact fun x hx => hRh x (List.mem_of_mem_drop hx)
+  · intro hown
+    rw [hF]
+    have hlt : rd.idx + 1 < (skipLayers A rd.layer).cols.length := by
+      have : ¬ rd.idx + 1 = (skipLayers A rd.layer).cols.length := by rw [← howner, hown]; simp
+      omega
+    refine ⟨?_, ?_⟩
+    · rw [hrel_iff_hcols_D3]
+      exact hcols_drop_D3 ((hrel_eq_hcols_D3 _).1 (hrel_forestAt_D3 hA hfa)) _
+    · rcases Nat.eq_zero_or_pos (sd.depth - rd.layer) with h0 | h0
+      · rw [h0]
+        have := hlast 0 (by omega)
+        simp only [routeCol_D3, skipLayers] at this ⊢
+        show ((skipLayers A rd.layer).cols.drop (rd.idx + 1)).getLast?.getD [] = _
+        rw [List.getLast?_drop, if_neg (by omega)]; exact this
+      · obtain ⟨i, hi⟩ : ∃ i, sd.depth - rd.layer = i + 1 := ⟨_, (Nat.succ_pred_eq_of_ne_zero (by omega)).symm⟩
+        rw [hi]
+        have := hlast (i + 1) (by omega)
+        have hnx : nextLayer (.node ((skipLayers A rd.layer).cols.drop (rd.idx + 1))) =
+            nextLayer (skipLayers A rd.layer) := by
+          have e : (Tree.node ((skipLayers A rd.layer).cols.drop (rd.idx + 1))).cols.getLast? =
+              (skipLayers A rd.layer).cols.getLast? := by
+            show ((skipLayers A rd.layer).cols.drop (rd.idx + 1)).getLast? = _
+            rw [List.getLast?_drop, if_neg (by omega)]
+          simp only [nextLayer, lastEntry?, e]
+        simp only [routeCol_D3, skipLayers] at this ⊢
+        rw [hnx]; exact this
+  · intro hown x hx
+    have hidx' := howner.1 hown
+    rw [hU] at hx
+    have hx' : R.getLast? = some x := by
+      rw [List.getLast?_drop] at hx; split at hx
+      · cases hx
+      · exact hx
+    have hsome : (skipLayers A rd.layer).cols.getLast? = some R := by
+      rw [List.getLast?_eq_getElem?, show (skipLayers A rd.layer).cols.length - 1 = rd.idx by omega,
+        ← hcol, hR]
+    have hnx := nextLayer_of_last hsome (show R.getLast? = some (x.1, x.2) from hx')
+    have := hlast (sd.depth - rd.layer) (by omega)
+    rw [routeCol_skip_D3] at this ⊢
+    have hlt := rootData_layer_lt hsd hrd hown
+    rw [show sd.depth - rd.layer = (sd.depth - rd.layer - 1) + 1 by omega, skipLayers, hnx] at this
+    exact this
+
+theorem empty_le_D3 (X : Forest) : (Tree.empty : Forest) ≤ X := by
+  show Tree.cmp compare _ _ ≠ .gt
+  obtain ⟨xc⟩ := X
+  cases xc <;> simp [Tree.empty, Tree.cmp, Tree.cmpCols]
 
 -- T3.2x (txt:345-349): ordinary outputs satisfy H (strict decrease is the spine's `expand_lt`)
 theorem condH_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondH B := by sorry
+    (hB : expand A n = some B) : CondH B := by
+  obtain ⟨sd, rd, hsd, hrd, rfl, -⟩ := ord_output_D3 hL hk hB
+  obtain ⟨hrt, -, hU, hbodyR, hownerR⟩ := ord_vdata_D3 hL.1 hsd hrd
+  obtain ⟨hQc, hQh, hUc, hUh, hbody, howner⟩ := ord_hdata_D3 hL.2.2.1 hsd hrd
+  obtain ⟨hR, -⟩ := stop_route_top_D3 hsd
+  obtain ⟨-, -, -, h4, -⟩ := stopData_core hsd
+  have hrc : routeCol_D3 sd.depth A = sd.Q ++ [(sd.r, Tree.empty)] := by
+    simp [routeCol_D3, h4]
+  rw [condH_iff_hrel_D3]
+  have := ordLoop_induct_D3 (step := ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor))
+    (P := fun k Z => HRel_D3 Z ∧
+      Z ≤ .node [Tree.mapCol (shiftVal sd.r (k * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])]) ?_ n
+    Tree.empty ⟨hrel_empty_D3, empty_le_D3 _⟩
+  · simp only [Nat.zero_mul, shiftVal_zero_fun, treeMapCol_id_fun, id] at this
+    refine hrel_put_D3 _ _ _ hR ((condH_iff_hrel_D3 A).1 hL.2.2.1) this.1 ?_
+    rw [hrc]; exact this.2
+  · intro k Z _ hZ
+    have := hrel_ordStep_D3 (F := (A.forestAt rd.col.path).getD Tree.empty) (k := k) hQc hQh hUc hUh
+      (fun x hx => (hU x hx).1)
+      (fun h => ⟨(hbodyR h).1, (hbody h).1, (hbody h).2⟩)
+      (fun h x hx => ⟨(hownerR h x hx).1, howner h x hx⟩) hZ.1 hZ.2
+    exact ⟨this.1, le_of_lt this.2⟩
 
 -- T3.2m (txt:350-362): every owner return of an ordinary output has an old origin; the key
 -- words of both heights are the phase images of the old ones, changed only by decreases whose
@@ -741,9 +2842,35 @@ theorem ownerReturn_origin {A B : Forest} {sd : StopData} {rd : RootData} {n : N
         (kJ' = kJ ∧ kJ.length < b ∨ ∃ a, a < b ∧ FirstDec kJ kJ' a)) ∧
       (kH' = kH → kJ' = kJ) := by sorry
 
+/-- T3.2n helper (branch D3): key-word order is key order. -/
+theorem keyWord_lt_iff_D3 (K K' : Key) : keyWord K < keyWord K' ↔ K < K' := by
+  unfold keyWord
+  rw [← gword, ← gword, gword_lt_iff,
+    Tree.cmp_map (c := keyLabelCmp) (fun x y => (keyLabelCmp_eq x y).symm)]
+  rfl
+
 -- T3.2n (txt:363-366): ordinary outputs satisfy S (no output A is used)
 theorem condS_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondS B := by sorry
+    (hB : expand A n = some B) : CondS B := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  intro e0' he0 e' he hret
+  obtain ⟨e0, e, j, he0A, heA, hretA, hpos, heq⟩ :=
+    ownerReturn_origin hL hk hsd hrd hB he0 he hret
+  have hSA := hL.2.2.2.2 e0 he0A e heA hretA
+  have hlt : keyWord (kappa sd.r (period sd) j (relKey (e.col.num 0) ((A.heightAt e).getD Tree.empty))) <
+      keyWord (kappa sd.r (period sd) j (relKey (e0.col.num 0) ((A.heightAt e0).getD Tree.empty))) :=
+    (keyWord_lt_iff_D3 _ _).2 (kappa_strictMono _ _ _ hSA)
+  rw [← keyWord_lt_iff_D3]
+  rcases hpos with hH | ⟨b, hb1, hb2, -, hJ | ⟨a, hab, hfd⟩⟩
+  · rw [hH, heq hH]; exact hlt
+  · rw [hJ.1]
+    refine lt_of_take_succ hlt ?_
+    have h1 := congrArg (List.take (keyWord (kappa sd.r (period sd) j
+      (relKey (e.col.num 0) ((A.heightAt e).getD Tree.empty)))).length.succ) hb1
+    rw [List.take_take, List.take_take] at h1
+    rwa [min_eq_left (by omega)] at h1
+  · exact lt_of_firstDec hlt hfd ⟨hb1, hb2⟩ hab
 
 -- T3.2o (txt:367-376): P is preserved by ordinary steps
 theorem condP_ord {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
@@ -805,6 +2932,185 @@ theorem seed_condP (m : Nat) : CondP (seed m) := by sorry
 -- T3.2w: the empty forest lies in L and satisfies P
 theorem inL_empty : InL Tree.empty := by sorry
 theorem condP_empty : CondP Tree.empty := by sorry
+
+/-! ### T3.2 — the closure theorem
+
+The six spine contracts of T3.2 below were moved here from `Plan/Spine.lean` (brief rule 5,
+branch D3): their proofs use the T3.2 sub-lemmas of this section; nothing in between used them. -/
+
+/-- The output of a loop step lies below the previous phase's stopping column (only the parents
+of `U` are used). -/
+theorem ordStep_lt_D3 {sd : StopData} {rd : RootData} {F : Forest} {U : Column} {k : Nat}
+    {Z : Forest} (hUr : ∀ x ∈ U, x.1 < sd.r) :
+    ordStep sd rd F U k Z <
+      .node [Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])] := by
+  have hmapQ : Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)]) =
+      Tree.mapCol (shiftVal sd.r ((k - 1) * (sd.t - sd.r))) sd.Q ++
+        [(shiftVal sd.r ((k - 1) * (sd.t - sd.r)) sd.r, Tree.empty)] := by
+    simp [treeMapCol_eq_map, Tree.map, Tree.mapCols, Tree.empty]
+  have hρ : sd.r ≤ shiftVal sd.r ((k - 1) * (sd.t - sd.r)) sd.r := le_shiftVal_D3 _ _ _
+  unfold ordStep
+  simp only
+  rw [hmapQ]
+  split
+  · rw [List.append_assoc]
+    refine head_lt_D3 (rest := []) (fun v hv => lt_of_lt_of_le ?_ hρ)
+    have e := mapLast_eq (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+      (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+        (k * (sd.t - sd.r)) Z)) U
+    rw [← e] at hv
+    cases hU0 : U.head? with
+    | none =>
+      cases U with
+      | nil => simp [mapLast] at hv
+      | cons _ _ => simp at hU0
+    | some u0 =>
+      obtain ⟨y, hy, hyu⟩ := head_mapLast_fst_D3
+        (fun x : Nat × Forest => (x.1, shift sd.r (k * (sd.t - sd.r)) x.2))
+        (fun x : Nat × Forest => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ sd.r
+          (k * (sd.t - sd.r)) Z)) (fun _ => rfl) (fun _ => rfl) u0 hU0
+      rw [hy] at hv; cases hv
+      rw [hyu]; exact hUr u0 (List.mem_of_head? hU0)
+  · refine head_lt_D3 (fun v hv => lt_of_lt_of_le ?_ hρ)
+    cases U with
+    | nil => simp at hv
+    | cons u us => simp at hv; subst hv; exact hUr u (by simp)
+
+theorem ordZ_lt_D3 {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (n : Nat) :
+    ordZ A sd rd n < .node [sd.Q ++ [(sd.r, Tree.empty)]] := by
+  obtain ⟨-, -, hU, -, -⟩ := ord_vdata_D3 hV hsd hrd
+  have := ordLoop_induct_D3 (step := ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor))
+    (P := fun k Z => Z <
+      .node [Tree.mapCol (shiftVal sd.r (k * (sd.t - sd.r))) (sd.Q ++ [(sd.r, Tree.empty)])]) ?_ n
+    Tree.empty (Forest.empty_lt (by simp [Tree.empty]))
+  · simpa [ordZ, shiftVal_zero_fun, treeMapCol_id_fun] using this
+  · intro k Z _ _
+    exact ordStep_lt_D3 (fun x hx => (hU x hx).1)
+
+/-- The special output is below the input: the owner column `P ⌢ [(p, C ⌢ [[(a,∅)]])]` becomes
+`P ⌢ [(p, C)]^m`. -/
+theorem special_col_lt_D3 (P : Column) (p : Nat) (Fl : Forest) (hFl : Fl.cols ≠ []) (m : Nat) :
+    (Tree.node [P ++ List.replicate m (p, Tree.node Fl.cols.dropLast)] : Forest) <
+      .node [P ++ [(p, Fl)]] := by
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols, cmpCol_append_left_D3]
+  cases m with
+  | zero => rfl
+  | succ m =>
+    rw [List.replicate_succ]
+    simp only [Tree.cmpCol]
+    rw [show compare p p = Ordering.eq from compare_eq_iff_eq.2 rfl]
+    obtain ⟨fc⟩ := Fl
+    have hc : Tree.cmp compare (Tree.node fc.dropLast : Forest) (Tree.node fc) = .lt := by
+      simp only [Tree.cmp, Tree.cols] at hFl ⊢
+      conv => rhs; skip
+      have := cmpCols_append_left_D3 fc.dropLast [] [fc.getLast hFl]
+      rw [List.append_nil, List.dropLast_append_getLast hFl] at this
+      rw [this]; rfl
+    have e : (Tree.node fc).cols = fc := rfl
+    rw [e, hc]; rfl
+
+-- provides: U2, T3.2
+theorem inL_safePrefix {E : Forest} (hE : Scan.InL E) (k : Nat) :
+    Scan.InL (Scan.safePrefix E k) :=
+  ⟨safePrefix_condV hE.1 k, safePrefix_condI hE.2.1 k, safePrefix_condH hE.2.2.1 k,
+    safePrefix_condA hE k, safePrefix_condS hE.1 hE.2.2.2.2 k⟩
+
+-- provides: U2, T3.2
+theorem inL_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (h : expand E n = some E') :
+    Scan.InL E' := by
+  by_cases hE0 : E = Tree.empty
+  · subst hE0; rw [expand_empty] at h; cases h; exact inL_empty
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE0 hE.1 hE.2.1)
+  cases k with
+  | deletion =>
+    obtain ⟨j, -, rfl⟩ := expand_safePrefix hE0 hE.1 hE.2.1 (Or.inl hk) h
+    exact inL_safePrefix hE j
+  | special =>
+    obtain ⟨hV, hI, hH⟩ := condVIH_special hE hk h
+    exact ⟨hV, hI, hH, condA_special hE hk h, condS_special hE hk h⟩
+  | ordinary =>
+    exact ⟨condV_ord hE hk h, condI_ord hE hk h, condH_ord hE hk h, condA_ord hE hk h,
+      condS_ord hE hk h⟩
+
+-- provides: U2, T3.2 (P is preserved when present, S-6)
+theorem condP_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (hP : CondP E)
+    (h : expand E n = some E') : CondP E' := by
+  by_cases hE0 : E = Tree.empty
+  · subst hE0; rw [expand_empty] at h; cases h; exact condP_empty
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE0 hE.1 hE.2.1)
+  cases k with
+  | deletion =>
+    obtain ⟨j, -, rfl⟩ := expand_safePrefix hE0 hE.1 hE.2.1 (Or.inl hk) h
+    exact safePrefix_condP hE hP j
+  | special => exact condP_special hE hP hk h
+  | ordinary => exact condP_ord hE hP hk h
+
+-- provides: U2, T3.2
+theorem std_inL {E : Forest} (h : IsStd E) : Scan.InL E := by
+  induction h with
+  | seed m => exact seed_inL m
+  | expand n _ hexp ih => exact inL_expand ih hexp
+
+-- provides: U2, T3.2
+theorem std_condP {E : Forest} (h : IsStd E) : CondP E := by
+  induction h with
+  | seed m => exact seed_condP m
+  | expand n hstd hexp ih => exact condP_expand (std_inL hstd) ih hexp
+
+-- provides: U2, T3.2 (strict decrease; the paper's statement asks only V, I)
+theorem expand_lt {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV : Scan.CondV E)
+    (hI : Scan.CondI E) (h : expand E n = some E') : E' < E := by
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE hV hI)
+  cases k with
+  | deletion =>
+    rw [expand_deletion hk] at h
+    cases h
+    obtain ⟨cs, hcs⟩ := List.getLast?_eq_some_iff.1 ((stepKind_deletion_iff E).1 hk)
+    obtain ⟨cols⟩ := E
+    simp only [Tree.cols] at hcs ⊢
+    subst hcs
+    show Tree.cmp compare _ _ = .lt
+    simp only [Tree.cmp, List.dropLast_concat]
+    have := cmpCols_append_left_D3 cs [] [[]]
+    rw [List.append_nil] at this
+    rw [this]; rfl
+  | special =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+    obtain ⟨sd', hsd', hs⟩ := (stepKind_special_iff E).mp hk
+    rw [hsd] at hsd'; cases hsd'
+    have hpos : 0 < sd.depth := by
+      simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq] at hs; exact hs.1.1
+    obtain ⟨oe, col, p0, hoe, -, hcol, hlastc, -⟩ := ownerEntry_data hsd hpos
+    obtain ⟨-, -, -, col', p, Fl, hcol', hlast, -, hFl⟩ := ownerEntry_spec hk hsd hoe
+    rw [hcol] at hcol'; cases hcol'
+    rw [expand_eq_paperOp hE hV hI, paperOp_special hk hsd hoe hcol hlast] at h
+    cases h
+    obtain ⟨hR, -⟩ := stop_route_top_D3 hsd
+    have hR' : RouteOK_D3 (sd.depth - 1) E := routeOK_le_D3 _ _ _ hR (by omega)
+    have hrc : routeCol_D3 (sd.depth - 1) E = col := by simp [routeCol_D3, hlastc]
+    rw [Hole.fill_eq_put, shift_zero]
+    refine put_lt_D3 hR' ?_
+    rw [hrc]
+    obtain ⟨P, rfl⟩ := List.getLast?_eq_some_iff.1 hlast
+    rw [List.dropLast_concat]
+    exact special_col_lt_D3 P p Fl (by intro he; rw [he] at hFl; simp at hFl) _
+  | ordinary =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+    rw [expand_eq_paperOp hE hV hI, paperOp_ordinary hk hsd hrd] at h
+    split at h
+    · cases h
+    · cases h
+      obtain ⟨hR, -⟩ := stop_route_top_D3 hsd
+      obtain ⟨-, -, -, h4, -⟩ := stopData_core hsd
+      have hrc : routeCol_D3 sd.depth E = sd.Q ++ [(sd.r, Tree.empty)] := by
+        simp [routeCol_D3, h4]
+      show replaceAt 0 0 _ sd.depth E < E
+      refine put_lt_D3 hR ?_
+      rw [hrc]; exact ordZ_lt_D3 hV hsd hrd n
 
 /-! ## §T3.8 — cofinality -/
 
