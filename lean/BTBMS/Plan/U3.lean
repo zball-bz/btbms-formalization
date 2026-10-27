@@ -533,6 +533,11 @@ theorem onStack_path_prefix {c o : ColAddr} (h : c.OnStack o) : o.path <+: c.pat
   · rw [hp]; exact List.take_prefix _ _
   · rw [hp]
 
+theorem rep_isSome_iff (c : ColAddr) (q : Nat) : (c.rep 0 q).isSome ↔ q < c.num 0 := by
+  unfold ColAddr.rep
+  rw [Option.isSome_map, ColAddr.resolve_isSome_iff]
+  omega
+
 -- provides: U3, D6.1a (every atom of `Γ(E)` is a consecutive order atom or is owned by a role)
 theorem graph_atom_cases (E : Forest) (a : BaseAtom Role) (ha : a ∈ graph E) :
     (∃ (i : Nat) (x y : Role), a = .lt x y ∧ E.roles[i]? = some x ∧ E.roles[i + 1]? = some y) ∨
@@ -1527,6 +1532,119 @@ theorem graph_prefix {H H' : Forest} {n : Nat} {rs : RoleSets}
 def originRange (E : Forest) (cap : Option (Closure.AdmCap E)) : List Role :=
   (Closure.anchor E cap).roles.filterMap (Closure.anchorOrigin E cap)
 
+theorem baseAtom_vars_map {V W : Type} (f : V → W) (a : BaseAtom V) :
+    (a.map f).vars = a.vars.map f := by
+  cases a <;> rfl
+
+/-- D6.1b helper: the representative pair `(A_o, A_o)` of the number just below a column is its
+predecessor in the same forest. -/
+theorem prev_of_rep {c₁ c₂ : ColAddr} {q : Nat} (h : c₂.rep 0 q = some (.ord c₁, .ord c₁))
+    (hq : q + 1 = c₂.num 0) : c₁ = ⟨c₂.path, c₂.col - 1⟩ ∧ 1 ≤ c₂.col := by
+  unfold ColAddr.rep at h
+  obtain ⟨o, ho, hov⟩ := Option.map_eq_some_iff.1 h
+  simp only [Prod.mk.injEq, Role.ord.injEq] at hov
+  obtain ⟨rfl, hcont⟩ := hov
+  have hcont' : o.container c₂ = none := by
+    cases hc : o.container c₂ with
+    | none => rfl
+    | some e => rw [hc] at hcont; cases hcont
+  obtain ⟨hs, hn⟩ := (ColAddr.resolve_spec 0 c₂ o q).1 ho
+  rcases hs with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · exfalso
+    have h1 := ColAddr.wsum_take_succ hk
+    have h2 := ColAddr.wsum_take_le c₂.path (k + 1)
+    have hkl : k < c₂.path.length := (List.getElem?_eq_some_iff.1 hk).1
+    have hol : o.path.length = k := by rw [hp]; simp; omega
+    simp only [ColAddr.num, hp] at hn hq
+    have hcol : o.col = ck := by omega
+    have : o.container c₂ = some ⟨o, ik⟩ := by
+      rw [ColAddr.container_spec]
+      refine ⟨rfl, ?_⟩
+      show o.path ++ [(o.col, ik)] <+: c₂.path
+      rw [hp, hcol]
+      conv_rhs => rw [Tree.list_split_of_getElem? hk]
+      exact ⟨c₂.path.drop (k + 1), by simp⟩
+    rw [hcont'] at this
+    cases this
+  · simp only [ColAddr.num, hp] at hn hq
+    have hoc : o.col = c₂.col - 1 := by omega
+    exact ⟨colAddr_eq hp hoc, by omega⟩
+
+/-- D6.1b helper: the origin of a slot is a slot (or undefined). -/
+theorem origin_slot {E : Forest} (w : Closure.AdmCap E) (e : EntryAddr) :
+    w.origin (.slot e) = none ∨ ∃ e', w.origin (.slot e) = some (.slot e') := by
+  have hfold : ∀ ms : List Closure.Move, ∃ e', ms.foldr (fun m y => m.mapRole m.bwdIdx y) (Role.slot e) =
+      .slot e' := by
+    intro ms
+    induction ms with
+    | nil => exact ⟨e, rfl⟩
+    | cons m ms ih =>
+      obtain ⟨e', he'⟩ := ih
+      refine ⟨m.mapEntry m.bwdIdx e', ?_⟩
+      simp only [List.foldr_cons, he']
+      rfl
+  obtain ⟨e', he'⟩ := hfold w.moves
+  show Closure.originBody w (.slot e) = none ∨ ∃ e'', Closure.originBody w (.slot e) = some (.slot e'')
+  unfold Closure.originBody
+  simp only [he']
+  split_ifs
+  · exact Or.inl rfl
+  · exact Or.inr ⟨e', rfl⟩
+
+/-- D6.1b helper: the column before a column of a forest exists. -/
+theorem prev_col_mem {t : Forest} {d : ColAddr} (hd : Role.ord d ∈ t.roles) (h1 : 1 ≤ d.col) :
+    Role.ord ⟨d.path, d.col - 1⟩ ∈ t.roles := by
+  rw [Tree.mem_roles_iff] at hd ⊢
+  show (t.colAt ⟨d.path, d.col - 1⟩).isSome
+  change (t.colAt d).isSome at hd
+  unfold Tree.colAt at hd ⊢
+  cases hF : t.forestAt d.path with
+  | none => rw [hF] at hd; simp at hd
+  | some F =>
+    rw [hF] at hd
+    simp only [Option.bind_some] at hd ⊢
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 hd
+    have hl := (List.getElem?_eq_some_iff.1 hx).1
+    rw [List.getElem?_eq_getElem (by omega)]
+    rfl
+
+/-- D6.1b helper: the closing slot contains no column. -/
+theorem not_contains_closing {H : Forest} {sd : Scan.StopData} (hsd : Scan.stopData H = some sd)
+    {c : ColAddr} (hc : Role.ord c ∈ H.roles) : ¬ (Scan.closingSlot sd).heightPath <+: c.path := by
+  rintro ⟨σ, hσ⟩
+  obtain ⟨hcolT, -⟩ := Scan.stopData_spec hsd
+  have hN : H.heightAt (Scan.closingSlot sd) = some Tree.empty := by
+    simp [Tree.heightAt, Tree.entryAt, hcolT, Scan.closingSlot]
+  rw [Tree.mem_roles_iff] at hc
+  change (H.colAt c).isSome at hc
+  obtain ⟨cp, cc⟩ := c
+  simp only at hσ
+  subst hσ
+  rw [Tree.colAt_under hN] at hc
+  cases σ with
+  | nil => simp [Tree.colAt, Tree.forestAt, Tree.empty, Tree.cols] at hc
+  | cons s σ =>
+    obtain ⟨a, b⟩ := s
+    rw [Tree.colAt_cons] at hc
+    simp [Tree.empty, Tree.cols] at hc
+
+/-- D6.1b helper: the representative pair of the number just below the next column of a forest. -/
+theorem rep_next (c : ColAddr) :
+    (⟨c.path, c.col + 1⟩ : ColAddr).rep 0 (c.num 0) = some (.ord c, .ord c) := by
+  have hres : (⟨c.path, c.col + 1⟩ : ColAddr).resolve 0 (c.num 0) = some c := by
+    rw [ColAddr.resolve_spec]
+    exact ⟨Or.inr ⟨rfl, by simp⟩, rfl⟩
+  unfold ColAddr.rep
+  rw [hres]
+  have : c.container ⟨c.path, c.col + 1⟩ = none := by
+    cases h : c.container ⟨c.path, c.col + 1⟩ with
+    | none => rfl
+    | some e =>
+      obtain ⟨h1, h2⟩ := (ColAddr.container_spec _ _ _).1 h
+      have := h2.length_le
+      simp [EntryAddr.heightPath, h1] at this
+  simp [this]
+
 -- provides: U3, D6.1b (non-order atoms correspond exactly; order is preserved)
 theorem graph_origin {E : Forest} (hE : Scan.InL E) (cap : Option (Closure.AdmCap E)) :
     (∀ a, atomOwner a ≠ none →
@@ -1535,7 +1653,224 @@ theorem graph_origin {E : Forest} (hE : Scan.InL E) (cap : Option (Closure.AdmCa
         (a ∈ graph E ∧ ∀ v ∈ a.vars, v ∈ originRange E cap))) ∧
     (∀ x y, Before (Closure.anchor E cap) x y → (Closure.anchorOrigin E cap x).isSome →
       (Closure.anchorOrigin E cap y).isSome → Before E (anchorD E cap x) (anchorD E cap y)) := by
-  sorry
+  cases cap with
+  | none =>
+    have hD : anchorD E none = id := by funext x; rfl
+    have hR : originRange E none = E.roles := by
+      simp [originRange, Closure.anchor, Closure.anchorOrigin]
+    simp only [Closure.anchor, hD, hR]
+    refine ⟨fun a _ => ?_, fun x y h _ _ => h⟩
+    have hmap : ∀ a₀ : BaseAtom Role, a₀.map id = a₀ := by intro a₀; cases a₀ <;> rfl
+    constructor
+    · rintro ⟨a₀, ha₀, -, rfl⟩
+      rw [hmap]
+      exact ⟨ha₀, graph_vars_roles E a₀ ha₀⟩
+    · rintro ⟨ha, -⟩
+      exact ⟨a, ha, fun v _ => rfl, (hmap a).symm⟩
+  | some w =>
+    obtain ⟨hinj, hnone, hval, hord, hnum, hslot, hrep, horder⟩ := Closure.origin_spec_full hE w
+    set H := w.H with hHdef
+    have hanc : Closure.anchor E (some w) = H := rfl
+    have hχ : Closure.anchorOrigin E (some w) = w.origin := rfl
+    set chi := anchorD E (some w) with hchi
+    have hchidef : ∀ x, chi x = (w.origin x).getD x := fun x => rfl
+    have hchisome : ∀ x y, w.origin x = some y → chi x = y := by
+      intro x y h; rw [hchidef, h]; rfl
+    have hRng : ∀ v, v ∈ originRange E (some w) ↔ ∃ x ∈ H.roles, w.origin x = some v := by
+      intro v; simp [originRange, Closure.anchor, Closure.anchorOrigin, hHdef]
+    -- every non-closing role of `H` has an origin
+    have hsome : ∀ x ∈ H.roles, (∀ sd, Scan.stopData H = some sd → x ≠ .slot (Scan.closingSlot sd)) →
+        ∃ y, w.origin x = some y := by
+      intro x hx hne
+      cases h : w.origin x with
+      | none =>
+        obtain ⟨sd, hsd, rfl⟩ := (hnone x hx).1 h
+        exact absurd rfl (hne sd hsd)
+      | some y => exact ⟨y, rfl⟩
+    have hord_some : ∀ c, Role.ord c ∈ H.roles → ∃ c', w.origin (.ord c) = some (.ord c') := by
+      intro c hc
+      rcases hord c hc with h | h
+      · exact h
+      · obtain ⟨sd, -, h'⟩ := (hnone _ hc).1 h
+        cases h'
+    rw [hanc, hχ]
+    refine ⟨fun a hown => ?_, ?_⟩
+    · constructor
+      · rintro ⟨a₀, ha₀, hor, rfl⟩
+        have hvars₀ := graph_vars_roles H a₀ ha₀
+        refine ⟨?_, ?_⟩
+        · rw [mem_graph_iff]
+          rcases (mem_graph_iff H a₀).1 ha₀ with ⟨x, hx, rfl⟩ | ⟨i, x, y, -, -, rfl⟩ | ⟨c, hc, hc', rfl⟩ |
+            ⟨e, p, o, v, hp, hov, ha'⟩
+          · obtain ⟨u, hu⟩ := Option.isSome_iff_exists.1 (hor x (by simp [BaseAtom.vars]))
+            exact Or.inl ⟨u, hval x hx u hu, by simp [BaseAtom.map, hchisome x u hu]⟩
+          · simp [atomOwner, BaseAtom.map] at hown
+          · obtain ⟨c₁, hc₁⟩ := hord_some c hc
+            obtain ⟨c₂, hc₂⟩ := hord_some _ hc'
+            have hn₂ := hnum _ _ hc' hc₂
+            have hr := hrep _ _ hc' hc₂ (c.num 0) (by simp [ColAddr.num])
+            rw [rep_next] at hr
+            simp only [Option.map_some, hchisome _ _ hc₁] at hr
+            obtain ⟨hc₁e, h1⟩ := prev_of_rep hr.symm (by simp [ColAddr.num] at hn₂ ⊢; omega)
+            refine Or.inr (Or.inr (Or.inl ⟨c₁, hval _ hc _ hc₁, ?_, ?_⟩))
+            · rw [hc₁e]; simp only [Nat.sub_add_cancel h1]; exact hval _ hc' _ hc₂
+            · simp only [BaseAtom.map, hchisome _ _ hc₁, hchisome _ _ hc₂, hc₁e, Nat.sub_add_cancel h1]
+          · have he : e ∈ H.entryAddrs := by
+              rw [Tree.mem_entryAddrs_iff]
+              obtain ⟨x, hx, -⟩ := Option.map_eq_some_iff.1 hp
+              rw [hx]; rfl
+            have hsl : Role.slot e ∈ H.roles := by rw [Tree.mem_roles_iff]; exact (Tree.mem_entryAddrs_iff _ _).1 he
+            have hoc : Role.ord e.col ∈ H.roles := prefixRoles_sub (Tree.stack_mem_prefix he).1
+            obtain ⟨u, hu⟩ := Option.isSome_iff_exists.1 (hor (.slot e) (by
+              rcases ha' with rfl | rfl <;> simp [BaseAtom.vars]))
+            rcases origin_slot w e with h | ⟨e', he'⟩
+            · rw [h] at hu; cases hu
+            rw [he'] at hu
+            cases hu
+            obtain ⟨hlab, hcol⟩ := hslot e e' hsl he'
+            have hpl : p < e.col.num 0 := (rep_isSome_iff e.col p).1 (by rw [hov]; rfl)
+            have hr := hrep _ _ hoc hcol p hpl
+            rw [hov] at hr
+            simp only [Option.map_some] at hr
+            refine Or.inr (Or.inr (Or.inr ⟨e', p, chi o, chi v, by rw [← hlab]; exact hp, hr.symm, ?_⟩))
+            rcases ha' with rfl | rfl
+            · left; simp [BaseAtom.map, hchisome _ _ he', hchisome _ _ hcol]
+            · right; simp [BaseAtom.map, hchisome _ _ he', hchisome _ _ hcol]
+        · intro v hv
+          rw [baseAtom_vars_map] at hv
+          obtain ⟨v₀, hv₀, rfl⟩ := List.mem_map.1 hv
+          obtain ⟨u, hu⟩ := Option.isSome_iff_exists.1 (hor v₀ hv₀)
+          rw [hRng, hchisome _ _ hu]
+          exact ⟨v₀, hvars₀ v₀ hv₀, hu⟩
+      · rintro ⟨ha, hvars⟩
+        have hvars' : ∀ v ∈ a.vars, ∃ x ∈ H.roles, w.origin x = some v := fun v hv => (hRng v).1 (hvars v hv)
+        rcases (mem_graph_iff E a).1 ha with ⟨x, -, rfl⟩ | ⟨i, x, y, -, -, rfl⟩ | ⟨c, hc, hc', rfl⟩ |
+          ⟨e, p, o, v, hp, hov, ha'⟩
+        · obtain ⟨x₀, hx₀, hu⟩ := hvars' x (by simp [BaseAtom.vars])
+          refine ⟨.lim x₀, (mem_graph_iff H _).2 (Or.inl ⟨x₀, hx₀, rfl⟩), ?_, ?_⟩
+          · intro v hv; simp [BaseAtom.vars] at hv; subst hv; rw [hu]; rfl
+          · simp [BaseAtom.map, hchisome _ _ hu]
+        · simp [atomOwner] at hown
+        · obtain ⟨z₀, hz₀, hu⟩ := hvars' (.ord ⟨c.path, c.col + 1⟩) (by simp [BaseAtom.vars])
+          -- the preimage of `A_{c+1}` is an ordinary role
+          obtain ⟨d₀, rfl⟩ : ∃ d₀, z₀ = .ord d₀ := by
+            cases z₀ with
+            | ord d₀ => exact ⟨d₀, rfl⟩
+            | slot e₀ =>
+              rcases origin_slot w e₀ with h | ⟨e', he'⟩
+              · rw [h] at hu; cases hu
+              · rw [he'] at hu; cases hu
+          have hn := hnum _ _ hz₀ hu
+          have hr := hrep _ _ hz₀ hu (c.num 0) (by simp [ColAddr.num] at hn ⊢; omega)
+          rw [rep_next] at hr
+          cases hrd : d₀.rep 0 (c.num 0) with
+          | none => rw [hrd] at hr; cases hr
+          | some ov =>
+            rw [hrd] at hr
+            simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+            obtain ⟨h1, h2⟩ := hr
+            -- the first representative is an ordinary role, so is the second
+            obtain ⟨o₁, ho₁⟩ : ∃ o₁, ov.1 = .ord o₁ := by
+              unfold ColAddr.rep at hrd
+              obtain ⟨o', -, rfl⟩ := Option.map_eq_some_iff.1 hrd
+              exact ⟨o', rfl⟩
+            have hov2 : ov.2 = .ord o₁ := by
+              unfold ColAddr.rep at hrd
+              obtain ⟨o', -, hov'⟩ := Option.map_eq_some_iff.1 hrd
+              rw [← hov'] at ho₁ h2 ⊢
+              simp only [Role.ord.injEq] at ho₁
+              subst ho₁
+              split at h2
+              · rename_i e'' _
+                rcases origin_slot w e'' with h | ⟨e3, he3⟩
+                · rw [hchidef, h] at h2; cases h2
+                · rw [hchisome _ _ he3] at h2; cases h2
+              · rfl
+            have hrd' : d₀.rep 0 (c.num 0) = some (.ord o₁, .ord o₁) := by
+              rw [hrd]
+              obtain ⟨o1, o2⟩ := ov
+              simp only at ho₁ hov2
+              rw [ho₁, hov2]
+            obtain ⟨ho₁e, hd1⟩ := prev_of_rep hrd' (by simp [ColAddr.num] at hn ⊢; omega)
+            have ho₁m : Role.ord o₁ ∈ H.roles := by rw [ho₁e]; exact prev_col_mem hz₀ hd1
+            obtain ⟨c₁', hc₁'⟩ := hord_some o₁ ho₁m
+            have hχo₁ : chi (.ord o₁) = .ord c := by rw [← h1, ho₁]
+            refine ⟨.elem (.ord o₁) (.ord ⟨o₁.path, o₁.col + 1⟩), ?_, ?_, ?_⟩
+            · rw [mem_graph_iff]
+              refine Or.inr (Or.inr (Or.inl ⟨o₁, ho₁m, ?_, rfl⟩))
+              rw [ho₁e]; simp only [Nat.sub_add_cancel hd1]; exact hz₀
+            · intro v hv
+              simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hv
+              rcases hv with rfl | rfl
+              · rw [hc₁']; rfl
+              · rw [ho₁e]; simp only [Nat.sub_add_cancel hd1]; rw [hu]; rfl
+            · have : (⟨o₁.path, o₁.col + 1⟩ : ColAddr) = d₀ := by
+                rw [ho₁e]; simp only [Nat.sub_add_cancel hd1]
+              simp only [BaseAtom.map, hχo₁, this, hchisome _ _ hu]
+        · obtain ⟨x₀, hx₀, hu⟩ := hvars' (.slot e) (by rcases ha' with rfl | rfl <;> simp [BaseAtom.vars])
+          obtain ⟨e₀, rfl⟩ : ∃ e₀, x₀ = .slot e₀ := by
+            cases x₀ with
+            | slot e₀ => exact ⟨e₀, rfl⟩
+            | ord c₀ =>
+              obtain ⟨c', hc'⟩ := hord_some c₀ hx₀
+              rw [hc'] at hu; cases hu
+          obtain ⟨hlab, hcol⟩ := hslot e₀ e hx₀ hu
+          have he₀ : e₀ ∈ H.entryAddrs := by
+            rw [Tree.mem_entryAddrs_iff]; rw [Tree.mem_roles_iff] at hx₀; exact hx₀
+          have hoc : Role.ord e₀.col ∈ H.roles := prefixRoles_sub (Tree.stack_mem_prefix he₀).1
+          have hn := hnum _ _ hoc hcol
+          have hpl : p < e.col.num 0 := (rep_isSome_iff e.col p).1 (by rw [hov]; rfl)
+          have hr := hrep _ _ hoc hcol p (by omega)
+          rw [hov] at hr
+          cases hr₀ : e₀.col.rep 0 p with
+          | none => rw [hr₀] at hr; cases hr
+          | some ov =>
+            rw [hr₀] at hr
+            simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hr
+            obtain ⟨h1, h2⟩ := hr
+            obtain ⟨hm1, hm2⟩ := rep_mem_prefix he₀ hr₀
+            -- the representatives are not the closing slot
+            have hnc : ∀ x, (x = ov.1 ∨ x = ov.2) → ∃ y, w.origin x = some y := by
+              rintro x hx
+              apply hsome x (by rcases hx with rfl | rfl <;> first | exact prefixRoles_sub hm1 | exact prefixRoles_sub hm2)
+              intro sd hsd hxN
+              unfold ColAddr.rep at hr₀
+              obtain ⟨o', -, hov'⟩ := Option.map_eq_some_iff.1 hr₀
+              rw [← hov'] at hx
+              rcases hx with hx | hx
+              · rw [hxN] at hx; cases hx
+              · try simp only at hx
+                split at hx
+                · rename_i e'' he''
+                  have heq : e'' = Scan.closingSlot sd := Role.slot.inj (hx.symm.trans hxN)
+                  obtain ⟨-, h3⟩ := (ColAddr.container_spec _ _ _).1 he''
+                  rw [heq] at h3
+                  exact not_contains_closing hsd hoc h3
+                · rw [hxN] at hx; cases hx
+            obtain ⟨y1, hy1⟩ := hnc ov.1 (Or.inl rfl)
+            obtain ⟨y2, hy2⟩ := hnc ov.2 (Or.inr rfl)
+            have hp₀ : (H.entryAt e₀).map Prod.fst = some p := by rw [hlab]; exact hp
+            rcases ha' with rfl | rfl
+            · refine ⟨.edge (.slot e₀) (.ord e₀.col) ov.1, (mem_graph_iff H _).2
+                (Or.inr (Or.inr (Or.inr ⟨e₀, p, ov.1, ov.2, hp₀, hr₀, Or.inl rfl⟩))), ?_, ?_⟩
+              · intro x hx
+                simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hx
+                rcases hx with rfl | rfl | rfl
+                · rw [hu]; rfl
+                · rw [hcol]; rfl
+                · rw [hy1]; rfl
+              · simp [BaseAtom.map, hchisome _ _ hu, hchisome _ _ hcol, h1]
+            · refine ⟨.edge (.slot e₀) (.ord e₀.col) ov.2, (mem_graph_iff H _).2
+                (Or.inr (Or.inr (Or.inr ⟨e₀, p, ov.1, ov.2, hp₀, hr₀, Or.inr rfl⟩))), ?_, ?_⟩
+              · intro x hx
+                simp only [BaseAtom.vars, List.mem_cons, List.not_mem_nil, or_false] at hx
+                rcases hx with rfl | rfl | rfl
+                · rw [hu]; rfl
+                · rw [hcol]; rfl
+                · rw [hy2]; rfl
+              · simp [BaseAtom.map, hchisome _ _ hu, hchisome _ _ hcol, h2]
+    · intro x y hxy hx hy
+      exact horder x y hxy hx hy
 
 /-! ## D7.1a  Frames and blocks read inside a tree -/
 
@@ -1687,11 +2022,6 @@ theorem rep_inside (e : EntryAddr) (d : ColAddr) (hd : e.heightPath <+: d.path) 
 
 /-- D7.1a: the first `m` columns of a forest (the "proper prefix" of Case 1). -/
 def takeCols (X : Forest) (m : Nat) : Forest := .node (X.cols.take m)
-
-theorem rep_isSome_iff (c : ColAddr) (q : Nat) : (c.rep 0 q).isSome ↔ q < c.num 0 := by
-  unfold ColAddr.rep
-  rw [Option.isSome_map, ColAddr.resolve_isSome_iff]
-  omega
 
 theorem takeCols_roles_prefix (B : Forest) (m : Nat) : (takeCols B m).roles <+: B.roles := by
   cases B with
