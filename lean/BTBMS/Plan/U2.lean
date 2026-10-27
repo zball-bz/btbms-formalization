@@ -20958,11 +20958,8 @@ end OrdStep
 -- T3.8lb (`headQuery_oldCap`) moved below the G-009 block, to the G-010 (D7) section (brief
 -- rule 5).
 
--- T3.8lc (txt:607-611): query-part cuts of head `i ≥ 2`
-theorem headQuery_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
-    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
-    Covers (litCap S.B c k ρ) S.B := by sorry
+-- T3.8lc (`headQuery_cut`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
+-- T3.8lb (`headQuery_oldCap`) and the G-010 phase-copy lemmas.
 
 -- T3.8ld (`expand_seam`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
 -- the G-010 head lemmas (`head_scan_F7`, `head_stack_F7`).
@@ -29769,6 +29766,68 @@ theorem seam_cursor_G6 (S : OrdStep) (j : Nat) :
   omega
 
 
+-- G6 (helper): `A` is its own context filled with its stopping column
+theorem context_self_G6 (S : OrdStep) :
+    context S.A S.sd (Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]]) = S.A := by
+  obtain ⟨G, hG, hR⟩ := ker_routeTo_of_stop S.hsd 0 (Nat.zero_le _)
+  simp only [List.take_zero, forestAt_nil_path, Option.some.injEq, Nat.sub_zero] at hG hR
+  subst hG
+  unfold context
+  rw [ker_replaceAt_self _ _ _ hR]
+
+-- G6 (helper): a cap of `A` at its stopping column is the context of the capped column
+theorem litCap_sdcol_G6 (S : OrdStep) {k : Nat} (hk : k ≤ S.m) (p : Nat) :
+    litCap S.A S.sd.col k p =
+      context S.A S.sd (Tree.node [S.sd.Q.take k ++ [(p, Tree.empty)]]) := by
+  obtain ⟨hR, hH⟩ := ker_stop_hole S.hsd
+  have hsd : S.sd.col = underCol (kerHoleAt S.sd.depth S.A) ⟨[], 0⟩ := by
+    rw [hH]; simp [underCol]
+  conv_lhs => rw [← context_self_G6 S, hsd]
+  unfold context
+  rw [litCap_place_G6 _ _ _ hR, litCap_eq_aux (col := S.sd.Q ++ [(S.sd.r, Tree.empty)]) rfl]
+  simp only [litCapAux, List.take_zero, List.nil_append, List.getD_cons_zero]
+  rw [List.take_append_of_le_length hk]
+
+-- G6 (helper): the local suffix at the address `⟨[], 0⟩` is the whole forest
+theorem localSuffix_zero_G6 (X : Forest) : localSuffix X ⟨[], 0⟩ = X := by
+  unfold localSuffix
+  simp [Tree.forestAt, ker_node_cols]
+
+-- G6 (helper; T3.8lc step 3): `F(X) < S₀ = [Q ⌢ (r, ∅)]`: after `Q` the kernel's first column
+-- continues with a restored parent `< r` or ends
+theorem kernel_lt_S0_G6 (S : OrdStep) (X : Forest) :
+    kernel S.A S.sd S.rd X < Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+  obtain ⟨V, cs, hker⟩ := kernel_firstCol_E5 S.A S.sd S.rd X
+  obtain ⟨V', hV', hlen, hent⟩ := ker_kernel_col0 S.A S.sd S.rd X
+  rw [hker, colAt_node_nil] at hV'
+  simp only [List.getElem?_cons_zero, Option.some.injEq, List.append_cancel_left_eq] at hV'
+  subst hV'
+  have hUlt := ker_unconsumed_lt S.inL.1 S.hsd S.hrd
+  rw [hker]
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols, cmpCol_append_left_D3]
+  cases V with
+  | nil => rfl
+  | cons y ys =>
+    obtain ⟨x, hx⟩ : ∃ x, (unconsumed S.A S.rd)[0]? = some x :=
+      ⟨_, List.getElem?_eq_getElem (by simp at hlen; omega)⟩
+    obtain ⟨y', hy', hyx, -⟩ := hent 0 x hx
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hy'
+    subst hy'
+    have := hUlt x (List.mem_of_getElem? hx)
+    obtain ⟨p, H⟩ := y
+    simp only at hyx
+    simp only [Tree.cmpCol, Nat.compare_eq_lt.mpr (show p < S.sd.r by omega), Ordering.then]
+
+
+-- G6 (helper): the kernel image of a non-query template address drops the root's path
+theorem kerCol_length_G6 (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) : x.path.length = S.rd.col.path.length + x'.path.length := by
+  obtain ⟨suf, hpath, hcases⟩ := kerCol_tail_spec S hx hxq
+  rw [hpath, List.length_append]
+  rcases hcases with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+    ⟨ci, e, rest, rfl, -, -, rfl⟩ <;> simp
+
 -- T3.8ld (txt:613-617): the seam: the cap at `s_{i−1}` is `A` advanced by `i − 1` periods
 -- (moved here from before T3.8le, brief rule 5: its proof uses the G-010 head lemmas)
 theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -29784,12 +29843,7 @@ theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i �
   have hK := litCap_head_G6 S hi hc (le_refl S.m) S.sd.r
   rw [← hs, hS0] at hK
   -- `A` is its own context filled with its stopping column
-  have hAself : context S.A S.sd (Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]]) = S.A := by
-    obtain ⟨G, hG, hR⟩ := ker_routeTo_of_stop S.hsd 0 (Nat.zero_le _)
-    simp only [List.take_zero, forestAt_nil_path, Option.some.injEq, Nat.sub_zero] at hG hR
-    subst hG
-    unfold context
-    rw [ker_replaceAt_self _ _ _ hR]
+  have hAself := context_self_G6 S
   rcases Nat.eq_or_lt_of_le hi.1 with hi1 | hi2
   · subst hi1
     rw [hK, Nat.sub_self, Function.iterate_zero_apply, hAself, Nat.zero_add]
@@ -29948,6 +30002,147 @@ theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i �
   simp only
   rw [hdK, hK]
   exact context_iter_G6 S _ (j + 1) _
+
+-- T3.8lc (txt:607-611): query-part cuts of head `i ≥ 2`
+-- (moved here from before T3.8ld, brief rule 5: its proof uses T3.8lb and the G-010 lemmas)
+theorem headQuery_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
+    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
+    Covers (litCap S.B c k ρ) S.B := by
+  have hi1 : 1 ≤ i ∧ i ≤ S.n := ⟨by omega, hi.2⟩
+  have hkm : k ≤ S.m := by rcases hk with h | ⟨h, -⟩ <;> omega
+  obtain ⟨hρ, hupA, hV', hI', hA'⟩ := headQuery_oldCap S hi hc hk hup hKL
+  set ρ' := ρ - (i - 1) * S.d with hρ'def
+  set K := litCap S.B c k ρ with hKdef
+  set K' := litCap S.A S.sd.col k ρ' with hK'def
+  set F := kernel S.A S.sd S.rd with hFdef
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hdt : S.sd.t = S.sd.r + S.d := by simp only [OrdStep.d, period]; omega
+  have hρr : S.sd.r < ρ' := by simp only [OrdStep.s] at hρ; omega
+  have hρeq : ρ = ρ' + (i - 1) * S.d := by simp only [OrdStep.s] at hρ; omega
+  -- the old cap succeeds (L3.6), with target `S₀ = [Q ⌢ (r, ∅)]`
+  obtain ⟨sd', rd', hsd', hrd', hkd', hlt'⟩ :=
+    cap_completion S.inL S.condP S.cof S.sd.col k ρ' hupA hV' hI' hA'
+  obtain ⟨hcolA, -⟩ := stopData_spec S.hsd
+  have hsd'eq := stopData_litCap hupA
+  rw [hcolA, Option.getD_some, List.take_append_of_le_length (by simpa [OrdStep.m] using hkm)]
+    at hsd'eq
+  rw [hsd'eq, Option.some.injEq] at hsd'
+  subst hsd'
+  set sd' : StopData := ⟨colDepth S.sd.col, S.sd.col, S.sd.col.num 0, ρ', S.sd.Q.take k⟩
+    with hsd'def
+  have hS0 : localSuffix S.A S.sd.col = Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+    obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest S.hsd
+    unfold localSuffix
+    rw [hG, Option.getD_some, List.drop_eq_getElem_cons (by omega),
+      (List.getElem?_eq_some_iff.mp hGc).2, List.drop_eq_nil_of_le (by omega)]
+  rw [hS0] at hlt'
+  -- downward success at `W = F^{n−i+1}(∅) < S₀` (L3.4c)
+  set W := F^[S.n - i + 1] Tree.empty with hWdef
+  have hWS0 : W < Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+    rw [hWdef, Function.iterate_succ_apply']
+    exact kernel_lt_S0_G6 S _
+  have hdown : W < kernel K' sd' rd' W := by
+    have hw := word_kernel hV' hsd'eq hrd' hkd'
+    rw [← word_lt_iff, hw] at hlt' ⊢
+    exact success_anti _ (kerPrefix_ne_nil _ _ _) (kerSigma_strictMono _ _)
+      (le_of_lt ((word_lt_iff _ _).mpr hWS0)) hlt'
+  -- the two caps as contexts (L1)
+  have hKY : K = context S.A S.sd (F^[i - 1] (Tree.node [S.sd.Q.take k ++ [(ρ', Tree.empty)]])) := by
+    have := litCap_head_G6 S hi1 hc hkm ρ'
+    rwa [show shiftVal S.sd.r ((i - 1) * S.d) ρ' = ρ by
+      simp only [shiftVal, if_pos hρr.le]; omega] at this
+  have hK'Y : K' = context S.A S.sd (Tree.node [S.sd.Q.take k ++ [(ρ', Tree.empty)]]) :=
+    litCap_sdcol_G6 S hkm ρ'
+  -- stop and root data of the new cap
+  obtain ⟨col, hcolB, hlenB, htakeB, -⟩ := colAt_head S.inL S.kind S.hsd S.hrd S.out hi1 hc
+  have hhc : S.headCol i = c := by simp [OrdStep.headCol, hc]
+  have hcnum : c.num 0 = S.s i := by rw [← hhc]; exact num_headCol_F7 S (by omega)
+  have hm : S.sd.Q.length = S.m := rfl
+  have hQK : col.take k = Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) (S.sd.Q.take k) := by
+    rw [show col.take k = (col.take S.sd.Q.length).take k by
+      rw [List.take_take, Nat.min_eq_left (by omega)], htakeB, mapCol_eq_map, mapCol_eq_map,
+      List.map_take]
+    rfl
+  have hsdK := stopData_litCap hup
+  rw [hcolB, Option.getD_some, hQK, hcnum] at hsdK
+  set sdK : StopData := ⟨colDepth c, c, S.s i, ρ,
+    Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) (S.sd.Q.take k)⟩ with hsdKdef
+  have hBI : CondI S.B := condI_ord S.inL S.kind S.out
+  have hord := litCap_ordinary hBI hup hKL.1 hKL.2.1
+  obtain ⟨rdK, hrdK⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hord)
+  have hkdK : KernelDefined K rdK := ker_kernelDefined hKL hsdK hrdK
+  obtain ⟨hresK, -, -, hnumK, -, hmemK, hcurK, -⟩ := rootData_spec hsdK hrdK
+  obtain ⟨hres', -, -, hnum', -, hmem', hcur', -⟩ := rootData_spec hsd'eq hrd'
+  simp only [hsdKdef, hsd'def] at hresK hnumK hcurK hres' hnum' hcur'
+  -- the new root is the phase-`(i−1)` copy of the old root
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  have hkhe : kerHole S.sd S.rd = kh := by simp [kerHole, hkh]
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  have hst' : S.sd.col.OnStack rd'.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres').1
+  obtain ⟨hoker, hoq⟩ := kerCol_of_onStack_tail S hkh hsdq hst' (by rw [hnum']; omega)
+  obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp hoker
+  have hne : rd'.col ≠ S.rd.col := by intro h; rw [h, hrnum] at hnum'; omega
+  have hcdef : c = underCol S.sd.col ((underCol kh)^[i - 1] ⟨[], 0⟩) := by
+    unfold phaseCol at hc
+    rw [kerCol_rdcol S, Option.map_some, Option.some.injEq, hkhe] at hc
+    exact hc.symm
+  obtain ⟨hres2, -⟩ := resolve_copyCol_gen_F7 S hkh hcdef (h := i - 1) (by omega) hρr hres'
+  rw [← hρeq, hresK, Option.some.injEq] at hres2
+  have hrdcol : rdK.col = underCol S.sd.col ((underCol kh)^[i - 2] a') := by
+    rw [hres2]
+    simp only [OrdStep.copyCol, if_neg (show i - 1 ≠ 0 by omega)]
+    rw [phaseCol_eq_iterate S hkh ha']
+    rfl
+  -- its local suffix is the `τ_{i−1}`-copy of the old root's
+  obtain ⟨F', col', -, hcol', hloc', -⟩ := localSuffix_spec_G6 hmem'
+  have hlocK : localSuffix K rdK.col =
+      Tree.node (Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) col' ::
+        (F'.cols.drop (rd'.col.col + 1)).map (Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)))) := by
+    rw [hrdcol, hKY, (ker_context_law S.hsd _ _).2, show i - 1 = (i - 2) + 1 by omega,
+      Function.iterate_succ_apply, ← hkhe, (iter_law_G6 S (i - 2) _ _).2,
+      (ker_kernel_roottail S.inL.1 S.hsd S.hrd _ hoq hne ha').2, ← hK'Y, hloc', shift_add,
+      ker_shift_node, List.map_cons,
+      show (i - 2) * S.d + period S.sd = (i - 2 + 1) * S.d by rw [Nat.succ_mul]; rfl]
+  have hsi : S.s i = S.sd.col.num 0 + (i - 1) * S.d := by
+    have : i * S.d = (i - 1) * S.d + S.d := by rw [← Nat.succ_mul]; congr 1; omega
+    simp only [OrdStep.s]; omega
+  -- the root scans agree (`κ_{i−1}` on both sides)
+  obtain ⟨FK, colK, -, hcolK, hlsK, -⟩ := localSuffix_spec_G6 hmemK
+  rw [hlocK, Tree.node.injEq, List.cons.injEq] at hlsK
+  obtain ⟨hcolKeq, -⟩ := hlsK
+  have hcur : rdK.cursor = rd'.cursor := by
+    rw [hcurK, hcur']
+    unfold rootKeys queryKeys
+    rw [hcolK, hcol', Option.getD_some, Option.getD_some, ← hcolKeq, hnumK, hnum', hρeq,
+      keys_mapCol_G6 _ _ _ _ hρr.le, hsi, keys_mapCol_G6 _ _ _ _ (by omega)]
+    exact cursor_map (kappa_strictMono _ _ _) _ _
+  -- the conjugacy `F_K(τ X) = τ(F_{K'} X)`
+  have hlay := rootData_layer_le S.hsd S.hrd
+  obtain ⟨-, hdepA, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, hlayA, -⟩ := rootData_spec S.hsd S.hrd
+  have hdep : c.path.length + rd'.col.path.length = S.sd.col.path.length + rdK.col.path.length := by
+    rw [hrdcol, hcdef, kerCol_length_G6 S ha' hoq, underCol_path_length_G6,
+      underCol_path_length_G6, iterate_underCol_length_G6, iterate_underCol_length_G6, ← hkhe,
+      kerHole_length_G6, show i - 1 = (i - 2) + 1 by omega, Nat.succ_mul]
+    unfold holeDepth
+    simp only [List.length_nil, Nat.zero_add]
+    omega
+  obtain ⟨-, -, hconj⟩ := kernel_conj_G6 (K := K) (K' := K') (r := S.sd.r)
+    (δ := (i - 1) * S.d) hsdK hsd'eq hrdK hrd' hρr.le rfl hρeq
+    hsi
+    hdep hlocK hloc' rfl (by rw [hcur, mapCol_eq_map, mapCol_eq_map, List.map_drop])
+  -- the target suffix is `τ_{i−1}(W)`
+  have hYB : localSuffix S.B c = shift S.sd.r ((i - 1) * S.d) W := by
+    obtain ⟨hB, -⟩ := ker_expand_out S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.out
+    have hn : S.n = (i - 1) + (S.n - i + 1) := by omega
+    rw [hB, hcdef, ← hkhe, hn, Function.iterate_add_apply, (ker_context_law S.hsd _ _).2,
+      (iter_law_G6 S _ _ _).2, localSuffix_zero_G6]
+  refine (covers_iff_success hBI hup hKL.1 hKL.2.1
+    (fun rd hrd => ker_kernelDefined hKL hsdK hrd)).2 ⟨sdK, rdK, hsdK, hrdK, hkdK, ?_⟩
+  rw [hYB, hconj]
+  exact (shift_lt_shift _ _).mpr hdown
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by
