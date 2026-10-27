@@ -589,12 +589,41 @@ theorem gword_injective {α : Type} : Function.Injective (gword : Tree α → Li
 /-- N1.3: a map strictly increasing on the letters that occur preserves list order. -/
 theorem list_map_lt_iff {γ δ : Type} [LinearOrder γ] [LinearOrder δ] {f : γ → δ} {S : Set γ}
     (hf : StrictMonoOn f S) {l₁ l₂ : List γ} (h₁ : ∀ x ∈ l₁, x ∈ S) (h₂ : ∀ x ∈ l₂, x ∈ S) :
-    l₁.map f < l₂.map f ↔ l₁ < l₂ := by sorry
+    l₁.map f < l₂.map f ↔ l₁ < l₂ := by
+  induction l₁ generalizing l₂ with
+  | nil =>
+    cases l₂ with
+    | nil => simp
+    | cons y ys => simp [List.nil_lt_cons]
+  | cons x xs ih =>
+    cases l₂ with
+    | nil => simp [List.not_lt_nil]
+    | cons y ys =>
+      have hx : x ∈ S := h₁ x (List.mem_cons_self ..)
+      have hy : y ∈ S := h₂ y (List.mem_cons_self ..)
+      simp only [List.map_cons, List.cons_lt_cons_iff]
+      rw [hf.lt_iff_lt hx hy, hf.injOn.eq_iff hx hy,
+        ih (fun z hz => h₁ z (List.mem_cons_of_mem _ hz)) (fun z hz => h₂ z (List.mem_cons_of_mem _ hz))]
+
+/-- N1.3 helper: a comparison with `Y` only reads the first `|Y| + 1` letters. -/
+theorem list_lt_iff_take_lt {γ : Type} [LinearOrder γ] :
+    ∀ (X Y : List γ), X < Y ↔ X.take (Y.length + 1) < Y
+  | _, [] => by simp [List.not_lt_nil]
+  | [], _ :: _ => by simp
+  | x :: xs, y :: ys => by
+    rw [List.length_cons, List.take_succ_cons, List.cons_lt_cons_iff, List.cons_lt_cons_iff,
+      list_lt_iff_take_lt xs ys]
 
 /-- N1.3: a comparison with `Y` is decided within the first `|Y| + 1` letters. -/
 theorem list_lt_of_take_eq {γ : Type} [LinearOrder γ] {X₁ X₂ Y : List γ}
     (hlen : Y.length < X₁.length) (h : X₁.take (Y.length + 1) = X₂.take (Y.length + 1)) :
-    (X₁ < Y ↔ X₂ < Y) ∧ X₁ ≠ Y ∧ X₂ ≠ Y := by sorry
+    (X₁ < Y ↔ X₂ < Y) ∧ X₁ ≠ Y ∧ X₂ ≠ Y := by
+  refine ⟨by rw [list_lt_iff_take_lt X₁, list_lt_iff_take_lt X₂, h], ?_, ?_⟩
+  · rintro rfl; exact absurd hlen (lt_irrefl _)
+  · rintro rfl
+    have h1 := congrArg List.length h
+    rw [List.length_take, List.length_take] at h1
+    omega
 
 /-- N1.2: the shapes of atoms that occur in words: `(2e, 0, 0)`, `(2e, 1, p)`, `(2e+1, 0, p)`. -/
 def WordAtom.WF (A : WordAtom) : Prop :=
