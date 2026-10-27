@@ -38,14 +38,16 @@ Goal: replace `sorry` with complete Lean proofs, so that eventually
      will tell you. Never change `FinalHyps`, `Hier.Interface` or `Main.lean`.
 5. **Moving declarations.** You may move a declaration, keeping its name and statement, if the
    proof needs something declared later and nothing in between uses it.
-6. **Compute:**
+6. **Scratch files** go only in `<worktree>/scratch/<your branch>/`, which is gitignored. Never
+   use the shared session scratchpad: parallel provers overwrite each other's files there.
+7. **Compute:**
    - Run one Lean or lake process at a time, and nothing in the background.
    - Kill any command that runs longer than 10 minutes.
    - No test sweeps. A quick `#eval!` on a few concrete forests is fine when you suspect a
      statement is false. Delete it afterwards.
-7. **Stuck.** If a goal resists three genuinely different approaches, leave that `sorry` and
+8. **Stuck.** If a goal resists three genuinely different approaches, leave that `sorry` and
    move on. Report the exact goal state.
-8. **Commit early.** Commit on your branch after each declaration you finish, with message
+9. **Commit early.** Commit on your branch after each declaration you finish, with message
    `Prove <decl>`. Before your final commit, `lake build` must succeed.
 
 ## What to return
