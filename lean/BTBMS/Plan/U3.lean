@@ -781,11 +781,268 @@ theorem cursor_raise (pre : List (WithTop Key)) (x x' : WithTop Key) (post W : L
     rw [h0, cursor_cons_of_lt_D8 _ _ _ fun v hv =>
       lt_of_lt_of_le (lt_of_cursor_singleton_D8 x _ h0 v hv) hxx']
 
+section PathTransfer_D8
+open Scan
+
+/-- L4.2c helper: relabelling commutes with `forestAt`. -/
+theorem forestAt_map_D8 {α β : Type} (f : α → β) :
+    ∀ (π : List (Nat × Nat)) (X : Tree α), (X.map f).forestAt π = (X.forestAt π).map (Tree.map f)
+  | [], _ => rfl
+  | (ci, ei) :: rest, .node cols => by
+    rw [Tree.forestAt_cons, Tree.forestAt_cons]
+    simp only [Tree.map, Tree.cols, Scan.treeMapCols_eq_map, List.getElem?_map]
+    cases hc : cols[ci]? with
+    | none => rfl
+    | some col =>
+      simp only [Option.map_some, Option.bind_some, Scan.treeMapCol_eq_map, List.getElem?_map]
+      cases hx : col[ei]? with
+      | none => rfl
+      | some x => exact forestAt_map_D8 f rest x.2
+
+/-- L4.2c helper: relabelling commutes with `colAt`. -/
+theorem colAt_map_D8 {α β : Type} (f : α → β) (X : Tree α) (d : ColAddr) :
+    (X.map f).colAt d = (X.colAt d).map (Tree.mapCol f) := by
+  unfold Tree.colAt
+  rw [forestAt_map_D8]
+  cases X.forestAt d.path with
+  | none => rfl
+  | some F =>
+    obtain ⟨cols⟩ := F
+    simp [Tree.map, Tree.cols, Scan.treeMapCols_eq_map, List.getElem?_map]
+
+/-- L4.2c helper: relabelling commutes with `entryAt`. -/
+theorem entryAt_map_D8 {α β : Type} (f : α → β) (X : Tree α) (e : EntryAddr) :
+    (X.map f).entryAt e = (X.entryAt e).map fun x => (f x.1, x.2.map f) := by
+  unfold Tree.entryAt
+  rw [colAt_map_D8]
+  cases X.colAt e.col with
+  | none => rfl
+  | some col => simp [Scan.treeMapCol_eq_map, List.getElem?_map]
+
+/-- L4.2c helper: a column of the height of an entry, read in the whole tree. -/
+theorem colAt_heightPath_D8 {α : Type} {X : Tree α} {e : EntryAddr} {h : Tree α}
+    (he : X.heightAt e = some h) (ρ : List (Nat × Nat)) (j : Nat) :
+    X.colAt ⟨e.heightPath ++ ρ, j⟩ = h.colAt ⟨ρ, j⟩ := by
+  simp only [Tree.colAt, Tree.forestAt_append, Tree.forestAt_heightPath, he, Option.bind_some]
+
+/-- L4.2c helper: the same for entries. -/
+theorem entryAt_heightPath_D8 {α : Type} {X : Tree α} {e : EntryAddr} {h : Tree α}
+    (he : X.heightAt e = some h) (ρ : List (Nat × Nat)) (j i : Nat) :
+    X.entryAt ⟨⟨e.heightPath ++ ρ, j⟩, i⟩ = h.entryAt ⟨⟨ρ, j⟩, i⟩ := by
+  simp only [Tree.entryAt, colAt_heightPath_D8 he]
+
+/-- L4.2c/L4.2 helper: the column of a first-difference cap lies in the target height and is a
+column of `E`. -/
+theorem capAt_col_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) :
+    rk.b.heightPath <+: c.path ∧ c ∈ rk.E.colAddrs := by
+  obtain ⟨-, -, hcap⟩ := firstDiff_spec h
+  obtain ⟨ρ, hρ, -, hcol, -⟩ := hcap c k p hfd
+  refine ⟨⟨ρ, hρ.symm⟩, ?_⟩
+  have hb : rk.E.heightAt rk.b = some rk.tgtHeight := by
+    have hb := h.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at hb
+    obtain ⟨x, hx⟩ := hb
+    simp [SrcRecord.tgtHeight, Tree.heightAt, hx]
+  rw [Tree.mem_colAddrs_iff]
+  have : c = ⟨rk.b.heightPath ++ ρ, c.col⟩ := by cases c; simp_all
+  rw [this, colAt_heightPath_D8 hb]
+  rw [SrcRecord.tgtKey, relKey_eq_map, colAt_map_D8] at hcol
+  simpa using hcol
+
+/-- G011-D2: κ (L4.2a) on `WithTop Key` (`⊤ ↦ ⊤`). -/
+def kappaW_D8 (r t : Nat) : WithTop Key → WithTop Key := WithTop.map (Tree.map (kappa r t))
+
+/-- G011-D2: σ, the number map of L4.2c: numbers below `r` are fixed, the others move up by
+`t - r`. -/
+def sigmaNum_D8 (r t y : Nat) : Nat := if y < r then y else y + (t - r)
+
+/-- G011-D2: the source column `c'` of a target column `c` inside the marked height. -/
+def srcCol_D8 (rk : SrcRecord) (c : ColAddr) : ColAddr :=
+  ⟨rk.a.heightPath ++ c.path.drop rk.b.heightPath.length, c.col⟩
+
+/-- G011-L3 (L4.2c steps 0–1). The source column exists with an entry `k`, whose parent `p'`
+maps to `p` by σ; the target query is the κ-image of the source query; the starts correspond by
+σ. -/
+theorem query_transfer_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) :
+    srcCol_D8 rk c ∈ rk.F.colAddrs ∧ k ≤ (parents rk.E c).length ∧
+    (∃ p', (parents rk.F (srcCol_D8 rk c))[k]? = some p' ∧
+      p = sigmaNum_D8 (rk.a.col.num 0) (rk.b.col.num 0) p') ∧
+    cutQuery (actualKeys rk.E c) k =
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k).map
+        (kappaW_D8 (rk.a.col.num 0) (rk.b.col.num 0)) ∧
+    cutStart rk.E c k =
+      sigmaNum_D8 (rk.a.col.num 0) (rk.b.col.num 0) (cutStart rk.F (srcCol_D8 rk c) k) := by
+  sorry
+
+/-- G011-L4 (L4.2c step 2). An edge of the source chain at a vertex `y > r` has its σ-twin on
+the target chain (the target chain reaching `σ y` supplies R8 in `E`). -/
+theorem internal_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) {y : Nat} (hy : rk.a.col.num 0 < y)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k)
+      (sigmaNum_D8 (rk.a.col.num 0) (rk.b.col.num 0) y)) :
+    respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k)
+        (sigmaNum_D8 (rk.a.col.num 0) (rk.b.col.num 0) y) =
+      (respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+        (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) y).map
+        (sigmaNum_D8 (rk.a.col.num 0) (rk.b.col.num 0)) := by
+  sorry
+
+/-- G011-L8 (L4.2c step 4(b), scan and descendant records, `E` or cap anchor). If the target
+chain reaches the host `t = sd.t`, it continues to the source host `r = sd.r`. -/
+theorem host_crossing_D8 {E : Forest} (hE : InL E) {cap : Option (Closure.AdmCap E)}
+    {sd : StopData} (hsd : stopData (Closure.anchor E cap) = some sd) {j : Nat}
+    (hj : j < sd.Q.length) {b : EntryAddr}
+    (hb : Closure.anchorOrigin E cap (.slot ⟨sd.col, j⟩) = some (.slot b))
+    {c : ColAddr} (hc : c ∈ E.colAddrs) (hbc : b.heightPath <+: c.path) {k : Nat}
+    (hk : k ≤ (parents E c).length)
+    (hreach : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.t) :
+    Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) sd.r := by
+  sorry
+
+/-- G011-L10 (L4.2c step 4(c), scan and descendant records). At every vertex `y ≤ r` reached by
+both chains, the source edge (in `F`, query `W'`) equals the target edge (in `E`, query `W`). -/
+theorem low_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {cap : Option (Closure.AdmCap rk.E)}
+    {i j : Nat} (hkind : rk.kind = .scan cap i j ∨ rk.kind = .desc cap i j) {c : ColAddr}
+    {k p : Nat} (hfd : rk.firstDiff = .capAt c k p) {y : Nat} (hyr : y ≤ rk.a.col.num 0)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k) y) :
+    respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
+        y =
+      respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
+  sorry
+
+/-- G011-L11 (L4.2c step 4(c), repair records). The same for repair records (`r = t`, κ = id),
+through the repair list's block form. -/
+theorem low_edge_eq_repair_D8 {rk : SrcRecord} (h : rk.Admitted) {ms : List Closure.Move}
+    (hkind : rk.kind = .repair ms) {c : ColAddr} {k p : Nat} (hfd : rk.firstDiff = .capAt c k p)
+    {y : Nat} (hyr : y ≤ rk.a.col.num 0)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k) y) :
+    respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
+        y =
+      respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
+  sorry
+
+/-- L4.2c helper (step 4(b)): for every record kind, a target chain that reaches the target host
+`t` continues to the source host `r` (repair records: `r = t`; scan and descendant records:
+`host_crossing_D8`). -/
+theorem crossing_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p)
+    (ht : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k)
+      (rk.b.col.num 0)) :
+    Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k)
+      (rk.a.col.num 0) := by
+  obtain ⟨-, hrep, -⟩ := admitted_hosts h
+  obtain ⟨hbc, hc⟩ := capAt_col_D8 h hfd
+  have hk := (query_transfer_D8 h hfd).2.1
+  have hk' := h.2.2.2.2.2.2
+  cases hkind : rk.kind with
+  | repair ms => rw [hrep ms hkind]; exact ht
+  | scan cap i j =>
+    rw [hkind] at hk'
+    obtain ⟨sd, hsd, hr, ht', -⟩ := anchor_hosts_D8 h.1 hk'.1 hk'.2.1
+    obtain ⟨sd', rd, -, hsd', -, hor, hreach, -⟩ := hk'.1
+    rw [hsd] at hsd'; cases hsd'
+    have hj : j < sd.Q.length := by
+      obtain ⟨-, x, y, -, hy, -⟩ := hreach
+      have := List.getElem?_eq_some_iff.1 hy
+      simpa [queryKeys] using this.1
+    rw [hr]
+    exact host_crossing_D8 (Closure.std_inL h.1) hsd hj hor hc hbc hk (ht' ▸ ht)
+  | desc cap i j =>
+    rw [hkind] at hk'
+    obtain ⟨sd, hsd, hr, ht', -⟩ := anchor_hosts_D8 h.1 hk'.1 hk'.2.1
+    obtain ⟨sd', rd, -, hsd', -, hor, hreach, -⟩ := hk'.1
+    rw [hsd] at hsd'; cases hsd'
+    have hj : j < sd.Q.length := by
+      obtain ⟨-, x, y, -, hy, -⟩ := hreach
+      have := List.getElem?_eq_some_iff.1 hy
+      simpa [queryKeys] using this.1
+    rw [hr]
+    exact host_crossing_D8 (Closure.std_inL h.1) hsd hj hor hc hbc hk (ht' ▸ ht)
+
+/-- L4.2c helper (step 4(c)): the low edges for every record kind. -/
+theorem low_edge_D8 {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
+    (hfd : rk.firstDiff = .capAt c k p) {y : Nat} (hyr : y ≤ rk.a.col.num 0)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k) y) :
+    respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
+        y =
+      respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
+  cases hkind : rk.kind with
+  | scan cap i j => exact low_edge_eq_D8 h (Or.inl hkind) hfd hyr hsrc htgt
+  | desc cap i j => exact low_edge_eq_D8 h (Or.inr hkind) hfd hyr hsrc htgt
+  | repair ms => exact low_edge_eq_repair_D8 h hkind hfd hyr hsrc htgt
+
+end PathTransfer_D8
+
 -- provides: U3, L4.2c (path transfer: the new parent is on the target's actual cut chain)
 theorem firstDiff_path {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
     (hfd : rk.firstDiff = .capAt c k p) :
     Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k)
-      (Scan.cutStart rk.E c k) p := by sorry
+      (Scan.cutStart rk.E c k) p := by
+  set r := rk.a.col.num 0
+  set t := rk.b.col.num 0
+  have hrt : r ≤ t := (admitted_hosts h).1
+  obtain ⟨hc', hk, ⟨p', hp', hpp⟩, hW, hx⟩ := query_transfer_D8 h hfd
+  -- the source test: condition A in `F` at the entry `k` of `c'`
+  have hsrcA : Scan.Path rk.F (Scan.actualKeys rk.F) (srcCol_D8 rk c)
+      (Scan.cutQuery (Scan.actualKeys rk.F (srcCol_D8 rk c)) k) (Scan.cutStart rk.F (srcCol_D8 rk c) k) p' :=
+    h.2.2.2.1.2.2.2.1 _ hc' k p' hp'
+  have hσr : sigmaNum_D8 r t r = t := by simp [sigmaNum_D8]; omega
+  have hσlt : ∀ y, y < r → sigmaNum_D8 r t y = y := fun y hy => by simp [sigmaNum_D8, hy]
+  -- the invariant along the source chain
+  have key : ∀ y, Scan.Path rk.F (Scan.actualKeys rk.F) (srcCol_D8 rk c)
+      (Scan.cutQuery (Scan.actualKeys rk.F (srcCol_D8 rk c)) k) (Scan.cutStart rk.F (srcCol_D8 rk c) k) y →
+      Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k) (Scan.cutStart rk.E c k)
+        (sigmaNum_D8 r t y) ∧
+      (y ≤ r → Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k)
+        (Scan.cutStart rk.E c k) y) := by
+    -- crossing at a vertex `≤ r` reached as `σ y`
+    have low : ∀ y, y ≤ r → Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k)
+        (Scan.cutStart rk.E c k) (sigmaNum_D8 r t y) →
+        Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k) (Scan.cutStart rk.E c k) y := by
+      intro y hyr hy
+      rcases Nat.lt_or_ge y r with hlt | hge
+      · rwa [hσlt y hlt] at hy
+      · have hyr' : y = r := by omega
+        subst hyr'
+        rw [hσr] at hy
+        exact crossing_D8 h hfd hy
+    intro y hy
+    induction hy with
+    | refl =>
+      have h0 : Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k) (Scan.cutStart rk.E c k)
+          (sigmaNum_D8 r t (Scan.cutStart rk.F (srcCol_D8 rk c) k)) := by
+        rw [← hx]; exact Relation.ReflTransGen.refl
+      exact ⟨h0, fun hle => low _ hle h0⟩
+    | @tail y z hxy hyz ih =>
+      obtain ⟨ih1, ih2⟩ := ih
+      have hzy : z < y := Scan.edge_lt h.2.2.2.1.1 hyz
+      have hE : Scan.respEdge rk.F (Scan.actualKeys rk.F) (srcCol_D8 rk c)
+          (Scan.cutQuery (Scan.actualKeys rk.F (srcCol_D8 rk c)) k) y = some z := (Scan.edge_iff _ _ _ _ _ _).1 hyz
+      rcases Nat.lt_or_ge r y with hry | hyr
+      · -- internal edge
+        have := internal_edge_eq_D8 h hfd hry hxy ih1
+        rw [hE, Option.map_some] at this
+        have h1 : Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k) (Scan.cutStart rk.E c k)
+            (sigmaNum_D8 r t z) := ih1.tail ((Scan.edge_iff _ _ _ _ _ _).2 this)
+        exact ⟨h1, fun hle => low _ hle h1⟩
+      · -- low edge
+        have := low_edge_D8 h hfd hyr hxy (ih2 hyr)
+        rw [hE] at this
+        have h1 : Scan.Path rk.E (Scan.actualKeys rk.E) c (Scan.cutQuery (Scan.actualKeys rk.E c) k) (Scan.cutStart rk.E c k)
+            z := (ih2 hyr).tail ((Scan.edge_iff _ _ _ _ _ _).2 this.symm)
+        exact ⟨by rwa [hσlt z (by omega)], fun _ => h1⟩
+  rw [hpp]
+  exact (key p' hsrcA).1
 
 section CapLegal_D8
 open Scan
