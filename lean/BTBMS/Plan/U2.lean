@@ -2039,9 +2039,439 @@ theorem head_path_rev {A B : Forest} {sd : StopData} {rd : RootData} {n j : Nat}
 theorem condA_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
     (hB : expand A n = some B) : CondA B := by sorry
 
+/-! T3.2s helpers: column-local conditions, and replacing the last column at the end of a route. -/
+
+/-- A column-local condition `φ`, read at every column with its printed number from `base`. -/
+def spxAll (φ : Nat → Column → Prop) (base : Nat) (T : Forest) : Prop :=
+  ∀ c col, T.colAt c = some col → φ (c.num base) col
+
+theorem spx_num_cons (base a b : Nat) (ρ : List (Nat × Nat)) (j : Nat) :
+    ColAddr.num base ⟨(a, b) :: ρ, j⟩ = ColAddr.num (base + a + 1) ⟨ρ, j⟩ := by
+  simp only [ColAddr.num, List.map_cons, List.sum_cons]; omega
+
+theorem spxAll_node {φ : Nat → Column → Prop} {base : Nat} {cols : List Column} :
+    spxAll φ base (Tree.node cols) ↔
+      ∀ j col, cols[j]? = some col → φ (base + j) col ∧ ∀ x ∈ col, spxAll φ (base + j + 1) x.2 := by
+  constructor
+  · intro h j col hj
+    refine ⟨?_, fun x hx c col' hc => ?_⟩
+    · have := h ⟨[], j⟩ col (by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hj)
+      simpa [ColAddr.num] using this
+    · obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hx
+      have := h ⟨(j, i) :: c.path, c.col⟩ col' (by
+        rw [Tree.colAt_cons]; simp [Tree.cols, hj, hi, hc])
+      rwa [spx_num_cons] at this
+  · intro h c col hc
+    obtain ⟨P, j⟩ := c
+    cases P with
+    | nil =>
+      have hj : cols[j]? = some col := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hc
+      simpa [ColAddr.num] using (h j col hj).1
+    | cons s ρ =>
+      obtain ⟨a, b⟩ := s
+      rw [Tree.colAt_cons] at hc
+      simp only [Tree.cols, Option.bind_eq_some_iff] at hc
+      obtain ⟨x, ⟨colA, hA, hb⟩, hx⟩ := hc
+      rw [spx_num_cons]
+      exact (h a colA hA).2 x (List.mem_of_getElem? hb) ⟨ρ, j⟩ col hx
+
+theorem spx_replaceAt_zero (Z : Forest) (ys : List Column) (y : Column) :
+    replaceAt 0 0 Z 0 (Tree.node (ys ++ [y])) = Tree.node (ys ++ Z.cols) := by
+  cases ys with
+  | nil => simp [replaceAt, shiftVal_zero_fun, treeMapCol_id_fun]
+  | cons c cs =>
+    simp only [replaceAt, shiftVal_zero_fun, treeMapCol_id_fun, List.map_id]
+    rw [List.dropLast_concat]
+    simp only [List.cons_append]
+
+theorem spx_replaceAt_succ (Z : Forest) (k : Nat) (ys : List Column) (zs : Column) (q : Nat)
+    (h : Forest) :
+    replaceAt 0 0 Z (k + 1) (Tree.node (ys ++ [zs ++ [(q, h)]])) =
+      Tree.node (ys ++ [zs ++ [(q, replaceAt 0 0 Z k h)]]) := by
+  simp only [replaceAt, mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+    Option.map_some, Option.toList_some, shiftVal_zero_fun, treeMapCol_id_fun, id, treeMap_id,
+    List.map_id]
+  simp
+
+/-- Replacing the last column at the end of a route path keeps a column-local condition, given
+the condition at the new column and below it, and a relation `R` between the old and new heights
+of the containers along which `φ` passes. -/
+theorem spxAll_replace {φ : Nat → Column → Prop} (R : Forest → Forest → Prop) {c' col : Column}
+    (hR0 : ∀ cs, R (Tree.node (cs ++ [c'])) (Tree.node (cs ++ [col])))
+    (hRs : ∀ ys zs q h h', R h' h →
+      R (Tree.node (ys ++ [zs ++ [(q, h')]])) (Tree.node (ys ++ [zs ++ [(q, h)]])))
+    (hφ : ∀ n zs q h h', R h' h → φ n (zs ++ [(q, h)]) → φ n (zs ++ [(q, h')])) :
+    ∀ (π : List (Nat × Nat)) (F G : Forest) (cs : List Column) (base : Nat), IsRoutePath F π →
+      F.forestAt π = some G → G.cols = cs ++ [col] → spxAll φ base F →
+      φ (ColAddr.num base ⟨π, cs.length⟩) c' →
+      (∀ x ∈ c', spxAll φ (ColAddr.num base ⟨π, cs.length⟩ + 1) x.2) →
+      spxAll φ base (replaceAt 0 0 (Tree.node [c']) π.length F) ∧
+        R (replaceAt 0 0 (Tree.node [c']) π.length F) F
+  | [], F, G, cs, base, _, hG, hGc, hF, hc', hsub => by
+    simp only [Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    obtain ⟨cols⟩ := F
+    simp only [Tree.cols] at hGc
+    subst hGc
+    simp only [List.length_nil, spx_replaceAt_zero, Tree.cols]
+    refine ⟨?_, hR0 cs⟩
+    rw [spxAll_node] at hF ⊢
+    intro j c hj
+    by_cases hjc : j = cs.length
+    · subst hjc
+      simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+        Option.some.injEq] at hj
+      subst hj
+      simpa [ColAddr.num] using And.intro hc' hsub
+    · have : (cs ++ [col])[j]? = some c := by
+        rcases Nat.lt_or_gt_of_ne hjc with hlt | hgt
+        · rw [List.getElem?_append_left hlt] at hj ⊢; exact hj
+        · rw [List.getElem?_append_right (by omega)] at hj ⊢
+          simp [show j - cs.length ≠ 0 by omega] at hj
+      exact hF j c this
+  | s :: π, .node cols, G, cs, base, hr, hG, hGc, hF, hc', hsub => by
+    obtain ⟨hl, h, hh, hr'⟩ := isRoutePath_cons.1 hr
+    obtain ⟨colL, q, h₀, hcol, hcl, hs, hh'⟩ := lastStep?_eq_some hl
+    rw [hh] at hh'
+    cases hh'
+    have hG' : h.forestAt π = some G := by
+      rw [show s :: π = [s] ++ π from rfl, Tree.forestAt_append, hh] at hG
+      exact hG
+    simp only [Tree.cols] at hcol hs
+    obtain ⟨ys, rfl⟩ := List.getLast?_eq_some_iff.1 hcol
+    obtain ⟨zs, rfl⟩ := List.getLast?_eq_some_iff.1 hcl
+    subst hs
+    simp only [List.length_append, List.length_singleton, Nat.add_sub_cancel] at hF hc' hsub ⊢
+    rw [List.length_cons, spx_replaceAt_succ]
+    rw [spxAll_node] at hF
+    have hFy := hF ys.length (zs ++ [(q, h)]) (by simp)
+    have hn : ∀ n, ColAddr.num base ⟨(ys.length, zs.length) :: π, n⟩ =
+        ColAddr.num (base + ys.length + 1) ⟨π, n⟩ := fun n => spx_num_cons _ _ _ _ _
+    rw [hn] at hc' hsub
+    obtain ⟨ih1, ih2⟩ := spxAll_replace R hR0 hRs hφ π h G cs (base + ys.length + 1) hr' hG' hGc
+      (hFy.2 (q, h) (by simp)) hc' hsub
+    refine ⟨?_, hRs ys zs q h _ ih2⟩
+    rw [spxAll_node]
+    intro j c hj
+    by_cases hjc : j = ys.length
+    · subst hjc
+      simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+        Option.some.injEq] at hj
+      subst hj
+      refine ⟨hφ _ zs q h _ ih2 hFy.1, ?_⟩
+      intro x hx
+      rcases List.mem_append.1 hx with hx | hx
+      · exact hFy.2 x (List.mem_append_left _ hx)
+      · simp only [List.mem_singleton] at hx; subst hx; exact ih1
+    · have : (ys ++ [zs ++ [(q, h)]])[j]? = some c := by
+        rcases Nat.lt_or_gt_of_ne hjc with hlt | hgt
+        · rw [List.getElem?_append_left hlt] at hj ⊢; exact hj
+        · rw [List.getElem?_append_right (by omega)] at hj ⊢
+          simp [show j - ys.length ≠ 0 by omega] at hj
+      exact hF j c this
+
+theorem spx_then_eq (o : Ordering) : o.then .eq = o := by cases o <;> rfl
+
+theorem spx_compare_self (q : Nat) : compare q q = .eq := compare_eq_iff_eq.2 rfl
+
+theorem spx_cmpCols_append (ys X Y : List Column) :
+    Tree.cmpCols compare (ys ++ X) (ys ++ Y) = Tree.cmpCols compare X Y := by
+  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    simp only [List.cons_append, Tree.cmpCols, Tree.cmpCol_self, ih]; rfl
+
+theorem spx_cmpCol_append (zs X Y : Column) :
+    Tree.cmpCol compare (zs ++ X) (zs ++ Y) = Tree.cmpCol compare X Y := by
+  induction zs with
+  | nil => rfl
+  | cons z zs ih =>
+    obtain ⟨q, h⟩ := z
+    simp only [List.cons_append, Tree.cmpCol, Tree.cmp_self, spx_compare_self, ih]; rfl
+
+/-- Lowering the height of the last entry of the last column lowers the forest. -/
+theorem spx_le_last (ys : List Column) (zs : Column) (q : Nat) {h h' : Forest} (hh : h' ≤ h) :
+    Tree.node (ys ++ [zs ++ [(q, h')]]) ≤ Tree.node (ys ++ [zs ++ [(q, h)]]) := by
+  rw [Forest.le_iff_cmp] at hh ⊢
+  show Tree.cmpCols compare _ _ ≠ .gt
+  rw [spx_cmpCols_append]
+  simp only [Tree.cmpCols, spx_then_eq]
+  rw [spx_cmpCol_append]
+  simp only [Tree.cmpCol, spx_compare_self, spx_then_eq]
+  exact hh
+
+/-- Lowering the last column lowers the forest. -/
+theorem spx_le_lastCol (cs : List Column) {c' col : Column} (h : Tree.cmpCol compare c' col ≠ .gt) :
+    Tree.node (cs ++ [c']) ≤ Tree.node (cs ++ [col]) := by
+  rw [Forest.le_iff_cmp]
+  show Tree.cmpCols compare _ _ ≠ .gt
+  rw [spx_cmpCols_append]
+  simp only [Tree.cmpCols, spx_then_eq]
+  exact h
+
+/-- Dropping the last column is a decrease. -/
+theorem spx_dropLast_lt {Fl : Forest} (h : Fl.cols ≠ []) : Tree.node Fl.cols.dropLast < Fl := by
+  rw [Forest.lt_iff_cmp]
+  obtain ⟨L, x, hL⟩ := (List.eq_nil_or_concat Fl.cols).resolve_left h
+  rw [spx_eta Fl, hL]
+  show Tree.cmpCols compare _ _ = .lt
+  simp only [Tree.cols]
+  rw [List.concat_eq_append, List.dropLast_concat]
+  have := spx_cmpCols_append L [] [x]
+  rw [List.append_nil] at this
+  rw [this]; rfl
+
+/-! The three column-local conditions V, I, H. -/
+
+def spxφV (n : Nat) (col : Column) : Prop := ∀ x ∈ col, x.1 < n
+
+def spxφI (n : Nat) (col : Column) : Prop :=
+  ∀ x ∈ col, x.2 ≠ Tree.empty → ∀ cc ∈ x.2.cols, ∃ q H rest, cc = (q, H) :: rest ∧ n ≤ q
+
+def spxφH (_ : Nat) (col : Column) : Prop := spxNoninc col
+
+theorem spx_condV_iff (E : Forest) : CondV E ↔ spxAll spxφV 0 E := by
+  rw [condV_iff_lt]
+  constructor
+  · intro h c col hc x hx
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hx
+    have he : E.entryAt ⟨c, i⟩ = some x := by rw [Tree.entryAt, hc]; exact hi
+    exact h ⟨c, i⟩ ((Tree.mem_entryAddrs_iff _ _).2 (by rw [he]; rfl)) x.1 x.2 he
+  · intro h e _ p H he
+    obtain ⟨col, hc, hi⟩ := Tree.colAt_of_entryAt he
+    exact h e.col col hc (p, H) (List.mem_of_getElem? hi)
+
+theorem spx_condI_iff (E : Forest) : CondI E ↔ spxAll spxφI 0 E := by
+  constructor
+  · intro h c col hc x hx hne cc hcc
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hx
+    have he : E.entryAt ⟨c, i⟩ = some x := by rw [Tree.entryAt, hc]; exact hi
+    exact h ⟨c, i⟩ ((Tree.mem_entryAddrs_iff _ _).2 (by rw [he]; rfl)) x.1 x.2 he hne cc hcc
+  · intro h e _ p H he hne cc hcc
+    obtain ⟨col, hc, hi⟩ := Tree.colAt_of_entryAt he
+    exact h e.col col hc (p, H) (List.mem_of_getElem? hi) hne cc hcc
+
+theorem spx_condH_iff (E : Forest) : CondH E ↔ spxAll spxφH 0 E := by
+  constructor
+  · intro h c col hc
+    exact spx_condH_col h hc
+  · intro h c _ i x y hx hy
+    obtain ⟨col, hc⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 ‹_›)
+    rw [hc, Option.getD_some] at hx hy
+    exact h c col hc i x y hx hy
+
+/-- Column-local conditions pass to the heights of a column's entries. -/
+theorem spxAll_height {φ : Nat → Column → Prop} {base : Nat} {T : Forest} (h : spxAll φ base T)
+    {c : ColAddr} {col : Column} (hc : T.colAt c = some col) :
+    ∀ x ∈ col, spxAll φ (c.num base + 1) x.2 := by
+  intro x hx c'' col'' hc''
+  obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hx
+  have hcol : T.colAt ⟨c.path ++ (c.col, i) :: c''.path, c''.col⟩ = some col'' := by
+    rw [show c.path ++ (c.col, i) :: c''.path = (⟨c, i⟩ : EntryAddr).heightPath ++ c''.path by
+      simp [EntryAddr.heightPath], spx_colAt_append, Tree.forestAt_heightPath, Tree.heightAt,
+      Tree.entryAt, hc]
+    simp [hi, hc'']
+  have := h _ _ hcol
+  have hn : ColAddr.num base ⟨c.path ++ (c.col, i) :: c''.path, c''.col⟩ =
+      ColAddr.num (c.num base + 1) c'' := by
+    simp only [ColAddr.num, List.map_append, List.map_cons, List.sum_append, List.sum_cons]; omega
+  rwa [hn] at this
+
+/-- Column-local conditions hold for a forest made of a prefix of the columns. -/
+theorem spxAll_dropLast {φ : Nat → Column → Prop} {base : Nat} {Fl : Forest}
+    (h : spxAll φ base Fl) : spxAll φ base (Tree.node Fl.cols.dropLast) := by
+  rw [spx_eta Fl, spxAll_node] at h
+  rw [spxAll_node]
+  intro j col hj
+  exact h j col (by rw [List.getElem?_dropLast] at hj; split_ifs at hj; exact hj)
+
+/-- Lowering the height of the last entry keeps a column nonincreasing. -/
+theorem spx_noninc_lower {zs : Column} {q : Nat} {h h' : Forest} (hc : spxNoninc (zs ++ [(q, h)]))
+    (hh : h' ≤ h) : spxNoninc (zs ++ [(q, h')]) := by
+  intro i x y hx hy
+  by_cases hi : i + 1 < zs.length
+  · rw [List.getElem?_append_left (by omega)] at hx
+    rw [List.getElem?_append_left hi] at hy
+    exact hc i x y (by rw [List.getElem?_append_left (by omega)]; exact hx)
+      (by rw [List.getElem?_append_left hi]; exact hy)
+  · have hil : i + 1 = zs.length := by
+      have := (List.getElem?_eq_some_iff.1 hy).1; simp at this; omega
+    rw [List.getElem?_append_left (by omega)] at hx
+    rw [List.getElem?_append_right (by omega), hil, Nat.sub_self] at hy
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hy
+    subst hy
+    have := hc i x (q, h) (by rw [List.getElem?_append_left (by omega)]; exact hx)
+      (by rw [List.getElem?_append_right (by omega), hil, Nat.sub_self]; rfl)
+    rcases this with hlt | ⟨heq, hle⟩
+    · exact Or.inl hlt
+    · exact Or.inr ⟨heq, le_trans hh hle⟩
+
+/-- Repeating the last entry keeps a column nonincreasing. -/
+theorem spx_noninc_replicate {L : Column} {z : Nat × Forest} (hc : spxNoninc (L ++ [z])) (N : Nat) :
+    spxNoninc (L ++ List.replicate N z) := by
+  intro i x y hx hy
+  by_cases hi : i + 1 < L.length
+  · rw [List.getElem?_append_left (by omega)] at hx
+    rw [List.getElem?_append_left hi] at hy
+    exact hc i x y (by rw [List.getElem?_append_left (by omega)]; exact hx)
+      (by rw [List.getElem?_append_left hi]; exact hy)
+  · by_cases hil : i + 1 = L.length
+    · rw [List.getElem?_append_left (by omega)] at hx
+      rw [List.getElem?_append_right (by omega), hil, Nat.sub_self] at hy
+      have hy' := List.eq_of_mem_replicate (List.mem_of_getElem? hy)
+      subst hy'
+      exact hc i x _ (by rw [List.getElem?_append_left (by omega)]; exact hx)
+        (by rw [List.getElem?_append_right (by omega), hil, Nat.sub_self]; rfl)
+    · rw [List.getElem?_append_right (by omega)] at hx hy
+      have hx' := List.eq_of_mem_replicate (List.mem_of_getElem? hx)
+      have hy' := List.eq_of_mem_replicate (List.mem_of_getElem? hy)
+      subst hx' hy'
+      exact Or.inr ⟨rfl, le_refl _⟩
+
+/-- The special output: the owner column `P ⌢ [(p, Fl)]` at the end of the route path `π` becomes
+`P ⌢ [(p, C)]^N`, `C` being `Fl` without its last column, with `N ≥ 1` when `P = []`. -/
+theorem spx_special_shape {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
+    (hB : expand A n = some B) :
+    ∃ (π : List (Nat × Nat)) (G : Forest) (cs : List Column) (P : Column) (p : Nat) (Fl : Forest)
+      (N : Nat), IsRoutePath A π ∧ A.forestAt π = some G ∧ G.cols = cs ++ [P ++ [(p, Fl)]] ∧
+      Fl.cols ≠ [] ∧ (P = [] → 1 ≤ N) ∧
+      B = replaceAt 0 0 (Tree.node [P ++ List.replicate N (p, Tree.node Fl.cols.dropLast)])
+        π.length A := by
+  obtain ⟨hV, hI, -, -, -⟩ := hL
+  have hE : A ≠ Tree.empty := by
+    rintro rfl; simp [stepKind, stepKindBody, Tree.empty, Tree.cols] at hk
+  rw [expand_eq_paperOp hE hV hI] at hB
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind hk (by decide))
+  obtain ⟨oe, hoe⟩ := Option.isSome_iff_exists.1 (ownerEntry_of_special hk hsd)
+  obtain ⟨-, hhp, -, col, p, Fl, hcol, hlast, -, hFl⟩ := ownerEntry_spec hk hsd hoe
+  rw [paperOp_special hk hsd hoe hcol hlast n, Option.some.injEq, Hole.fill_zero] at hB
+  obtain ⟨-, hdep, -, hmem, -, -⟩ := stopData_spec hsd
+  obtain ⟨hrp, -⟩ := (mem_routeCols_iff A sd.col).1 hmem
+  rw [← hhp] at hrp hdep
+  have hrpπ : IsRoutePath A oe.col.path := by
+    intro d hd
+    obtain ⟨F, hF, hFl'⟩ := hrp d (by simp [EntryAddr.heightPath]; omega)
+    refine ⟨F, ?_, ?_⟩
+    · rw [EntryAddr.heightPath, List.take_append_of_le_length (le_of_lt hd)] at hF; exact hF
+    · rw [EntryAddr.heightPath, List.getElem?_append_left hd] at hFl'; exact hFl'
+  obtain ⟨G, hG, hGl⟩ := hrp oe.col.path.length (by simp [EntryAddr.heightPath])
+  simp only [EntryAddr.heightPath, List.take_left', List.getElem?_append_right (le_refl _),
+    Nat.sub_self, List.getElem?_cons_zero] at hG hGl
+  obtain ⟨colL, q', h', hcolL, -, hs, -⟩ := lastStep?_eq_some hGl
+  simp only [Prod.mk.injEq] at hs
+  obtain ⟨hs1, -⟩ := hs
+  have hcc : col = colL := by
+    rw [Tree.colAt, hG, Option.bind_some, hs1, ← List.getLast?_eq_getElem?, hcolL] at hcol
+    exact (Option.some.inj hcol).symm
+  subst hcc
+  obtain ⟨cs, hcs⟩ := List.getLast?_eq_some_iff.1 hcolL
+  obtain ⟨P, hP⟩ := List.getLast?_eq_some_iff.1 hlast
+  have hFl' : Fl.cols ≠ [] := by intro h0; rw [h0] at hFl; simp at hFl
+  refine ⟨oe.col.path, G, cs, P, p, Fl, n + (if col.dropLast.isEmpty then 1 else 0), hrpπ, hG,
+    by rw [hcs, hP], hFl', fun hP0 => by simp [hP, hP0], ?_⟩
+  rw [← hB, Hole.put]
+  simp only [hdep, EntryAddr.heightPath, List.length_append, List.length_singleton,
+    Nat.add_sub_cancel, hP, List.dropLast_concat]
+
+theorem spx_mem_special {P : Column} {N p : Nat} {C : Forest} {x : Nat × Forest}
+    (hx : x ∈ P ++ List.replicate N (p, C)) : x ∈ P ∨ x = (p, C) := by
+  rcases List.mem_append.1 hx with hx | hx
+  · exact Or.inl hx
+  · exact Or.inr (List.eq_of_mem_replicate hx)
+
 -- T3.2s (txt:404-407): special outputs satisfy V, I, H
 theorem condVIH_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
-    (hB : expand A n = some B) : CondV B ∧ CondI B ∧ CondH B := by sorry
+    (hB : expand A n = some B) : CondV B ∧ CondI B ∧ CondH B := by
+  obtain ⟨π, G, cs, P, p, Fl, N, hrp, hG, hGc, hFl, hN, rfl⟩ := spx_special_shape hL hk hB
+  obtain ⟨hV, hI, hH, -, -⟩ := hL
+  have hcolA : A.colAt ⟨π, cs.length⟩ = some (P ++ [(p, Fl)]) := by
+    simp [Tree.colAt, hG, hGc]
+  have hCFl : Tree.node Fl.cols.dropLast < Fl := spx_dropLast_lt hFl
+  have hFlne : Fl ≠ Tree.empty := by intro h0; rw [h0] at hFl; exact hFl rfl
+  refine ⟨?_, ?_, ?_⟩
+  · -- V: parents are unchanged
+    rw [spx_condV_iff] at hV ⊢
+    refine (spxAll_replace (φ := spxφV) (fun _ _ => True) (fun _ => trivial)
+      (fun _ _ _ _ _ _ => trivial) ?_ π A G cs 0 hrp hG hGc hV ?_ ?_).1
+    · intro m zs q h h' _ hφ x hx
+      rcases List.mem_append.1 hx with hx | hx
+      · exact hφ x (List.mem_append_left _ hx)
+      · simp only [List.mem_singleton] at hx; subst hx; exact hφ (q, h) (by simp)
+    · intro x hx
+      rcases spx_mem_special hx with hx | rfl
+      · exact hV _ _ hcolA x (List.mem_append_left _ hx)
+      · exact hV _ _ hcolA (p, Fl) (by simp)
+    · intro x hx
+      rcases spx_mem_special hx with hx | rfl
+      · exact spxAll_height hV hcolA x (List.mem_append_left _ hx)
+      · exact spxAll_dropLast (spxAll_height hV hcolA (p, Fl) (by simp))
+  · -- I: first parents of all columns are unchanged
+    rw [spx_condI_iff] at hI ⊢
+    let f : Column → Option Nat := fun cc => cc.head?.map Prod.fst
+    refine (spxAll_replace (φ := spxφI) (fun h' h => h'.cols.map f = h.cols.map f) ?_ ?_ ?_
+      π A G cs 0 hrp hG hGc hI ?_ ?_).1
+    · intro cs'
+      simp only [Tree.cols, List.map_append, List.map_cons, List.map_nil, f]
+      congr 2
+      cases P with
+      | nil =>
+        obtain ⟨N', rfl⟩ : ∃ N', N = N' + 1 := ⟨N - 1, by have := hN rfl; omega⟩
+        simp [List.replicate_succ]
+      | cons x xs => simp
+    · intro ys zs q h h' _
+      simp only [Tree.cols, List.map_append, List.map_cons, List.map_nil, f]
+      cases zs <;> simp
+    · intro m zs q h h' hR hφ x hx hne cc hcc
+      rcases List.mem_append.1 hx with hx | hx
+      · exact hφ x (List.mem_append_left _ hx) hne cc hcc
+      · simp only [List.mem_singleton] at hx
+        subst hx
+        dsimp only at hne hcc
+        obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hcc
+        have hlen : h'.cols.length = h.cols.length := by simpa using congrArg List.length hR
+        have hi' : i < h.cols.length := by have := (List.getElem?_eq_some_iff.1 hi).1; omega
+        have hne' : h ≠ Tree.empty := by
+          intro h0; rw [h0] at hi'; simp [Tree.empty, Tree.cols] at hi'
+        obtain ⟨q₀, H₀, rest₀, hc₀, hq₀⟩ := hφ (q, h) (by simp) hne' _
+          (List.getElem_mem hi')
+        have hf := congrArg (fun l => l[i]?) hR
+        simp only [List.getElem?_map, hi, List.getElem?_eq_getElem hi', hc₀, Option.map_some,
+          f] at hf
+        obtain ⟨⟨q₁, H₁⟩, rest₁, rfl⟩ : ∃ y rest, cc = y :: rest := by
+          cases cc with
+          | nil => simp at hf
+          | cons y rest => exact ⟨y, rest, rfl⟩
+        simp only [List.head?_cons, Option.map_some, Option.some.injEq] at hf
+        exact ⟨q₁, H₁, rest₁, rfl, hf ▸ hq₀⟩
+    · intro x hx hne cc hcc
+      rcases spx_mem_special hx with hx | rfl
+      · exact hI _ _ hcolA x (List.mem_append_left _ hx) hne cc hcc
+      · exact hI _ _ hcolA (p, Fl) (by simp) hFlne cc (List.mem_of_mem_dropLast hcc)
+    · intro x hx
+      rcases spx_mem_special hx with hx | rfl
+      · exact spxAll_height hI hcolA x (List.mem_append_left _ hx)
+      · exact spxAll_dropLast (spxAll_height hI hcolA (p, Fl) (by simp))
+  · -- H: the changed heights only decrease
+    rw [spx_condH_iff] at hH ⊢
+    refine (spxAll_replace (φ := spxφH) (fun h' h => h' ≤ h) ?_ ?_ ?_
+      π A G cs 0 hrp hG hGc hH ?_ ?_).1
+    · intro cs'
+      apply spx_le_lastCol
+      rw [spx_cmpCol_append]
+      cases N with
+      | zero => simp [Tree.cmpCol]
+      | succ N =>
+        simp only [List.replicate_succ, Tree.cmpCol, spx_compare_self]
+        rw [show Tree.cmp compare (Tree.node Fl.cols.dropLast) Fl = .lt from hCFl]
+        simp
+    · intro ys zs q h h' hh; exact spx_le_last ys zs q hh
+    · intro m zs q h h' hh hφ; exact spx_noninc_lower hφ hh
+    · exact spx_noninc_replicate (spx_noninc_lower (hH _ _ hcolA) (le_of_lt hCFl)) N
+    · intro x hx
+      rcases spx_mem_special hx with hx | rfl
+      · exact spxAll_height hH hcolA x (List.mem_append_left _ hx)
+      · exact spxAll_dropLast (spxAll_height hH hcolA (p, Fl) (by simp))
+
 
 -- T3.2t (txt:406-409): special outputs satisfy S, and P when present
 theorem condS_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
