@@ -2847,6 +2847,11 @@ theorem interval_cap {X Y : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward X 
 
 /-! ### L3.1g helpers: the moved tree, read backwards -/
 
+theorem path_split_at {π : List (Nat × Nat)} {d : Nat} (hd : d < π.length) :
+    π = π.take d ++ π[d] :: π.drop (d + 1) := by
+  conv_lhs => rw [← List.take_append_drop d π, List.drop_eq_getElem_cons hd]
+
+
 /-- helper: the backward column map of a move. -/
 def bwdC (m : Move) (a : ColAddr) : ColAddr := ⟨m.mapPath m.bwdIdx a.path, a.col⟩
 
@@ -4110,10 +4115,6 @@ def RepairState (E : Forest) (c : ColAddr) (k p ℓ : Nat) : Prop :=
     cs.path.length = c.path.length ∧ CondV (litCap E cs k p) ∧ CondI (litCap E cs k p) ∧
     CondAK (litCap E cs k p) (capKeys (litCap E cs k p) (routeCols (litCap E cs k p))) ∧
     ∀ d, ℓ ≤ d → d < cs.path.length → LastOK (litCap E cs k p) cs d
-
-theorem path_split_at {π : List (Nat × Nat)} {d : Nat} (hd : d < π.length) :
-    π = π.take d ++ π[d] :: π.drop (d + 1) := by
-  conv_lhs => rw [← List.take_append_drop d π, List.drop_eq_getElem_cons hd]
 
 theorem repair_step {E : Forest} (hL : InL E) {c : ColAddr} {k p d : Nat} (hd : d < c.path.length)
     (h : RepairState E c k p (d + 1)) : RepairState E c k p d := by
