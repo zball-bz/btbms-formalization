@@ -20,12 +20,17 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
     occurrence-graph identity, 93,076 comparisons; finite invariants including 84,291
     admissible caps.
   - Both test suites live in `scratch/` and still need packaging (T-010).
-- **Running:** T-007, Codex doing the reuse audit (`tracker/review/REUSE-BRIEF.md`).
+- **Reuse audit (T-007) done:** `tracker/review/reuse-audit.md`.
+  - Estimates: H 40k–90k new LOC; O 110k–250k.
+  - Best H base: Mathlib plus the Apache-2.0 CU library in `1Y-Well-Ordering-Lean/vendor/cu`
+    (collapse, condensation for full elementarity, history budgets).
+  - Best O base: KP1Y/YesMetaZFC.
+- **Running:** T-010, Codex packaging all bounded checks into `checks/`.
 
 ## Waiting on the user
 - **D-1:** host-Lean semantic theorem, or object-theory derivation ZFC + Mahlo ⊢ WO(Std) as in KP1Y?
 - **D-2:** keep the paper's n-Mahlo hypothesis, or prove the stronger weakly-n-Mahlo version (S-1)?
-- T-008 (Mathlib survey) is blocked on D-1. T-007 (reuse audit) informs D-1 and can run before it.
+- T-008 (library survey on the pinned revision) is blocked on D-1.
 
 ## Conventions
 - Only root edits `tracker/ledger.json`, `tracker/CURRENT.md`, and (later) the Lean root and
@@ -40,6 +45,6 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Next
-1. Integrate T-007; then T-010 packaging (Codex).
+1. Integrate T-010.
 2. Record the user's answers to D-1/D-2.
 3. After D-1/D-2: P2 repairs, a simplified-proof write-up, then gate G1.

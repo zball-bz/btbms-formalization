@@ -117,11 +117,14 @@
    "id": "T-007",
    "phase": "P1",
    "owner": "codex",
-   "status": "doing",
+   "status": "done",
    "title": "Reuse audit: kp-simplified-verification, dh-bms-wf-formal, 1Y-Well-Ordering-Lean",
    "note": "Informs D-1.",
    "deliverable": "tracker/review/reuse-audit.md",
-   "brief": "tracker/review/REUSE-BRIEF.md"
+   "brief": "tracker/review/REUSE-BRIEF.md",
+   "evidence": [
+    "tracker/review/reuse-audit.md"
+   ]
   },
   {
    "id": "T-008",
@@ -149,7 +152,7 @@
    "id": "T-010",
    "phase": "P1",
    "owner": "codex",
-   "status": "todo",
+   "status": "doing",
    "title": "Package bounded checks (reference diff, graph identity, finite invariants, cofinality) into checks/ with pinned inputs and one command",
    "deps": [
     "T-005"
@@ -1261,6 +1264,22 @@
     "codex risks"
    ],
    "mitigation": "Schema-level transport lemma for realization problems instead of general coding, if host-Lean route"
+  },
+  {
+   "id": "R-5",
+   "summary": "Licensing: YesMetaZFC/BMS snapshot and BM4 have no license grant; CU, 1Y own code and Mathlib are Apache-2.0, KP1Y MIT",
+   "refs": [
+    "codex reuse-audit §1, §6"
+   ],
+   "mitigation": "H can avoid the unlicensed code (Mathlib + narrow CU imports); O depends on YesMetaZFC"
+  },
+  {
+   "id": "R-6",
+   "summary": "CU proves condensation for fully elementary substructures of L-stages; the paper needs Σ1-elementary substructures of its own S/J hierarchy",
+   "refs": [
+    "codex reuse-audit §3"
+   ],
+   "mitigation": "Reuse CU collapse primitives and the history-budget proof structure; prove Σ1 J-condensation new"
   }
  ],
  "decisions": [
@@ -1273,7 +1292,7 @@
     "claude C-09",
     "codex risks"
    ],
-   "impact": "Object theory multiplies the cost (all of §5 and the combinatorics inside the object theory) but can reuse KP1Y's YesMetaZFC stack; host Lean can use Mathlib (ordinals, regular cardinals, clubs/stationary sets)."
+   "impact": "Reuse audit (T-007) estimates: H (host Lean, Mathlib + the Apache-2.0 CU constructible-universe library vendored in 1Y-Well-Ordering-Lean) 40k-90k new/adapted LOC; O (object theory on KP1Y/YesMetaZFC) 110k-250k. Neither route can import a finished BTBMS piece; the finite calculus §1-§4 and the packet induction §7-§8 are new either way. If O: the axiom must be the single internal sentence ∀n∈ω ∃κ M_n(κ), not the external schema, because the seed argument is uniform in internal n."
   },
   {
    "id": "D-2",

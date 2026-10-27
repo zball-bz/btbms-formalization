@@ -69,7 +69,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 | ID | Owner | Status | Question | Answer / impact |
 |---|---|---|---|---|
-| D-1 | user | open | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | Object theory multiplies the cost (all of §5 and the combinatorics inside the object theory) but can reuse KP1Y's YesMetaZFC stack; host Lean can use Mathlib (ordinals, regular cardinals, clubs/stationary sets). |
+| D-1 | user | open | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | Reuse audit (T-007) estimates: H (host Lean, Mathlib + the Apache-2.0 CU constructible-universe library vendored in 1Y-Well-Ordering-Lean) 40k-90k new/adapted LOC; O (object theory on KP1Y/YesMetaZFC) 110k-250k. Neither route can import a finished BTBMS piece; the finite calculus §1-§4 and the packet induction §7-§8 are new either way. If O: the axiom must be the single internal sentence ∀n∈ω ∃κ M_n(κ), not the external schema, because the seed argument is uniform in internal n. |
 | D-2 | user | open | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? |  |
 | D-3 | claude | decided | Operation domain in Lean | Total FS mirroring BTBM.FS, with an agreement lemma on nonempty V∧I inputs (G-001). |
 
@@ -92,3 +92,5 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | R-2 | Cofinality for arbitrary L caps of standard targets (§3.3-3.4) is the hardest finite gate; §8.5 Case 3 depends on it | Bounded tests (codex: 84,291 admissible caps, no counterexample); formalize early |
 | R-3 | Occurrence identity, stack lookup, ι vs f maps, charts and frames in §6-§8 | Design occurrence/name types before proofs |
 | R-4 | Bounded formula/certificate compiler and budgets (Δ0 checkers, histories, J_{v+ω}) | Schema-level transport lemma for realization problems instead of general coding, if host-Lean route |
+| R-5 | Licensing: YesMetaZFC/BMS snapshot and BM4 have no license grant; CU, 1Y own code and Mathlib are Apache-2.0, KP1Y MIT | H can avoid the unlicensed code (Mathlib + narrow CU imports); O depends on YesMetaZFC |
+| R-6 | CU proves condensation for fully elementary substructures of L-stages; the paper needs Σ1-elementary substructures of its own S/J hierarchy | Reuse CU collapse primitives and the history-budget proof structure; prove Σ1 J-condensation new |
