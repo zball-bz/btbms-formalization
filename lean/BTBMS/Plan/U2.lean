@@ -19801,6 +19801,7 @@ theorem direct_body (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1
 -- `w(B) = X ⌢ T` with `T` below `[z]` (D3.3a, D3.3b)
 theorem ordStep_word_F6 (S : OrdStep) :
     ∃ X T, word S.A = X ++ [capAtomAt S.sd.depth S.m S.sd.r] ∧ word S.B = X ++ T ∧
+      (S.m = 0 → ∃ y, T.head? = some y ∧ (ofLex y).1 = 2 * S.sd.depth) ∧
       ∀ y ∈ T.head?, y < capAtomAt S.sd.depth S.m S.sd.r := by
   have hV := S.inL.1
   have hI := S.inL.2.1
@@ -19870,7 +19871,13 @@ theorem ordStep_word_F6 (S : OrdStep) :
   have hwB' : word S.B = X ++ T := by
     rw [hwB, hX, hT, List.map_append, List.map_append, List.append_assoc, List.append_assoc,
       List.map_append]
-  refine ⟨X, T, hwA', hwB', ?_⟩
+  refine ⟨X, T, hwA', hwB', fun h0 => ?_, ?_⟩
+  · rw [hT, if_pos h0]
+    cases V with
+    | nil => exact ⟨_, rfl, by simp [depthShift]⟩
+    | cons x V' =>
+      obtain ⟨p, h⟩ := x
+      exact ⟨_, rfl, by simp [depthShift]⟩
   -- `B < A` and the common prefix `X`
   have hAne : S.A ≠ Tree.empty := by
     intro h; have := S.hsd; rw [h] at this
@@ -19975,8 +19982,10 @@ theorem capPos_full_route_F6 {E : Forest} {c : ColAddr} (hc : c ∈ routeCols E)
 theorem cut_in_A_F6 (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.B c k ρ)
     (hle : ¬ S.A < litCap S.B c k ρ) {colA : Column} (hcolA : S.A.colAt c = some colA)
     (hk : k ≤ colA.length) :
-    (c = S.sd.col ∧ k = S.m) ∨ (k = colA.length ∧ k ≠ 0 ∧ (routeCols S.A)[colDepth c]? = some c) := by
-  obtain ⟨X, T, hwA, hwB, hT⟩ := ordStep_word_F6 S
+    (c = S.sd.col ∧ k = S.m ∧ ρ ≤ S.sd.r) ∨
+      (k = colA.length ∧ k ≠ 0 ∧ (routeCols S.A)[colDepth c]? = some c) := by
+  obtain ⟨X, T, hwA, hwB, hT0, hT⟩ := ordStep_word_F6 S
+  have hdepth := (stopData_spec S.hsd).2.1
   set z := capAtomAt S.sd.depth S.m S.sd.r with hz
   obtain ⟨R, hwR, hcapA, hnext, hπle⟩ := litCap_word_data hcolA hk
   set π := capPos S.A c k with hπ
@@ -20070,10 +20079,30 @@ theorem cut_in_A_F6 (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.B
         rw [capAtom_eq, ← he, ← hzq]
       have hs := stopData_litCap' hcolA k q
       rw [hAeq, S.hsd, Option.some.injEq] at hs
+      have hcs : c = S.sd.col := by rw [hs]
+      have hkm : k = S.m := by
+        show k = S.sd.Q.length
+        rw [hs]; simp [List.length_take_of_le hk]
+      have hqr : q = S.sd.r := by rw [hs]
       left
-      refine ⟨by rw [hs], ?_⟩
-      show k = S.sd.Q.length
-      rw [hs]; simp [List.length_take_of_le hk]
+      refine ⟨hcs, hkm, ?_⟩
+      by_contra hρq
+      -- a larger closing parent: `K` is the cap of `A` at the old closing slot, above `A`
+      have hPX : (word S.A).take π = X := by rw [hwA, ← heq, List.take_left]
+      have he' : e = S.sd.depth := by rw [he, colDepth, hcs, hdepth]
+      obtain ⟨hKeq, -⟩ := transfer T (by rw [hPX, hwB])
+        (fun hk0 y hy => by
+          have := hT y hy
+          rw [hz, ← hkm, ← he', capAtomAt, if_neg hk0, Prod.Lex.lt_iff] at this
+          rcases this with h | ⟨h, -⟩ <;> simp at h <;> omega)
+        (fun hk0 => by
+          obtain ⟨y, hy, hy'⟩ := hT0 (by rw [← hkm]; exact hk0)
+          exact ⟨y, hy, by rw [hy', he']⟩)
+      have hupA : IsUpward S.A c k ρ :=
+        isUpward_iff_exists.2 ⟨colA, hcolA, hk, fun q' h' hq' => by
+          rw [hck, Option.some.injEq, Prod.mk.injEq] at hq'
+          rw [← hq'.1, hqr]; omega⟩
+      exact hle (hKeq ▸ lt_litCap hupA)
     | none =>
       have hkl : k = colA.length := le_antisymm hk (List.getElem?_eq_none_iff.1 hck)
       by_cases hk0 : k = 0
@@ -20288,7 +20317,7 @@ theorem cut_location (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.
         refine ⟨rfl, ?_⟩
         by_contra hkm
         rcases cut_in_A_F6 S hup hle hsdcol (by simp [OrdStep.m] at hkm ⊢; omega) with
-          ⟨-, h⟩ | ⟨h, -⟩
+          ⟨-, h, -⟩ | ⟨h, -⟩
         · omega
         · simp [OrdStep.m] at h hkm; omega
     · by_cases hq : isQMat S.sd a = true ∧ i = 1
@@ -20320,7 +20349,105 @@ theorem cut_location (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.
           by_contra h'; exact hq ⟨h, by omega⟩, hc⟩)
 
 -- T3.8l (txt:511-643): the ordinary induction step
-theorem KS_ordinary (S : OrdStep) : KS S.B := by sorry
+theorem KS_ordinary (S : OrdStep) : KS S.B := by
+  intro c k ρ hup hKL
+  have hBL : InL S.B := inL_expand S.inL S.out
+  have hCC : CC S.A := cap_completion S.inL S.condP S.cof
+  have hsdK := stopData_litCap hup
+  have hAne : S.A ≠ Tree.empty := by
+    intro h; have := S.hsd; rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this; cases this
+  have hlastA : S.A.cols.getLast? ≠ some [] := by
+    intro h; have := S.hsd; rw [stopData_eq_none_of_lastCol (Or.inr h)] at this; cases this
+  have hKne : litCap S.B c k ρ ≠ Tree.empty := by
+    intro h; rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at hsdK; cases hsdK
+  have hdef : ∀ rd, rootData (litCap S.B c k ρ) = some rd → KernelDefined (litCap S.B c k ρ) rd :=
+    fun rd hrd => ker_kernelDefined hKL hsdK hrd
+  have hcov : Success (litCap S.B c k ρ) (localSuffix S.B c) → Covers (litCap S.B c k ρ) S.B :=
+    (covers_iff_success hBL.2.1 hup hKL.1 hKL.2.1 hdef).2
+  -- the seam: some approximant of `K` is `A[n+1] > B` (T3.8ld, T3.8b)
+  have hseam : ∀ i, 1 ≤ i → i ≤ S.n → phaseCol S.sd S.rd i S.rd.col = some c → k = S.m →
+      ρ = S.s (i - 1) → Covers (litCap S.B c k ρ) S.B := by
+    intro i hi1 hin hc hk hρ
+    subst hk hρ
+    have hs := expand_seam S ⟨hi1, hin⟩ hc (S.n - i + 2)
+    rw [show i - 1 + (S.n - i + 2) = S.n + 1 by omega] at hs
+    obtain ⟨A', hA'⟩ := Option.ne_none_iff_exists'.1 (inL_expand_ne_none S.inL (S.n + 1))
+    exact ⟨_, A', hs.trans hA', expand_strictMono S.inL hlastA hAne (Nat.lt_succ_self _) S.out hA'⟩
+  -- restored-suffix cuts (T3.8lg, L3.6, T3.8lh)
+  have hrest : ∀ i, 1 ≤ i → i ≤ S.n → phaseCol S.sd S.rd i S.rd.col = some c → S.m < k →
+      capPos S.B c k < mu S.B → Covers (litCap S.B c k ρ) S.B := by
+    intro i hi1 hin hc hkm hend
+    obtain ⟨hup', hV', hI', hA'⟩ := restored_oldCap S ⟨hi1, hin⟩ hc hkm hup hKL hend
+    exact hcov (restored_cut S ⟨hi1, hin⟩ hc hkm hup hKL hend (hCC _ _ _ hup' hV' hI' hA'))
+  -- 1. above the old target
+  by_cases hAK : S.A < litCap S.B c k ρ
+  · refine covers_of_gt S.cof hKL hKne ?_ hAK
+      (le_of_lt (expand_lt hAne S.inL.1 S.inL.2.1 S.out)) ?_
+    · intro h; rw [stopData_eq_none_of_lastCol (Or.inr h)] at hsdK; cases hsdK
+    · intro K0 h0; exact expand_zero_litCap_lt hBL.2.1 hup hKL.1 hKL.2.1 h0
+  -- a full cut at the end of `B` (L3.4f)
+  have hπle : capPos S.B c k ≤ mu S.B := by
+    obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 hup
+    obtain ⟨-, -, -, -, h⟩ := litCap_word_data hcol hk
+    exact h
+  rcases Nat.lt_or_ge (capPos S.B c k) (mu S.B) with hend | hge
+  swap
+  · exact hcov (fullCut_success hup hKL (le_antisymm hπle hge))
+  -- 2. the three cut locations (T3.8la)
+  rcases cut_location S hup hKL hAK hend with ⟨rfl, hkm⟩ | ⟨i, hi2, hin, hc⟩ |
+      ⟨i, a, hi1, hin, ha, hq, hc⟩
+  · -- (a) head 1, the stopping column
+    have hc1 : phaseCol S.sd S.rd 1 S.rd.col = some S.sd.col := by
+      obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+      rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S)]
+      rfl
+    rcases Nat.eq_or_lt_of_le hkm with hkm | hkm
+    · subst hkm
+      have hρ1 : S.s (1 - 1) ≤ ρ := seam_parent S ⟨le_rfl, S.pos⟩ hc1 hup hKL
+      have hsdcol := (stopData_spec S.hsd).1
+      have hρ2 : ρ ≤ S.sd.r := by
+        rcases cut_in_A_F6 S hup hAK hsdcol (by simp [OrdStep.m]) with ⟨-, -, h⟩ | ⟨h, -⟩
+        · exact h
+        · simp [OrdStep.m] at h
+      exact hseam 1 le_rfl S.pos hc1 rfl (by simp [OrdStep.s] at hρ1 ⊢; omega)
+    · exact hrest 1 le_rfl S.pos hc1 hkm hend
+  · -- (b) the head of a layer `i ≥ 2`
+    rcases Nat.lt_trichotomy k S.m with hkm | hkm | hkm
+    · exact headQuery_cut S ⟨hi2, hin⟩ hc (Or.inl hkm) hup hKL
+    · subst hkm
+      rcases Nat.lt_trichotomy ρ (S.s (i - 1)) with hρ | hρ | hρ
+      · exact absurd (seam_parent S ⟨by omega, hin⟩ hc hup hKL) (by omega)
+      · exact hseam i (by omega) hin hc rfl hρ
+      · exact headQuery_cut S ⟨hi2, hin⟩ hc (Or.inr ⟨rfl, hρ⟩) hup hKL
+    · exact hrest i (by omega) hin hc hkm hend
+  · -- (c) phase material of a template column `a` (T3.8li, L3.6, T3.8lj–T3.8ls)
+    have hproj := fun hρ => projection S ⟨hi1, hin⟩ ha hq hc hup hKL hend hρ
+    rcases Nat.lt_or_ge (S.s (phaseOff S.sd i a)) ρ with hρ | hρ
+    · obtain ⟨hup', hV', hI', hA'⟩ := hproj (Or.inr hρ.le)
+      have hpr : S.proj (phaseOff S.sd i a) ρ = ρ - phaseOff S.sd i a * S.d := by
+        simp [OrdStep.proj, hρ]
+      rw [hpr] at hup' hV' hI' hA'
+      exact hcov (root_current S ⟨hi1, hin⟩ ha hq hc hup hKL hend hρ (hCC _ _ _ hup' hV' hI' hA'))
+    rcases Nat.eq_or_lt_of_le hρ with hρ | hρ
+    · obtain ⟨hup', hV', hI', hA'⟩ := hproj (Or.inr hρ.ge)
+      have hpr : S.proj (phaseOff S.sd i a) ρ = S.sd.r := by
+        simp [OrdStep.proj, hρ]
+      rw [hpr] at hup' hV' hI' hA'
+      exact hcov (root_head S ⟨hi1, hin⟩ ha hq hc hup hKL hend hρ (hCC _ _ _ hup' hV' hI' hA'))
+    rcases Nat.lt_or_ge S.sd.r ρ with hρr | hρr
+    · exact hcov (root_prev S ⟨hi1, hin⟩ ha hq hc hup hKL hend hρr hρ)
+    · obtain ⟨hup', hV', hI', hA'⟩ := hproj (Or.inl hρr)
+      have hpr : S.proj (phaseOff S.sd i a) ρ = ρ := by
+        unfold OrdStep.proj
+        rw [if_neg (by omega)]
+        split_ifs with h
+        · simp [OrdStep.s] at h; omega
+        · rfl
+      rw [hpr] at hup' hV' hI' hA'
+      have hold := hCC _ _ _ hup' hV' hI' hA'
+      by_cases hroute : OnHoleRoute S.sd a
+      · exact hcov (direct_body S ⟨hi1, hin⟩ ha hc hroute hup hKL hend hρr hold)
+      · exact hcov (closed_side S ⟨hi1, hin⟩ ha hq hc hroute hup hKL hend hρr hold)
 
 -- T3.8m (txt:504): kernel success for every standard target, by induction on generation
 theorem KS_std {B : Forest} (hB : IsStd B) : KS B := by sorry
