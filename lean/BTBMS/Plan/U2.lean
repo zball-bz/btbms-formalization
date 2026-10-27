@@ -4325,6 +4325,87 @@ theorem repair {E : Forest} (hL : InL E) (hP : CondP E) {c : ColAddr} {k p : Nat
 /-! ## D3.1d, D3.1e — integration additions (requested by U3 R10–R13, R15, R18, R19 and U5 R16,
 R17; formerly stubs in `U3.lean` / `U5.lean`) -/
 
+/-! ### D3.1d helpers: origins of ordinary roles and slots -/
+
+theorem backRole_ord : ∀ (ms : List Move) (c : ColAddr),
+    ∃ c', backRole ms (.ord c) = .ord c' ∧ c'.num 0 = c.num 0
+  | [], c => ⟨c, rfl, rfl⟩
+  | m :: ms, c => by
+    obtain ⟨c', h1, h2⟩ := backRole_ord ms c
+    refine ⟨bwdC m c', ?_, by rw [num_bwdC, h2]⟩
+    show m.mapRole m.bwdIdx (backRole ms (.ord c)) = _
+    rw [h1]; rfl
+
+theorem origin_ord {E : Forest} (w : AdmCap E) (c : ColAddr) :
+    ∃ c', w.origin (.ord c) = some (.ord c') ∧ c'.num 0 = c.num 0 := by
+  obtain ⟨c', h1, h2⟩ := backRole_ord w.moves c
+  exact ⟨c', by rw [originBody_eq, h1, if_neg (by simp)], h2⟩
+
+/-- helper: an entry of the moved tree, undone, keeps its label and its column. -/
+theorem adm_entries {K : Forest} :
+    ∀ ms : List Move, MovesValid K ms → ∀ e, ((applyMoves K ms).entryAt e).isSome →
+      ∃ e₀, backRole ms (.slot e) = .slot e₀ ∧ backRole ms (.ord e.col) = .ord e₀.col ∧
+        ((applyMoves K ms).entryAt e).map Prod.fst = (K.entryAt e₀).map Prod.fst := by
+  intro ms
+  induction ms using List.reverseRecOn with
+  | nil => intro _ e _; exact ⟨e, rfl, rfl, rfl⟩
+  | append_singleton ms m ih =>
+    intro hv e he
+    obtain ⟨hv, hm⟩ := movesValid_append hv
+    obtain ⟨col, -, hcol, -, hj, hij, -⟩ := hm
+    have hj' : m.j < col.length := by omega
+    rw [applyMoves_snoc] at he ⊢
+    -- the backward entry of `e` in the tree before the move
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 he
+    obtain ⟨col', hcol', hidx⟩ := Tree.colAt_of_entryAt hx
+    obtain ⟨col0, hcol0, hmc, hnc⟩ := colAt_mod_corr hcol hij hj' hcol'
+    have hlab : ∃ y, (applyMoves K ms).entryAt (m.mapEntry m.bwdIdx e) = some y ∧ y.1 = x.1 := by
+      by_cases hem : e.col = m.col
+      · obtain ⟨rfl, -⟩ := hmc hem
+        have hme : m.mapEntry m.bwdIdx e = ⟨m.col, m.bwdIdx e.idx⟩ := by
+          unfold Move.mapEntry; dsimp only
+          have : (⟨m.mapPath m.bwdIdx e.col.path, e.col.col⟩ : ColAddr) = m.col := by
+            rw [hem, mapPath_off _ _ _ (fun e D he => by have := congrArg List.length he; simp at this)]
+          rw [if_pos this, this]
+        rw [moveFun, getElem?_moveFun m col hij.le hj'.le] at hidx
+        refine ⟨x, ?_, rfl⟩
+        rw [hme]; simp only [Tree.entryAt, hcol, Option.bind_some]; exact hidx
+      · obtain ⟨hl, -⟩ := hnc hem
+        have h1 := congrArg (·[e.idx]?) hl
+        simp only [List.getElem?_map, hidx, Option.map_some] at h1
+        obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 h1.symm
+        have hme : m.mapEntry m.bwdIdx e = ⟨bwdC m e.col, e.idx⟩ := by
+          unfold Move.mapEntry; dsimp only
+          rw [if_neg]; rfl
+          intro h'; apply hem
+          have := (colAddr_mapPath_eq_iff m.bwdIdx m e.col.path e.col.col).1 h'
+          exact this
+        refine ⟨y, ?_, hyx⟩
+        rw [hme]; simp only [Tree.entryAt, hcol0, Option.bind_some]; exact hy
+    obtain ⟨y, hy, hyx⟩ := hlab
+    obtain ⟨e₀, h1, h2, h3⟩ := ih hv (m.mapEntry m.bwdIdx e) (by rw [hy]; rfl)
+    refine ⟨e₀, ?_, ?_, ?_⟩
+    · rw [backRole_append]; exact h1
+    · rw [backRole_append]
+      show backRole ms (.ord ⟨m.mapPath m.bwdIdx e.col.path, e.col.col⟩) = _
+      rw [← mapEntry_col]; exact h2
+    · rw [hx, ← h3, hy]; simp [hyx]
+
+/-- helper (D3.1d, representatives clause of `origin_spec_full`). -/
+theorem origin_reps {E : Forest} (w : AdmCap E) :
+    ∀ c c', Role.ord c ∈ w.H.roles → w.origin (.ord c) = some (.ord c') → ∀ q, q < c.num 0 →
+      (c.rep 0 q).map (fun ov => (Packet.anchorD E (some w) ov.1, Packet.anchorD E (some w) ov.2)) =
+        c'.rep 0 q := by
+  sorry
+
+/-- helper (D3.1d, reading-order clause of `origin_spec_full`). -/
+theorem origin_order {E : Forest} (w : AdmCap E) :
+    ∀ x y, (∃ i j : Nat, w.H.roles[i]? = some x ∧ w.H.roles[j]? = some y ∧ i < j) →
+      (w.origin x).isSome → (w.origin y).isSome →
+      ∃ i j : Nat, E.roles[i]? = some (Packet.anchorD E (some w) x) ∧
+        E.roles[j]? = some (Packet.anchorD E (some w) y) ∧ i < j := by
+  sorry
+
 -- provides: U2, D3.1d (requested by U3 R10; refines `origin_spec`†): χ is injective on the
 -- roles of `w.H`, `none` exactly on the closing slot, valued in `E`, sends ordinary roles to
 -- ordinary roles of the same printed number, keeps labels and hosts of slots, commutes with
@@ -4345,7 +4426,41 @@ theorem origin_spec_full {E : Forest} (hE : InL E) (w : AdmCap E) :
     (∀ x y, (∃ i j : Nat, w.H.roles[i]? = some x ∧ w.H.roles[j]? = some y ∧ i < j) →
       (w.origin x).isSome → (w.origin y).isSome →
       ∃ i j : Nat, E.roles[i]? = some (Packet.anchorD E (some w) x) ∧
-        E.roles[j]? = some (Packet.anchorD E (some w) y) ∧ i < j) := by sorry
+        E.roles[j]? = some (Packet.anchorD E (some w) y) ∧ i < j) := by
+  obtain ⟨hinj, hnone, -, hval⟩ := origin_spec w
+  refine ⟨fun x hx y hy hxy => ?_, hnone, hval, fun c _ => ?_, fun c c' _ h => ?_,
+    fun e e' he h => ?_, origin_reps w, origin_order w⟩
+  · cases h : w.origin x with
+    | none =>
+      have hy' : w.origin y = none := by rw [← hxy, h]
+      obtain ⟨sd, hsd, rfl⟩ := (hnone x hx).1 h
+      obtain ⟨sd', hsd', rfl⟩ := (hnone y hy).1 hy'
+      rw [hsd] at hsd'; obtain rfl := Option.some.inj hsd'; rfl
+    | some z => exact hinj x hx y hy z h (by rw [← hxy, h])
+  · obtain ⟨c', h1, -⟩ := origin_ord w c; exact Or.inl ⟨c', h1⟩
+  · obtain ⟨c'', h1, h2⟩ := origin_ord w c
+    rw [h1] at h; obtain rfl := Role.ord.inj (Option.some.inj h); exact h2
+  · obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_roles_iff _ _).1 he)
+    have hx' : (applyMoves (litCap E w.col w.cut w.par) w.moves).entryAt e = some x := hx
+    obtain ⟨e₀, h1, h2, h3⟩ := adm_entries w.moves w.movesValid e (by rw [hx']; rfl)
+    rw [originBody_eq, h1] at h
+    split_ifs at h with hne
+    obtain rfl := Role.slot.inj (Option.some.inj h)
+    refine ⟨?_, by rw [originBody_eq, h2, if_neg (by simp)]⟩
+    show ((applyMoves (litCap E w.col w.cut w.par) w.moves).entryAt e).map Prod.fst = _
+    rw [h3]
+    obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 w.upward
+    obtain ⟨y, hy⟩ : ∃ y, (litCap E w.col w.cut w.par).entryAt e₀ = some y := by
+      cases h4 : (litCap E w.col w.cut w.par).entryAt e₀ with
+      | none => rw [h4] at h3; rw [hx'] at h3; simp at h3
+      | some y => exact ⟨y, rfl⟩
+    rw [hy]
+    rcases entryAt_litCap_cases hcol hk hy with h' | ⟨ρ, hρ⟩ | h'
+    · exact absurd (by rw [h']) hne
+    · obtain ⟨q, J, hE⟩ := heightAt_of_prefix hcol ⟨ρ, hρ⟩
+      rw [entryAt_litCap_container hcol hρ hE] at hy
+      rw [← hy, hE]; rfl
+    · rw [h']
 
 /-! ### D3.1d helpers: the stopping column of an admissible cap -/
 
