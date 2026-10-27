@@ -7131,11 +7131,11 @@
    ],
    "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written.",
    "fix_by": "claude",
-   "repair": "Lean: prev_root_response (T3.8lo) proved from the G-009 invariant low_head_detour and 33 helpers (prove/B7, merged). Open: helper fullCut_container_end (full-cut exclusion, G9.6 step 2)."
+   "repair": "Lean: prev_root_response (T3.8lo) proved from the G-009 invariant low_head_detour and 33 helpers (prove/B7, merged). fullCut_container_end proved (prove/D7)."
   },
   {
    "id": "G-010",
-   "status": "confirmed",
+   "status": "repaired",
    "severity": "unknown",
    "loc": "§3 txt:520-541",
    "summary": "Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix",
@@ -7149,7 +7149,9 @@
     "blueprint/INTEGRATION.md §2.2",
     "codex-blueprint-review.md BP-06"
    ],
-   "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases."
+   "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases.",
+   "fix_by": "claude",
+   "repair": "Lean: projection (T3.8li) and headQuery_oldCap (T3.8lb) proved from the G-010 helpers, head_path_active proved by induction (prove/D7, merged). Open: respEdge_phase_D7, respEdge_head_high_D7, path_head_low_D7, projection_host_D7, headQuery_host_D7."
   },
   {
    "id": "G-011",
