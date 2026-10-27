@@ -689,10 +689,214 @@ theorem body_firstParent {A : Forest} {sd : StopData} (hL : InL A) (hk : stepKin
     (ho : sd.col.resolve 0 x = some o) :
     ∃ q H rest, A.colAt o = some ((q, H) :: rest) ∧ sd.r ≤ q := by sorry
 
+/-! T3.2c helpers: the structure of the budgeted walk `spF` behind `safePrefix`. -/
+
+theorem spx_spF_snd_le (k : Nat) (T : Forest) : (spF k T).2 ≤ k := by
+  rw [(spF_spec 0 k T).2]; omega
+
+/-- A walk that leaves budget unused keeps the whole forest. -/
+theorem spx_spF_full {k : Nat} {T : Forest} (h : (spF k T).2 ≠ 0) : (spF k T).1 = T := by
+  rw [(spF_spec 0 k T).2] at h
+  exact safePrefix_of_le (by unfold mu word; omega)
+
+theorem spx_spLater_snd_le : ∀ (k : Nat) (col : Column), (spLater k col).2 ≤ k
+  | k, [] => by simp [spLater]
+  | k, (p, h) :: rest => by
+    by_cases hk : k = 0
+    · simp [spLater, hk]
+    · simp only [spLater, hk, if_false]
+      have := spx_spLater_snd_le (spF (k - 1) h).2 rest
+      have := spx_spF_snd_le (k - 1) h
+      omega
+
+theorem spx_spCol_snd_le : ∀ (k : Nat) (col : Column), (spCol k col).2 ≤ k - 1
+  | k, [] => by simp [spCol]
+  | k, (p, h) :: rest => by
+    simp only [spCol]
+    have := spx_spLater_snd_le (spF (k - 1) h).2 rest
+    have := spx_spF_snd_le (k - 1) h
+    omega
+
+theorem spx_spLater_get : ∀ (k : Nat) (col : Column) (i p : Nat) (h' : Forest),
+    (spLater k col).1[i]? = some (p, h') →
+      ∃ h k', col[i]? = some (p, h) ∧ h' = (spF k' h).1 ∧ k' < k
+  | k, [], i, p, h', hi => by simp [spLater] at hi
+  | k, (q, h) :: rest, i, p, h', hi => by
+    by_cases hk : k = 0
+    · simp [spLater, hk] at hi
+    · simp only [spLater, hk, if_false] at hi
+      cases i with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hi
+        obtain ⟨rfl, rfl⟩ := hi
+        exact ⟨h, k - 1, rfl, rfl, by omega⟩
+      | succ i =>
+        rw [List.getElem?_cons_succ] at hi
+        obtain ⟨h₀, k', h1, h2, h3⟩ := spx_spLater_get _ rest i p h' hi
+        have := spx_spF_snd_le (k - 1) h
+        exact ⟨h₀, k', by simpa using h1, h2, by omega⟩
+
+theorem spx_spCol_get {k : Nat} (hk : 1 ≤ k) {col : Column} {i p : Nat} {h' : Forest}
+    (hi : (spCol k col).1[i]? = some (p, h')) :
+    ∃ h k', col[i]? = some (p, h) ∧ h' = (spF k' h).1 ∧ k' < k := by
+  cases col with
+  | nil => simp [spCol] at hi
+  | cons x rest =>
+    obtain ⟨q, h⟩ := x
+    simp only [spCol] at hi
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hi
+      obtain ⟨rfl, rfl⟩ := hi
+      exact ⟨h, k - 1, rfl, rfl, by omega⟩
+    | succ i =>
+      rw [List.getElem?_cons_succ] at hi
+      obtain ⟨h₀, k', h1, h2, h3⟩ := spx_spLater_get _ rest i p h' hi
+      have := spx_spF_snd_le (k - 1) h
+      exact ⟨h₀, k', by simpa using h1, h2, by omega⟩
+
+theorem spx_spCols_get : ∀ (k : Nat) (cols : List Column) (j : Nat) (col' : Column),
+    (spCols k cols).1[j]? = some col' →
+      ∃ col k', cols[j]? = some col ∧ col' = (spCol k' col).1 ∧ 1 ≤ k' ∧ k' ≤ k
+  | k, [], j, col', hj => by simp [spCols] at hj
+  | k, c :: rest, j, col', hj => by
+    by_cases hk : k = 0
+    · simp [spCols, hk] at hj
+    · simp only [spCols, hk, if_false] at hj
+      cases j with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hj
+        exact ⟨c, k, rfl, hj.symm, by omega, le_rfl⟩
+      | succ j =>
+        rw [List.getElem?_cons_succ] at hj
+        obtain ⟨col, k', h1, h2, h3, h4⟩ := spx_spCols_get _ rest j col' hj
+        have := spx_spCol_snd_le k c
+        exact ⟨col, k', by simpa using h1, h2, h3, by omega⟩
+
+/-- In a kept column, every entry followed by a kept entry keeps its whole height. -/
+theorem spx_spLater_full : ∀ (k : Nat) (col : Column) (i : Nat),
+    ((spLater k col).1[i + 1]?).isSome → (spLater k col).1[i]? = col[i]?
+  | k, [], i, hi => by simp [spLater] at hi
+  | k, (q, h) :: rest, i, hi => by
+    by_cases hk : k = 0
+    · simp [spLater, hk] at hi
+    · simp only [spLater, hk, if_false] at hi ⊢
+      cases i with
+      | zero =>
+        simp only [List.getElem?_cons_zero, List.getElem?_cons_succ] at hi ⊢
+        have hne : (spF (k - 1) h).2 ≠ 0 := by
+          intro h0; rw [h0] at hi
+          cases rest with
+          | nil => simp [spLater] at hi
+          | cons y ys => simp [spLater] at hi
+        rw [spx_spF_full hne]
+      | succ i =>
+        simp only [List.getElem?_cons_succ] at hi ⊢
+        exact spx_spLater_full _ rest i hi
+
+theorem spx_spCol_full {k : Nat} {col : Column} {i : Nat}
+    (hi : ((spCol k col).1[i + 1]?).isSome) : (spCol k col).1[i]? = col[i]? := by
+  cases col with
+  | nil => simp [spCol] at hi
+  | cons x rest =>
+    obtain ⟨q, h⟩ := x
+    simp only [spCol] at hi ⊢
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, List.getElem?_cons_succ] at hi ⊢
+      have hne : (spF (k - 1) h).2 ≠ 0 := by
+        intro h0; rw [h0] at hi
+        cases rest with
+        | nil => simp [spLater] at hi
+        | cons y ys => simp [spLater] at hi
+      rw [spx_spF_full hne]
+    | succ i =>
+      simp only [List.getElem?_cons_succ] at hi ⊢
+      exact spx_spLater_full _ rest i hi
+
+/-- Forests of a safe prefix are safe prefixes of the forests at the same path, with a smaller
+budget below the outer level. -/
+theorem spx_forestAt : ∀ (π : List (Nat × Nat)) (T : Forest) (k : Nat) (F' : Forest),
+    (spF k T).1.forestAt π = some F' →
+      ∃ F k', T.forestAt π = some F ∧ F' = (spF k' F).1 ∧ k' ≤ k ∧ (π ≠ [] → k' < k)
+  | [], T, k, F', h => by
+    simp only [Tree.forestAt, Option.some.injEq] at h
+    exact ⟨T, k, rfl, h.symm, le_rfl, fun h => absurd rfl h⟩
+  | (a, b) :: π, .node cols, k, F', h => by
+    rw [spF, Tree.forestAt_cons] at h
+    simp only [Tree.cols, Option.bind_eq_some_iff] at h
+    obtain ⟨x, ⟨col', hcol', hx⟩, hF⟩ := h
+    obtain ⟨col, k₁, hcol, rfl, hk₁, hk₁'⟩ := spx_spCols_get k cols a col' hcol'
+    obtain ⟨p, h'⟩ := x
+    obtain ⟨h, k₂, hh, rfl, hk₂⟩ := spx_spCol_get hk₁ hx
+    obtain ⟨F, k₃, hF1, hF2, hk₃, -⟩ := spx_forestAt π h k₂ F' hF
+    refine ⟨F, k₃, ?_, hF2, by omega, fun _ => by omega⟩
+    rw [Tree.forestAt_cons]
+    simp only [Tree.cols, hcol, Option.bind_some, hh]
+    exact hF1
+
+theorem spx_colAt {T : Forest} {k : Nat} {c : ColAddr} {col' : Column}
+    (h : (spF k T).1.colAt c = some col') :
+    ∃ col k', T.colAt c = some col ∧ col' = (spCol k' col).1 ∧ 1 ≤ k' ∧ k' ≤ k ∧
+      (c.path ≠ [] → k' < k) := by
+  rw [Tree.colAt, Option.bind_eq_some_iff] at h
+  obtain ⟨F', hF', hc⟩ := h
+  obtain ⟨F, k₁, hF, rfl, hk₁, hk₁'⟩ := spx_forestAt c.path T k F' hF'
+  obtain ⟨cols⟩ := F
+  rw [spF] at hc
+  obtain ⟨col, k₂, hcol, rfl, hk₂, hk₂'⟩ := spx_spCols_get k₁ cols c.col col' hc
+  refine ⟨col, k₂, ?_, rfl, hk₂, by omega, fun hp => by have := hk₁' hp; omega⟩
+  rw [Tree.colAt, hF]; exact hcol
+
+theorem spx_entryAt {T : Forest} {k : Nat} {e : EntryAddr} {p : Nat} {h' : Forest}
+    (h : (spF k T).1.entryAt e = some (p, h')) :
+    ∃ h k', T.entryAt e = some (p, h) ∧ h' = (spF k' h).1 ∧ k' < k := by
+  rw [Tree.entryAt, Option.bind_eq_some_iff] at h
+  obtain ⟨col', hc', hi⟩ := h
+  obtain ⟨col, k₁, hcol, rfl, hk₁, hk₁', -⟩ := spx_colAt hc'
+  obtain ⟨H, k₂, hH, rfl, hk₂⟩ := spx_spCol_get hk₁ hi
+  exact ⟨H, k₂, by rw [Tree.entryAt, hcol]; exact hH, rfl, by omega⟩
+
+theorem spx_spF_empty (k : Nat) : (spF k (Tree.empty : Forest)).1 = Tree.empty := by
+  simp [Tree.empty, spF, spCols]
+
 -- T3.2c (txt:311-312): safe prefixes keep V, I, H
-theorem safePrefix_condV {E : Forest} (hV : CondV E) (k : Nat) : CondV (safePrefix E k) := by sorry
-theorem safePrefix_condI {E : Forest} (hI : CondI E) (k : Nat) : CondI (safePrefix E k) := by sorry
-theorem safePrefix_condH {E : Forest} (hH : CondH E) (k : Nat) : CondH (safePrefix E k) := by sorry
+theorem safePrefix_condV {E : Forest} (hV : CondV E) (k : Nat) : CondV (safePrefix E k) := by
+  intro e _ p h' he
+  obtain ⟨h, -, hE, -, -⟩ := spx_entryAt he
+  exact hV e ((Tree.mem_entryAddrs_iff E e).2 (by rw [hE]; rfl)) p h hE
+
+theorem safePrefix_condI {E : Forest} (hI : CondI E) (k : Nat) : CondI (safePrefix E k) := by
+  intro e _ p h' he hne col' hcol'
+  obtain ⟨h, k', hE, rfl, -⟩ := spx_entryAt he
+  obtain ⟨hcols⟩ := h
+  have hne' : Tree.node hcols ≠ Tree.empty := by
+    intro h0; apply hne; rw [h0]; exact spx_spF_empty k'
+  rw [spF] at hcol'
+  obtain ⟨j, hj⟩ := List.mem_iff_getElem?.1 hcol'
+  obtain ⟨col, k₂, hcol, rfl, hk₂, -⟩ := spx_spCols_get k' hcols j col' hj
+  obtain ⟨q, H, rest, rfl, hq⟩ := hI e ((Tree.mem_entryAddrs_iff E e).2 (by rw [hE]; rfl)) p _ hE
+    hne' col (List.mem_of_getElem? hcol)
+  exact ⟨q, (spF (k₂ - 1) H).1, (spLater (spF (k₂ - 1) H).2 rest).1, by rw [spCol], hq⟩
+
+theorem safePrefix_condH {E : Forest} (hH : CondH E) (k : Nat) : CondH (safePrefix E k) := by
+  intro c hc i x y hx hy
+  obtain ⟨col', hcol'⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 hc)
+  change (spF k E).1.colAt c = some col' at hcol'
+  change (((spF k E).1.colAt c).getD [])[i]? = some x at hx
+  change (((spF k E).1.colAt c).getD [])[i + 1]? = some y at hy
+  rw [hcol', Option.getD_some] at hx hy
+  obtain ⟨col, k', hcol, rfl, hk', -⟩ := spx_colAt hcol'
+  have hxi := spx_spCol_full (k := k') (col := col) (i := i) (by rw [hy]; rfl)
+  rw [hx] at hxi
+  obtain ⟨Y, k₂, hY, hYy, -⟩ := spx_spCol_get hk' hy
+  have hle := hH c ((Tree.mem_colAddrs_iff E c).2 (by rw [hcol]; rfl)) i x (y.1, Y)
+    (by rw [hcol]; exact hxi.symm) (by rw [hcol]; exact hY)
+  rcases hle with hlt | ⟨heq, hle⟩
+  · exact Or.inl hlt
+  · refine Or.inr ⟨heq, le_trans ?_ hle⟩
+    rw [hYy]; exact safePrefix_le Y k₂
+
 
 -- T3.2d (txt:308-311): safe prefixes keep S (containment offsets + word fact)
 theorem safePrefix_condS {E : Forest} (hV : CondV E) (hS : CondS E) (k : Nat) :
