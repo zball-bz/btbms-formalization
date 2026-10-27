@@ -1995,7 +1995,8 @@ theorem onStack_kerCol_qmat (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.r
         simp only [List.getElem?_cons_succ] at hk'
         refine Or.inl ⟨rest_o.length + 1, ck, ik, ?_, ?_, hle⟩
         · simpa using hk'
-        · show (0, j) :: rest_o = ((0, j) :: rest).take (rest_o.length + 1)
+        · simp only [List.take_succ_cons]
+          exact congrArg _ hrest
       · simp only at hp hlt
         rw [hop, hxp] at hp
         have hp' := List.append_cancel_left hp
