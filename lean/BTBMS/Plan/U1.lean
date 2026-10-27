@@ -2172,22 +2172,38 @@ theorem rootData_col {H : Forest} {sd : StopData} {rd : RootData}
     (hsd : stopData H = some sd) (hrd : rootData H = some rd) :
     sd.col.resolve 0 sd.r = some rd.col ∧ rd.col.num 0 = sd.r ∧
       closingSlot sd ∈ H.entryAddrs ∧ H.entryAt (closingSlot sd) = some (sd.r, Tree.empty) := by
-  sorry
+  obtain ⟨hres, -, -, hnum, -⟩ := rootData_spec hsd hrd
+  obtain ⟨hcol, -⟩ := stopData_spec hsd
+  have hent : H.entryAt (closingSlot sd) = some (sd.r, Tree.empty) := by
+    simp [Tree.entryAt, closingSlot, hcol]
+  exact ⟨hres, hnum, (Tree.mem_entryAddrs_iff H _).mpr (by rw [hent]; rfl), hent⟩
 
 /-- D1.6d (requested by U5 R4): the stopping column is a column of the expression. -/
 theorem stopData_col_mem {H : Forest} {sd : StopData} (hsd : stopData H = some sd) :
-    Role.ord sd.col ∈ H.roles := by sorry
+    Role.ord sd.col ∈ H.roles := by
+  obtain ⟨hcol, -⟩ := stopData_spec hsd
+  exact (Tree.mem_roles_iff H _).mpr (by simp [hcol])
 
 /-- D1.6d (requested by U5 R5): the owner entry of a special step is an entry containing the
 stopping column, and its height ends with the column `[(a, ∅)]`, `a` the owner column's number. -/
 theorem ownerEntry_mem {H : Forest} {sd : StopData} {e : EntryAddr}
     (hk : stepKind H = some .special) (hsd : stopData H = some sd) (he : sd.ownerEntry = some e) :
     e ∈ H.entryAddrs ∧ (Role.ord sd.col).inEntry e = true ∧
-      ∃ h, H.heightAt e = some h ∧ h.cols.getLast? = some [(e.col.num 0, Tree.empty)] := by sorry
+      ∃ h, H.heightAt e = some h ∧ h.cols.getLast? = some [(e.col.num 0, Tree.empty)] := by
+  obtain ⟨-, hhp, hnum, col, p, Fl, hcol, hlast, hidx, hFl⟩ := ownerEntry_spec hk hsd he
+  have hent : H.entryAt e = some (p, Fl) := by
+    simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [show e.idx = col.length - 1 by omega, ← List.getLast?_eq_getElem?, hlast]
+  refine ⟨(Tree.mem_entryAddrs_iff H _).mpr (by rw [hent]; rfl), ?_, Fl,
+    by simp [Tree.heightAt, hent], by rw [hFl, hnum]⟩
+  simp [Role.inEntry, Role.path, hhp]
 
 /-- D1.6d (requested by U5 R7): an ordinary step has a nonempty last outer column. -/
 theorem lastCol_of_ordinary {E : Forest} (h : stepKind E = some .ordinary) :
-    E.cols.getLast? ≠ some [] := by sorry
+    E.cols.getLast? ≠ some [] := by
+  intro h0
+  rw [(stepKind_deletion_iff E).mpr h0] at h
+  cases h
 
 /-- D1.6d (requested by U3 R4): the stopping data in role form. -/
 theorem stopData_roles {E : Forest} {sd : StopData} (h : stopData E = some sd) :
@@ -2206,7 +2222,31 @@ theorem rootData_path {E : Forest} {sd : StopData} {rd : RootData}
     rd.col.path <+: sd.col.path ∧
     rd.cursor = cursor (rootKeys E rd) (queryKeys sd) ∧
     (rd.owner = true ↔ (rd.col.container sd.col).isSome) ∧
-    (∀ e, rd.col.container sd.col = some e → e.idx + 1 = Packet.rootLenOf E rd) := by sorry
+    (∀ e, rd.col.container sd.col = some e → e.idx + 1 = Packet.rootLenOf E rd) := by
+  obtain ⟨hres, hlay, -, hnum, -, -, hcur, -⟩ := rootData_spec hsd h
+  obtain ⟨-, o, ho, rfl⟩ := rootData_unpack hsd h
+  obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col o sd.r).mp ho
+  obtain ⟨F, hF, -, hpre, hiff, hlen⟩ := onStack_route hsd hon
+  have hown : (rootOf E sd o).owner = (o.col + 1 == F.cols.length) := by simp [rootOf, hF]
+  have hR : ((E.colAt o).getD []).length = ((F.cols[o.col]?).getD []).length := by
+    simp [Tree.colAt, hF]
+  refine ⟨hres, hnum, hlay, hpre, hcur, ?_, ?_⟩
+  · rw [hown, beq_iff_eq, hiff, Option.isSome_iff_exists]
+    constructor
+    · rintro ⟨u, hu⟩
+      exact ⟨⟨o, u⟩, (ColAddr.container_spec o sd.col ⟨o, u⟩).mpr ⟨rfl, hu⟩⟩
+    · rintro ⟨e, he⟩
+      obtain ⟨hec, hep⟩ := (ColAddr.container_spec o sd.col e).mp he
+      refine ⟨e.idx, ?_⟩
+      have : e.heightPath = o.path ++ [(o.col, e.idx)] := by
+        simp [EntryAddr.heightPath, hec]
+      rwa [← this]
+  · intro e he
+    obtain ⟨hec, hep⟩ := (ColAddr.container_spec o sd.col e).mp he
+    have : e.heightPath = o.path ++ [(o.col, e.idx)] := by simp [EntryAddr.heightPath, hec]
+    rw [this] at hep
+    rw [Packet.rootLenOf, show (rootOf E sd o).col = o from rfl, hR]
+    exact hlen e.idx hep
 
 /-- D1.6d (requested by U3 R6): the ordinary branch with `specialStop` unfolded. -/
 theorem stepKind_ordinary_iff_unfold {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E)
@@ -2214,7 +2254,20 @@ theorem stepKind_ordinary_iff_unfold {E : Forest} (hE : E ≠ Tree.empty) (hV : 
     stepKind E = some .ordinary ↔
       ∃ sd, stopData E = some sd ∧
         ¬ (0 < sd.depth ∧ sd.Q = [] ∧ sd.r + (sd.col.col + 1) = sd.t) ∧
-        (sd.col.resolve 0 sd.r).isSome := by sorry
+        (sd.col.resolve 0 sd.r).isSome := by
+  rw [stepKind_ordinary_iff]
+  have hsp : ∀ sd : StopData, specialStop sd = false ↔
+      ¬ (0 < sd.depth ∧ sd.Q = [] ∧ sd.r + (sd.col.col + 1) = sd.t) := by
+    intro sd
+    rw [← Bool.not_eq_true, specialStop]
+    simp only [Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff, beq_iff_eq, Nat.add_assoc,
+      and_assoc]
+  constructor
+  · rintro ⟨sd, o, h1, h2, h3⟩
+    exact ⟨sd, h1, (hsp sd).mp h2, by rw [h3]; rfl⟩
+  · rintro ⟨sd, h1, h2, h3⟩
+    obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp h3
+    exact ⟨sd, o, h1, (hsp sd).mpr h2, ho⟩
 
 /-- D1.6d (requested by U2 REQ-U1-3, converse; used by U2 D3.1e item 1): if the last route column
 of `E` ends in an entry with empty height, the paper's route stops there. -/
