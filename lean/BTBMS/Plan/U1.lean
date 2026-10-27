@@ -6205,7 +6205,7 @@ theorem routeColsAux_snoc (m : Nat) (π : List (Nat × Nat)) (cs : List Column) 
       ⟨π, cs.length⟩ :: routeColsAux m h (π ++ [(cs.length, es.length)]) := by
   simp [routeColsAux, Tree.cols]
 
-theorem routeColsAux_empty (m : Nat) (π : List (Nat × Nat)) :
+theorem routeColsAux_node_nil (m : Nat) (π : List (Nat × Nat)) :
     routeColsAux m (Tree.node []) π = [] := by
   cases m <;> rfl
 
@@ -6276,7 +6276,7 @@ theorem lastAtom_route : ∀ (n : Nat) (F : Forest) (d : Nat) (π : List (Nat ×
         routeColsAux fuel (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])) π = [⟨π, cs.length⟩] := by
       intro fuel hf
       obtain ⟨m, rfl⟩ : ∃ m, fuel = m + 1 := ⟨fuel - 1, by omega⟩
-      rw [routeColsAux_snoc, routeColsAux_empty]
+      rw [routeColsAux_snoc, routeColsAux_node_nil]
     have hE : (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])).entryAt ⟨⟨[], cs.length⟩, es.length⟩ =
         some (q, Tree.empty) := by
       simp [Tree.entryAt_eq_bind, Tree.forestAt, Tree.cols, Tree.empty]
