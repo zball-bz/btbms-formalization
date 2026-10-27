@@ -545,6 +545,50 @@ theorem card_hull_le (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
   refine (Cardinal.add_le_max _ _).trans (max_le (max_le (le_max_right _ _) ?_) (le_max_left _ _))
   refine ((Cardinal.lift_le.2 h2).trans (by simp)).trans (le_max_left _ _)
 
+-- Moved before `condensation`, which uses it (statement unchanged).
+/-- N4.7: the collapse of a point is the order type of the substructure below it: if exactly
+the ordinals below `x` lie (as points of `S`) below `k`, then `π k = x`. -/
+theorem collapse_eq_of_cut {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
+    (π : S ≃[lang] M ν)
+    (hπ : ∀ x y : S, ((x : M w).val < (y : M w).val ↔ (π x).val < (π y).val)) (k : S)
+    {x : Ordinal.{u}} (hcut : ∀ y : S, (y : M w).val < (k : M w).val ↔ (y : M w).val < x)
+    (hfull : ∀ o < x, ∃ y : S, (y : M w).val = o) : (π k).val = x := by
+  -- `π` is onto the ordinals below `ν`
+  have hsurj : ∀ o (ho : o < ν), (π (π.symm ⟨o, ho⟩)).val = o := fun o ho => by
+    rw [π.apply_symm_apply]
+  -- points below `x` are fixed
+  have key : ∀ o, ∀ y : S, (y : M w).val = o → o < x → (π y).val = o := by
+    intro o
+    induction o using WellFoundedLT.induction with
+    | _ o IH =>
+      intro y hy hox
+      apply le_antisymm
+      · by_contra hlt
+        rw [not_le] at hlt
+        set z := π.symm ⟨o, hlt.trans (π y).lt⟩
+        have hz : (π z).val = o := hsurj _ _
+        have hzy : (z : M w).val < o := hy ▸ (hπ z y).2 (by rw [hz]; exact hlt)
+        have := IH _ hzy z rfl (hzy.trans hox)
+        rw [hz] at this
+        exact (lt_irrefl o) (this ▸ hzy)
+      · refine le_of_forall_lt fun c hc => ?_
+        obtain ⟨y', hy'⟩ := hfull c (hc.trans hox)
+        rw [← IH c hc y' hy' (hc.trans hox)]
+        exact (hπ y' y).1 (by rw [hy', hy]; exact hc)
+  apply le_antisymm
+  · by_contra hlt
+    rw [not_le] at hlt
+    set z := π.symm ⟨x, hlt.trans (π k).lt⟩
+    have hz : (π z).val = x := hsurj _ _
+    have hzx : (z : M w).val < x := (hcut z).1 ((hπ z k).2 (by rw [hz]; exact hlt))
+    have := key _ z rfl hzx
+    rw [hz] at this
+    exact (lt_irrefl x) (this ▸ hzx)
+  · refine le_of_forall_lt fun c hc => ?_
+    obtain ⟨y, hy⟩ := hfull c hc
+    rw [← key c y hy hc]
+    exact (hπ y k).1 ((hcut y).2 (hy ▸ hc))
+
 /-- N4.7 (condensation for reflection structures): the order collapse of an elementary
 substructure of `M_w` is an isomorphism onto the *genuine* `M_ν`, for some `ν ≤ w`; it fixes
 every point below which the substructure is full, and `|ν| = |S|`. -/
@@ -555,13 +599,6 @@ theorem condensation {w : Ordinal.{u}} (S : lang.ElementarySubstructure (M w)) :
         (π x).val = (x : M w).val) ∧
       Cardinal.lift.{u + 1} ν.card = Cardinal.mk S := by sorry
 
-/-- N4.7: the collapse of a point is the order type of the substructure below it: if exactly
-the ordinals below `x` lie (as points of `S`) below `k`, then `π k = x`. -/
-theorem collapse_eq_of_cut {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
-    (π : S ≃[lang] M ν)
-    (hπ : ∀ x y : S, ((x : M w).val < (y : M w).val ↔ (π x).val < (π y).val)) (k : S)
-    {x : Ordinal.{u}} (hcut : ∀ y : S, (y : M w).val < (k : M w).val ↔ (y : M w).val < x)
-    (hfull : ∀ o < x, ∃ y : S, (y : M w).val = o) : (π k).val = x := by sorry
 
 /-! ## N4.8: transfer of realizations through a collapsed hull -/
 
