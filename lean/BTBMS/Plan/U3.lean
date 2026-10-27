@@ -2417,6 +2417,603 @@ theorem host_crossing_D8 {E : Forest} (hE : InL E) {cap : Option (Closure.AdmCap
     exact host_crossing_none_D8 hE hsd hj hc hbc hk hreach
   | some w => exact host_crossing_cap_D8 hE w hsd hj hb hc hbc hk hreach
 
+/-- G011-T2 helper: a list is never below one of its prefixes. -/
+theorem not_lt_of_prefix_D8 {γ : Type} [LinearOrder γ] :
+    ∀ {l m : List γ}, l <+: m → ¬ m < l
+  | [], m, _ => List.not_lt_nil m
+  | x :: l, m, ⟨tl, htl⟩ => by
+    subst htl
+    intro h
+    rw [List.cons_append, List.cons_lt_cons_iff] at h
+    rcases h with h | ⟨-, h⟩
+    · exact lt_irrefl x h
+    · exact not_lt_of_prefix_D8 ⟨tl, rfl⟩ h
+
+/-- G011-T2 helper: truncation after an entry gives a smaller forest. -/
+theorem truncAfter_le_D8 (X : Forest) (e : EntryAddr) : X.truncAfter e ≤ X := by
+  rw [← not_lt, ← word_lt_iff]
+  exact not_lt_of_prefix_D8 (word_truncAfter_prefix X e)
+
+/-- G011-T2 helper: lexicographic comparison of column lists modified at one index. -/
+theorem cmpCols_modify_D8 {α : Type} (c : α → α → Ordering) [Std.ReflCmp c] :
+    ∀ (l : List (List (α × Tree α))) (n : Nat) (f g : List (α × Tree α) → List (α × Tree α)),
+    (hn : n < l.length) → Tree.cmpCols c (l.modify n f) (l.modify n g) = Tree.cmpCol c (f l[n]) (g l[n])
+  | [], _, _, _, hn => absurd hn (Nat.not_lt_zero _)
+  | x :: xs, 0, f, g, _ => by
+    simp only [List.modify_zero_cons, Tree.cmpCols, Tree.cmpCols_self, Ordering.then_eq,
+      List.getElem_cons_zero]
+  | x :: xs, n + 1, f, g, hn => by
+    simp only [List.modify_succ_cons, Tree.cmpCols, Tree.cmpCol_self, Ordering.eq_then,
+      List.getElem_cons_succ]
+    exact cmpCols_modify_D8 c xs n f g (by simpa using hn)
+
+/-- G011-T2 helper: lexicographic comparison of columns whose entry `n` gets a new height. -/
+theorem cmpCol_modify_D8 {α : Type} (c : α → α → Ordering) [Std.ReflCmp c] :
+    ∀ (l : List (α × Tree α)) (n : Nat) (f g : Tree α → Tree α), (hn : n < l.length) →
+    Tree.cmpCol c (l.modify n fun x => (x.1, f x.2)) (l.modify n fun x => (x.1, g x.2)) =
+      Tree.cmp c (f l[n].2) (g l[n].2)
+  | [], _, _, _, hn => absurd hn (Nat.not_lt_zero _)
+  | x :: xs, 0, f, g, _ => by
+    simp only [List.modify_zero_cons, Tree.cmpCol, Std.ReflCmp.compare_self, Ordering.eq_then,
+      Tree.cmpCol_self, Ordering.then_eq, List.getElem_cons_zero]
+  | x :: xs, n + 1, f, g, hn => by
+    simp only [List.modify_succ_cons, Tree.cmpCol, Std.ReflCmp.compare_self, Ordering.eq_then,
+      List.getElem_cons_succ]
+    exact cmpCol_modify_D8 c xs n f g (by simpa using hn)
+
+/-- G011-T2 helper: replacing a height compares like the two heights. -/
+theorem cmp_setAux_D8 (h h' : Forest) (j i : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Forest), (t.entryAt ⟨⟨P, j⟩, i⟩).isSome →
+    Tree.cmp compare (Tree.setAux h P j i t) (Tree.setAux h' P j i t) = Tree.cmp compare h h'
+  | [], .node cols, hv => by
+    obtain ⟨col, hcol, hx⟩ : ∃ col, cols[j]? = some col ∧ (col[i]?).isSome := by
+      simp only [Tree.entryAt, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at hv
+      cases h1 : cols[j]? with
+      | none => rw [h1] at hv; simp at hv
+      | some col => rw [h1] at hv; exact ⟨col, rfl, hv⟩
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hi : i < col.length := by simpa using hx
+    simp only [Tree.setAux, Tree.cmp]
+    rw [cmpCols_modify_D8 compare cols j _ _ hj]
+    have : cols[j] = col := (List.getElem?_eq_some_iff.1 hcol).2
+    rw [this]
+    exact cmpCol_modify_D8 compare col i (fun _ => h) (fun _ => h') hi
+  | (c0, i0) :: rest, .node cols, hv => by
+    rw [Tree.entryAt_cons] at hv
+    simp only [Tree.cols] at hv
+    obtain ⟨col, hcol⟩ : ∃ col, cols[c0]? = some col := by
+      cases h1 : cols[c0]? with
+      | none => rw [h1] at hv; simp at hv
+      | some col => exact ⟨col, rfl⟩
+    rw [hcol, Option.bind_some] at hv
+    obtain ⟨x, hx⟩ : ∃ x, col[i0]? = some x := by
+      cases h1 : col[i0]? with
+      | none => rw [h1] at hv; simp at hv
+      | some x => exact ⟨x, rfl⟩
+    rw [hx, Option.bind_some] at hv
+    have hj : c0 < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hi : i0 < col.length := (List.getElem?_eq_some_iff.1 hx).1
+    simp only [Tree.setAux, Tree.cmp]
+    rw [cmpCols_modify_D8 compare cols c0 _ _ hj]
+    have : cols[c0] = col := (List.getElem?_eq_some_iff.1 hcol).2
+    rw [this]
+    rw [cmpCol_modify_D8 compare col i0 (fun y => Tree.setAux h rest j i y)
+      (fun y => Tree.setAux h' rest j i y) hi]
+    have : col[i0] = x := (List.getElem?_eq_some_iff.1 hx).2
+    rw [this]
+    exact cmp_setAux_D8 h h' j i rest x.2 hv
+
+/-- G011-T2 helper: replacing a height by a smaller one gives a smaller forest. -/
+theorem setHeight_mono_D8 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {h h' : Forest}
+    (hh : h ≤ h') : t.setHeight e h ≤ t.setHeight e h' := by
+  have he' : (t.entryAt e).isSome := (Tree.mem_entryAddrs_iff t e).1 he
+  show Tree.cmp compare _ _ ≠ .gt
+  rw [Tree.setHeight_eq_body, Tree.setHeight_eq_body, Tree.setHeightBody, Tree.setHeightBody,
+    if_pos he', if_pos he']
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  rw [cmp_setAux_D8 h h' j i P t he']
+  exact hh
+
+/-- G011-T2 (owner U1; used by G011-L9). Truncating after `e` and lowering the height of `e`
+gives a smaller tree. -/
+theorem truncSet_le_D8 {X : Forest} {e : EntryAddr} (he : e ∈ X.entryAddrs) {h : Forest}
+    (hh : h ≤ (X.heightAt e).getD Tree.empty) : (X.truncAfter e).setHeight e h ≤ X := by
+  obtain ⟨-, he2, hh2, -, -⟩ := Tree.truncAfter_spec X e he
+  obtain ⟨⟨q, A⟩, hA⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff X e).1 he)
+  have hXA : X.heightAt e = some A := by simp [Tree.heightAt, hA]
+  rw [hXA, Option.getD_some] at hh
+  calc (X.truncAfter e).setHeight e h ≤ (X.truncAfter e).setHeight e A := setHeight_mono_D8 he2 hh
+    _ = X.truncAfter e := (Tree.setHeight_basic _ e A he2).2.2.2.1 (by rw [hh2, hXA])
+    _ ≤ X := truncAfter_le_D8 X e
+
+/-- G011-T1 helper: the forests of a truncation along its path. -/
+theorem forestAt_truncAux_take_D8 {α : Type} (j i : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Tree α) (n : Nat), n ≤ P.length →
+    (Tree.truncAux P j i t).forestAt (P.take n) =
+      (t.forestAt (P.take n)).map (Tree.truncAux (P.drop n) j i)
+  | [], t, n, hn => by
+    have : n = 0 := by simpa using hn
+    subst this; rfl
+  | (c0, i0) :: rest, .node cols, n, hn => by
+    cases n with
+    | zero => rfl
+    | succ n =>
+      rw [List.take_succ_cons, List.drop_succ_cons, Tree.forestAt_cons, Tree.forestAt_cons]
+      simp only [Tree.truncAux, Tree.cols]
+      rw [Tree.truncStep_getElem?]
+      cases (cols[c0]?).bind (·[i0]?) with
+      | none => rfl
+      | some x =>
+        simp only [Option.map_some, Option.bind_some]
+        exact forestAt_truncAux_take_D8 j i rest x.2 n (by simp at hn; omega)
+
+/-- G011-T1 helper: the forests of a height replacement along its path. -/
+theorem forestAt_setAux_take_D8 {α : Type} (h : Tree α) (j i : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Tree α) (n : Nat), n ≤ P.length →
+    (Tree.setAux h P j i t).forestAt (P.take n) =
+      (t.forestAt (P.take n)).map (Tree.setAux h (P.drop n) j i)
+  | [], t, n, hn => by
+    have : n = 0 := by simpa using hn
+    subst this; rfl
+  | (c0, i0) :: rest, .node cols, n, hn => by
+    cases n with
+    | zero => rfl
+    | succ n =>
+      rw [List.take_succ_cons, List.drop_succ_cons, Tree.forestAt_cons, Tree.forestAt_cons]
+      simp only [Tree.setAux, Tree.cols, List.getElem?_modify_eq]
+      cases hc : cols[c0]? with
+      | none => rfl
+      | some col =>
+        simp only [Option.map_eq_map, Option.map_some, Option.bind_some, List.getElem?_modify_eq]
+        cases hx : col[i0]? with
+        | none => rfl
+        | some x =>
+          simp only [Option.map_some, Option.bind_some]
+          exact forestAt_setAux_take_D8 h j i rest x.2 n (by simp at hn; omega)
+
+/-- G011-T1(a) helper: truncation keeps the non-containing columns of the visible stack of the
+truncated column. -/
+theorem colAt_truncAux_stack_D8 {α : Type} (j i : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Tree α) (d : ColAddr), (t.colAt ⟨P, j⟩).isSome →
+    (⟨P, j⟩ : ColAddr).OnStack d → (∀ u, ¬ (⟨d, u⟩ : EntryAddr).heightPath <+: P) →
+    (Tree.truncAux P j i t).colAt d = t.colAt d
+  | [], .node cols, d, hv, hd, _ => by
+    have hj : j < cols.length := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hv
+    rcases hd with ⟨m, ck, ik, hm, -, -⟩ | ⟨hp, hlt⟩
+    · simp at hm
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hlt; subst hp
+      simp only [Tree.truncAux, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hlt]
+  | (c0, i0) :: rest, .node cols, d, hv, hd, hnc => by
+    have hc0 : c0 < cols.length := by
+      rw [Tree.colAt_cons] at hv
+      simp only [Tree.cols] at hv
+      cases h1 : cols[c0]? with
+      | none => rw [h1] at hv; simp at hv
+      | some _ => exact (List.getElem?_eq_some_iff.1 h1).1
+    rcases onStack_cons_D8 hd with ⟨hp, hle⟩ | ⟨P', hp, hP'⟩
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hle; subst hp
+      have hlt : dc < c0 := by
+        rcases Nat.lt_or_ge dc c0 with h | h
+        · exact h
+        · exfalso
+          have : dc = c0 := by omega
+          subst this
+          exact hnc i0 ⟨rest, by simp [EntryAddr.heightPath]⟩
+      simp only [Tree.truncAux, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hlt]
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hP'; subst hp
+      rw [Tree.colAt_cons, Tree.colAt_cons]
+      simp only [Tree.truncAux, Tree.cols]
+      rw [Tree.truncStep_getElem?]
+      rw [Tree.colAt_cons] at hv
+      simp only [Tree.cols] at hv
+      cases hx : (cols[c0]?).bind (·[i0]?) with
+      | none => rfl
+      | some x =>
+        rw [hx, Option.bind_some] at hv
+        simp only [Option.map_some, Option.bind_some]
+        refine colAt_truncAux_stack_D8 j i rest x.2 ⟨P', dc⟩ hv hP' fun u hu => hnc u ?_
+        obtain ⟨tl, htl⟩ := hu
+        exact ⟨tl, by simp [EntryAddr.heightPath] at htl ⊢; exact htl⟩
+
+/-- G011-T1(a) helper: a height replacement keeps the columns of the visible stack of the
+replaced entry's column. -/
+theorem colAt_setAux_stack_D8 {α : Type} (h : Tree α) (j i : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Tree α) (d : ColAddr), (⟨P, j⟩ : ColAddr).OnStack d →
+    (∀ u, ¬ (⟨d, u⟩ : EntryAddr).heightPath <+: P) →
+    (Tree.setAux h P j i t).colAt d = t.colAt d
+  | [], .node cols, d, hd, _ => by
+    rcases hd with ⟨m, ck, ik, hm, -, -⟩ | ⟨hp, hlt⟩
+    · simp at hm
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hlt; subst hp
+      simp only [Tree.setAux, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_modify_ne _ _ (Nat.ne_of_gt hlt)]
+  | (c0, i0) :: rest, .node cols, d, hd, hnc => by
+    rcases onStack_cons_D8 hd with ⟨hp, hle⟩ | ⟨P', hp, hP'⟩
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hle; subst hp
+      have hne : dc ≠ c0 := by
+        rintro rfl
+        exact hnc i0 ⟨rest, by simp [EntryAddr.heightPath]⟩
+      simp only [Tree.setAux, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_modify_ne _ _ (Ne.symm hne)]
+    · obtain ⟨dp, dc⟩ := d
+      simp only at hp hP'; subst hp
+      rw [Tree.colAt_cons, Tree.colAt_cons]
+      simp only [Tree.setAux, Tree.cols, List.getElem?_modify_eq]
+      cases hc : cols[c0]? with
+      | none => rfl
+      | some col =>
+        simp only [Option.map_eq_map, Option.map_some, Option.bind_some, List.getElem?_modify_eq]
+        cases hx : col[i0]? with
+        | none => rfl
+        | some x =>
+          simp only [Option.map_some, Option.bind_some]
+          refine colAt_setAux_stack_D8 h j i rest x.2 ⟨P', dc⟩ hP' fun u hu => hnc u ?_
+          obtain ⟨tl, htl⟩ := hu
+          exact ⟨tl, by simp [EntryAddr.heightPath] at htl ⊢; exact htl⟩
+
+/-- G011-T1(b) (owner U1; used by G011-L9). The column of `e`, and every column containing `e`
+(active entry `u`), keep their first `u` entries and the label of entry `u`, and end at `u`; the
+new height of entry `u` is below the old one when the new height of `e` is. -/
+theorem colAt_truncSet_active_D8 {H : Forest} {a : EntryAddr} (ha : a ∈ H.entryAddrs)
+    (A' : Forest) {o : ColAddr} {u : Nat}
+    (hou : (o = a.col ∧ u = a.idx) ∨ o.container a.col = some ⟨o, u⟩) :
+    ∃ (col : Column) (q : Nat) (X X' : Forest), H.colAt o = some col ∧ col[u]? = some (q, X) ∧
+      ((H.truncAfter a).setHeight a A').colAt o = some (col.take u ++ [(q, X')]) ∧
+      (A' ≤ (H.heightAt a).getD Tree.empty → X' ≤ X) := by
+  have hav : (H.entryAt a).isSome := (Tree.mem_entryAddrs_iff H a).1 ha
+  obtain ⟨⟨P, j⟩, i⟩ := a
+  have hT : H.truncAfter ⟨⟨P, j⟩, i⟩ = Tree.truncAux P j i H := by
+    rw [Tree.truncAfter_eq_body, Tree.truncAfterBody, if_pos hav]
+  have hTe : (Tree.truncAux P j i H).entryAt ⟨⟨P, j⟩, i⟩ = H.entryAt ⟨⟨P, j⟩, i⟩ :=
+    Tree.entryAt_truncAux P H j i
+  have hG : (H.truncAfter ⟨⟨P, j⟩, i⟩).setHeight ⟨⟨P, j⟩, i⟩ A' =
+      Tree.setAux A' P j i (Tree.truncAux P j i H) := by
+    rw [hT, Tree.setHeight_eq_body, Tree.setHeightBody, if_pos (by rw [hTe]; exact hav)]
+  rw [hG]
+  rcases hou with ⟨h1, h2⟩ | hcont
+  · -- `o` is the column of the entry
+    simp only at h1 h2
+    subst o; subst u
+    obtain ⟨F0, hF0⟩ : ∃ F, H.forestAt P = some F := by
+      simp only [Tree.entryAt, Tree.colAt] at hav
+      cases h1 : H.forestAt P with
+      | none => rw [h1] at hav; simp at hav
+      | some F => exact ⟨F, rfl⟩
+    obtain ⟨cols⟩ := F0
+    obtain ⟨col, hcol⟩ : ∃ col, cols[j]? = some col := by
+      simp only [Tree.entryAt, Tree.colAt, hF0, Option.bind_some, Tree.cols] at hav
+      cases h1 : cols[j]? with
+      | none => rw [h1] at hav; simp at hav
+      | some col => exact ⟨col, rfl⟩
+    obtain ⟨⟨q, X⟩, hx⟩ : ∃ x, col[i]? = some x := by
+      simp only [Tree.entryAt, Tree.colAt, hF0, Option.bind_some, Tree.cols, hcol] at hav
+      exact Option.isSome_iff_exists.1 hav
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hi : i < col.length := (List.getElem?_eq_some_iff.1 hx).1
+    refine ⟨col, q, X, A', by simp [Tree.colAt, hF0, Tree.cols, hcol], hx, ?_, fun h => ?_⟩
+    · simp only [Tree.colAt, Tree.forestAt_setAux, Tree.forestAt_truncAux, hF0, Option.map_some,
+        Option.bind_some, Tree.truncAux, Tree.setAux, Tree.cols]
+      rw [List.getElem?_modify_eq]
+      have hgd : cols.getD j [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+      rw [List.getElem?_append_right (by simp only [List.length_take]; omega), hgd]
+      simp only [List.length_take, Nat.min_eq_left hj.le, Nat.sub_self, List.getElem?_cons_zero,
+        Option.map_eq_map, Option.map_some, Option.some.injEq]
+      rw [List.take_add_one, List.getElem?_eq_getElem hi]
+      simp only [Option.toList_some]
+      rw [Tree.list_modify_append_singleton _ _ _ (by simp; omega)]
+      simp [(List.getElem?_eq_some_iff.1 hx).2]
+    · simpa [Tree.heightAt, Tree.entryAt, Tree.colAt, hF0, Tree.cols, hcol, hx] using h
+  · -- `o` contains the entry's column
+    obtain ⟨-, tl, htl⟩ := (ColAddr.container_spec o ⟨P, j⟩ ⟨o, u⟩).1 hcont
+    simp only [EntryAddr.heightPath] at htl
+    set n := o.path.length
+    have hP : P = o.path ++ (o.col, u) :: tl := by rw [← htl]; simp
+    have hn : n ≤ P.length := by rw [hP]; simp [n]
+    have htake : P.take n = o.path := by rw [hP]; simp [n]
+    have hdrop : P.drop n = (o.col, u) :: tl := by rw [hP]; simp [n]
+    obtain ⟨F0, hF0⟩ : ∃ F, H.forestAt o.path = some F := by
+      have := hav
+      simp only [Tree.entryAt, Tree.colAt] at this
+      rw [hP, Tree.forestAt_append] at this
+      cases h1 : H.forestAt o.path with
+      | none => rw [h1] at this; simp at this
+      | some F => exact ⟨F, rfl⟩
+    obtain ⟨cols⟩ := F0
+    have hav2 := hav
+    simp only [Tree.entryAt, Tree.colAt] at hav2
+    rw [hP, Tree.forestAt_append, hF0, Option.bind_some, Tree.forestAt_cons] at hav2
+    simp only [Tree.cols] at hav2
+    obtain ⟨col, hcol⟩ : ∃ col, cols[o.col]? = some col := by
+      cases h1 : cols[o.col]? with
+      | none => rw [h1] at hav2; simp at hav2
+      | some col => exact ⟨col, rfl⟩
+    rw [hcol, Option.bind_some] at hav2
+    obtain ⟨⟨q, X⟩, hx⟩ : ∃ x, col[u]? = some x := by
+      cases h1 : col[u]? with
+      | none => rw [h1] at hav2; simp at hav2
+      | some x => exact ⟨x, rfl⟩
+    have hcl : o.col < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hul : u < col.length := (List.getElem?_eq_some_iff.1 hx).1
+    have hgd : cols.getD o.col [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    refine ⟨col, q, X, Tree.setAux A' tl j i (Tree.truncAux tl j i X),
+      by simp [Tree.colAt, hF0, Tree.cols, hcol], hx, ?_, fun h => ?_⟩
+    · have h1 := forestAt_setAux_take_D8 A' j i P (Tree.truncAux P j i H) n hn
+      have h2 := forestAt_truncAux_take_D8 j i P H n hn
+      rw [htake, hdrop] at h1 h2
+      rw [hF0, Option.map_some] at h2
+      rw [h2, Option.map_some] at h1
+      simp only [Tree.colAt, h1, Option.bind_some, Tree.truncAux, Tree.setAux, Tree.cols, hgd]
+      rw [List.getElem?_modify_eq, List.getElem?_append_right (by simp only [List.length_take]; omega)]
+      simp only [List.length_take, Nat.min_eq_left hcl.le, Nat.sub_self, List.getElem?_cons_zero,
+        Option.map_eq_map, Option.map_some, Option.some.injEq, hx, Option.toList_some]
+      rw [Tree.list_modify_append_singleton _ _ _ (by simp; omega)]
+    · -- the new height of the active entry is below the old one
+      have hXe : X.entryAt ⟨⟨tl, j⟩, i⟩ = H.entryAt ⟨⟨P, j⟩, i⟩ := by
+        have hXh : H.heightAt ⟨o, u⟩ = some X := by
+          simp [Tree.heightAt, Tree.entryAt, Tree.colAt, hF0, Tree.cols, hcol, hx]
+        rw [hP, show o.path ++ (o.col, u) :: tl = (⟨o, u⟩ : EntryAddr).heightPath ++ tl by
+          simp [EntryAddr.heightPath], entryAt_heightPath_D8 hXh]
+      have hXv : (⟨⟨tl, j⟩, i⟩ : EntryAddr) ∈ X.entryAddrs := by
+        rw [Tree.mem_entryAddrs_iff, hXe]; exact hav
+      have hTX : Tree.truncAux tl j i X = X.truncAfter ⟨⟨tl, j⟩, i⟩ := by
+        rw [Tree.truncAfter_eq_body, Tree.truncAfterBody, if_pos (by rw [hXe]; exact hav)]
+      have hSX : Tree.setAux A' tl j i (Tree.truncAux tl j i X) =
+          (X.truncAfter ⟨⟨tl, j⟩, i⟩).setHeight ⟨⟨tl, j⟩, i⟩ A' := by
+        rw [hTX, Tree.setHeight_eq_body, Tree.setHeightBody, if_pos]
+        rw [← hTX, Tree.entryAt_truncAux, hXe]; exact hav
+      rw [hSX]
+      apply truncSet_le_D8 hXv
+      simpa [Tree.heightAt, hXe] using h
+
+/-- G011-T1(a) (owner U1; used by G011-L10). Truncating after `e` and then replacing the
+height of `e` leaves every column of `e`'s visible stack that does not contain `e` unchanged. -/
+theorem colAt_truncSet_closed_D8 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) (h : Forest)
+    {o : ColAddr} (ho : e.col.OnStack o) (hno : ∀ u, ¬ (⟨o, u⟩ : EntryAddr).heightPath <+: e.col.path) :
+    ((t.truncAfter e).setHeight e h).colAt o = t.colAt o := by
+  have hav : (t.entryAt e).isSome := (Tree.mem_entryAddrs_iff t e).1 he
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  have hT : t.truncAfter ⟨⟨P, j⟩, i⟩ = Tree.truncAux P j i t := by
+    rw [Tree.truncAfter_eq_body, Tree.truncAfterBody, if_pos hav]
+  have hTe : (Tree.truncAux P j i t).entryAt ⟨⟨P, j⟩, i⟩ = t.entryAt ⟨⟨P, j⟩, i⟩ :=
+    Tree.entryAt_truncAux P t j i
+  rw [hT, Tree.setHeight_eq_body, Tree.setHeightBody, if_pos (by rw [hTe]; exact hav),
+    colAt_setAux_stack_D8 h j i P _ o ho (fun u hu => hno u hu)]
+  have hcv : (t.colAt ⟨P, j⟩).isSome := by
+    simp only [Tree.entryAt] at hav
+    cases h1 : t.colAt ⟨P, j⟩ with
+    | none => rw [h1] at hav; simp at hav
+    | some _ => rfl
+  exact colAt_truncAux_stack_D8 j i P t o hcv ho (fun u hu => hno u hu)
+
+/-- G011-L9 (L4.2c step 4(c), the descendant identification at the source host). Let
+`F = (H.truncAfter a).setHeight a A'` with `A' ≤ A_a`, and let `o` be `a`'s column or a column
+containing it, with active entry `u`. If `F`'s scan of `o` stops at or before `u`, then `H`'s scan
+of `o` has the same cursor and the same response (`cursor_raise` after the `F`-barrier). -/
+theorem src_host_resp_D8 {H : Forest} {a : EntryAddr} (ha : a ∈ H.entryAddrs) {A' : Forest}
+    (hA : A' ≤ (H.heightAt a).getD Tree.empty) {o : ColAddr} {u : Nat}
+    (hou : (o = a.col ∧ u = a.idx) ∨ o.container a.col = some ⟨o, u⟩)
+    {W : List (WithTop Key)}
+    (hcur : cursor (actualKeys ((H.truncAfter a).setHeight a A') o) W ≤ u) :
+    cursor (actualKeys H o) W = cursor (actualKeys ((H.truncAfter a).setHeight a A') o) W ∧
+    resp H (actualKeys H) o W =
+      resp ((H.truncAfter a).setHeight a A') (actualKeys ((H.truncAfter a).setHeight a A')) o W := by
+  obtain ⟨col, q, X, X', hH, hu, hG, hle⟩ := colAt_truncSet_active_D8 ha A' hou
+  have hXX := hle hA
+  set G := (H.truncAfter a).setHeight a A'
+  set f : Nat × Forest → WithTop Key := fun x => ((relKey (o.num 0) x.2 : Key) : WithTop Key)
+  have hul : u < col.length := (List.getElem?_eq_some_iff.1 hu).1
+  have hksH : actualKeys H o = (col.map f).take u ++ f (q, X) :: (col.map f).drop (u + 1) := by
+    have hd : (col.map f).drop u = f (q, X) :: (col.map f).drop (u + 1) := by
+      rw [List.drop_eq_getElem_cons (by simp; omega)]
+      simp [(List.getElem?_eq_some_iff.1 hu).2]
+    have : actualKeys H o = col.map f := by simp [actualKeys, hH, f]
+    rw [this, ← hd, List.take_append_drop]
+  have hksG : actualKeys G o = (col.map f).take u ++ [f (q, X')] := by
+    simp [actualKeys, hG, f, List.map_take]
+  have hkey : f (q, X') ≤ f (q, X) := by
+    simp only [f, WithTop.coe_le_coe]
+    rw [← not_lt, relKey_lt_iff, not_lt]
+    exact hXX
+  have hlen : ((col.map f).take u).length = u := by simp; omega
+  have hc : cursor (actualKeys H o) W = cursor (actualKeys G o) W := by
+    rw [hksH, hksG]
+    exact cursor_raise _ _ _ _ _ hkey (by rw [← hksG, hlen]; exact hcur)
+  refine ⟨hc, ?_⟩
+  simp only [resp, hc, hH, hG, Option.getD_some]
+  rcases Nat.lt_or_ge (cursor (actualKeys G o) W) u with hlt | hge
+  · rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hlt]
+  · have : cursor (actualKeys G o) W = u := by omega
+    rw [this, List.getElem?_append_right (by simp only [List.length_take]; omega), hu,
+      List.length_take, Nat.min_eq_left hul.le, Nat.sub_self]
+    rfl
+
+/-- G011-D2: κ fixes the actual keys of a column whose number is at most `r` (L4.2a
+`relKey_kappa_low`). -/
+theorem kappaW_actualKeys_low_D8 {F : Forest} {o : ColAddr} {r t : Nat} (ho : o.num 0 ≤ r) :
+    (actualKeys F o).map (kappaW_D8 r t) = actualKeys F o := by
+  simp only [actualKeys, List.map_map]
+  apply List.map_congr_left
+  intro x _
+  simp only [Function.comp, kappaW_D8, WithTop.map_coe]
+  rw [relKey_kappa_low ho]
+
+/-- G011-L10 setup: the source context of a scan or descendant record is the anchor truncated
+after the source entry, with a source height below the anchor's. -/
+theorem srcCtx_D8 {rk : SrcRecord} (h : rk.Admitted) {cap : Option (Closure.AdmCap rk.E)}
+    {i j : Nat} (hkind : rk.kind = .scan cap i j ∨ rk.kind = .desc cap i j) :
+    rk.a ∈ (Closure.anchor rk.E cap).entryAddrs ∧
+    rk.F = ((Closure.anchor rk.E cap).truncAfter rk.a).setHeight rk.a rk.srcHeight ∧
+    rk.srcHeight ≤ ((Closure.anchor rk.E cap).heightAt rk.a).getD Tree.empty := by
+  set H := Closure.anchor rk.E cap
+  have haF : rk.a ∈ rk.F.entryAddrs := h.2.2.1
+  have hk := h.2.2.2.2.2.2
+  have htrunc_id : rk.a ∉ H.entryAddrs → H.truncAfter rk.a = H := by
+    intro hn
+    rw [Tree.truncAfter_eq_body, Tree.truncAfterBody, if_neg]
+    rwa [← Tree.mem_entryAddrs_iff]
+  have hFh : rk.F.heightAt rk.a = some rk.srcHeight := by
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 haF)
+    simp [SrcRecord.srcHeight, Tree.heightAt, hx]
+  rcases hkind with hkind | hkind <;> rw [hkind] at hk
+  · obtain ⟨-, -, hF⟩ := hk
+    have haH : rk.a ∈ H.entryAddrs := by
+      by_contra hn
+      rw [htrunc_id hn] at hF
+      rw [hF] at haF
+      exact hn haF
+    obtain ⟨-, -, hh2, -, -⟩ := Tree.truncAfter_spec H rk.a haH
+    have hHh : (H.heightAt rk.a).getD Tree.empty = rk.srcHeight := by
+      rw [← hh2, ← hF, hFh]; rfl
+    refine ⟨haH, ?_, le_of_eq hHh.symm⟩
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 haH)
+    have hTa := (Tree.truncAfter_spec H rk.a haH).2.1
+    rw [(Tree.setHeight_basic _ _ _ hTa).2.2.2.1 (by rw [← hF]; exact hFh)]
+    exact hF
+  · obtain ⟨-, -, hF, hle⟩ := hk
+    have haH : rk.a ∈ H.entryAddrs := by
+      by_contra hn
+      rw [htrunc_id hn] at hF
+      have := (Tree.setHeight_basic rk.F rk.a ((H.heightAt rk.a).getD Tree.empty) haF).1
+      rw [hF] at this
+      exact hn this
+    refine ⟨haH, ?_, hle⟩
+    rw [← hF, (Tree.setHeight_basic rk.F rk.a _ haF).2.2.1,
+      (Tree.setHeight_basic rk.F rk.a _ haF).2.2.2.1 hFh]
+
+/-- G011-L10 for an `E` anchor (L4.2c step 4(c)): at every vertex `y ≤ r` reached by both
+chains, the source edge equals the target edge (κ fixes the low keys; the source-host
+identification `src_host_resp_D8` on the active columns, `colAt_truncSet_closed_D8` on the
+others). -/
+theorem low_edge_eq_none_D8 {rk : SrcRecord} (h : rk.Admitted) {i j : Nat}
+    (hkind : rk.kind = .scan none i j ∨ rk.kind = .desc none i j) {c : ColAddr}
+    {k p : Nat} (hfd : rk.firstDiff = .capAt c k p) {y : Nat} (hyr : y ≤ rk.a.col.num 0)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k) y) :
+    respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
+        y =
+      respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
+  have hk' := h.2.2.2.2.2.2
+  obtain ⟨hA, hsrcA⟩ : SrcRecord.AnchorAt rk.E none i j rk.b ∧
+      SrcRecord.anchorSrc rk.E none i = some rk.a := by
+    rcases hkind with hkind | hkind <;> rw [hkind] at hk' <;> exact ⟨hk'.1, hk'.2.1⟩
+  obtain ⟨sd, hsd, hr, ht, hrt⟩ := anchor_hosts_D8 h.1 hA hsrcA
+  obtain ⟨sd', rd, -, hsd', hrd, hor, -, -⟩ := hA
+  rw [hsd] at hsd'; cases hsd'
+  simp only [Closure.anchorOrigin, Option.some.injEq, Role.slot.injEq] at hor
+  simp only [Closure.anchor] at hsd hrd
+  have hbcol : rk.b.col = sd.col := by rw [← hor]
+  have ha : rk.a = ⟨rd.col, i⟩ := by
+    simp only [SrcRecord.anchorSrc, Closure.anchor, hrd, Option.map_some] at hsrcA
+    exact (Option.some.inj hsrcA).symm
+  obtain ⟨hres, -⟩ := rootData_path hsd hrd
+  obtain ⟨haE, hFeq, hAle⟩ := srcCtx_D8 h hkind
+  simp only [Closure.anchor] at haE hFeq hAle
+  obtain ⟨ρ, colB, colA, hρ, hsrcc, hB, hcA, -, -, ⟨q', H', hAk, -⟩, -, -⟩ := capSetup_D8 h hfd
+  obtain ⟨hc'F, hkE, -, hW, -⟩ := query_transfer_D8 h hfd
+  set r := rk.a.col.num 0
+  set t := rk.b.col.num 0
+  set c' := srcCol_D8 rk c
+  have hFL : InL rk.F := h.2.2.2.1
+  have hkF : k ≤ (parents rk.F c').length := by
+    simp [parents, hcA]; exact (List.getElem?_eq_some_iff.1 hAk).1.le
+  have hcc : c = ⟨rk.b.heightPath ++ ρ, c.col⟩ := by
+    obtain ⟨cp, cc⟩ := c; simp only at hρ ⊢; rw [hρ]
+  -- the two stacks below `r`
+  have hc'r : c'.resolve 0 r = some rk.a.col := by
+    rw [show c' = ⟨rk.a.heightPath ++ ρ, c.col⟩ from hsrcc]
+    exact resolve_host_D8 (e := rk.a) ⟨ρ, by simp⟩
+  have hct : c.resolve 0 t = some sd.col := by
+    have := resolve_host_D8 (e := rk.b) (d := ⟨rk.b.heightPath ++ ρ, c.col⟩) ⟨ρ, rfl⟩
+    rw [← hcc] at this
+    rw [← hbcol]; exact this
+  have hcr : c.resolve 0 r = some rk.a.col := by
+    have h1 := ColAddr.resolve_of_resolve_lt hct (q := r) (by omega)
+    rw [← h1, hr, hres, ha]
+  have hsame : c'.resolve 0 y = c.resolve 0 y := by
+    rcases Nat.lt_or_ge y r with hlt | hge
+    · rw [← ColAddr.resolve_of_resolve_lt hc'r hlt, ← ColAddr.resolve_of_resolve_lt hcr hlt]
+    · have : y = r := by omega
+      rw [this, hc'r, hcr]
+  unfold respEdge
+  rw [hsame]
+  cases hoy : c.resolve 0 y with
+  | none => rfl
+  | some o =>
+    simp only [Option.bind_some]
+    have hres' : c'.resolve 0 y = some o := by rw [hsame, hoy]
+    have hon : o.num 0 = y := ColAddr.resolve_num hoy
+    -- A: κ fixes the low keys
+    have hA' : cursor (actualKeys rk.F o) (cutQuery (actualKeys rk.E c) k) =
+        cursor (actualKeys rk.F o) (cutQuery (actualKeys rk.F c') k) := by
+      rw [hW]
+      conv_lhs => rw [← kappaW_actualKeys_low_D8 (F := rk.F) (o := o) (r := r) (t := t) (by omega)]
+      exact cursor_map (kappaW_strictMono_D8 (show r ≤ t by omega)) _ _
+    have hrespA : resp rk.F (actualKeys rk.F) o (cutQuery (actualKeys rk.F c') k) =
+        resp rk.F (actualKeys rk.F) o (cutQuery (actualKeys rk.E c) k) := by
+      simp only [resp, hA']
+    rw [hrespA]
+    by_cases hact : ∃ u, (o = rk.a.col ∧ u = rk.a.idx) ∨ o.container rk.a.col = some ⟨o, u⟩
+    · obtain ⟨u, hou⟩ := hact
+      have hcont' : o.container c' = some ⟨o, u⟩ := by
+        rw [ColAddr.container_spec]
+        refine ⟨rfl, ?_⟩
+        have hac : rk.a.heightPath <+: c'.path := by
+          rw [show c' = ⟨rk.a.heightPath ++ ρ, c.col⟩ from hsrcc]; exact ⟨ρ, rfl⟩
+        rcases hou with ⟨rfl, rfl⟩ | hco
+        · exact hac
+        · obtain ⟨-, h2⟩ := (ColAddr.container_spec _ _ _).1 hco
+          exact h2.trans ((List.prefix_append _ _).trans hac)
+      have hbar : cutQuery (actualKeys rk.F c') k < cutQuery (actualKeys rk.F o) (u + 1) :=
+        cut_barrier_read hFL hc'F hkF hsrc hres' hcont'
+      have huF : u < (actualKeys rk.F o).length := by
+        rw [length_actualKeys]
+        exact idx_lt_of_mem_entryAddrs (mem_entryAddrs_of_contains hc'F
+          ((ColAddr.container_spec _ _ _).1 hcont').2)
+      have hcur := cursor_le_of_lt_cutQuery (cutQuery_noninc _ _) huF hbar
+      rw [← hA'] at hcur
+      rw [hFeq] at hcur ⊢
+      exact (src_host_resp_D8 haE hAle hou hcur).2.symm
+    · -- a closed column of `a`'s stack
+      have hy : y < r := by
+        rcases Nat.lt_or_ge y r with hlt | hge
+        · exact hlt
+        · exfalso; apply hact
+          refine ⟨rk.a.idx, Or.inl ⟨?_, rfl⟩⟩
+          have : y = r := by omega
+          rw [this, hcr] at hoy; exact (Option.some.inj hoy).symm
+      have hst : rk.a.col.OnStack o := by
+        have := ColAddr.resolve_of_resolve_lt hcr hy
+        rw [hoy] at this
+        exact ((ColAddr.resolve_spec 0 _ o y).1 this).1
+      have hno : ∀ u, ¬ (⟨o, u⟩ : EntryAddr).heightPath <+: rk.a.col.path := by
+        intro u hu
+        exact hact ⟨u, Or.inr ((ColAddr.container_spec _ _ _).2 ⟨rfl, hu⟩)⟩
+      have hcl := colAt_truncSet_closed_D8 haE rk.srcHeight hst hno
+      rw [← hFeq] at hcl
+      simp only [resp, actualKeys, hcl]
+
+/-- G011-L10 for an admissible-cap anchor (L4.2c step 4(c), "H versus E" through the stack
+correspondence of the cap, G011-L1). -/
+theorem low_edge_eq_cap_D8 {rk : SrcRecord} (h : rk.Admitted) {w : Closure.AdmCap rk.E}
+    {i j : Nat} (hkind : rk.kind = .scan (some w) i j ∨ rk.kind = .desc (some w) i j)
+    {c : ColAddr} {k p : Nat} (hfd : rk.firstDiff = .capAt c k p) {y : Nat}
+    (hyr : y ≤ rk.a.col.num 0)
+    (hsrc : Path rk.F (actualKeys rk.F) (srcCol_D8 rk c)
+      (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k) (cutStart rk.F (srcCol_D8 rk c) k) y)
+    (htgt : Path rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) (cutStart rk.E c k) y) :
+    respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
+        y =
+      respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
+  sorry
+
 /-- G011-L10 (L4.2c step 4(c), scan and descendant records). At every vertex `y ≤ r` reached by
 both chains, the source edge (in `F`, query `W'`) equals the target edge (in `E`, query `W`). -/
 theorem low_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {cap : Option (Closure.AdmCap rk.E)}
@@ -2428,7 +3025,9 @@ theorem low_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {cap : Option (Closure
     respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
         y =
       respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
-  sorry
+  cases cap with
+  | none => exact low_edge_eq_none_D8 h hkind hfd hyr hsrc htgt
+  | some w => exact low_edge_eq_cap_D8 h hkind hfd hyr hsrc htgt
 
 /-- G011-L11 (L4.2c step 4(c), repair records). The same for repair records (`r = t`, κ = id),
 through the repair list's block form. -/
