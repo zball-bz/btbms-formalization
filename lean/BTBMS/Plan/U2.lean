@@ -1559,6 +1559,45 @@ theorem container_underCol_of_onStack {h o : ColAddr} (ho : h.OnStack o) (b : Co
       simp [underCol, ColAddr.container, hp]
       omega
 
+-- G9 (helper): the root-tail branch of `kerCol`, case by case
+theorem kerCol_tail_spec (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) :
+    ∃ suf, x.path = S.rd.col.path ++ suf ∧
+      ((suf = [] ∧ x.col = S.rd.col.col ∧ x' = ⟨[], 0⟩) ∨
+       (suf = [] ∧ S.rd.col.col < x.col ∧ S.rd.owner = false ∧ x' = ⟨[], x.col - S.rd.col.col⟩) ∨
+       (∃ e rest, suf = (S.rd.col.col, e) :: rest ∧ S.rd.cursor ≤ e ∧
+          x' = ⟨(0, S.m + (e - S.rd.cursor)) :: rest, x.col⟩) ∨
+       (∃ ci e rest, suf = (ci, e) :: rest ∧ S.rd.col.col < ci ∧ S.rd.owner = false ∧
+          x' = ⟨(ci - S.rd.col.col, e) :: rest, x.col⟩)) := by
+  obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+  unfold kerCol at hx
+  simp only [hxq, Bool.false_eq_true, if_false] at hx
+  by_cases hR : x.path.take S.rd.col.path.length = S.rd.col.path
+  · rw [if_pos hR] at hx
+    have hsplit := List.take_append_drop S.rd.col.path.length x.path
+    rw [hR] at hsplit
+    refine ⟨x.path.drop S.rd.col.path.length, hsplit.symm, ?_⟩
+    cases hd : x.path.drop S.rd.col.path.length with
+    | nil =>
+      rw [hd] at hx
+      simp only at hx
+      rw [← hidx]
+      split_ifs at hx with h1 h2
+      · cases hx; exact Or.inl ⟨rfl, h1, rfl⟩
+      · cases hx; exact Or.inr (Or.inl ⟨rfl, h2.1, h2.2, rfl⟩)
+    | cons p rest =>
+      obtain ⟨ci, e⟩ := p
+      rw [hd] at hx
+      simp only at hx
+      rw [← hidx]
+      split_ifs at hx with h1 h2
+      · cases hx; obtain ⟨rfl, h1'⟩ := h1
+        exact Or.inr (Or.inr (Or.inl ⟨e, rest, rfl, h1', rfl⟩))
+      · cases hx
+        exact Or.inr (Or.inr (Or.inr ⟨ci, e, rest, rfl, h2.1, h2.2, rfl⟩))
+  · rw [if_neg hR] at hx
+    cases hx
+
 -- G9.4s4: on root-tail material `kerCol` is a stack isomorphism onto the kernel output, with
 -- `num (kerCol o) = num o − r`, and it carries containment
 theorem onStack_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
@@ -1572,7 +1611,21 @@ theorem kerCol_of_onStack_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd 
     (kerCol S.sd S.rd o).isSome ∧ isQMat S.sd o = false := by sorry
 
 theorem num_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
-    (hxq : isQMat S.sd x = false) : x'.num 0 + S.sd.r = x.num 0 := by sorry
+    (hxq : isQMat S.sd x = false) : x'.num 0 + S.sd.r = x.num 0 := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨suf, hpath, hcases⟩ := kerCol_tail_spec S hx hxq
+  have hnum : ∀ b : ColAddr, b.num 0 = (b.path.map (·.1 + 1)).sum + b.col := by
+    intro b; simp [ColAddr.num]
+  have hx1 := hnum x
+  have hr1 := hnum S.rd.col
+  rw [hpath, List.map_append, List.sum_append] at hx1
+  rw [← hrnum]
+  rcases hcases with ⟨rfl, h1, rfl⟩ | ⟨rfl, h1, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+      ⟨ci, e, rest, rfl, h1, -, rfl⟩
+  · simp [ColAddr.num] at hx1 ⊢; omega
+  · simp [ColAddr.num] at hx1 ⊢; omega
+  · simp [ColAddr.num] at hx1 ⊢; omega
+  · simp [ColAddr.num] at hx1 ⊢; omega
 
 theorem container_kerCol (S : OrdStep) {x x' o o' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (ho : kerCol S.sd S.rd o = some o') (hxq : isQMat S.sd x = false) :
