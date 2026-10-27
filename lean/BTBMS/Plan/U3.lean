@@ -10886,7 +10886,7 @@ theorem lab_Q_G2 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
 theorem lab_U_G2 {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
     (hsd : Scan.stopData H = some sd) (hrd : Scan.rootData H = some rd)
     (hkd : Closure.KernelDefined H rd) {n m : Nat} (hm1 : 1 ≤ m) (hmn : m ≤ n) {v : Nat}
-    (hv : v < (Closure.unconsumed H rd).length) :
+    (_hv : v < (Closure.unconsumed H rd).length) :
     ((Closure.context H sd ((Closure.kernel H sd rd)^[n] Tree.empty)).entryAt
         ⟨hdG2 sd rd m, sd.Q.length + v⟩).map Prod.fst =
       ((H.entryAt ⟨rd.col, rd.cursor + v⟩).map Prod.fst).map
