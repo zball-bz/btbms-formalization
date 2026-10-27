@@ -22709,6 +22709,342 @@ theorem respEdge_root_lt_D7 (S : OrdStep) {j φ : Nat} (_hj : 1 ≤ j ∧ j ≤ 
     (he : respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r = some p) : p < S.sd.r :=
   edge_lt S.inL.1 ((edge_iff _ _ _ _ _ _).mpr he)
 
+-- F7 (helper): paths only read the key lists of the columns on the stack
+theorem path_congr_F7 {E : Forest} {ks ks' : KeySys} {c : ColAddr} {W : List (WithTop Key)}
+    (hks : ∀ x o, c.resolve 0 x = some o → ks o = ks' o) {x y : Nat}
+    (h : Path E ks c W x y) : Path E ks' c W x y := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ he ih =>
+    obtain ⟨o, ho, hr⟩ := he
+    refine ih.tail ⟨o, ho, ?_⟩
+    unfold resp at hr ⊢
+    rw [← hks _ _ ho]
+    exact hr
+
+-- L-G010.2 (F7): below a stack column `c'` of `c`, the active systems of `c` and `c'` agree
+theorem respEdge_activeKeys_onStack_F7 (E : Forest) {c c' : ColAddr} {z : Nat}
+    (hc' : c.resolve 0 z = some c') (W : List (WithTop Key)) {x : Nat} (hx : x < z) :
+    respEdge E (activeKeys_D7 E c) c W x = respEdge E (activeKeys_D7 E c') c' W x := by
+  unfold respEdge
+  rw [ColAddr.resolve_of_resolve_lt hc' hx]
+  cases ho : c.resolve 0 x with
+  | none => rfl
+  | some o =>
+    simp only [Option.bind_some]
+    have hon : o.num 0 = x := ColAddr.resolve_num ho
+    have hcc' : c'.path <+: c.path := onStack_prefix ((ColAddr.resolve_spec 0 _ _ _).mp hc').1
+    have hcont : o.container c = o.container c' := by
+      apply Option.ext
+      intro e
+      constructor
+      · intro he
+        obtain ⟨he1, he2⟩ := (ColAddr.container_spec _ _ _).mp he
+        have := EntryAddr.contains_of_resolve he2 hc' (by rw [he1]; omega)
+        exact (ColAddr.container_spec _ _ _).mpr ⟨he1, this⟩
+      · intro he
+        obtain ⟨he1, he2⟩ := (ColAddr.container_spec _ _ _).mp he
+        exact (ColAddr.container_spec _ _ _).mpr ⟨he1, he2.trans hcc'⟩
+    unfold resp
+    simp only [activeKeys_D7, hcont]
+
+-- L-G010.2 (F7, path form)
+theorem path_activeKeys_onStack_F7 (E : Forest) (hV : CondV E) {c c' : ColAddr} {z : Nat}
+    (hc' : c.resolve 0 z = some c') {W : List (WithTop Key)} {x y : Nat} (hx : x < z)
+    (h : Path E (activeKeys_D7 E c') c' W x y) : Path E (activeKeys_D7 E c) c W x y := by
+  induction h using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head x x' hxx' _ ih =>
+    have hlt := edge_lt hV hxx'
+    rw [edge_iff, ← respEdge_activeKeys_onStack_F7 E hc' W hx] at hxx'
+    exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') (ih (by omega))
+
+-- L-G010.3 (F7): on the stopping column's stack, the route-capped system of `A` is capped at the
+-- active containers of the stopping column
+theorem activeKeys_stopCol_F7 (S : OrdStep) {x : Nat} {o : ColAddr}
+    (ho : S.sd.col.resolve 0 x = some o) :
+    capKeys S.A (routeCols S.A) o = activeKeys_D7 S.A S.sd.col o := by
+  obtain ⟨hcol, -, -, hroute, -⟩ := stopData_spec S.hsd
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  cases hce : o.container S.sd.col with
+  | some e =>
+    have hor : o ∈ routeCols S.A := container_mem_routeCols_D7 hroute hce
+    have hl := container_sdcol_last S hce
+    rw [length_parents_F7] at hl
+    simp only [capKeys, hor, if_true, activeKeys_D7, hce]
+    obtain ⟨l, x, hlx⟩ : ∃ l x, actualKeys S.A o = l ++ [x] := by
+      cases h : actualKeys S.A o using List.reverseRecOn with
+      | nil => rw [h] at hl; simp at hl
+      | append_singleton l x _ => exact ⟨l, x, rfl⟩
+    rw [hlx] at hl ⊢
+    simp only [List.length_append, List.length_singleton] at hl
+    rw [List.dropLast_concat, List.getLast?_concat, List.take_left' (by omega)]
+    rfl
+  | none =>
+    have hnr : o ∉ routeCols S.A := by
+      intro hor
+      obtain ⟨v, -, hv⟩ := routeCols_visible hmem hor ho
+      have := (ColAddr.container_spec _ _ _).mpr ⟨rfl, hv⟩
+      rw [hce] at this; cases this
+    simp only [capKeys, hnr, if_false, activeKeys_D7, hce]
+
+-- G9.3 decorated (F7): at a reduced query `W' < Z` the old terminal answers with a query parent
+-- `q`, and `q` reaches `r` by a path in the system capped at the stopping column's active
+-- containers (decorated A of `A`, path nesting)
+theorem term_detour_active_F7 (S : OrdStep) {W : List (WithTop Key)} (hW : Noninc W)
+    (hlow : W < S.termZ) :
+    cursor (actualKeys S.A S.sd.col) W < S.m ∧
+      ∃ q, (parents S.A S.sd.col)[cursor (actualKeys S.A S.sd.col) W]? = some q ∧
+        S.sd.r ≤ q ∧ q < S.sd.t ∧
+        Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W q S.sd.r := by
+  obtain ⟨hj, q, hq, hrq, hqt, -⟩ := term_detour S hW hlow
+  refine ⟨hj, q, hq, hrq, hqt, ?_⟩
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hVA : CondV S.A := S.inL.1
+  have hAK : CondAK S.A (capKeys S.A (routeCols S.A)) :=
+    capping_forward S.inL.1 S.inL.2.2.2.1 S.inL.2.2.2.2 (fun _ h => h)
+  have hpar : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcol]
+  have hplen : (parents S.A S.sd.col).length = S.m + 1 := by
+    rw [hpar]; simp [OrdStep.m]
+  have hclen : ((S.A.colAt S.sd.col).getD []).length = S.m + 1 := by
+    rw [hcol]; simp [OrdStep.m]
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  set j := cursor (actualKeys S.A S.sd.col) W with hjdef
+  set P : Nat → Nat := fun l => ((parents S.A S.sd.col)[l]?).getD 0 with hP
+  have hPget : ∀ l, l ≤ S.m → (parents S.A S.sd.col)[l]? = some (P l) := by
+    intro l hl
+    have : l < (parents S.A S.sd.col).length := by omega
+    simp [hP, List.getElem?_eq_getElem this]
+  have hPm : P S.m = S.sd.r := by
+    simp [hP, hpar, OrdStep.m]
+  have hPj : P j = q := by
+    have := hPget j hj.le
+    rw [hq] at this
+    exact (Option.some.inj this).symm
+  have hWlt : W < cutQuery (actualKeys S.A S.sd.col) (j + 1) :=
+    (cursor_spec _ W hW).2 (by rw [length_actualKeys, hclen]; omega)
+  have hchain : ∀ n, j + n ≤ S.m →
+      Path S.A (capKeys S.A (routeCols S.A)) S.sd.col W (P j) (P (j + n)) := by
+    intro n
+    induction n with
+    | zero => intro _; exact Relation.ReflTransGen.refl
+    | succ n ih =>
+      intro hn
+      have h1 := ih (by omega)
+      have hA := hAK S.sd.col hmem (j + n + 1) (P (j + n + 1)) (hPget _ hn)
+      simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel] at hA
+      rw [cutQuery_capKeys _ _ _ (by rw [hclen]; omega)] at hA
+      have hA' : Path S.A (capKeys S.A (routeCols S.A)) S.sd.col
+          (cutQuery (actualKeys S.A S.sd.col) (j + n + 1)) (P (j + n)) (P (j + n + 1)) := hA
+      have hle : W ≤ cutQuery (actualKeys S.A S.sd.col) (j + n + 1) :=
+        le_of_lt (lt_of_lt_of_le hWlt (cutQuery_mono _ (by omega)))
+      exact h1.trans (path_nesting_path hVA hAK S.sd.col hW (cutQuery_noninc _ _) hle hA')
+  have hqr := hchain (S.m - j) (by omega)
+  rw [show j + (S.m - j) = S.m by omega, hPm, hPj] at hqr
+  exact path_congr_F7 (fun x o ho => activeKeys_stopCol_F7 S ho) hqr
+
+
+-- L-G010.4c (F7, path form): below `r` the decorated paths of the copy are old paths
+theorem path_fixed_F7 (S : OrdStep) {j φ : Nat} {a c : ColAddr} (hp : PhasePair_D7 S j a c φ)
+    {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) {x y : Nat} (hx : x < S.sd.r)
+    (h : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x y) :
+    Path S.A (activeKeys_D7 S.A a) a W x y := by
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  induction h using Relation.ReflTransGen.head_induction_on with
+  | refl => exact Relation.ReflTransGen.refl
+  | @head x x' hxx' _ ih =>
+    have hlt := edge_lt hVB hxx'
+    rw [edge_iff, respEdge_fixed_D7 S hp hT hx] at hxx'
+    exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') (ih (by omega))
+
+-- F7 (helper): a vertex whose decorated edge in `B` is the old edge out of `r` leads, along a
+-- path to an end below `r`, to an old path from `r`
+theorem path_of_root_edge_F7 (S : OrdStep) {j φ : Nat} {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) {z y : Nat}
+    (hzy : y < z)
+    (he : respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) z =
+      respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r)
+    (h : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) z y) :
+    Path S.A (activeKeys_D7 S.A a) a W S.sd.r y := by
+  rcases Relation.ReflTransGen.cases_head h with h0 | ⟨p, hzp, hpy⟩
+  · omega
+  · rw [edge_iff, he] at hzp
+    have hpr : p < S.sd.r := edge_lt S.inL.1 ((edge_iff _ _ _ _ _ _).mpr hzp)
+    exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hzp)
+      (path_fixed_F7 S hp hT hpr hpy)
+
+-- L-G010.6 (F7): the root reads alike in both active systems below the complete query
+theorem respEdge_root_low_F7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hlow : kappaQ S.sd.r S.d 1 W < S.termZ) (ψ : Nat) :
+    respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d ψ W) S.sd.r =
+        (parents S.A S.rd.col)[cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W)]? ∧
+      respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r =
+        (parents S.A S.rd.col)[cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W)]? := by
+  obtain ⟨hRa, hRc, -, b, hb⟩ := phasePair_root_D7 S hp
+  obtain ⟨hres, -, -, -, -, hown, hlast⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hT1 : ∀ w ∈ kappaQ S.sd.r S.d 1 W, w ≠ ⊤ := by
+    intro w hw
+    simp only [kappaQ, List.mem_map] at hw
+    obtain ⟨w', hw', rfl⟩ := hw
+    have := hT w' hw'
+    cases w' with
+    | top => exact absurd rfl this
+    | coe k => simp
+  have hW1 : Noninc (kappaQ S.sd.r S.d 1 W) := kappaQ_noninc _ _ _ hW
+  -- the A side: `a`'s root capping is admissible (L-G010.5 at `h = φ`)
+  obtain ⟨ks, -, hRC, hkseq, -⟩ := activeKeys_head_F7 S hj hp hφ le_rfl
+  have hksA := hkseq rfl
+  -- the B side: `B` keeps the root column, capped as the stopping column's container
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack S.hsd Z hsdR
+  rw [← hB] at hpar htake hnone
+  have hcR : S.rd.col.container c = S.rd.col.container S.sd.col := by
+    rw [hb]; exact container_underCol_of_onStack hsdR b
+  obtain ⟨ksB, hRCB, hksB⟩ : ∃ ksB, RootCap_F7 S ksB ∧ activeKeys_D7 S.B c S.rd.col = ksB := by
+    cases hRs : S.rd.col.container S.sd.col with
+    | none =>
+      refine ⟨actualKeys S.A S.rd.col, Or.inl rfl, ?_⟩
+      simp only [activeKeys_D7, hcR, hRs, actualKeys, hnone hRs]
+    | some e =>
+      have hl := hlast e hRs
+      unfold Packet.rootLenOf at hl
+      have ho : S.rd.owner = true := hown.mpr (by rw [hRs]; rfl)
+      have hkd := S.kernelDefined ho
+      have hlenR := length_actualKeys S.A S.rd.col
+      have hcA : S.rd.cursor < (actualKeys S.A S.rd.col).length := by
+        unfold unconsumed rootCol at hkd
+        rw [hlenR]
+        by_contra hcon
+        exact hkd (List.drop_eq_nil_of_le (by omega))
+      refine ⟨(actualKeys S.A S.rd.col).take e.idx ++ [⊤], Or.inr ⟨e.idx, by omega, by omega, rfl⟩, ?_⟩
+      simp only [activeKeys_D7, hcR, hRs]
+      congr 1
+      have h1 := htake e hRs
+      simp only [actualKeys, ← List.map_take]
+      congr 1
+      cases hBo : S.B.colAt S.rd.col with
+      | none =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rfl
+        | some _ => rw [hBo, hAo] at h1; cases h1
+      | some C1 =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rw [hBo, hAo] at h1; cases h1
+        | some C2 =>
+          rw [hBo, hAo] at h1
+          simpa using h1
+  have hcurB : cursor ksB (kappaQ S.sd.r S.d ψ W) =
+      cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W) := by
+    rw [rootCap_cursor_F7 S hRCB, ← rootCap_cursor_F7 S hRCB 1]
+    exact (rootCap_low_F7 S hRCB hW1 hT1 hlow).1
+  have hcurA : cursor ks W = cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W) := by
+    rw [← rootCap_cursor_F7 S hRC 1]
+    exact (rootCap_low_F7 S hRC hW1 hT1 hlow).1
+  refine ⟨?_, ?_⟩
+  · unfold respEdge
+    rw [hRc]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents, hksB, hcurB, hpar]
+  · unfold respEdge
+    rw [hRa]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents, ← hksA, hcurA]
+
+
+-- F7 (helper): `κ` keeps queries `⊤`-free
+theorem kappaQ_ne_top_F7 (r d j : Nat) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) :
+    ∀ w ∈ kappaQ r d j W, w ≠ ⊤ := by
+  intro w hw
+  simp only [kappaQ, List.mem_map] at hw
+  obtain ⟨w', hw', rfl⟩ := hw
+  have := hT w' hw'
+  cases w' with
+  | top => exact absurd rfl this
+  | coe k => simp
+
+-- L-G010.15 step 2, low case (F7): at a low head `s_h` the decorated path detours along the
+-- phase-`(h−1)` copy of the old terminal-to-root path to `s_{h−1}`
+theorem head_low_detour_F7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {h : Nat} (hh1 : 1 ≤ h) (hh : h ≤ φ)
+    {W' : List (WithTop Key)} (hW' : Noninc W') (hT' : ∀ w ∈ W', w ≠ ⊤) (hlow : W' < S.termZ) :
+    Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d (h - 1) W') (S.s h) (S.s (h - 1)) := by
+  have hVA : CondV S.A := S.inL.1
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  have hφj : φ ≤ j := by
+    rcases hp with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+    · unfold phaseOff; split_ifs <;> omega
+    · omega
+  obtain ⟨ks, hst, hRC, -, hkeys, hpar⟩ := activeKeys_head_F7 S hj hp hh1 hh
+  obtain ⟨hjm, q, hq, hrq, hqt, hpathA⟩ := term_detour_active_F7 S hW' hlow
+  have hdt : S.sd.r + S.d = S.sd.t := by
+    have := (rootData_spec S.hsd S.hrd).2.2.2.2.1
+    simp only [OrdStep.d, period]; omega
+  -- the head edge `s_h → τ_{h−1}(q)`
+  have hedge : respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d (h - 1) W') (S.s h) =
+      some (q + (h - 1) * S.d) := by
+    have hcl := (head_scan_F7 S hRC (h - 1) hW').1 hlow
+    have hlenq : (kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m)).length = S.m := by
+      unfold kappaQ; rw [List.length_map, length_sdcol_take_F7]
+    have hcur : cursor (kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+        ks.drop S.rd.cursor) (kappaQ S.sd.r S.d (h - 1) W') =
+        cursor (actualKeys S.A S.sd.col) W' := by
+      have e1 := cursor_take (kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+        ks.drop S.rd.cursor) (kappaQ S.sd.r S.d (h - 1) W') S.m
+      rw [List.take_left' hlenq] at e1
+      unfold kappaQ at e1
+      rw [cursor_map (kappaQry_strictMono _ _ _), cursor_take] at e1
+      unfold kappaQ at hcl ⊢
+      omega
+    unfold respEdge
+    rw [hst]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents, hkeys, hcur, hpar]
+    have hlm : (((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((h - 1) * S.d))).length =
+        S.m := by
+      have := length_sdcol_take_F7 S
+      rw [List.length_take] at this
+      rw [List.length_map, List.length_take, length_parents_F7, this]
+    rw [List.getElem?_append_left (by omega), List.getElem?_map, List.getElem?_take_of_lt hjm, hq]
+    simp [shiftVal, hrq]
+  -- the copied old path, read in the head's active system
+  have hp' : PhasePair_D7 S h S.sd.col (S.headCol h) (h - 1) :=
+    Or.inr ⟨rfl, phaseCol_headCol S h, rfl⟩
+  have hcopy : ∀ x, Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W' x S.sd.r →
+      Path S.B (activeKeys_D7 S.B (S.headCol h)) (S.headCol h) (kappaQ S.sd.r S.d (h - 1) W')
+        (x + (h - 1) * S.d) (S.sd.r + (h - 1) * S.d) := by
+    intro x hx
+    induction hx using Relation.ReflTransGen.head_induction_on with
+    | refl => exact Relation.ReflTransGen.refl
+    | @head x x' hxx' hx'r ih =>
+      have hlt := edge_lt hVA hxx'
+      have hr' := path_le hVA hx'r
+      rw [edge_iff] at hxx'
+      have he := respEdge_phase_D7 S ⟨hh1, by omega⟩ hp' hT' (x := x) (by omega)
+      rw [hxx'] at he
+      have he' : respEdge S.B (activeKeys_D7 S.B (S.headCol h)) (S.headCol h)
+          (kappaQ S.sd.r S.d (h - 1) W') (x + (h - 1) * S.d) = some (x' + (h - 1) * S.d) := by
+        rw [he]; simp [shiftVal, hr']
+      exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr he') ih
+  have hlift := path_activeKeys_onStack_F7 S.B hVB hst
+    (x := q + (h - 1) * S.d) (by
+      simp only [OrdStep.s]
+      have : h * S.d = (h - 1) * S.d + S.d := by rw [← Nat.succ_mul]; congr 1; omega
+      omega) (hcopy q hpathA)
+  have hs : S.s (h - 1) = S.sd.r + (h - 1) * S.d := rfl
+  rw [hs]
+  exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hedge) hlift
+
 -- L-G010.15 (D7; T3.2q steps 2-3, low case, txt:391-394, 527-530): below the complete query the
 -- detours through the heads are deleted: a path from `s_φ` to an end below `r` is an old path
 -- from `r`
@@ -22716,7 +23052,71 @@ theorem path_head_low_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n)
     (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
     (hT : ∀ w ∈ W, w ≠ ⊤) (hlow : kappaQ S.sd.r S.d 1 W < S.termZ) {y : Nat} (hy : y < S.sd.r)
     (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s φ) y) :
-    Path S.A (activeKeys_D7 S.A a) a W S.sd.r y := by sorry
+    Path S.A (activeKeys_D7 S.A a) a W S.sd.r y := by
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  have hW1 : Noninc (kappaQ S.sd.r S.d 1 W) := kappaQ_noninc _ _ _ hW
+  have hT1 := kappaQ_ne_top_F7 S.sd.r S.d 1 hT
+  obtain ⟨hrootB, hrootA⟩ := respEdge_root_low_F7 S hj hp hφ hW hT hlow φ
+  have key : ∀ h, h ≤ φ →
+      Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s h) y →
+      Path S.A (activeKeys_D7 S.A a) a W S.sd.r y := by
+    intro h
+    induction h with
+    | zero =>
+      intro _ hP
+      have hs0 : S.s 0 = S.sd.r := by simp [OrdStep.s]
+      rw [hs0] at hP
+      exact path_of_root_edge_F7 S hp hT hy (hrootB.trans hrootA.symm) hP
+    | succ h ih =>
+      intro hh hP
+      have hV : kappaQ S.sd.r S.d φ W = kappaQ S.sd.r S.d h (kappaQ S.sd.r S.d (φ - h) W) := by
+        rw [kappaQ_add, show h + (φ - h) = φ by omega]
+      have hsr : S.sd.r < S.s (h + 1) := by
+        have hd : 1 ≤ S.d := by
+          have := (rootData_spec S.hsd S.hrd).2.2.2.2.1
+          simp only [OrdStep.d, period]; omega
+        simp only [OrdStep.s]
+        have : 1 ≤ (h + 1) * S.d := Nat.one_le_iff_ne_zero.mpr (Nat.mul_ne_zero (by omega) (by omega))
+        omega
+      by_cases hhi : S.termZ ≤ kappaQ S.sd.r S.d (φ - h) W
+      · -- high head: the old root response
+        obtain ⟨ks, hst, hRC, -, hkeys, hpar⟩ := activeKeys_head_F7 S hj hp (h := h + 1) (by omega) hh
+        obtain ⟨hge, hcur⟩ := (head_scan_F7 S hRC h (kappaQ_noninc _ _ _ hW)).2 hhi
+        have hks : cursor ks (kappaQ S.sd.r S.d (φ - h) W) = S.rd.cursor := by
+          have h1 : cursor ks (kappaQ S.sd.r S.d (φ - h) W) =
+              cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W) := by
+            rw [rootCap_cursor_F7 S hRC, ← rootCap_cursor_F7 S hRC 1]
+            exact (rootCap_low_F7 S hRC hW1 hT1 hlow).1
+          have h2 := (rootCap_low_F7 S hRC hW1 hT1 hlow).2
+          omega
+        have he : respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s (h + 1)) =
+            respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r := by
+          rw [hrootA]
+          unfold respEdge
+          rw [hst]
+          simp only [Option.bind_some]
+          rw [resp_eq_parents, hkeys, hV, Nat.add_sub_cancel, hcur, hks, Nat.sub_self,
+            Nat.add_zero, hpar, Nat.add_sub_cancel]
+          have hlm : (((parents S.A S.sd.col).take S.m).map
+              (shiftVal S.sd.r (h * S.d))).length = S.m := by
+            have := length_sdcol_take_F7 S
+            rw [List.length_take] at this
+            rw [List.length_map, List.length_take, length_parents_F7, this]
+          rw [List.getElem?_append_right (by omega), hlm]
+          simp only [Nat.add_zero, Nat.sub_self, List.getElem?_drop]
+          have h1 : cursor ks (kappaQ S.sd.r S.d (φ - h) W) =
+              cursor (actualKeys S.A S.rd.col) (kappaQ S.sd.r S.d 1 W) := by
+            rw [rootCap_cursor_F7 S hRC, ← rootCap_cursor_F7 S hRC 1]
+            exact (rootCap_low_F7 S hRC hW1 hT1 hlow).1
+          rw [← h1, hks]
+        exact path_of_root_edge_F7 S hp hT (by omega) he hP
+      · -- low head: the detour to `s_h`
+        have hdet := head_low_detour_F7 S hj hp (h := h + 1) (by omega) hh
+          (kappaQ_noninc _ _ _ hW) (kappaQ_ne_top_F7 _ _ _ hT) (lt_of_not_ge hhi)
+        rw [Nat.add_sub_cancel, ← hV] at hdet
+        have hys : y ≤ S.s h := by simp only [OrdStep.s]; omega
+        exact ih (by omega) (path_functional hVB hdet hP hys)
+  exact key φ le_rfl hpath
 
 -- L-G010.10 (D7; T3.2q.3, G-010): paths in the system capped at the active containers of the
 -- copy `c` project to paths in the system capped at the active containers of `a`, for every
