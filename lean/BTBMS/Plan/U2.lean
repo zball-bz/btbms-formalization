@@ -1399,20 +1399,165 @@ theorem phaseCol_num_gt (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i)
 -- G9.4s1: the stack of `underCol h b` is the stack of `h` together with the `underCol h`-image of
 -- the stack of `b`
 theorem onStack_underCol (h b o : ColAddr) :
-    (underCol h b).OnStack o ↔ h.OnStack o ∨ ∃ o', b.OnStack o' ∧ o = underCol h o' := by sorry
+    (underCol h b).OnStack o ↔ h.OnStack o ∨ ∃ o', b.OnStack o' ∧ o = underCol h o' := by
+  obtain ⟨hp, hc⟩ := h
+  obtain ⟨bp, bc⟩ := b
+  obtain ⟨op, oc⟩ := o
+  cases bp with
+  | nil =>
+    show ColAddr.OnStack ⟨hp, hc + bc⟩ ⟨op, oc⟩ ↔ _
+    unfold ColAddr.OnStack
+    simp only
+    constructor
+    · rintro (hA | ⟨hpe, hlt⟩)
+      · exact Or.inl (Or.inl hA)
+      · by_cases hlt' : oc < hc
+        · exact Or.inl (Or.inr ⟨hpe, hlt'⟩)
+        · refine Or.inr ⟨⟨[], oc - hc⟩, Or.inr ⟨rfl, by simp only; omega⟩, ?_⟩
+          show (⟨op, oc⟩ : ColAddr) = ⟨hp, hc + (oc - hc)⟩
+          rw [hpe, show hc + (oc - hc) = oc by omega]
+    · rintro ((hA | ⟨hpe, hlt⟩) | ⟨⟨op', oc'⟩, hst, hoe⟩)
+      · exact Or.inl hA
+      · exact Or.inr ⟨hpe, by omega⟩
+      · rcases hst with ⟨k, ck, ik, hk, -, -⟩ | ⟨hp', hlt'⟩
+        · simp at hk
+        · simp only at hp' hlt'
+          subst hp'
+          change (⟨op, oc⟩ : ColAddr) = ⟨hp, hc + oc'⟩ at hoe
+          simp only [ColAddr.mk.injEq] at hoe
+          exact Or.inr ⟨hoe.1, by omega⟩
+  | cons p rest =>
+    obtain ⟨c0, e0⟩ := p
+    show ColAddr.OnStack ⟨hp ++ (hc + c0, e0) :: rest, bc⟩ ⟨op, oc⟩ ↔ _
+    unfold ColAddr.OnStack
+    simp only
+    constructor
+    · rintro (⟨k, ck, ik, hk, hpe, hle⟩ | ⟨hpe, hlt⟩)
+      · rcases Nat.lt_trichotomy k hp.length with hkl | hkl | hkl
+        · rw [List.getElem?_append_left hkl] at hk
+          rw [List.take_append_of_le_length hkl.le] at hpe
+          exact Or.inl (Or.inl ⟨k, ck, ik, hk, hpe, hle⟩)
+        · subst hkl
+          rw [List.getElem?_append_right le_rfl, Nat.sub_self] at hk
+          simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hk
+          obtain ⟨h1, -⟩ := hk
+          rw [List.take_left' rfl] at hpe
+          by_cases hlt' : oc < hc
+          · exact Or.inl (Or.inr ⟨hpe, hlt'⟩)
+          · refine Or.inr ⟨⟨[], oc - hc⟩, Or.inl ⟨0, c0, e0, rfl, rfl, by simp only; omega⟩, ?_⟩
+            show (⟨op, oc⟩ : ColAddr) = ⟨hp, hc + (oc - hc)⟩
+            rw [hpe, show hc + (oc - hc) = oc by omega]
+        · obtain ⟨j, hj⟩ : ∃ j, k = hp.length + (j + 1) := ⟨k - hp.length - 1, by omega⟩
+          rw [hj, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk
+          rw [hj, List.take_length_add_append] at hpe
+          refine Or.inr ⟨⟨(c0, e0) :: rest.take j, oc⟩,
+            Or.inl ⟨j + 1, ck, ik, hk, by simp, hle⟩, ?_⟩
+          show (⟨op, oc⟩ : ColAddr) = ⟨hp ++ (hc + c0, e0) :: rest.take j, oc⟩
+          rw [hpe]
+          simp
+      · refine Or.inr ⟨⟨(c0, e0) :: rest, oc⟩, Or.inr ⟨rfl, hlt⟩, ?_⟩
+        show (⟨op, oc⟩ : ColAddr) = ⟨hp ++ (hc + c0, e0) :: rest, oc⟩
+        rw [hpe]
+    · rintro ((⟨k, ck, ik, hk, hpe, hle⟩ | ⟨hpe, hlt⟩) | ⟨⟨op', oc'⟩, hst, hoe⟩)
+      · have hkl : k < hp.length := (List.getElem?_eq_some_iff.mp hk).1
+        refine Or.inl ⟨k, ck, ik, ?_, ?_, hle⟩
+        · rw [List.getElem?_append_left hkl]; exact hk
+        · rw [List.take_append_of_le_length hkl.le]; exact hpe
+      · refine Or.inl ⟨hp.length, hc + c0, e0, ?_, ?_, by omega⟩
+        · rw [List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+        · rw [List.take_left' rfl]; exact hpe
+      · rcases hst with ⟨k, ck, ik, hk, hpe, hle⟩ | ⟨hpe, hlt⟩
+        · simp only at hpe hle
+          cases k with
+          | zero =>
+            simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hk
+            obtain ⟨h1, -⟩ := hk
+            simp only [List.take_zero] at hpe
+            subst hpe
+            change (⟨op, oc⟩ : ColAddr) = ⟨hp, hc + oc'⟩ at hoe
+            simp only [ColAddr.mk.injEq] at hoe
+            obtain ⟨h3, h4⟩ := hoe
+            rw [h3, h4]
+            refine Or.inl ⟨hp.length, hc + c0, e0, ?_, ?_, by omega⟩
+            · rw [List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+            · rw [List.take_left' rfl]
+          | succ j =>
+            simp only [List.take_succ_cons] at hpe
+            subst hpe
+            change (⟨op, oc⟩ : ColAddr) = ⟨hp ++ (hc + c0, e0) :: rest.take j, oc'⟩ at hoe
+            simp only [ColAddr.mk.injEq] at hoe
+            obtain ⟨h3, h4⟩ := hoe
+            rw [h3, h4]
+            refine Or.inl ⟨hp.length + (j + 1), ck, ik, ?_, ?_, hle⟩
+            · rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]; exact hk
+            · rw [List.take_length_add_append]; rfl
+        · simp only at hpe hlt
+          subst hpe
+          change (⟨op, oc⟩ : ColAddr) = ⟨hp ++ (hc + c0, e0) :: rest, oc'⟩ at hoe
+          simp only [ColAddr.mk.injEq] at hoe
+          obtain ⟨h3, h4⟩ := hoe
+          rw [h3, h4]
+          exact Or.inr ⟨rfl, hlt⟩
 
 -- G9.4s2: printed numbers add under `underCol`
-theorem num_underCol (h b : ColAddr) : (underCol h b).num 0 = h.num 0 + b.num 0 := by sorry
+theorem num_underCol (h b : ColAddr) : (underCol h b).num 0 = h.num 0 + b.num 0 := by
+  obtain ⟨bp, bc⟩ := b
+  cases bp with
+  | nil => simp [underCol, ColAddr.num]; omega
+  | cons p rest =>
+    obtain ⟨c0, e0⟩ := p
+    simp [underCol, ColAddr.num, List.sum_append]; omega
 
 -- G9.4s3: containment is carried by `underCol`
 theorem container_underCol (h b o : ColAddr) :
     (underCol h o).container (underCol h b) = (o.container b).map fun e => ⟨underCol h o, e.idx⟩ := by
-  sorry
+  obtain ⟨op, oc⟩ := o
+  obtain ⟨bp, bc⟩ := b
+  cases op with
+  | nil =>
+    cases bp with
+    | nil => simp [underCol, ColAddr.container]
+    | cons p rest =>
+      obtain ⟨c0, e0⟩ := p
+      simp [underCol, ColAddr.container]
+  | cons p' rest' =>
+    obtain ⟨c0', e0'⟩ := p'
+    cases bp with
+    | nil =>
+      simp only [underCol, ColAddr.container]
+      rw [List.drop_eq_nil_of_le (by simp)]
+      simp
+    | cons p rest =>
+      obtain ⟨c0, e0⟩ := p
+      simp only [underCol, ColAddr.container, List.length_append, List.length_cons]
+      rw [List.drop_length_add_append, List.take_length_add_append]
+      simp
+      rcases List.drop rest'.length rest with _ | ⟨⟨k, i⟩, tail⟩
+      · simp
+      · simp
 
 -- G9.4s3b: a column strictly on the stack of `h` contains `underCol h b` exactly when it contains
 -- `h`, through the same entry
 theorem container_underCol_of_onStack {h o : ColAddr} (ho : h.OnStack o) (b : ColAddr) :
-    o.container (underCol h b) = o.container h := by sorry
+    o.container (underCol h b) = o.container h := by
+  obtain ⟨bp, bc⟩ := b
+  rcases ho with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · have hkl : k < h.path.length := (List.getElem?_eq_some_iff.mp hk).1
+    cases bp with
+    | nil => rfl
+    | cons p rest =>
+      obtain ⟨c0, e0⟩ := p
+      simp only [underCol, ColAddr.container, hp, List.length_take]
+      rw [Nat.min_eq_left hkl.le]
+      rw [List.drop_append_of_le_length hkl.le, List.take_append_of_le_length hkl.le]
+      rw [List.drop_eq_getElem_cons hkl]
+      rfl
+  · cases bp with
+    | nil => simp [underCol, ColAddr.container, hp]
+    | cons p rest =>
+      obtain ⟨c0, e0⟩ := p
+      simp [underCol, ColAddr.container, hp]
+      omega
 
 -- G9.4s4: on root-tail material `kerCol` is a stack isomorphism onto the kernel output, with
 -- `num (kerCol o) = num o − r`, and it carries containment
