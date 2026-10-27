@@ -5466,12 +5466,50 @@ def PhasePair_D7 (S : OrdStep) (j : Nat) (a c : ColAddr) (φ : Nat) : Prop :=
 
 -- L-G010.21b (D7): cut queries of actual keys are `⊤`-free
 theorem ne_top_of_mem_cutQuery_D7 (E : Forest) (o : ColAddr) (k : Nat) :
-    ∀ w ∈ cutQuery (actualKeys E o) k, w ≠ ⊤ := by sorry
+    ∀ w ∈ cutQuery (actualKeys E o) k, w ≠ ⊤ := by
+  intro w hw
+  have h1 := (nu_sublist _).subset hw
+  have h2 := List.mem_of_mem_take h1
+  simp only [actualKeys, List.mem_map] at h2
+  obtain ⟨x, -, rfl⟩ := h2
+  exact WithTop.coe_ne_top
 
 -- D7: upwardness in terms of parents
 theorem isUpward_iff_parents_D7 {E : Forest} {c : ColAddr} {k p : Nat} :
     IsUpward E c k p ↔ c ∈ E.colAddrs ∧ k ≤ (parents E c).length ∧
-      ∀ q, (parents E c)[k]? = some q → q < p := by sorry
+      ∀ q, (parents E c)[k]? = some q → q < p := by
+  unfold IsUpward
+  rw [Tree.mem_colAddrs_iff]
+  cases h : E.colAt c with
+  | none => simp
+  | some col =>
+    simp only [Option.isSome_some, true_and, parents, h, Option.getD_some, List.length_map,
+      List.getElem?_map]
+    constructor
+    · intro hu
+      cases hk : col[k]? with
+      | none =>
+        rw [hk] at hu
+        simp only at hu
+        refine ⟨by omega, fun q hq => ?_⟩
+        simp at hq
+      | some x =>
+        obtain ⟨q', H⟩ := x
+        rw [hk] at hu
+        simp only at hu
+        refine ⟨(List.getElem?_eq_some_iff.mp hk).1.le, fun q hq => ?_⟩
+        simp only [Option.map_some, Option.some.injEq] at hq
+        omega
+    · rintro ⟨hk, hq⟩
+      cases hk' : col[k]? with
+      | none =>
+        simp only
+        have := List.getElem?_eq_none_iff.mp hk'
+        omega
+      | some x =>
+        obtain ⟨q', H⟩ := x
+        simp only
+        exact hq q' (by rw [hk']; rfl)
 
 -- T3.8li step 3 (D7, generic): V of a literal cap whose closing parent is visible
 theorem condV_litCap_D7 {E : Forest} (hV : CondV E) {c : ColAddr} {k p : Nat}
@@ -5519,6 +5557,18 @@ theorem condAK_litCap_D7 {E : Forest} (hL : InL E) {c : ColAddr} {k p : Nat}
     exact (aAt_litCap_final_D7 hup).mpr hfin
   · exact litCap_retained_D7 hL hc hk hc' fun h1 h2 => h ⟨h1, h2⟩
 
+-- D7: the closing parent of an upward V cap is visible from the cap column
+theorem lt_num_of_litCap_D7 {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward B c k ρ)
+    (hV : CondV (litCap B c k ρ)) : ρ < c.num 0 := by
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  have hent : (litCap B c k ρ).entryAt ⟨c, k⟩ = some (ρ, Tree.empty) := by
+    simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [List.getElem?_append_right (by omega), hlen, Nat.sub_self]
+    rfl
+  have hmem : (⟨c, k⟩ : EntryAddr) ∈ (litCap B c k ρ).entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  exact (condV_iff_lt _).mp hV _ hmem _ _ hent
+
 /-! ### Phase pairs: numbers, parents, cut queries, cut starts -/
 
 -- L-G010.17 (D7): the query part of a head is the phase-`(i−1)` copy of the old terminal's
@@ -5532,7 +5582,21 @@ theorem headQuery_prefix_D7 (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i 
 
 -- D7: numbers of a phase pair
 theorem phasePair_num_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
-    (hp : PhasePair_D7 S j a c φ) : S.sd.r < a.num 0 ∧ c.num 0 = a.num 0 + φ * S.d := by sorry
+    (hp : PhasePair_D7 S j a c φ) : S.sd.r < a.num 0 ∧ c.num 0 = a.num 0 + φ * S.d := by
+  rcases hp with ⟨ha, hc, rfl⟩ | ⟨rfl, hc, rfl⟩
+  · exact ⟨tmplCol_num_gt S ha, num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inr ha) hj.1 hc⟩
+  · obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+    obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+    have hnum := num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inl rfl) hj.1 hc
+    rw [hrnum] at hnum
+    simp only [phaseOff, isQMat_rdcol S, Bool.false_eq_true, if_false] at hnum
+    have hd : S.d = S.sd.t - S.sd.r := rfl
+    refine ⟨by omega, ?_⟩
+    rw [hnum, ← ht]
+    have : j * S.d = (j - 1) * S.d + S.d := by
+      rw [← Nat.succ_mul]; congr 1; omega
+    simp only [OrdStep.d, period] at this ⊢
+    omega
 
 -- L-G010.18 (D7): the start of a pure phase-`φ` cut lies outside `[r, s_φ)` and projects to the
 -- old start
@@ -5540,7 +5604,35 @@ theorem cutStart_phase_D7 (S : OrdStep) {φ : Nat} {a c : ColAddr} {k : Nat}
     (ha : S.sd.r < a.num 0) (hnum : c.num 0 = a.num 0 + φ * S.d) (hk : k ≤ (parents S.A a).length)
     (hpre : (parents S.B c).take k = ((parents S.A a).take k).map (shiftVal S.sd.r (φ * S.d))) :
     (cutStart S.B c k < S.sd.r ∨ S.s φ ≤ cutStart S.B c k) ∧
-      S.proj φ (cutStart S.B c k) = cutStart S.A a k := by sorry
+      S.proj φ (cutStart S.B c k) = cutStart S.A a k := by
+  -- the projection of a shifted value `≥ r` (or of a value `< r`)
+  have key : ∀ p, (shiftVal S.sd.r (φ * S.d) p < S.sd.r ∨ S.s φ ≤ shiftVal S.sd.r (φ * S.d) p) ∧
+      S.proj φ (shiftVal S.sd.r (φ * S.d) p) = p := by
+    intro p
+    unfold shiftVal OrdStep.proj OrdStep.s
+    by_cases hp : S.sd.r ≤ p
+    · simp only [hp, if_true]
+      refine ⟨Or.inr (by omega), ?_⟩
+      by_cases hlt : S.sd.r + φ * S.d < p + φ * S.d
+      · rw [if_pos hlt]; omega
+      · rw [if_neg hlt, if_pos (by omega)]; omega
+    · simp only [hp, if_false]
+      refine ⟨Or.inl (by omega), ?_⟩
+      rw [if_neg (by omega), if_neg (by omega)]
+  rcases Nat.eq_zero_or_pos k with rfl | hk0
+  · simp only [cutStart, if_true]
+    have : c.num 0 - 1 = shiftVal S.sd.r (φ * S.d) (a.num 0 - 1) := by
+      simp only [shiftVal, if_pos (show S.sd.r ≤ a.num 0 - 1 by omega)]; omega
+    rw [this]
+    exact key _
+  · have hne : k ≠ 0 := by omega
+    have hlt : k - 1 < k := by omega
+    have hB : (parents S.B c)[k - 1]? = ((parents S.A a)[k - 1]?).map (shiftVal S.sd.r (φ * S.d)) := by
+      rw [← List.getElem?_take_of_lt hlt, hpre, List.getElem?_map, List.getElem?_take_of_lt hlt]
+    obtain ⟨p, hp⟩ : ∃ p, (parents S.A a)[k - 1]? = some p :=
+      ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    simp only [cutStart, hne, if_false, hB, hp, Option.map_some, Option.getD_some]
+    exact key p
 
 /-! ### The decorated head path (L-G010.10) -/
 
@@ -5585,14 +5677,39 @@ theorem phaseOff_pos_D7 {sd : StopData} {i : Nat} {a : ColAddr} (hi : 1 ≤ i)
 theorem projection_upward_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
     (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
     (hup : IsUpward S.B c k ρ) (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
-    IsUpward S.A a k (S.proj (phaseOff S.sd i a) ρ) := by sorry
+    IsUpward S.A a k (S.proj (phaseOff S.sd i a) ρ) := by
+  obtain ⟨-, hkB, hqB⟩ := isUpward_iff_parents_D7.mp hup
+  have hpar := parents_phaseCol_D7 S hi ha hc
+  refine isUpward_iff_parents_D7.mpr ⟨ha.1, by rw [hpar, List.length_map] at hkB; exact hkB,
+    fun q hq => ?_⟩
+  have hq' := hqB _ (by rw [hpar, List.getElem?_map, hq]; rfl)
+  unfold shiftVal at hq'
+  unfold OrdStep.proj OrdStep.s at *
+  by_cases hrq : S.sd.r ≤ q
+  · rw [if_pos hrq] at hq'
+    rcases hρ with h | h
+    · omega
+    · rw [if_pos (by omega)]; omega
+  · rw [if_neg hrq] at hq'
+    split_ifs <;> omega
 
 -- T3.8li step 3 (D7): the projected closing parent is visible
 theorem projection_lt_num_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
     (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c)
     (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ))
     (hρ : ρ ≤ S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ ρ) :
-    S.proj (phaseOff S.sd i a) ρ < a.num 0 := by sorry
+    S.proj (phaseOff S.sd i a) ρ < a.num 0 := by
+  have h1 := lt_num_of_litCap_D7 hup hKL.1
+  have h2 := num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inr ha) hi.1 hc
+  have h3 := tmplCol_num_gt S ha
+  rw [show period S.sd = S.d from rfl] at h2
+  unfold OrdStep.proj
+  by_cases h4 : S.s (phaseOff S.sd i a) < ρ
+  · rw [if_pos h4]; unfold OrdStep.s at h4; omega
+  · rw [if_neg h4]
+    by_cases h5 : ρ = S.s (phaseOff S.sd i a)
+    · rw [if_pos h5]; omega
+    · rw [if_neg h5]; unfold OrdStep.s at h4 h5 hρ; omega
 
 -- T3.8li step 4 (D7; VERIFY-U2 F7): the host bound of a column-start projection inside a height
 theorem projection_host_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} {ρ : Nat}
@@ -5657,21 +5774,44 @@ theorem projection (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 
     exact projection_host_D7 S hi ha hq hc hup hKL hρ hpa
   · exact condAK_litCap_D7 S.inL hup' (projection_finalTest_D7 S hi ha hq hc hup hKL hend hρ)
 
--- D7: the closing parent of an upward V cap is visible from the cap column
-theorem lt_num_of_litCap_D7 {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward B c k ρ)
-    (hV : CondV (litCap B c k ρ)) : ρ < c.num 0 := by
-  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
-  have hent : (litCap B c k ρ).entryAt ⟨c, k⟩ = some (ρ, Tree.empty) := by
-    simp only [Tree.entryAt, hcol, Option.bind_some]
-    rw [List.getElem?_append_right (by omega), hlen, Nat.sub_self]
-    rfl
-  have hmem : (⟨c, k⟩ : EntryAddr) ∈ (litCap B c k ρ).entryAddrs := by
-    rw [Tree.mem_entryAddrs_iff, hent]; rfl
-  exact (condV_iff_lt _).mp hV _ hmem _ _ hent
-
 -- D7: the parents of the stopping column are at least `r` (H, ending in `(r, ∅)`)
 theorem sdcol_parent_ge_D7 (S : OrdStep) {v q : Nat} (h : (parents S.A S.sd.col)[v]? = some q) :
-    S.sd.r ≤ q := by sorry
+    S.sd.r ≤ q := by
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hH : CondH S.A := S.inL.2.2.1
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  set col := S.sd.Q ++ [(S.sd.r, Tree.empty)] with hcoldef
+  have hlast : col[S.sd.Q.length]? = some (S.sd.r, Tree.empty) := by
+    rw [hcoldef, List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+  have hpar : parents S.A S.sd.col = col.map Prod.fst := by
+    simp only [parents, hcol, Option.getD_some]
+  rw [hpar, List.getElem?_map] at h
+  obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.mp h
+  have hvlen : v ≤ S.sd.Q.length := by
+    have := (List.getElem?_eq_some_iff.mp hx).1
+    simp [hcoldef] at this; omega
+  -- parents are nonincreasing down to the last entry `(r, ∅)`
+  have hclen : col.length = S.sd.Q.length + 1 := by simp [hcoldef]
+  have hmono : ∀ j, j ≤ S.sd.Q.length - v → ∀ y, col[S.sd.Q.length - j]? = some y →
+      S.sd.r ≤ y.1 := by
+    intro j
+    induction j with
+    | zero =>
+      intro _ y hy
+      rw [Nat.sub_zero, hlast] at hy
+      obtain rfl := Option.some.inj hy
+      exact le_rfl
+    | succ j ih =>
+      intro hj y hy
+      have hzl : S.sd.Q.length - j < col.length := by omega
+      obtain ⟨z, hz⟩ : ∃ z, col[S.sd.Q.length - j]? = some z :=
+        ⟨_, List.getElem?_eq_getElem hzl⟩
+      have hle := hH S.sd.col hmem (S.sd.Q.length - (j + 1)) y z (by rw [hcol]; exact hy)
+        (by rw [hcol, show S.sd.Q.length - (j + 1) + 1 = S.sd.Q.length - j by omega]; exact hz)
+      have := ih (by omega) z hz
+      rcases hle with h1 | ⟨h1, -⟩ <;> omega
+  exact hmono (S.sd.Q.length - v) le_rfl x
+    (by rw [show S.sd.Q.length - (S.sd.Q.length - v) = v by omega]; exact hx)
 
 -- T3.8lb step 4 (D7; I): the host bound of a column-start head-query cap
 theorem headQuery_host_D7 (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
