@@ -1,6 +1,6 @@
 # Status snapshot
 
-Generated 2026-10-27T15:09:56+00:00 at commit `8e955b9`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T15:12:47+00:00 at commit `a76ad15`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P4 Formalize**
 
