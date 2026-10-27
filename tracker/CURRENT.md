@@ -89,16 +89,17 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Next
-1. T-017 done: `tracker/review/codex-blueprint-review.md`.
-   - Codex says to hold G1 at 133f5d8. The assembly and Part C are sound, and Codex recommends
-     Part C.
-   - It found five false helper statements (G-013…G-017, BP-01…05) and two provider gaps
-     (G-018, G-019).
-   - G-009 and G-010 are confirmed open.
-2. T-020 stopped. Its drafts for G-009…G-012 are in `blueprint/repairs/`, unverified. They feed
-   T-018 as proof plans, and Lean checks them.
-3. T-021: correct the false statements. Then rerun Codex's counterexample files and a capped
-   corpus screen against the amended skeleton.
-4. Gate G1 (user): sign off the corrected blueprint, and decide D-4.
-5. T-018: move the skeleton into `lean/`. Formalize the risky nodes (T3.8lo, T3.8li, L4.2c,
-   L7.5d) and the leaves first.
+- **D-5 (user, 2026-10-28):** only the locked main theorem matters. Lean is the only verifier,
+  with no Codex checks and no fidelity sign-off. D-4 is Part C.
+- The plan lives in `lean/BTBMS/Plan/` (T-018) with the statement corrections (T-021). It counts
+  252 nodes needed for MAIN. `lake build` passes, and the remaining proofs are `sorry`.
+- **T-022 (running):** a rolling pool of at most 8 provers.
+  - Each works in its own worktree, `/home/dev/ggg/btbms-wt-<k>` on branch `prove/A<k>`, under
+    the rules in `tracker/PROVER-BRIEF.md`.
+  - Root merges each branch into main, runs `lake build` and `scripts/lean-status.sh`, then
+    hands out the next nodes. The Plan tab ranks them: longest remaining chain first, then
+    ready nodes.
+  - Batch 1: A1 order laws (D1.1a, D1.1, D1.4a, D1.4), A2 addresses (D1.2a–f), A3 shift/hole laws
+    (D1.5–D1.5b), A4 F5.1a, F5.1, D6.4, N4.1b, N4.1a, A5 N4.3–N4.6, A6 N4.7–N4.8, A7 the assembly
+    N5.1–N5.2, A8 L7.5d.
+- **Done** when `checks/lock/check.sh --final` passes.
