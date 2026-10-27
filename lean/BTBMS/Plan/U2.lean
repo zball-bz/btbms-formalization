@@ -1001,19 +1001,724 @@ theorem profile_of_entry {E : Forest} (hI : CondI E) {e : EntryAddr} {p : Nat} {
     (he : E.entryAt e = some (p, J)) (hJ : J ≠ Tree.empty) :
     ∃ d m, 1 ≤ m ∧ profile J = ((toLex (d, m) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by sorry
 
+/-! ### L3.1c helpers: words of literal caps -/
+
+theorem wordLater_append' (e : Nat) (l₁ l₂ : Column) :
+    wordLater e (l₁ ++ l₂) = wordLater e l₁ ++ wordLater e l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons x l ih => obtain ⟨p, h⟩ := x; simp only [List.cons_append, wordLater, ih, List.append_assoc]
+
+theorem wordCol_append' (e : Nat) {l₁ : Column} (h : l₁ ≠ []) (l₂ : Column) :
+    wordCol e (l₁ ++ l₂) = wordCol e l₁ ++ wordLater e l₂ := by
+  cases l₁ with
+  | nil => exact absurd rfl h
+  | cons x l => obtain ⟨p, h⟩ := x; simp only [List.cons_append, wordCol, wordLater_append', List.append_assoc]
+
+theorem wordAt_empty (e : Nat) : wordAt e (Tree.empty : Forest) = [] := by
+  simp [Tree.empty, wordAt, wordCols]
+
+/-- helper: the atom of the `k`-th entry with parent `p` of a column at depth `d`. -/
+def capAtomAt (d k p : Nat) : WordAtom :=
+  if k = 0 then toLex (2 * d, toLex (1, p)) else toLex (2 * d + 1, toLex (0, p))
+
+theorem wordCol_take_snoc (e : Nat) (col : Column) (k p : Nat) (hk : k ≤ col.length) :
+    wordCol e (col.take k ++ [(p, Tree.empty)]) =
+      (if k = 0 then [] else wordCol e (col.take k)) ++ [capAtomAt e k p] := by
+  unfold capAtomAt
+  by_cases hk0 : k = 0
+  · subst hk0; simp [wordCol, wordAt_empty, wordLater]
+  · rw [if_neg hk0, if_neg hk0]
+    have hc : col.take k ≠ [] := by
+      rw [ne_eq, List.take_eq_nil_iff]; rintro (h | rfl) <;> simp_all
+    rw [wordCol_append' e hc]; simp [wordLater, wordAt_empty]
+
+/-- helper: the next atom of `w(E)` after the part kept by a cap at `(col, k)` at depth `d`. -/
+def NextAtom (d k : Nat) (col : Column) (R : List WordAtom) : Prop :=
+  (∀ q h, col[k]? = some (q, h) → R.head? = some (capAtomAt d k q)) ∧
+  (k = col.length → k ≠ 0 → ∀ y ∈ R.head?, (ofLex y).1 ≤ 2 * d) ∧
+  (k = col.length → k = 0 → R.head? = some (toLex (2 * d, toLex (0, 0))))
+
+theorem wordCols_cons' (e : Nat) (col : Column) (rest : List Column) :
+    wordCols e (col :: rest) = wordCol e col ++ wordCols e rest := rfl
+
+theorem wordCols_split (e : Nat) {cols : List Column} {j : Nat} {col : Column}
+    (h : cols[j]? = some col) :
+    wordCols e cols = wordCols e (cols.take j) ++ wordCol e col ++ wordCols e (cols.drop (j + 1)) := by
+  have hj : j < cols.length := (List.getElem?_eq_some_iff.1 h).1
+  conv_lhs => rw [← List.take_append_drop j cols, List.drop_eq_getElem_cons hj]
+  rw [wordCols_append, wordCols_cons', (List.getElem?_eq_some_iff.1 h).2, List.append_assoc]
+
+theorem head_wordCols_fst (e : Nat) (cols : List Column) :
+    ∀ y ∈ (wordCols e cols).head?, (ofLex y).1 ≤ 2 * e := by
+  intro y hy
+  cases cols with
+  | nil => simp [wordCols] at hy
+  | cons col rest =>
+    cases col with
+    | nil => simp [wordCols, wordCol] at hy; subst hy; simp
+    | cons x l => obtain ⟨p, h⟩ := x; simp [wordCols, wordCol] at hy; subst hy; simp
+
+theorem head_wordLater_fst (e : Nat) (l : Column) :
+    ∀ y ∈ (wordLater e l).head?, (ofLex y).1 ≤ 2 * e + 1 := by
+  intro y hy
+  cases l with
+  | nil => simp [wordLater] at hy
+  | cons x l => obtain ⟨p, h⟩ := x; simp [wordLater] at hy; subst hy; simp
+
+/-- helper (L3.1c): the word of a literal cap is a prefix of the word plus one atom. -/
+theorem wordAt_litCapAux (k : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (F : Forest) (col : Column) (e : Nat),
+      F.colAt ⟨ρ, j⟩ = some col → k ≤ col.length →
+      ∃ P R, wordAt e F = P ++ R ∧
+        (∀ p, wordAt e (litCapAux k p ρ j F) = P ++ [capAtomAt (e + ρ.length) k p]) ∧
+        NextAtom (e + ρ.length) k col R
+  | [], j, .node cols, col, e, hcol, hk => by
+    rw [colAt_node_nil] at hcol
+    refine ⟨wordCols e (cols.take j) ++ (if k = 0 then [] else wordCol e (col.take k)),
+      (if k = 0 then wordCol e col else wordLater e (col.drop k)) ++ wordCols e (cols.drop (j + 1)),
+      ?_, ?_, ?_⟩
+    · rw [wordAt, wordCols_split e hcol]
+      by_cases hk0 : k = 0
+      · simp [hk0]
+      · rw [if_neg hk0, if_neg hk0]
+        have hc : col.take k ≠ [] := by
+          rw [ne_eq, List.take_eq_nil_iff]; rintro (h | rfl) <;> simp_all
+        conv_lhs => rw [← List.take_append_drop k col, wordCol_append' e hc]
+        simp only [List.append_assoc]
+    · intro p
+      simp only [litCapAux, List.getD_eq_getElem?_getD, hcol, Option.getD_some, wordAt,
+        wordCols_append, wordCols_cons', wordCols, List.append_nil, List.length_nil, Nat.add_zero]
+      rw [wordCol_take_snoc e col k p hk, List.append_assoc]
+    · simp only [List.length_nil, Nat.add_zero]
+      refine ⟨fun q h hq => ?_, fun hkl hk0 y hy => ?_, fun hkl hk0 => ?_⟩
+      · by_cases hk0 : k = 0
+        · subst hk0
+          cases col with
+          | nil => simp at hq
+          | cons x l =>
+            simp at hq; subst hq
+            simp [wordCol, capAtomAt]
+        · rw [if_neg hk0, List.drop_eq_getElem_cons (List.getElem?_eq_some_iff.1 hq).1,
+            (List.getElem?_eq_some_iff.1 hq).2]
+          simp [wordLater, capAtomAt, hk0]
+      · rw [if_neg hk0, hkl, List.drop_length] at hy
+        exact head_wordCols_fst e _ y (by simpa [wordLater] using hy)
+      · subst hk0
+        have : col = [] := List.eq_nil_of_length_eq_zero hkl.symm
+        subst this
+        simp [wordCol]
+  | (ci, ei) :: ρ, j, .node cols, col, e, hcol, hk => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    obtain ⟨P', R', hw, hcap, hnext⟩ := wordAt_litCapAux k ρ j H col (e + 1) hcolx hk
+    have hei : ei < colc.length := (List.getElem?_eq_some_iff.1 hx').1
+    refine ⟨wordCols e (cols.take ci) ++ wordCol e (colc.take ei ++ [(q, Tree.empty)]) ++ P',
+      R' ++ wordLater e (colc.drop (ei + 1)) ++ wordCols e (cols.drop (ci + 1)), ?_, ?_, ?_⟩
+    · rw [wordAt, wordCols_split e hc]
+      have hne : colc.take ei ++ [(q, H)] ≠ [] := by simp
+      have hsplit : colc = (colc.take ei ++ [(q, H)]) ++ colc.drop (ei + 1) := by
+        conv_lhs => rw [← List.take_append_drop ei colc, List.drop_eq_getElem_cons hei]
+        rw [(List.getElem?_eq_some_iff.1 hx').2]; simp
+      conv_lhs => rw [hsplit, wordCol_append' e hne, wordCol_snoc, hw]
+      simp only [List.append_assoc]
+    · intro p
+      simp only [litCapAux, List.getD_eq_getElem?_getD, hc, Option.getD_some, hx', wordAt,
+        wordCols_append, wordCols_cons', wordCols, List.append_nil]
+      rw [wordCol_snoc, ← wordAt, hcap p]
+      simp only [List.append_assoc, List.length_cons]
+      rw [show e + (ρ.length + 1) = e + 1 + ρ.length by omega]
+    · have he : e + ((ci, ei) :: ρ).length = e + 1 + ρ.length := by simp; omega
+      rw [he]
+      obtain ⟨h1, h2, h3⟩ := hnext
+      refine ⟨fun q' h' hq => ?_, fun hkl hk0 y hy => ?_, fun hkl hk0 => ?_⟩
+      · obtain ⟨z, zs, hz⟩ : ∃ z zs, R' = z :: zs := by
+          have := h1 q' h' hq; cases R' with
+          | nil => simp at this
+          | cons z zs => exact ⟨z, zs, rfl⟩
+        have := h1 q' h' hq; rw [hz] at this ⊢; simpa using this
+      · cases R' with
+        | nil =>
+          simp only [List.nil_append] at hy
+          cases hl : colc.drop (ei + 1) with
+          | nil =>
+            rw [hl] at hy
+            have := head_wordCols_fst e _ y (by simpa [wordLater] using hy); omega
+          | cons z zs =>
+            rw [hl] at hy
+            obtain ⟨pz, hz⟩ := z
+            simp only [wordLater, List.cons_append, List.head?_cons, Option.mem_def,
+              Option.some.injEq] at hy
+            subst hy; simp; omega
+        | cons z zs =>
+          simp only [List.cons_append, List.head?_cons, Option.mem_def, Option.some.injEq] at hy
+          exact h2 hkl hk0 y (by simp [hy])
+      · have := h3 hkl hk0
+        cases R' with
+        | nil => simp at this
+        | cons z zs => simpa using this
+
+theorem capAtom_eq (c : ColAddr) (k p : Nat) : capAtom c k p = capAtomAt (colDepth c) k p := rfl
+
+theorem capAtomAt_lt_iff (d k q p : Nat) : capAtomAt d k q < capAtomAt d k p ↔ q < p := by
+  unfold capAtomAt; split_ifs <;> simp [Prod.Lex.toLex_lt_toLex]
+
+/-- helper (L3.1c): the word data of a literal cap at a column `col` of `E`. -/
+theorem litCap_word_data {E : Forest} {c : ColAddr} {col : Column} (hcol : E.colAt c = some col)
+    {k : Nat} (hk : k ≤ col.length) :
+    ∃ R, word E = (word E).take (capPos E c k) ++ R ∧
+      (∀ p, word (litCap E c k p) = (word E).take (capPos E c k) ++ [capAtom c k p]) ∧
+      NextAtom (colDepth c) k col R ∧ capPos E c k ≤ (word E).length := by
+  obtain ⟨P, R, hw, hcap, hnext⟩ := wordAt_litCapAux k c.path c.col E col 0 hcol hk
+  have hcap' : ∀ p, word (litCap E c k p) = P ++ [capAtom c k p] := by
+    intro p; rw [litCap_eq_aux hcol, word, hcap p, capAtom_eq, colDepth, Nat.zero_add]
+  have hpos : capPos E c k = P.length := by simp [capPos, hcap' 0]
+  have htake : (word E).take (capPos E c k) = P := by
+    rw [hpos, word, hw, List.take_left]
+  refine ⟨R, ?_, ?_, ?_, ?_⟩
+  · rw [htake]; exact hw
+  · intro p; rw [htake]; exact hcap' p
+  · rw [colDepth]; simpa using hnext
+  · rw [hpos, word, hw]; simp
+
+theorem upward_of_nextAtom {d k p : Nat} {col : Column} {R : List WordAtom} (h : NextAtom d k col R)
+    (hk : k ≤ col.length) (hup : ∀ q h, col[k]? = some (q, h) → q < p) :
+    ∀ y, R.head? = some y → y < capAtomAt d k p := by
+  intro y hy
+  obtain ⟨h1, h2, h3⟩ := h
+  cases hc : col[k]? with
+  | some x =>
+    obtain ⟨q, H⟩ := x
+    rw [h1 q H hc] at hy
+    obtain rfl := Option.some.inj hy
+    exact (capAtomAt_lt_iff d k q p).2 (hup q H hc)
+  | none =>
+    have hkl : k = col.length := le_antisymm hk (List.getElem?_eq_none_iff.1 hc)
+    by_cases hk0 : k = 0
+    · rw [h3 hkl hk0] at hy
+      obtain rfl := Option.some.inj hy
+      simp [capAtomAt, hk0, Prod.Lex.toLex_lt_toLex]
+    · have := h2 hkl hk0 y hy
+      unfold capAtomAt; rw [if_neg hk0, Prod.Lex.lt_iff]; left; simp; omega
+
 -- provides: U2, L3.1c (a literal cap is a safe prefix of `w(E)` followed by one atom)
 theorem word_litCap {E : Forest} {c : ColAddr} {k : Nat} (hc : c ∈ E.colAddrs)
     (hk : k ≤ ((E.colAt c).getD []).length) (p : Nat) :
-    word (litCap E c k p) = (word E).take (capPos E c k) ++ [capAtom c k p] := by sorry
+    word (litCap E c k p) = (word E).take (capPos E c k) ++ [capAtom c k p] := by
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E c).1 hc)
+  rw [hcol, Option.getD_some] at hk
+  obtain ⟨R, -, hcap, -⟩ := litCap_word_data hcol hk
+  exact hcap p
+
 
 -- L3.1c: upwardness is "the appended atom beats the next atom of `w(E)`"
 theorem isUpward_iff_atom {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
     (hk : k ≤ ((E.colAt c).getD []).length) :
-    IsUpward E c k p ↔ ∀ y, (word E)[capPos E c k]? = some y → y < capAtom c k p := by sorry
+    IsUpward E c k p ↔ ∀ y, (word E)[capPos E c k]? = some y → y < capAtom c k p := by
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E c).1 hc)
+  rw [hcol, Option.getD_some] at hk
+  obtain ⟨R, hw, -, hnext, hle⟩ := litCap_word_data hcol hk
+  have hat : (word E)[capPos E c k]? = R.head? := by
+    have hl : ((word E).take (capPos E c k)).length = capPos E c k := List.length_take_of_le hle
+    conv_lhs => rw [hw]
+    rw [List.getElem?_append_right (by omega), hl, Nat.sub_self, List.head?_eq_getElem?]
+  rw [hat, capAtom_eq]
+  constructor
+  · intro hup
+    obtain ⟨col', hcol', -, hq⟩ := isUpward_iff_exists.1 hup
+    rw [hcol] at hcol'; obtain rfl := Option.some.inj hcol'
+    exact upward_of_nextAtom hnext hk hq
+  · intro h
+    refine isUpward_iff_exists.2 ⟨col, hcol, hk, fun q H hq => ?_⟩
+    have := h _ (hnext.1 q H hq)
+    exact (capAtomAt_lt_iff _ _ _ _).1 this
+
 
 -- L3.1c: an upward cap is strictly larger
 theorem lt_litCap {E : Forest} {c : ColAddr} {k p : Nat} (h : IsUpward E c k p) :
-    E < litCap E c k p := by sorry
+    E < litCap E c k p := by
+  obtain ⟨col, hcol, hk, hq⟩ := isUpward_iff_exists.1 h
+  obtain ⟨R, hw, hcap, hnext, -⟩ := litCap_word_data hcol hk
+  rw [← word_lt_iff, hcap p]
+  conv_lhs => rw [hw]
+  apply List.append_left_lt
+  have hat := upward_of_nextAtom hnext hk hq
+  cases R with
+  | nil => exact List.nil_lt_cons _ _
+  | cons y R => exact List.cons_lt_cons_iff.2 (Or.inl (by rw [capAtom_eq]; exact hat y rfl))
+
+
+/-! ### N2.1 helpers: unique decoding of words -/
+
+mutual
+theorem wordAt_fst_ge : ∀ (e : Nat) (F : Forest), ∀ y ∈ wordAt e F, 2 * e ≤ (ofLex y).1
+  | e, .node cols => wordCols_fst_ge e cols
+theorem wordCols_fst_ge : ∀ (e : Nat) (cols : List Column), ∀ y ∈ wordCols e cols, 2 * e ≤ (ofLex y).1
+  | _, [] => by simp [wordCols]
+  | e, col :: rest => by
+    intro y hy
+    rw [wordCols_cons', List.mem_append] at hy
+    rcases hy with hy | hy
+    · exact wordCol_fst_ge e col y hy
+    · exact wordCols_fst_ge e rest y hy
+theorem wordCol_fst_ge : ∀ (e : Nat) (col : Column), ∀ y ∈ wordCol e col, 2 * e ≤ (ofLex y).1
+  | e, [] => by intro y hy; simp [wordCol] at hy; subst hy; simp
+  | e, (p, h) :: rest => by
+    intro y hy
+    simp only [wordCol, List.mem_cons, List.mem_append] at hy
+    rcases hy with rfl | hy | hy
+    · simp
+    · have := wordAt_fst_ge (e + 1) h y hy; omega
+    · have := wordLater_fst_ge e rest y hy; omega
+theorem wordLater_fst_ge : ∀ (e : Nat) (col : Column), ∀ y ∈ wordLater e col, 2 * e + 1 ≤ (ofLex y).1
+  | _, [] => by simp [wordLater]
+  | e, (p, h) :: rest => by
+    intro y hy
+    simp only [wordLater, List.mem_cons, List.mem_append] at hy
+    rcases hy with rfl | hy | hy
+    · simp
+    · have := wordAt_fst_ge (e + 1) h y hy; omega
+    · exact wordLater_fst_ge e rest y hy
+end
+
+/-- helper: every head of `X` has depth coordinate `≤ b`. -/
+def HeadLe (b : Nat) (X : List WordAtom) : Prop := ∀ y ∈ X.head?, (ofLex y).1 ≤ b
+
+theorem headLe_append_of_ne {b : Nat} {X : List WordAtom} (Y : List WordAtom) (hX : X ≠ [])
+    (h : HeadLe b X) : HeadLe b (X ++ Y) := by
+  cases X with
+  | nil => exact absurd rfl hX
+  | cons x X => intro y hy; exact h y (by simpa using hy)
+
+theorem headLe_append {b : Nat} {X Y : List WordAtom} (hX : HeadLe b X) (hY : HeadLe b Y) :
+    HeadLe b (X ++ Y) := by
+  cases X with
+  | nil => simpa using hY
+  | cons x X => intro y hy; exact hX y (by simpa using hy)
+
+theorem headLe_mono {a b : Nat} {X : List WordAtom} (h : HeadLe a X) (hab : a ≤ b) : HeadLe b X :=
+  fun y hy => le_trans (h y hy) hab
+
+theorem headLe_wordCols (e : Nat) (cols : List Column) : HeadLe (2 * e) (wordCols e cols) :=
+  head_wordCols_fst e cols
+
+theorem headLe_wordLater (e : Nat) (l : Column) : HeadLe (2 * e + 1) (wordLater e l) :=
+  head_wordLater_fst e l
+
+theorem headLe_wordCol (e : Nat) (col : Column) : HeadLe (2 * e) (wordCol e col) := by
+  intro y hy
+  cases col with
+  | nil => simp [wordCol] at hy; subst hy; simp
+  | cons x l => obtain ⟨p, h⟩ := x; simp [wordCol] at hy; subst hy; simp
+
+theorem headLe_cons_iff {b : Nat} {x : WordAtom} {X : List WordAtom} :
+    HeadLe b (x :: X) ↔ (ofLex x).1 ≤ b := by simp [HeadLe]
+
+mutual
+theorem decode_forest : ∀ (e : Nat) (F₁ F₂ : Forest) (X₁ X₂ : List WordAtom),
+    HeadLe (2 * e - 1) X₁ → (X₁ ≠ [] → 0 < e) → HeadLe (2 * e - 1) X₂ → (X₂ ≠ [] → 0 < e) →
+    wordAt e F₁ ++ X₁ = wordAt e F₂ ++ X₂ → F₁ = F₂ ∧ X₁ = X₂
+  | e, .node l₁, .node l₂, X₁, X₂, h₁, h₁', h₂, h₂', h => by
+    obtain ⟨rfl, rfl⟩ := decode_cols e l₁ l₂ X₁ X₂ h₁ h₁' h₂ h₂' h
+    exact ⟨rfl, rfl⟩
+theorem decode_cols : ∀ (e : Nat) (l₁ l₂ : List Column) (X₁ X₂ : List WordAtom),
+    HeadLe (2 * e - 1) X₁ → (X₁ ≠ [] → 0 < e) → HeadLe (2 * e - 1) X₂ → (X₂ ≠ [] → 0 < e) →
+    wordCols e l₁ ++ X₁ = wordCols e l₂ ++ X₂ → l₁ = l₂ ∧ X₁ = X₂
+  | _, [], [], _, _, _, _, _, _, h => ⟨rfl, by simpa [wordCols] using h⟩
+  | e, [], c :: l, X₁, X₂, h₁, h₁', _, _, h => by
+    exfalso
+    have hne : wordCol e c ≠ [] := by cases c <;> simp [wordCol]
+    have hX : X₁ ≠ [] := by
+      rintro rfl; simp [wordCols] at h; exact hne h.1
+    obtain ⟨x, X, rfl⟩ := List.exists_cons_of_ne_nil hX
+    have hl := headLe_wordCol e c
+    obtain ⟨y, Y, hy⟩ := List.exists_cons_of_ne_nil hne
+    rw [hy] at hl
+    simp only [wordCols, List.nil_append, wordCols_cons', hy, List.cons_append, List.cons.injEq] at h
+    have h1 := (headLe_cons_iff.1 h₁)
+    have h2 : 2 * e ≤ (ofLex y).1 := wordCol_fst_ge e c y (by rw [hy]; simp)
+    rw [h.1] at h1; have := h₁' (by simp); omega
+  | e, c :: l, [], X₁, X₂, _, _, h₂, h₂', h => by
+    exfalso
+    have hne : wordCol e c ≠ [] := by cases c <;> simp [wordCol]
+    have hX : X₂ ≠ [] := by
+      rintro rfl; simp [wordCols] at h; exact hne h.1
+    obtain ⟨x, X, rfl⟩ := List.exists_cons_of_ne_nil hX
+    obtain ⟨y, Y, hy⟩ := List.exists_cons_of_ne_nil hne
+    simp only [wordCols, List.nil_append, wordCols_cons', hy, List.cons_append, List.cons.injEq] at h
+    have h1 := (headLe_cons_iff.1 h₂)
+    have h2 : 2 * e ≤ (ofLex y).1 := wordCol_fst_ge e c y (by rw [hy]; simp)
+    rw [← h.1] at h1; have := h₂' (by simp); omega
+  | e, c₁ :: l₁, c₂ :: l₂, X₁, X₂, h₁, h₁', h₂, h₂', h => by
+    simp only [wordCols_cons', List.append_assoc] at h
+    have hc₁ : HeadLe (2 * e) (wordCols e l₁ ++ X₁) :=
+      headLe_append (headLe_wordCols e l₁) (headLe_mono h₁ (by omega))
+    have hc₂ : HeadLe (2 * e) (wordCols e l₂ ++ X₂) :=
+      headLe_append (headLe_wordCols e l₂) (headLe_mono h₂ (by omega))
+    obtain ⟨rfl, h'⟩ := decode_col e c₁ c₂ _ _ hc₁ hc₂ h
+    obtain ⟨rfl, rfl⟩ := decode_cols e l₁ l₂ X₁ X₂ h₁ h₁' h₂ h₂' h'
+    exact ⟨rfl, rfl⟩
+theorem decode_col : ∀ (e : Nat) (c₁ c₂ : Column) (X₁ X₂ : List WordAtom),
+    HeadLe (2 * e) X₁ → HeadLe (2 * e) X₂ →
+    wordCol e c₁ ++ X₁ = wordCol e c₂ ++ X₂ → c₁ = c₂ ∧ X₁ = X₂
+  | _, [], [], _, _, _, _, h => ⟨rfl, by simpa [wordCol] using h⟩
+  | e, [], (p, H) :: l, _, _, _, _, h => by simp [wordCol] at h
+  | e, (p, H) :: l, [], _, _, _, _, h => by simp [wordCol] at h
+  | e, (p₁, H₁) :: l₁, (p₂, H₂) :: l₂, X₁, X₂, h₁, h₂, h => by
+    simp only [wordCol, List.cons_append, List.cons.injEq, List.append_assoc] at h
+    obtain ⟨hp, h⟩ := h
+    have hp' : p₁ = p₂ := by simpa using hp
+    subst hp'
+    have hc₁ : HeadLe (2 * (e + 1) - 1) (wordLater e l₁ ++ X₁) :=
+      headLe_append (headLe_mono (headLe_wordLater e l₁) (by omega)) (headLe_mono h₁ (by omega))
+    have hc₂ : HeadLe (2 * (e + 1) - 1) (wordLater e l₂ ++ X₂) :=
+      headLe_append (headLe_mono (headLe_wordLater e l₂) (by omega)) (headLe_mono h₂ (by omega))
+    obtain ⟨rfl, h'⟩ := decode_forest (e + 1) H₁ H₂ _ _ hc₁ (fun _ => by omega) hc₂ (fun _ => by omega) h
+    obtain ⟨rfl, rfl⟩ := decode_later e l₁ l₂ X₁ X₂ h₁ h₂ h'
+    exact ⟨rfl, rfl⟩
+theorem decode_later : ∀ (e : Nat) (l₁ l₂ : Column) (X₁ X₂ : List WordAtom),
+    HeadLe (2 * e) X₁ → HeadLe (2 * e) X₂ →
+    wordLater e l₁ ++ X₁ = wordLater e l₂ ++ X₂ → l₁ = l₂ ∧ X₁ = X₂
+  | _, [], [], _, _, _, _, h => ⟨rfl, by simpa [wordLater] using h⟩
+  | e, [], (p, H) :: l, X₁, _, h₁, _, h => by
+    exfalso
+    simp only [wordLater, List.nil_append, List.cons_append] at h
+    rw [h] at h₁; have := headLe_cons_iff.1 h₁; simp at this
+  | e, (p, H) :: l, [], _, X₂, _, h₂, h => by
+    exfalso
+    simp only [wordLater, List.nil_append, List.cons_append] at h
+    rw [← h] at h₂; have := headLe_cons_iff.1 h₂; simp at this
+  | e, (p₁, H₁) :: l₁, (p₂, H₂) :: l₂, X₁, X₂, h₁, h₂, h => by
+    simp only [wordLater, List.cons_append, List.cons.injEq, List.append_assoc] at h
+    obtain ⟨hp, h⟩ := h
+    have hp' : p₁ = p₂ := by simpa using hp
+    subst hp'
+    have hc₁ : HeadLe (2 * (e + 1) - 1) (wordLater e l₁ ++ X₁) :=
+      headLe_append (headLe_mono (headLe_wordLater e l₁) (by omega)) (headLe_mono h₁ (by omega))
+    have hc₂ : HeadLe (2 * (e + 1) - 1) (wordLater e l₂ ++ X₂) :=
+      headLe_append (headLe_mono (headLe_wordLater e l₂) (by omega)) (headLe_mono h₂ (by omega))
+    obtain ⟨rfl, h'⟩ := decode_forest (e + 1) H₁ H₂ _ _ hc₁ (fun _ => by omega) hc₂ (fun _ => by omega) h
+    obtain ⟨rfl, rfl⟩ := decode_later e l₁ l₂ X₁ X₂ h₁ h₂ h'
+    exact ⟨rfl, rfl⟩
+end
+
+theorem decode_cols_prefix (e : Nat) : ∀ (xpre ycols : List Column) (T : List WordAtom),
+    HeadLe (2 * e) T → wordCols e ycols = wordCols e xpre ++ T →
+    ycols.take xpre.length = xpre ∧ wordCols e (ycols.drop xpre.length) = T
+  | [], ycols, T, _, h => by simpa [wordCols] using h
+  | x :: xs, [], T, _, h => by
+    exfalso
+    have hne : wordCol e x ≠ [] := by cases x <;> simp [wordCol]
+    simp [wordCols] at h; exact hne h.1
+  | x :: xs, y :: ys, T, hT, h => by
+    simp only [wordCols_cons', List.append_assoc] at h
+    obtain ⟨rfl, h'⟩ := decode_col e y x _ _ (headLe_wordCols e ys)
+      (headLe_append (headLe_wordCols e xs) hT) h
+    obtain ⟨h1, h2⟩ := decode_cols_prefix e xs ys T hT h'
+    exact ⟨by simp [h1], by simpa using h2⟩
+
+theorem decode_later_prefix (e : Nat) : ∀ (cr yr : Column) (A S : List WordAtom),
+    HeadLe (2 * e) A → HeadLe (2 * e + 1) S → wordLater e yr ++ A = wordLater e cr ++ S →
+    yr.take cr.length = cr ∧ wordLater e (yr.drop cr.length) ++ A = S
+  | [], yr, A, S, _, _, h => by simpa [wordLater] using h
+  | (p₁, H₁) :: cr, [], A, S, hA, _, h => by
+    exfalso
+    simp only [wordLater, List.nil_append, List.cons_append] at h
+    rw [h] at hA; have := headLe_cons_iff.1 hA; simp at this
+  | (p₁, H₁) :: cr, (py, Hy) :: yr, A, S, hA, hS, h => by
+    simp only [wordLater, List.cons_append, List.cons.injEq, List.append_assoc] at h
+    obtain ⟨hp, h⟩ := h
+    have hp' : py = p₁ := by simpa using hp
+    subst hp'
+    have hc₁ : HeadLe (2 * (e + 1) - 1) (wordLater e yr ++ A) :=
+      headLe_append (headLe_mono (headLe_wordLater e yr) (by omega)) (headLe_mono hA (by omega))
+    have hc₂ : HeadLe (2 * (e + 1) - 1) (wordLater e cr ++ S) :=
+      headLe_append (headLe_mono (headLe_wordLater e cr) (by omega)) (headLe_mono hS (by omega))
+    obtain ⟨rfl, h'⟩ := decode_forest (e + 1) Hy H₁ _ _ hc₁ (fun _ => by omega) hc₂ (fun _ => by omega) h
+    obtain ⟨h1, h2⟩ := decode_later_prefix e cr yr A S hA hS h'
+    exact ⟨by simp [h1], by simpa using h2⟩
+
+theorem decode_col_prefix (e : Nat) (cpre yc : Column) (A S : List WordAtom) (hc : cpre ≠ [])
+    (hA : HeadLe (2 * e) A) (hS : HeadLe (2 * e + 1) S) (h : wordCol e yc ++ A = wordCol e cpre ++ S) :
+    yc.take cpre.length = cpre ∧ wordLater e (yc.drop cpre.length) ++ A = S := by
+  obtain ⟨⟨p₀, H₀⟩, cr, rfl⟩ := List.exists_cons_of_ne_nil hc
+  cases yc with
+  | nil => simp [wordCol] at h
+  | cons y yr =>
+    obtain ⟨py, Hy⟩ := y
+    simp only [wordCol, List.cons_append, List.cons.injEq, List.append_assoc] at h
+    obtain ⟨hp, h⟩ := h
+    have hp' : py = p₀ := by simpa using hp
+    subst hp'
+    have hc₁ : HeadLe (2 * (e + 1) - 1) (wordLater e yr ++ A) :=
+      headLe_append (headLe_mono (headLe_wordLater e yr) (by omega)) (headLe_mono hA (by omega))
+    have hc₂ : HeadLe (2 * (e + 1) - 1) (wordLater e cr ++ S) :=
+      headLe_append (headLe_mono (headLe_wordLater e cr) (by omega)) (headLe_mono hS (by omega))
+    obtain ⟨rfl, h'⟩ := decode_forest (e + 1) Hy H₀ _ _ hc₁ (fun _ => by omega) hc₂ (fun _ => by omega) h
+    obtain ⟨h1, h2⟩ := decode_later_prefix e cr yr A S hA hS h'
+    exact ⟨by simp [h1], by simpa using h2⟩
+
+theorem split_of_deep {L C P S : List WordAtom} {b : Nat} (hP : ∀ y ∈ P, b + 1 ≤ (ofLex y).1)
+    (hC : HeadLe b C) (h : L ++ C = P ++ S) : ∃ Sin, L = P ++ Sin ∧ S = Sin ++ C := by
+  rcases List.append_eq_append_iff.1 h with ⟨a', rfl, hC'⟩ | ⟨c', hL, hS⟩
+  · cases a' with
+    | nil => exact ⟨[], by simp, by simpa using hC'.symm⟩
+    | cons x a' =>
+      exfalso
+      rw [hC'] at hC
+      have h1 := headLe_cons_iff.1 (headLe_append_of_ne S (List.cons_ne_nil x a') hC)
+      have h2 := hP x (by simp)
+      omega
+  · exact ⟨c', hL, hS⟩
+
+theorem getElem?_of_drop_eq_cons {α : Type} {l : List α} {j : Nat} {x : α} {xs : List α}
+    (h : l.drop j = x :: xs) : l[j]? = some x := by
+  have := congrArg (·[0]?) h
+  simpa [List.getElem?_drop] using this
+
+/-- helper (N2.1): a literal cap of `X` whose word prefix is also a prefix of `w(Y)`, followed in
+`w(Y)` by a suitable atom, is a literal cap of `Y` with the same internal part. -/
+theorem litCap_transfer (k : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (X : Forest) (col : Column) (e : Nat) (P : List WordAtom),
+      X.colAt ⟨ρ, j⟩ = some col → k ≤ col.length →
+      (∀ p, wordAt e (litCapAux k p ρ j X) = P ++ [capAtomAt (e + ρ.length) k p]) →
+      ∀ (Y : Forest) (S : List WordAtom), wordAt e Y = P ++ S →
+      (k ≠ 0 → HeadLe (2 * (e + ρ.length) + 1) S) →
+      (k = 0 → ∃ y, S.head? = some y ∧ (ofLex y).1 = 2 * (e + ρ.length)) →
+      ∃ colY, Y.colAt ⟨ρ, j⟩ = some colY ∧ k ≤ colY.length ∧ colY.take k = col.take k ∧
+        ∀ p, wordAt e (litCapAux k p ρ j Y) = P ++ [capAtomAt (e + ρ.length) k p]
+  | [], j, .node xcols, col, e, P, hcol, hk, hP, .node ycols, S, hY, hS1, hS0 => by
+    rw [colAt_node_nil] at hcol
+    have hj : j < xcols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    have hPeq : P = wordCols e (xcols.take j) ++ (if k = 0 then [] else wordCol e (col.take k)) := by
+      have h0 := hP 0
+      simp only [litCapAux, List.getD_eq_getElem?_getD, hcol, Option.getD_some, wordAt,
+        wordCols_append, wordCols_cons', wordCols, List.append_nil, List.length_nil, Nat.add_zero] at h0
+      rw [wordCol_take_snoc e col k 0 hk, ← List.append_assoc] at h0
+      exact (List.append_cancel_right h0).symm
+    subst hPeq
+    simp only [List.length_nil, Nat.add_zero] at hS1 hS0 ⊢
+    have hT : HeadLe (2 * e) ((if k = 0 then [] else wordCol e (col.take k)) ++ S) := by
+      by_cases hk0 : k = 0
+      · obtain ⟨y, hy, hy'⟩ := hS0 hk0
+        rw [if_pos hk0, List.nil_append]; intro y' hy''; rw [hy] at hy''
+        cases hy''; omega
+      · rw [if_neg hk0]; apply headLe_append_of_ne _ (by cases col.take k <;> simp [wordCol])
+        exact headLe_wordCol e _
+    have hY' : wordCols e ycols = wordCols e (xcols.take j) ++
+        ((if k = 0 then [] else wordCol e (col.take k)) ++ S) := by
+      rw [← List.append_assoc]; exact hY
+    obtain ⟨h1, h2⟩ := decode_cols_prefix e _ _ _ hT hY'
+    rw [List.length_take_of_le hj.le] at h1 h2
+    have hTne : (if k = 0 then [] else wordCol e (col.take k)) ++ S ≠ [] := by
+      by_cases hk0 : k = 0
+      · obtain ⟨y, hy, -⟩ := hS0 hk0; rw [if_pos hk0, List.nil_append]; rintro rfl; simp at hy
+      · rw [if_neg hk0]; cases col.take k <;> simp [wordCol]
+    cases hd : ycols.drop j with
+    | nil => rw [hd] at h2; exact absurd h2.symm (by simpa [wordCols] using hTne)
+    | cons yc ys =>
+      rw [hd, wordCols_cons'] at h2
+      have hyc : ycols[j]? = some yc := getElem?_of_drop_eq_cons hd
+      by_cases hk0 : k = 0
+      · subst hk0
+        refine ⟨yc, by rw [colAt_node_nil]; exact hyc, Nat.zero_le _, by simp, fun p => ?_⟩
+        simp only [litCapAux, List.getD_eq_getElem?_getD, hyc, Option.getD_some, wordAt,
+          wordCols_append, wordCols_cons', wordCols, List.append_nil, h1]
+        rw [wordCol_take_snoc e yc 0 p (Nat.zero_le _)]
+        simp
+      · rw [if_neg hk0] at h2
+        have hne : col.take k ≠ [] := by
+          rw [ne_eq, List.take_eq_nil_iff]; rintro (h | rfl) <;> simp_all
+        obtain ⟨h3, -⟩ := decode_col_prefix e (col.take k) yc (wordCols e ys) S hne
+          (headLe_wordCols e ys) (hS1 hk0) h2
+        rw [List.length_take_of_le hk] at h3
+        have hkY : k ≤ yc.length := by
+          have := congrArg List.length h3; simp at this; omega
+        refine ⟨yc, by rw [colAt_node_nil]; exact hyc, hkY, h3, fun p => ?_⟩
+        simp only [litCapAux, List.getD_eq_getElem?_getD, hyc, Option.getD_some, wordAt,
+          wordCols_append, wordCols_cons', wordCols, List.append_nil, h1]
+        rw [wordCol_take_snoc e yc k p hkY, h3, if_neg hk0, List.append_assoc]
+  | (ci, ei) :: ρ, j, .node xcols, col, e, P, hcol, hk, hP, .node ycols, S, hY, hS1, hS0 => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    have hci : ci < xcols.length := (List.getElem?_eq_some_iff.1 hc).1
+    have hei : ei < colc.length := (List.getElem?_eq_some_iff.1 hx').1
+    obtain ⟨P', R', hw', hcap', -⟩ := wordAt_litCapAux k ρ j H col (e + 1) hcolx hk
+    have hidx : e + ((ci, ei) :: ρ).length = e + 1 + ρ.length := by simp; omega
+    simp only [hidx] at hP hS1 hS0 ⊢
+    have hPeq : P = wordCols e (xcols.take ci) ++ wordCol e (colc.take ei ++ [(q, Tree.empty)]) ++ P' := by
+      have h0 := hP 0
+      simp only [litCapAux, List.getD_eq_getElem?_getD, hc, Option.getD_some, hx', wordAt,
+        wordCols_append, wordCols_cons', wordCols, List.append_nil] at h0
+      rw [wordCol_snoc, ← wordAt, hcap' 0] at h0
+      simp only [← List.append_assoc] at h0
+      exact (List.append_cancel_right h0).symm
+    subst hPeq
+    have hT : HeadLe (2 * e) (wordCol e (colc.take ei ++ [(q, Tree.empty)]) ++ P' ++ S) := by
+      rw [List.append_assoc]
+      exact headLe_append_of_ne _ (by cases (colc.take ei ++ [(q, Tree.empty)]) <;> simp [wordCol])
+        (headLe_wordCol e _)
+    have hY' : wordCols e ycols = wordCols e (xcols.take ci) ++
+        (wordCol e (colc.take ei ++ [(q, Tree.empty)]) ++ P' ++ S) := by
+      simp only [← List.append_assoc]; exact hY
+    obtain ⟨h1, h2⟩ := decode_cols_prefix e _ _ _ hT hY'
+    rw [List.length_take_of_le hci.le] at h1 h2
+    cases hd : ycols.drop ci with
+    | nil =>
+      rw [hd] at h2
+      exfalso
+      have hne : wordCol e (colc.take ei ++ [(q, Tree.empty)]) ≠ [] := by
+        cases (colc.take ei ++ [(q, Tree.empty)]) <;> simp [wordCol]
+      simp only [wordCols] at h2
+      exact hne (List.append_eq_nil_iff.1 (List.append_eq_nil_iff.1 h2.symm).1).1
+    | cons yc ys =>
+      rw [hd, wordCols_cons'] at h2
+      have hyc : ycols[ci]? = some yc := getElem?_of_drop_eq_cons hd
+      -- decode the containing column up to the containing entry
+      obtain ⟨Hy, yr, hyc_eq, hrest⟩ : ∃ Hy yr, yc = colc.take ei ++ (q, Hy) :: yr ∧
+          wordAt (e + 1) Hy ++ (wordLater e yr ++ wordCols e ys) = P' ++ S := by
+        by_cases hei0 : ei = 0
+        · subst hei0
+          cases yc with
+          | nil => simp [wordCol, wordAt_empty, wordLater] at h2
+          | cons y yr =>
+            obtain ⟨q', Hy⟩ := y
+            simp only [List.take_zero, List.nil_append, wordCol, wordAt_empty, wordLater,
+              List.append_nil, List.cons_append, List.singleton_append, List.cons.injEq,
+              List.append_assoc] at h2
+            obtain ⟨hq, h2⟩ := h2
+            have : q' = q := by simpa using hq
+            subst this
+            exact ⟨Hy, yr, by simp, h2⟩
+        · rw [wordCol_take_snoc e colc ei q hei.le, if_neg hei0] at h2
+          have hne : colc.take ei ≠ [] := by
+            rw [ne_eq, List.take_eq_nil_iff]; rintro (h | h) <;> simp_all
+          have hS' : HeadLe (2 * e + 1) ([capAtomAt e ei q] ++ P' ++ S) := by
+            intro y hy; simp [capAtomAt, hei0] at hy; subst hy; simp
+          simp only [List.append_assoc] at h2 hS'
+          obtain ⟨h3, h4⟩ := decode_col_prefix e (colc.take ei) yc (wordCols e ys) _ hne
+            (headLe_wordCols e ys) hS' h2
+          rw [List.length_take_of_le hei.le] at h3 h4
+          cases hdy : yc.drop ei with
+          | nil =>
+            exfalso
+            rw [hdy] at h4
+            have := headLe_wordCols e ys
+            rw [show wordLater e [] = [] from rfl, List.nil_append] at h4
+            rw [h4] at this
+            have := headLe_cons_iff.1 this; simp [capAtomAt, hei0] at this
+          | cons y yr =>
+            obtain ⟨q', Hy⟩ := y
+            rw [hdy] at h4
+            simp only [wordLater, List.cons_append, List.singleton_append, List.cons.injEq,
+              List.append_assoc, capAtomAt, if_neg hei0] at h4
+            obtain ⟨hq, h4⟩ := h4
+            have : q' = q := by simpa using hq
+            subst this
+            refine ⟨Hy, yr, ?_, h4⟩
+            rw [← List.take_append_drop ei yc, h3, hdy]
+      -- the containing entry's height starts with the inner cap prefix
+      have hdeep : ∀ y ∈ P', 2 * e + 1 + 1 ≤ (ofLex y).1 := by
+        intro y hy
+        have := wordAt_fst_ge (e + 1) (litCapAux k 0 ρ j H) y (by rw [hcap' 0]; simp [hy])
+        omega
+      have hC : HeadLe (2 * e + 1) (wordLater e yr ++ wordCols e ys) :=
+        headLe_append (headLe_wordLater e yr) (headLe_mono (headLe_wordCols e ys) (by omega))
+      obtain ⟨Sin, hHy, hS⟩ := split_of_deep hdeep hC hrest
+      have hS1' : k ≠ 0 → HeadLe (2 * (e + 1 + ρ.length) + 1) Sin := by
+        intro hk0 y hy
+        cases Sin with
+        | nil => simp at hy
+        | cons z Sin => exact hS1 hk0 y (by rw [hS]; simpa using hy)
+      have hS0' : k = 0 → ∃ y, Sin.head? = some y ∧ (ofLex y).1 = 2 * (e + 1 + ρ.length) := by
+        intro hk0
+        obtain ⟨y, hy, hy'⟩ := hS0 hk0
+        cases Sin with
+        | nil =>
+          exfalso
+          rw [hS, List.nil_append] at hy
+          have := hC y (by rw [hy]; rfl)
+          omega
+        | cons z Sin => exact ⟨y, by rw [hS] at hy; simpa using hy, hy'⟩
+      obtain ⟨colY, hcolY, hkY, htake, hcapY⟩ :=
+        litCap_transfer k ρ j H col (e + 1) P' hcolx hk hcap' Hy Sin hHy hS1' hS0'
+      have hyx : yc[ei]? = some (q, Hy) := by
+        rw [hyc_eq, List.getElem?_append_right (by simp)]
+        simp [List.length_take_of_le hei.le]
+      refine ⟨colY, ?_, hkY, htake, fun p => ?_⟩
+      · rw [colAt_node_cons, hyc]; simp only [Option.bind_some, hyx]; exact hcolY
+      · have hyt : yc.take ei = colc.take ei := by
+          rw [hyc_eq, List.take_left' (by simp; omega)]
+        simp only [litCapAux, List.getD_eq_getElem?_getD, hyc, Option.getD_some, hyx, wordAt,
+          wordCols_append, wordCols_cons', wordCols, List.append_nil, h1, hyt]
+        rw [wordCol_snoc, ← wordAt, hcapY p]
+        simp only [List.append_assoc]
+
+theorem litCapAux_route (Q : Column) (r j : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (F : Forest),
+      (∀ d < ρ.length, ∃ G, F.forestAt (ρ.take d) = some G ∧ G.lastStep? = ρ[d]?) →
+      (∃ G, F.forestAt ρ = some G ∧ G.cols.length = j + 1) →
+      F.colAt ⟨ρ, j⟩ = some (Q ++ [(r, Tree.empty)]) → litCapAux Q.length r ρ j F = F
+  | [], .node cols, _, hG, hcol => by
+    obtain ⟨G, hG, hl⟩ := hG
+    rw [forestAt_nil_path] at hG; obtain rfl := Option.some.inj hG
+    rw [colAt_node_nil] at hcol
+    simp only [Tree.cols] at hl
+    simp only [litCapAux, List.getD_eq_getElem?_getD, hcol, Option.getD_some, List.take_left]
+    congr 1
+    conv_rhs => rw [← List.take_append_drop j cols, List.drop_eq_getElem_cons (by omega),
+      (List.getElem?_eq_some_iff.1 hcol).2]
+    rw [List.drop_eq_nil_of_le (by omega)]
+  | (ci, ei) :: ρ, .node cols, hroute, hG, hcol => by
+    obtain ⟨G0, hG0, hls⟩ := hroute 0 (by simp)
+    simp only [List.take_zero, forestAt_nil_path, Option.some.injEq] at hG0
+    subst hG0
+    simp only [Tree.lastStep?, Tree.cols, List.getElem?_cons_zero] at hls
+    obtain ⟨colL, hL, hls⟩ := Option.bind_eq_some_iff.1 hls
+    split_ifs at hls with hne
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hls)
+    have hcolsne : cols ≠ [] := by rintro rfl; simp at hL
+    have hLi : cols[cols.length - 1]? = some colL := by rw [← List.getLast?_eq_getElem?]; exact hL
+    have hLne : colL ≠ [] := by simpa using hne
+    rw [colAt_node_cons, hLi] at hcol
+    simp only [Option.bind_some] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨q, H⟩ := x
+    have ih := litCapAux_route Q r j ρ H (fun d hd => by
+        obtain ⟨G, hG, hl⟩ := hroute (d + 1) (by simp; omega)
+        refine ⟨G, ?_, by simpa using hl⟩
+        rw [List.take_succ_cons, forestAt_node_cons, hLi] at hG
+        simpa [hx] using hG)
+      (by
+        obtain ⟨G, hG, hl⟩ := hG
+        rw [forestAt_node_cons, hLi] at hG
+        exact ⟨G, by simpa [hx] using hG, hl⟩) hcolx
+    simp only [litCapAux, List.getD_eq_getElem?_getD, hLi, Option.getD_some, hx, ih]
+    congr 1
+    have hc1 : cols = cols.take (cols.length - 1) ++ [colL] := by
+      conv_lhs => rw [← List.take_append_drop (cols.length - 1) cols,
+        List.drop_eq_getElem_cons (by have := List.length_pos_of_ne_nil hcolsne; omega),
+        (List.getElem?_eq_some_iff.1 hLi).2]
+      rw [List.drop_eq_nil_of_le (by omega)]
+    have hc2 : colL = colL.take (colL.length - 1) ++ [(q, H)] := by
+      conv_lhs => rw [← List.take_append_drop (colL.length - 1) colL,
+        List.drop_eq_getElem_cons (by have := List.length_pos_of_ne_nil hLne; omega),
+        (List.getElem?_eq_some_iff.1 hx).2]
+      rw [List.drop_eq_nil_of_le (by omega)]
+    rw [← hc2, ← hc1]
+
+/-- helper: a forest whose last route column ends with `(r, ∅)` is its own literal cap there. -/
+theorem litCap_of_lastRoute {E : Forest} {c : ColAddr} {Q : Column} {r : Nat}
+    (hc : (routeCols E).getLast? = some c) (hcol : E.colAt c = some (Q ++ [(r, Tree.empty)])) :
+    litCap E c Q.length r = E := by
+  rw [litCap_eq_aux hcol]
+  have hmem : c ∈ routeCols E := List.mem_of_getLast? hc
+  obtain ⟨hroute, G, hG, hl⟩ := (mem_routeCols_iff E c).1 hmem
+  exact litCapAux_route Q r c.col c.path E hroute ⟨G, hG, hl⟩ hcol
 
 -- N2.1 (converse of L3.1c): a prefix of `w(B)` followed by a valid closing atom is a literal
 -- cap of `B`, provided the next atom of `B` is smaller (and, for a column-start atom, not
@@ -1027,7 +1732,65 @@ theorem exists_litCap_of_word {B E : Forest} {π e p : Nat} {first : Bool}
     (hfirst : first = true → ∃ y, (word B)[π]? = some y ∧ 2 * e ≤ (ofLex y).1) :
     ∃ c k, c ∈ B.colAddrs ∧ k ≤ ((B.colAt c).getD []).length ∧ colDepth c = e ∧
       (k = 0 ↔ first = true) ∧ capPos B c k = π ∧ IsUpward B c k p ∧ litCap B c k p = E := by
-  sorry
+  have hG : word (safePrefix B π) = (word B).take π := word_safePrefix B π
+  obtain ⟨c, k, hce, hkf, hlast, hentry, hlen, -, -, -⟩ :=
+    routeCols_of_word_snoc (G := safePrefix B π) (E := E) (e := e) (p := p) (first := first)
+      (by rw [hG]; exact hw)
+  obtain ⟨col, hcol, hck⟩ := Tree.colAt_of_entryAt hentry
+  rw [hcol, Option.getD_some] at hlen
+  have hcol' : E.colAt c = some (col.take k ++ [(p, Tree.empty)]) := by
+    rw [hcol]; congr 1
+    conv_lhs => rw [← List.take_append_drop k col, List.drop_eq_getElem_cons (by omega),
+      (List.getElem?_eq_some_iff.1 hck).2]
+    rw [List.drop_eq_nil_of_le (by omega)]
+  have hkk : (col.take k).length = k := List.length_take_of_le (by omega)
+  have hEcap : litCap E c k p = E := by
+    have := litCap_of_lastRoute hlast hcol'; rwa [hkk] at this
+  have hz : capAtom c k p =
+      (if first then toLex (2 * e, toLex (1, p)) else toLex (2 * e + 1, toLex (0, p))) := by
+    unfold capAtom colDepth; rw [hce]
+    cases first <;> simp_all
+  obtain ⟨-, -, hcapE, -, -⟩ := litCap_word_data hcol (k := k) (by omega)
+  have hPE : (word E).take (capPos E c k) = (word B).take π := by
+    have h1 := hcapE p
+    rw [hEcap, hz] at h1
+    exact List.append_cancel_right (h1.symm.trans hw)
+  have hS1 : k ≠ 0 → HeadLe (2 * (0 + c.path.length) + 1) ((word B).drop π) := by
+    intro hk0 y hy
+    have hf : first = false := by cases first <;> simp_all
+    have := hnext y (by rw [List.head?_drop] at hy; exact hy)
+    rw [hf, if_neg (by simp), Prod.Lex.lt_iff] at this
+    rw [hce]; simp at this ⊢
+    rcases this with h | ⟨h, -⟩ <;> omega
+  have hS0 : k = 0 → ∃ y, ((word B).drop π).head? = some y ∧
+      (ofLex y).1 = 2 * (0 + c.path.length) := by
+    intro hk0
+    have hf : first = true := hkf.1 hk0
+    obtain ⟨y, hy, hy'⟩ := hfirst hf
+    refine ⟨y, by rw [List.head?_drop]; exact hy, ?_⟩
+    have := hnext y hy
+    rw [hf, if_pos rfl, Prod.Lex.lt_iff] at this
+    rw [hce]; simp at this ⊢
+    rcases this with h | ⟨h, -⟩ <;> omega
+  obtain ⟨colY, hcolY, hkY, -, hcapB⟩ := litCap_transfer k c.path c.col E col 0 ((word B).take π)
+    hcol (by omega) (fun p' => by
+      have := hcapE p'
+      rw [litCap_eq_aux hcol, word, hPE, capAtom_eq, colDepth] at this
+      simpa using this)
+    B ((word B).drop π) (by rw [← word, List.take_append_drop]) hS1 hS0
+  have hcapB' : ∀ p', word (litCap B c k p') = (word B).take π ++ [capAtom c k p'] := by
+    intro p'; rw [litCap_eq_aux hcolY, word, hcapB p', capAtom_eq, colDepth]; simp
+  have hpos : capPos B c k = π := by
+    simp only [capPos, hcapB' 0, List.length_append, List.length_take, List.length_singleton]
+    unfold mu at hπ; omega
+  refine ⟨c, k, (Tree.mem_colAddrs_iff B c).2 (by rw [hcolY]; rfl), by rw [hcolY]; exact hkY,
+    by rw [colDepth, hce], hkf, hpos, ?_, ?_⟩
+  · rw [isUpward_iff_atom ((Tree.mem_colAddrs_iff B c).2 (by rw [hcolY]; rfl))
+      (by rw [hcolY]; exact hkY), hpos, hz]
+    exact hnext
+  · apply word_injective
+    rw [hcapB' p, hw, hz]
+
 
 -- L3.1d (txt:269-272): every V, I-legal upward literal cap of a nonempty height `J` is at most
 -- `Γ(J)`, read at the heights of the cap's containing entries
@@ -1044,10 +1807,116 @@ theorem upward_condS {E : Forest} (hV : CondV E) (hI : CondI E) (hH : CondH E) (
     {c : ColAddr} {k p : Nat} (hup : IsUpward E c k p) (hKV : CondV (litCap E c k p))
     (hKI : CondI (litCap E c k p)) : CondS (litCap E c k p) := by sorry
 
+/-! ### L3.1f helpers -/
+
+theorem list_append_lt_append_iff {α : Type} [LinearOrder α] (T : List α) {U V : List α} :
+    T ++ U < T ++ V ↔ U < V := by
+  induction T with
+  | nil => rfl
+  | cons t T ih => simp only [List.cons_append, List.cons_lt_cons_iff, lt_irrefl, false_or, true_and, ih]
+
+theorem list_between {α : Type} [LinearOrder α] :
+    ∀ (T R S W : List α), ¬ W < T ++ R → W < T ++ S → ∃ U, W = T ++ U
+  | [], _, _, W, _, _ => ⟨W, rfl⟩
+  | t :: T, R, S, [], h1, _ => by
+    exfalso; exact h1 (List.nil_lt_cons _ _)
+  | t :: T, R, S, w :: W, h1, h2 => by
+    simp only [List.cons_append] at h1 h2
+    rw [List.cons_lt_cons_iff] at h1 h2
+    rcases h2 with h2 | ⟨rfl, h2⟩
+    · exact absurd (Or.inl h2) h1
+    · obtain ⟨U, rfl⟩ := list_between T R S W (fun h => h1 (Or.inr ⟨rfl, h⟩)) h2
+      exact ⟨U, rfl⟩
+
+theorem capAtom_eq_if (c : ColAddr) (k p : Nat) :
+    capAtom c k p = (if decide (k = 0) = true then toLex (2 * colDepth c, toLex (1, p))
+      else toLex (2 * colDepth c + 1, toLex (0, p))) := by
+  unfold capAtom; simp only [decide_eq_true_eq]
+
+theorem word_le_of_le {X Y : Forest} (h : X ≤ Y) : word X ≤ word Y := by
+  rcases lt_or_eq_of_le h with h | rfl
+  · exact le_of_lt ((word_lt_iff X Y).2 h)
+  · exact le_refl _
+
 -- L3.1f (txt:286-288): the interval fact
 theorem interval_cap {X Y : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward X c k p)
     (hXY : X ≤ Y) (hYC : Y < litCap X c k p) :
-    IsUpward Y c k p ∧ litCap Y c k p = litCap X c k p := by sorry
+    IsUpward Y c k p ∧ litCap Y c k p = litCap X c k p := by
+  obtain ⟨col, hcol, hk, hq⟩ := isUpward_iff_exists.1 hup
+  obtain ⟨R, hwX, hcap, hnext, hle⟩ := litCap_word_data hcol hk
+  set T := (word X).take (capPos X c k) with hT
+  have hTl : T.length = capPos X c k := List.length_take_of_le hle
+  have h1 : ¬ word Y < T ++ R := by rw [← hwX]; exact not_lt.2 (word_le_of_le hXY)
+  have h2 : word Y < T ++ [capAtom c k p] := by rw [← hcap p]; exact (word_lt_iff _ _).2 hYC
+  obtain ⟨U, hU⟩ := list_between T R [capAtom c k p] (word Y) h1 h2
+  rw [hU] at h1 h2
+  rw [list_append_lt_append_iff] at h2
+  rw [list_append_lt_append_iff] at h1
+  have hUz : ∀ y, U.head? = some y → y < capAtom c k p := by
+    intro y hy
+    cases U with
+    | nil => simp at hy
+    | cons u U =>
+      simp only [List.head?_cons, Option.some.injEq] at hy; subst hy
+      rcases List.cons_lt_cons_iff.1 h2 with h | ⟨-, h⟩
+      · exact h
+      · exact absurd h (List.not_lt_nil _)
+  have hat : ∀ y, (word Y)[capPos X c k]? = some y → y < capAtom c k p := by
+    intro y hy
+    rw [hU, List.getElem?_append_right (by omega), hTl, Nat.sub_self, ← List.head?_eq_getElem?] at hy
+    exact hUz y hy
+  have hπ : capPos X c k ≤ mu Y := by
+    unfold mu; rw [hU]; simp; omega
+  have hwC : word (litCap X c k p) = (word Y).take (capPos X c k) ++
+      [if decide (k = 0) then toLex (2 * colDepth c, toLex (1, p))
+        else toLex (2 * colDepth c + 1, toLex (0, p))] := by
+    rw [hcap p, hU, List.take_left' hTl, capAtom_eq_if]
+  have hfirst : decide (k = 0) = true → ∃ y, (word Y)[capPos X c k]? = some y ∧
+      2 * colDepth c ≤ (ofLex y).1 := by
+    intro hk0; simp only [decide_eq_true_eq] at hk0
+    subst hk0
+    have hR : ∃ r, R.head? = some r ∧ (ofLex r).1 = 2 * colDepth c := by
+      cases hc0 : col[0]? with
+      | some x =>
+        obtain ⟨q, H⟩ := x
+        exact ⟨_, hnext.1 q H hc0, by simp [capAtomAt]⟩
+      | none =>
+        have : col.length = 0 := by
+          have := List.getElem?_eq_none_iff.1 hc0; omega
+        exact ⟨_, hnext.2.2 this.symm rfl, by simp⟩
+    obtain ⟨r, hr, hr'⟩ := hR
+    cases R with
+    | nil => simp at hr
+    | cons r' R =>
+      simp only [List.head?_cons, Option.some.injEq] at hr; subst hr
+      cases U with
+      | nil => exact absurd (List.nil_lt_cons _ _) h1
+      | cons u U =>
+        refine ⟨u, by rw [hU, List.getElem?_append_right (by omega), hTl]; simp, ?_⟩
+        have : r' ≤ u := by
+          rw [List.cons_lt_cons_iff] at h1
+          exact not_lt.1 (fun h => h1 (Or.inl h))
+        rw [Prod.Lex.le_iff] at this
+        rcases this with h | ⟨h, -⟩ <;> omega
+  have hnext' : ∀ y, (word Y)[capPos X c k]? = some y →
+      y < (if decide (k = 0) then toLex (2 * colDepth c, toLex (1, p))
+        else toLex (2 * colDepth c + 1, toLex (0, p))) := by
+    intro y hy
+    rw [← capAtom_eq_if]; exact hat y hy
+  obtain ⟨c', k', hc', hk', hd', hkf, hpos, hup', hcapY⟩ :=
+    exists_litCap_of_word hwC hπ hnext' hfirst
+  obtain ⟨colY, hcolY, hkY, -⟩ := isUpward_iff_exists.1 hup'
+  have hs1 := stopData_litCap' hcolY k' p
+  have hs2 := stopData_litCap' hcol k p
+  rw [hcapY, hs2] at hs1
+  simp only [Option.some.injEq, StopData.mk.injEq] at hs1
+  obtain ⟨-, rfl, -, -, hQ⟩ := hs1
+  have : k' = k := by
+    have := congrArg List.length hQ
+    rw [List.length_take_of_le hk, List.length_take_of_le hkY] at this; exact this.symm
+  subst this
+  exact ⟨hup', hcapY⟩
+
 
 -- L3.1g (txt:289-293): a legal move keeps every decorated response, hence decorated A
 theorem decoratedA_applyMove {K : Forest} {m : Move} (hm : MoveOK K m) (hV : CondV K)
