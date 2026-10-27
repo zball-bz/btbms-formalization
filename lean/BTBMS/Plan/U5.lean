@@ -3676,6 +3676,90 @@ theorem control_edge (I : Interface.{u}) {H : Forest} {α : Role → Ordinal.{u}
     hα _ (edge_mem_graph hmem hent hr).1
   exact ⟨he, I.edge_lt he⟩
 
+/-- L8.6c (helper): the roles of a tree from column `j` of the forest at `P` on. -/
+theorem roles_cols_E4 {α : Type} : ∀ (P : List (Nat × Nat)) (t : Tree α) (j : Nat) (f : Tree α),
+    t.forestAt P = some f →
+    ∃ pre post, t.roles = pre ++ Tree.rolesCols P j (f.cols.drop j) ++ post
+  | [], ⟨cols⟩, j, f, h => by
+    have hf : f = ⟨cols⟩ := by simpa [Tree.forestAt] using h.symm
+    subst hf
+    by_cases hj : j ≤ cols.length
+    · refine ⟨Tree.rolesCols [] 0 (cols.take j), [], ?_⟩
+      show Tree.rolesCols [] 0 cols = _
+      conv_lhs => rw [← List.take_append_drop j cols]
+      rw [rolesCols_append]
+      simp [List.length_take, Nat.min_eq_left hj, Tree.cols]
+    · refine ⟨(Tree.node cols).roles, [], ?_⟩
+      simp [Tree.cols, List.drop_eq_nil_of_le (by omega : cols.length ≤ j), Tree.rolesCols]
+  | (c, i₀) :: rest, ⟨cols⟩, j, f, h => by
+    rw [Tree.forestAt_cons] at h
+    cases he : ((Tree.node cols).cols[c]?.bind (·[i₀]?)) with
+    | none => rw [he] at h; simp at h
+    | some ph =>
+      obtain ⟨p₀, h₀⟩ := ph
+      rw [he] at h
+      have h' : h₀.forestAt rest = some f := by simpa using h
+      obtain ⟨pre', post', hr'⟩ := roles_cols_E4 rest h₀ j f h'
+      have hent : (Tree.node cols).entryAt ⟨⟨[], c⟩, i₀⟩ = some (p₀, h₀) := by
+        simpa [Tree.entryAt, Tree.colAt, Tree.forestAt] using he
+      obtain ⟨pre, post, hr, -⟩ := Tree.roles_decomp [] (Tree.node cols) c i₀ p₀ h₀ hent
+      refine ⟨pre ++ Role.slot ⟨⟨[], c⟩, i₀⟩ :: pre'.map (Role.under [(c, i₀)]),
+        post'.map (Role.under [(c, i₀)]) ++ post, ?_⟩
+      rw [hr, hr']
+      have := Tree.rolesCols_append_under [(c, i₀)] rest j (f.cols.drop j)
+      simp only [List.singleton_append] at this
+      simp [this]
+
+/-- L8.6c (helper): before the first `T`, inside a list containing `T`. -/
+theorem takeWhile_ne_sub_E4 {A B : List Role} {T : Role} (h : T ∈ A) :
+    ∀ x ∈ (A ++ B).takeWhile (· != T), x ∈ A := by
+  induction A with
+  | nil => simp at h
+  | cons a A ih =>
+    intro x hx
+    by_cases ha : a = T
+    · subst ha; simp at hx
+    · have hT : T ∈ A := by
+        rcases List.mem_cons.1 h with h | h
+        · exact absurd h.symm ha
+        · exact h
+      simp only [List.cons_append, List.takeWhile_cons, bne_iff_ne, ne_eq, ha, not_false_eq_true,
+        if_true, List.mem_cons] at hx
+      rcases hx with rfl | hx
+      · exact List.mem_cons_self
+      · exact List.mem_cons_of_mem _ (ih hT x hx)
+
+/-- L8.6c (helper): `takeWhile (· != T)` through a block without `T`. -/
+theorem takeWhile_ne_append_E4 {A B : List Role} {T : Role} (h : T ∉ A) :
+    (A ++ B).takeWhile (· != T) = A ++ B.takeWhile (· != T) :=
+  List.takeWhile_append_of_pos fun a ha => by
+    simp only [bne_iff_ne, ne_eq]; rintro rfl; exact h ha
+
+/-- L8.6c (helper): the roles strictly between `R` and `T`. -/
+theorem between_E4 {l pre L : List Role} {R T : Role} (hl : l = pre ++ R :: L) (hnd : l.Nodup)
+    (hT : T ∈ l) (hRT : R ∈ l.takeWhile (· != T)) :
+    T ∈ L ∧ ((l.takeWhile (· != T)).dropWhile (· != R)).drop 1 = L.takeWhile (· != T) := by
+  subst hl
+  have hRpre : R ∉ pre := fun hm =>
+    (List.nodup_append.1 hnd).2.2 _ hm _ List.mem_cons_self rfl
+  have hRT' : R ≠ T := by
+    have := List.all_eq_true.1 List.all_takeWhile R hRT
+    simpa using this
+  have hTpre : T ∉ pre := by
+    intro hm
+    have := takeWhile_ne_sub_E4 (B := R :: L) hm R hRT
+    exact hRpre this
+  have hTL : T ∈ L := by
+    rcases List.mem_append.1 hT with h | h
+    · exact absurd h hTpre
+    · rcases List.mem_cons.1 h with h | h
+      · exact absurd h.symm hRT'
+      · exact h
+  refine ⟨hTL, ?_⟩
+  rw [takeWhile_ne_append_E4 hTpre, List.takeWhile_cons_of_pos (by simpa using hRT'),
+    dropWhile_ne_D4 hRpre]
+  rfl
+
 /-- L8.6c: the first retained role `v` of `K` is absent, on the route (ordinary or active
 owner), or the closed root owner at the final cursor (txt:1288-1297). -/
 theorem firstK_cases {H : Forest} (hL : Scan.InL H) (hk : Scan.stepKind H = some .ordinary)
@@ -3685,7 +3769,187 @@ theorem firstK_cases {H : Forest} (hL : Scan.InL H) (hk : Scan.stepKind H = some
       (∃ rest, rs.K = .slot ⟨rd.col, rd.cursor⟩ :: rest ∧
         rd.cursor < ((H.colAt rd.col).getD []).length ∧
         rd.col.container sd.col ≠ some ⟨rd.col, rd.cursor⟩) := by
-  sorry
+  obtain ⟨hres, -, -, -, -, -, hcont⟩ := Scan.rootData_path hsd hrd
+  obtain ⟨hcolT, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨-, -, -, -, -, hRmem, hcur, -⟩ := Scan.rootData_spec hsd hrd
+  have hK : rs.K = (((rolesBefore H (.ord sd.col)).dropWhile (· != .ord rd.col)).drop 1).filter
+      (fun x => !((List.range rd.cursor).any fun i => x.inEntry ⟨rd.col, i⟩)) := by
+    simp only [roleSets, hsd, hrd, Option.bind_eq_bind, Option.bind_some] at hrs
+    cases hrs; rfl
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hRmem)
+  have hfR : ∃ f, H.forestAt rd.col.path = some f ∧ f.cols[rd.col.col]? = some colR := by
+    unfold Tree.colAt at hcolR
+    cases hf : H.forestAt rd.col.path with
+    | none => rw [hf] at hcolR; simp at hcolR
+    | some f => rw [hf] at hcolR; exact ⟨f, rfl, by simpa using hcolR⟩
+  obtain ⟨f, hf, hfc⟩ := hfR
+  obtain ⟨pre, post, hr⟩ := roles_cols_E4 rd.col.path H rd.col.col f hf
+  have hdrop : f.cols.drop rd.col.col = colR :: f.cols.drop (rd.col.col + 1) := by
+    obtain ⟨hlt, heq⟩ := List.getElem?_eq_some_iff.1 hfc
+    rw [List.drop_eq_getElem_cons hlt, heq]
+  set π := rd.col.path with hπ
+  set c := rd.col.col with hc
+  set rc := Tree.rolesCol π c 0 colR with hrc
+  set M := Tree.rolesCols π (c + 1) (f.cols.drop (c + 1)) ++ post with hM
+  have hR : (⟨π, c⟩ : ColAddr) = rd.col := rfl
+  have hroles : H.roles = pre ++ Role.ord rd.col :: (rc ++ M) := by
+    rw [hr, hdrop]; simp [Tree.rolesCols, hR, hrc, hM]
+  have hnd := Tree.roles_nodup H
+  have hTmem := Scan.stopData_col_mem hsd
+  obtain ⟨hTL, hbet⟩ := between_E4 hroles hnd hTmem (root_before_stop_D4 hsd hrd)
+  rw [hroles] at hnd
+  have hnd' : (rc ++ M).Nodup := (List.nodup_cons.1 (List.nodup_append.1 hnd).2.1).2
+  have hlenR : ((H.colAt rd.col).getD []).length = colR.length := by rw [hcolR]; rfl
+  have hcurle : rd.cursor ≤ colR.length := by
+    rw [hcur]
+    refine (Scan.cursor_le_length _ _).trans ?_
+    simp [Scan.rootKeys, hcolR]
+  -- the parts of the root column's roles
+  set rcA := Tree.rolesCol π c 0 (colR.take rd.cursor) with hrcA
+  set rcB := Tree.rolesCol π c rd.cursor (colR.drop rd.cursor) with hrcB
+  have hsplit : rc = rcA ++ rcB := by
+    rw [hrc, ← List.take_append_drop rd.cursor colR, Tree.rolesCol_append]
+    simp [List.length_take, Nat.min_eq_left hcurle, hrcA, hrcB]
+  set cons : Role → Bool := fun x => (List.range rd.cursor).any fun i => x.inEntry ⟨rd.col, i⟩ with hcons
+  have hA : ∀ x ∈ rcA, cons x = true := by
+    intro x hx
+    obtain ⟨j, -, hj, hin⟩ := Scan.rolesCol_inEntry π c _ 0 x hx
+    simp only [hcons, List.any_eq_true, List.mem_range]
+    refine ⟨j, ?_, hin⟩
+    simp only [List.length_take] at hj; omega
+  have hB : ∀ x ∈ rcB, cons x = false := by
+    intro x hx
+    obtain ⟨j, hj, -, hin⟩ := Scan.rolesCol_inEntry π c _ rd.cursor x hx
+    simp only [hcons, List.any_eq_false, List.mem_range, Bool.not_eq_true]
+    intro i hi
+    cases h : x.inEntry ⟨rd.col, i⟩ with
+    | false => rfl
+    | true => have := inEntry_unique_D4 hin h; omega
+  have hMc : ∀ x ∈ M, cons x = false := by
+    intro x hx
+    simp only [hcons, List.any_eq_false, List.mem_range, Bool.not_eq_true]
+    intro i hi
+    cases h : x.inEntry ⟨rd.col, i⟩ with
+    | false => rfl
+    | true =>
+      exfalso
+      have hxH : x ∈ H.roles := by rw [hroles]; simp [hx]
+      have := mem_rolesCol_of_inEntry_D4 hcolR (by omega) hxH h
+      exact (List.nodup_append.1 hnd').2.2 x this x hx rfl
+  have hfilt_tw : ∀ L : List Role, (∀ x ∈ L, cons x = false) →
+      ∀ T, ((L.takeWhile (· != T)).filter fun x => !cons x) = L.takeWhile (· != T) := by
+    intro L hL T
+    refine List.filter_eq_self.2 fun x hx => ?_
+    simp [hL x (List.takeWhile_subset _ hx)]
+  have hfiltA : (rcA.filter fun x => !cons x) = [] :=
+    List.filter_eq_nil_iff.2 fun x hx => by simp [hA x hx]
+  have hfiltB : (rcB.filter fun x => !cons x) = rcB :=
+    List.filter_eq_self.2 fun x hx => by simp [hB x hx]
+  rw [hK, show rolesBefore H (.ord sd.col) = H.roles.takeWhile (· != .ord sd.col) from rfl, hbet]
+  change ((rc ++ M).takeWhile (· != .ord sd.col)).filter (fun x => !cons x) = [] ∨
+    (∃ v rest, ((rc ++ M).takeWhile (· != .ord sd.col)).filter (fun x => !cons x) = v :: rest ∧
+      OnRoute sd v) ∨
+    (∃ rest, ((rc ++ M).takeWhile (· != .ord sd.col)).filter (fun x => !cons x) =
+        .slot ⟨rd.col, rd.cursor⟩ :: rest ∧
+        rd.cursor < ((H.colAt rd.col).getD []).length ∧
+        rd.col.container sd.col ≠ some ⟨rd.col, rd.cursor⟩)
+  rw [hlenR]
+  have hBhead : rd.cursor < colR.length → ∃ rest, rcB = .slot ⟨rd.col, rd.cursor⟩ :: rest := by
+    intro hlt
+    rw [hrcB, List.drop_eq_getElem_cons hlt]
+    exact ⟨_, rfl⟩
+  cases hcn : rd.col.container sd.col with
+  | some e =>
+    obtain ⟨he1, he2⟩ := (ColAddr.container_spec _ _ _).1 hcn
+    have hj := hcont e hcn
+    rw [rootLenOf, hlenR] at hj
+    obtain ⟨ecol, j⟩ := e
+    simp only at he1; subst he1
+    have hTin : (Role.ord sd.col).inEntry ⟨rd.col, j⟩ = true := (inEntry_iff _ _).2 (Or.inr he2)
+    have hjlt : j < colR.length := by simp only at hj; omega
+    have hTrc : Role.ord sd.col ∈ rc := mem_rolesCol_of_inEntry_D4 hcolR hjlt hTmem hTin
+    by_cases hjc : rd.cursor ≤ j
+    · have hTB : Role.ord sd.col ∈ rcB := by
+        have := mem_rolesCol_drop_D4 hTrc hTin hjc
+        simpa [List.length_take, Nat.min_eq_left hcurle] using this
+      have hTA : Role.ord sd.col ∉ rcA := fun h => by
+        have := hA _ h; rw [hB _ hTB] at this; simp at this
+      obtain ⟨rest, hrest⟩ := hBhead (by omega)
+      have hsB : cons (.slot ⟨rd.col, rd.cursor⟩) = false := hB _ (hrest ▸ List.mem_cons_self)
+      rw [hsplit, List.append_assoc, takeWhile_ne_append_E4 hTA, hrest, List.cons_append,
+        List.takeWhile_cons_of_pos (by simp), List.filter_append, hfiltA, List.nil_append,
+        List.filter_cons_of_pos (by simp [hsB])]
+      rcases Nat.lt_or_eq_of_le hjc with hlt | heq
+      · right; right
+        refine ⟨_, rfl, by omega, ?_⟩
+        intro h; simp only [Option.some.injEq, EntryAddr.mk.injEq, true_and] at h; omega
+      · right; left
+        refine ⟨_, _, rfl, ?_⟩
+        show (⟨rd.col, rd.cursor⟩ : EntryAddr).heightPath <+: sd.col.path
+        rw [heq]; exact he2
+    · left
+      have hTA : Role.ord sd.col ∈ rcA := mem_rolesCol_take_D4 hTrc hTin (by omega)
+      rw [hsplit, List.append_assoc]
+      refine List.filter_eq_nil_iff.2 fun x hx => ?_
+      simp [hA x (takeWhile_ne_sub_E4 hTA x hx)]
+  | none =>
+    have hTrc : Role.ord sd.col ∉ rc := by
+      intro h
+      obtain ⟨j, -, -, hin⟩ := Scan.rolesCol_inEntry π c colR 0 _ h
+      rcases (inEntry_iff _ _).1 hin with h | h
+      · cases h
+      · have := (ColAddr.container_spec rd.col sd.col ⟨rd.col, j⟩).2 ⟨rfl, h⟩
+        rw [hcn] at this; cases this
+    rw [takeWhile_ne_append_E4 hTrc, List.filter_append, hfilt_tw M hMc, hsplit, List.filter_append,
+      hfiltA, hfiltB, List.nil_append]
+    rcases Nat.lt_or_eq_of_le hcurle with hlt | heq
+    · right; right
+      obtain ⟨rest, hrest⟩ := hBhead hlt
+      exact ⟨_, by rw [hrest]; rfl, hlt, by simp⟩
+    · have hB0 : rcB = [] := by rw [hrcB, heq, List.drop_length]; rfl
+      rw [hB0, List.nil_append]
+      obtain ⟨hnext, hroute⟩ : (H.colAt ⟨π, c + 1⟩).isSome ∧ OnRoute sd (.ord ⟨π, c + 1⟩) := by
+        obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col rd.col sd.r).1 hres
+        have hTs : (H.colAt sd.col).isSome := by rw [hcolT]; rfl
+        rcases hon with ⟨k, ck, ik, hk, hp, hcc⟩ | ⟨hp, hcc⟩
+        · have hklt : k < sd.col.path.length := (List.getElem?_eq_some_iff.1 hk).1
+          have hne : c ≠ ck := by
+            intro hcck
+            have : rd.col.container sd.col = some ⟨rd.col, ik⟩ := by
+              refine (ColAddr.container_spec _ _ _).2 ⟨rfl, sd.col.path.drop (k + 1), ?_⟩
+              have h2 := List.drop_eq_getElem_cons hklt
+              rw [(List.getElem?_eq_some_iff.1 hk).2] at h2
+              simp only [EntryAddr.heightPath, ← hπ, ← hc]
+              conv_rhs => rw [← List.take_append_drop k sd.col.path, h2]
+              rw [hπ, hp, hcck]
+              simp
+            rw [hcn] at this; cases this
+          have hon' : sd.col.OnStack ⟨π, c + 1⟩ := Or.inl ⟨k, ck, ik, hk, hp, show c + 1 ≤ ck by have := hc; omega⟩
+          refine ⟨colAt_isSome_of_onStack hTs hon', k, hp, ?_⟩
+          rw [List.getElem?_append_left hklt, hk]; simp; have := hc; omega
+        · refine ⟨?_, sd.col.path.length, by rw [List.take_length]; exact hp, ?_⟩
+          · rcases Nat.lt_or_eq_of_le (Nat.succ_le_of_lt hcc) with hlt | heq
+            · exact colAt_isSome_of_onStack hTs (Or.inr ⟨hp, hlt⟩)
+            · have : (⟨π, c + 1⟩ : ColAddr) = sd.col := by
+                have h1 : π = sd.col.path := hp
+                have h2 : c + 1 = sd.col.col := by have := hc; omega
+                rw [h1, h2]
+              rw [this]; exact hTs
+          · simp; have := hc; omega
+      have hd : ∃ col' rest', f.cols.drop (c + 1) = col' :: rest' := by
+        unfold Tree.colAt at hnext
+        rw [hf] at hnext
+        obtain ⟨col', hcol'⟩ := Option.isSome_iff_exists.1 hnext
+        have hlt := (List.getElem?_eq_some_iff.1 (by simpa using hcol')).1
+        exact ⟨_, _, List.drop_eq_getElem_cons hlt⟩
+      obtain ⟨col', rest', hd⟩ := hd
+      rw [hM, hd]
+      simp only [Tree.rolesCols, List.cons_append]
+      by_cases hTe : Role.ord ⟨π, c + 1⟩ = Role.ord sd.col
+      · left; rw [hTe]; simp
+      · right; left
+        rw [List.takeWhile_cons_of_pos (by simpa using hTe)]
+        exact ⟨_, _, rfl, hroute⟩
 
 /-- L8.6d: variables of the transported stage problem: main roles of `H[m]`, label variables,
 fresh reference names of the `E`-prefix, the original positive query, the head `t`. -/
