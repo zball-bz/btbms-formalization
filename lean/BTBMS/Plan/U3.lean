@@ -3730,12 +3730,59 @@ def RecKind.toDesc {E : Forest} : RecKind E → RecKind E
   | .scan cap i j => .desc cap i j
   | k => k
 
+/-- L4.3 helper: truncating after `a` keeps the height of `a`. -/
+theorem heightAt_truncAfter_self_E1 (H : Forest) (a : EntryAddr) :
+    (H.truncAfter a).heightAt a = H.heightAt a := by
+  by_cases ha : a ∈ H.entryAddrs
+  · exact (Tree.truncAfter_spec H a ha).2.2.1
+  · have hn : ¬ (H.entryAt a).isSome := fun h => ha ((Tree.mem_entryAddrs_iff _ _).mpr h)
+    rw [Tree.truncAfter_eq_body]
+    simp [Tree.truncAfterBody, hn]
+
+/-- L4.3 helper: a tree with an entry `a` is unchanged by re-setting the height of `a`. -/
+theorem setHeight_heightAt_self_E1 {F : Forest} {a : EntryAddr} (ha : a ∈ F.entryAddrs) :
+    F.setHeight a ((F.heightAt a).getD Tree.empty) = F := by
+  apply (Tree.setHeight_basic F a _ ha).2.2.2.1
+  have hs : (F.entryAt a).isSome := (Tree.mem_entryAddrs_iff _ _).mp ha
+  obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hs
+  simp [Tree.heightAt, hx]
+
 -- provides: U3, L4.3 (the spine's `reduce_confined`†; consumers: U5 L8.8 Case 2, W)
 theorem reduce_confined {rk : SrcRecord} (h : rk.Admitted) {A'' : Forest}
     (hle : A'' ≤ rk.srcHeight) (hL : Scan.InL (rk.F.setHeight rk.a A''))
     (hlt : rk.tgtKey < relKey (rk.a.col.num 0) A'') :
     ({ rk with F := rk.F.setHeight rk.a A'', kind := rk.kind.toDesc } : SrcRecord).Admitted := by
-  sorry
+  obtain ⟨E, b, F, a, kind⟩ := rk
+  obtain ⟨hstd, hb, ha, -, htr, -, hk⟩ := h
+  dsimp only [SrcRecord.srcHeight] at hle hL hlt ha htr hk hb hstd ⊢
+  have hSB := Tree.setHeight_basic F a A'' ha
+  have hidem : ∀ X, (F.setHeight a A'').setHeight a X = F.setHeight a X := hSB.2.2.1
+  have hsrc : ((F.setHeight a A'').heightAt a).getD Tree.empty = A'' := by
+    simp [hSB.2.1]
+  refine ⟨hstd, hb, hSB.1, hL, hSB.2.2.2.2.1 htr, ?_, ?_⟩
+  · show _ < relKey _ (((F.setHeight a A'').heightAt a).getD Tree.empty)
+    rw [hsrc]; exact hlt
+  · cases kind with
+    | scan cap i j =>
+      obtain ⟨hA, hS, hF⟩ := hk
+      refine ⟨hA, hS, ?_, ?_⟩
+      · rw [hidem, ← heightAt_truncAfter_self_E1, ← hF]
+        exact setHeight_heightAt_self_E1 ha
+      · show ((F.setHeight a A'').heightAt a).getD Tree.empty ≤ _
+        rw [hsrc]
+        refine le_trans hle ?_
+        rw [hF, heightAt_truncAfter_self_E1]
+    | desc cap i j =>
+      obtain ⟨hA, hS, hF, hle'⟩ := hk
+      refine ⟨hA, hS, ?_, ?_⟩
+      · rw [hidem]; exact hF
+      · show ((F.setHeight a A'').heightAt a).getD Tree.empty ≤ _
+        rw [hsrc]; exact le_trans hle hle'
+    | repair ms =>
+      obtain ⟨hR, hm, hF⟩ := hk
+      refine ⟨hR, hm, ?_⟩
+      show (F.setHeight a A'').setHeight a _ = _
+      rw [hidem]; exact hF
 
 -- provides: U3, L4.3c (the internal cap already satisfies H, so repairs are outside `B`)
 theorem repair_moves_outside {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
@@ -3772,7 +3819,29 @@ theorem repair_output {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Na
 theorem repair_output_exists {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
     (hfd : rk.firstDiff = .capAt c k p) (w : Closure.AdmCap rk.E)
     (hw : w.col = c ∧ w.cut = k ∧ w.par = p) :
-    ∃ n Hk, 1 ≤ n ∧ expand w.H n = some Hk ∧ rk.E < Hk := by sorry
+    ∃ n Hk, 1 ≤ n ∧ expand w.H n = some Hk ∧ rk.E < Hk := by
+  have hstd : IsStd rk.E := h.1
+  have hL : Scan.InL rk.E := Closure.std_inL hstd
+  obtain ⟨c', hup', hH', -⟩ := Closure.applyMoves_litCap hL.2.2.1 w.upward w.movesValid
+  have hsd := Closure.stopData_litCap hup'
+  rw [← hH'] at hsd
+  obtain ⟨x, xs, hx⟩ := Scan.lastCol_of_stopData hsd
+  have hlast : w.H.cols.getLast? ≠ some [] := by
+    show (Closure.applyMoves _ _).cols.getLast? ≠ some []
+    rw [hx]; simp
+  obtain ⟨n, E', hn, -, hexp, hlt⟩ := Closure.cofinal_bound hstd w.inL (Closure.lt_admCap w) hlast
+  exact ⟨n, E', hn, hexp, hlt⟩
+
+/-- L4.3 helper: a height containing an entry has at least two more roles than that entry's
+height (its column role and its slot). -/
+theorem size_entry_E1 {B : Forest} {P : List (Nat × Nat)} {j i q : Nat} {J : Forest}
+    (he : B.entryAt ⟨⟨P, j⟩, i⟩ = some (q, J)) : J.size + 2 ≤ B.size := by
+  obtain ⟨pre, post, hroles, -, hord, -, -⟩ := Tree.roles_decomp P B j i q J he
+  have hpre : 1 ≤ pre.length := List.length_pos_of_mem hord
+  unfold Tree.size
+  rw [hroles]
+  simp only [List.length_append, List.length_cons, List.length_map]
+  omega
 
 -- provides: U3, L4.3 (the spine's `query_size_bound`†, (7); consumer: U5 L8.8 Case 3)
 theorem query_size_bound {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
@@ -3783,7 +3852,38 @@ theorem query_size_bound {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p :
     (∀ j < sd.Q.length,
       w.origin (.slot ⟨sd.col, j⟩) = some (.slot ⟨c, j⟩) ∧
       rk.b.heightPath <+: c.path ∧ (rk.E.heightAt ⟨c, j⟩) = (sd.Q[j]?).map Prod.snd) ∧
-    ∀ J ∈ sd.Q, J.2.size + 2 ≤ rk.tgtHeight.size := by sorry
+    ∀ J ∈ sd.Q, J.2.size + 2 ≤ rk.tgtHeight.size := by
+  obtain ⟨hbc, hcE, -⟩ := firstDiff_cap h hfd
+  have hL : Scan.InL rk.E := Closure.std_inL h.1
+  obtain ⟨-, -, hlen, -, hq⟩ := Closure.admCap_query hL w hsd
+  obtain ⟨hwc, hwk, -⟩ := hw
+  subst hwc hwk
+  obtain ⟨col, hcol⟩ : ∃ col, rk.E.colAt w.col = some col := by
+    have := (Tree.mem_colAddrs_iff _ _).mp hcE
+    exact Option.isSome_iff_exists.mp this
+  have hQ : ∀ j < sd.Q.length, sd.Q[j]? = col[j]? := by
+    intro j hj
+    rw [(hq j (by omega)).2, hcol, Option.getD_some]
+  refine ⟨hlen, fun j hj => ⟨(hq j (by omega)).1, hbc, ?_⟩, ?_⟩
+  · simp only [Tree.heightAt, Tree.entryAt, hcol, Option.bind_some, hQ j hj]
+  · intro J hJ
+    obtain ⟨j, hj, hJj⟩ := List.getElem_of_mem hJ
+    have hJ' : sd.Q[j]? = some J := by rw [List.getElem?_eq_getElem hj, hJj]
+    rw [hQ j hj] at hJ'
+    obtain ⟨ρ, hρ⟩ := hbc
+    obtain ⟨B, hB⟩ : ∃ B, rk.E.heightAt rk.b = some B := by
+      have := (Tree.mem_entryAddrs_iff _ _).mp h.2.1
+      obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp this
+      exact ⟨x.2, by simp [Tree.heightAt, hx]⟩
+    have hent : rk.E.entryAt ⟨w.col, j⟩ = some J := by
+      simp only [Tree.entryAt, hcol, Option.bind_some, hJ']
+    have hent' : B.entryAt ⟨⟨ρ, w.col.col⟩, j⟩ = some (J.1, J.2) := by
+      rw [← Tree.entryAt_under hB]
+      rw [show (⟨⟨rk.b.heightPath ++ ρ, w.col.col⟩, j⟩ : EntryAddr) = ⟨w.col, j⟩ by
+        rw [hρ]]
+      exact hent
+    have := size_entry_E1 hent'
+    simpa [SrcRecord.tgtHeight, hB] using this
 
 -- provides: U3, L4.3 (the spine's `reduce_childEnds`†; consumer: U5 L8.8 Case 2)
 theorem reduce_childEnds {rk : SrcRecord} (h : rk.Admitted) {π : List (Nat × Nat)}
