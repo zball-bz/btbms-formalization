@@ -8,176 +8,8 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "36b3cd34cf7ef3a1bccfe79d72972317a07470a3a5ee32cd72756962d3abcd55",
+ "fingerprint": "f76a944d7990c3cfd065c79cf67e66d2085ea3afa0592b9e6d0a5b82570fc76c",
  "decls": [
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condAK_iff_b"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condH_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condS_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.inL_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.path_iff_pathb"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.head_path"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.head_path_rev"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.factorization_noB"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.graph_deletion"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.graph_prefix"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.readmit_height"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.readmit_repair"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.targetAbove_blockAbove"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.sigma_lt"
-  },
   {
    "axioms": [
     "Classical.choice",
@@ -1816,72 +1648,6 @@
    "kind": "def",
    "module": "BTBMS.Plan.U1",
    "name": "BTBMS.Scan.RevPred"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condAKb"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condHb"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condSb"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.inLb"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.pathAux"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.pathb"
   },
   {
    "axioms": [
@@ -3565,17 +3331,6 @@
    "kind": "def",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.setupPreRoot"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U5",
-   "name": "BTBMS.Descent.sigma"
   },
   {
    "axioms": [
@@ -27142,17 +26897,6 @@
   {
    "axioms": [
     "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.isStd_of_mem_stdUpTo"
-  },
-  {
-   "axioms": [
-    "Quot.sound",
     "propext"
    ],
    "direct_sorry": false,
@@ -27279,16 +27023,6 @@
    "kind": "def",
    "module": "BTBMS.Plan.Spine",
    "name": "BTBMS.Hier.Prims.noConfusionType"
-  },
-  {
-   "axioms": [
-    "Quot.sound",
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.stdUpTo"
   },
   {
    "axioms": [
@@ -34206,26 +33940,6 @@
   },
   {
    "axioms": [
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condI_iff"
-  },
-  {
-   "axioms": [
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condV_iff"
-  },
-  {
-   "axioms": [
     "propext"
    ],
    "direct_sorry": false,
@@ -34933,34 +34647,7 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condIb"
-  },
-  {
-   "axioms": [
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.condVb"
-  },
-  {
-   "axioms": [
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
    "name": "BTBMS.Scan.cutStart"
-  },
-  {
-   "axioms": [
-    "propext"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U1",
-   "name": "BTBMS.Scan.isOwnerReturnb"
   },
   {
    "axioms": [
@@ -42611,6 +42298,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T19:19:10+00:00",
- "head": "5eb7d06"
+ "generated": "2026-10-27T19:27:14+00:00",
+ "head": "8d1e6b4"
 }

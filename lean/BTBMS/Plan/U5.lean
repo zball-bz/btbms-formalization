@@ -6897,16 +6897,6 @@ theorem acc_of_conf {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf
       obtain ⟨θ', hlt, hconf'⟩ := h.descent A A' n θ hA hne hconf hex hne'
       exact ih θ' hlt A' (IsStd.expand n hA hex) hne' hconf' C hCA'
 
-/-- R9.2: the ordinal interpretation `σ(∅) = 0`, `σ(E) = min {max α + 1 : α ⊨ Γ(E)}`. -/
-noncomputable def sigma (P : Prims.{u}) (E : Forest) : Ordinal.{u} :=
-  if E = Tree.empty then 0 else sInf {o | ∃ θ, Configured P E θ ∧ o = θ + 1}
-
-/-- R9.2: `σ(E[k]) < σ(E)` for nonempty standard `E`, also when `E[k]` is empty. -/
-theorem sigma_lt {P : Prims.{u}} (hD : StrictDescent P) {E E' : Forest} {k : Nat}
-    (hE : IsStd E) (hne : E ≠ Tree.empty) (hC : ∃ θ, Configured P E θ)
-    (h : expand E k = some E') : sigma P E' < sigma P E := by
-  sorry
-
 /-! ## section Stubs (declarations owned by other units; see "Requires") -/
 
 -- All former stubs (`Descent.Req`) are provided by their owner units at integration; see

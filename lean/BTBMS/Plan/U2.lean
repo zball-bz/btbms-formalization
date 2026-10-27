@@ -15639,37 +15639,6 @@ theorem condP_ord {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
   have h4 : (B.heightAt e0').getD Tree.empty = y0.2 := by simp [Tree.heightAt, hy0]
   rw [h3, h4]; exact this
 
--- T3.2q (txt:390-394, 524-530): read on the stack of a phase-`φ` copy `c` of `a`, a
--- `g_{κ_φ W}` path from a vertex `x ≥ s_φ` to an endpoint `y < r` is the copy of an old `g_W`
--- path from `x − φd` (from `r` when `x = s_φ`): low heads detour through the previous phase,
--- high heads return the old root response at `W` (all root keys are `κ`-fixed)
-theorem head_path {A B : Forest} {sd : StopData} {rd : RootData} {n j : Nat} (hL : InL A)
-    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
-    (hB : expand A n = some B) (hj : 1 ≤ j ∧ j ≤ n) {a c : ColAddr}
-    (ha : IsTmplCol A sd rd a) (hc : phaseCol sd rd j a = some c)
-    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) {x y : Nat} (hy : y < sd.r)
-    (hx : sd.r + phaseOff sd j a * period sd ≤ x)
-    (hpath : Path B (actualKeys B) c
-      (W.map (WithTop.map (kappa sd.r (period sd) (phaseOff sd j a)))) x y) :
-    Path A (actualKeys A) a W
-      (if x = sd.r + phaseOff sd j a * period sd then sd.r else x - phaseOff sd j a * period sd) y := by
-  sorry
-
--- T3.2q: the converse transfer, old path to new path (used by T3.2r).
--- VERIFY-U2 (F4): the new path is read in the decorated system of `B` (route last keys `⊤`).
--- With actual keys of `B` the statement is false: a continuation last key of a head is smaller
--- than the old root key and can be consumed (bounded test: 176 failures on own cut queries).
-theorem head_path_rev {A B : Forest} {sd : StopData} {rd : RootData} {n j : Nat} (hL : InL A)
-    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
-    (hB : expand A n = some B) (hj : 1 ≤ j ∧ j ≤ n) {a c : ColAddr}
-    (ha : IsTmplCol A sd rd a) (hc : phaseCol sd rd j a = some c)
-    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) {x0 y : Nat} (hy : y < sd.r)
-    (hx0 : sd.r ≤ x0) (hpath : Path A (actualKeys A) a W x0 y) :
-    Path B (capKeys B (routeCols B)) c
-      (W.map (WithTop.map (kappa sd.r (period sd) (phaseOff sd j a))))
-      (if x0 = sd.r then sd.r + phaseOff sd j a * period sd else x0 + phaseOff sd j a * period sd) y := by
-  sorry
-
 /-! ### T3.2r helpers (branch G3): the phase-copy machinery of G-009 and G-010, restated
 
 The G-009/G-010 lemmas (`phase_stack_F7`, `respEdge_phase_D7`, `respEdge_head_high_D7`,

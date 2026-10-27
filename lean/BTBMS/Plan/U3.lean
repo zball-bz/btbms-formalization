@@ -1472,21 +1472,6 @@ theorem owned_reads {H : Forest} {rs : RoleSets} (hL : Scan.InL H)
       · exact hxA
     exact hD v hvA (hprop ha hxc v hv)
 
--- provides: U3, L6.2b (deletion step)
-theorem graph_deletion {E E' : Forest} {n : Nat} (h : Scan.stepKind E = some .deletion)
-    (hexp : expand E n = some E') :
-    E'.roles = E.roles.dropLast ∧ ∀ a, a ∈ graph E' ↔ a ∈ restrictTo (graph E) E'.roles := by sorry
-
--- provides: U3, L6.2d (the spine's `graph_prefix`†: the prefix before any old pre-stop role is
--- unchanged in `H[n]`; used by U5 with `ι = id`)
-theorem graph_prefix {H H' : Forest} {n : Nat} {rs : RoleSets}
-    (hH : H ≠ Tree.empty) (hV : Scan.CondV H) (hI : Scan.CondI H)
-    (hk : Scan.stepKind H = some .ordinary) (hrs : roleSets H = some rs)
-    (hexp : expand H n = some H') {x : Role} (hx : x ∈ rs.P) :
-    rolesBefore H' x = rolesBefore H x ∧
-    ∀ a, a ∈ restrictTo (graph H') (rolesBefore H x) ↔ a ∈ restrictTo (graph H) (rolesBefore H x) :=
-  by sorry
-
 /-! ## D6.1b  Graph transport along the surviving-role map of an anchor -/
 
 /-- D6.1b: roles of `E` that are origins of roles of the anchor. -/
@@ -10643,22 +10628,6 @@ theorem factorization {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
   have hb := h2 w hw (by simp only [hn]; rfl)
   exact ⟨lt_of_le_of_lt hLs hb, fun x hx => (hlowLs _ (List.mem_map_of_mem hx)).trans hb⟩
 
--- provides: U3, L7.3b (the converse direction: a target block gives a realization of the
--- positive block above the floor)
-theorem targetAbove_blockAbove {P : Prims.{u}} (pk : SourcePacket.{u}) {L : Ordinal.{u}}
-    (h : pk.TargetAbove P L) :
-    BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel)
-      (fun w => (pk.tgtFrame.toFr w).map pk.asg) L (pk.asg pk.owner) := by sorry
-
--- provides: U3, L7.3a ((23): the failure label in the grammar; consumer: U5 L8.8)
-theorem factorization_noB {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
-    (ha : pk.rk.a ∈ pk.rk.F.entryAddrs) {L : Ordinal.{u}} (hL : L < pk.asg pk.owner)
-    (hfail : ¬ pk.TargetAbove P L) (ℓ : Name) (hℓ : ℓ ≠ pk.owner)
-    (hℓf : ℓ ∉ (baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel)).filterMap pk.tgtFrame.toFr) :
-    ∃ Ls, L ≤ Ls ∧ Ls < pk.asg pk.owner ∧ (∀ x ∈ pk.lowNames, pk.asg x < Ls) ∧
-      (noB pk.rk.tgtKey pk.rk.tgtSel pk.tgtFrame pk.owner ℓ).Holds P
-        (Function.update pk.asg ℓ Ls) := by sorry
-
 /-! ## L7.4  Joint cap -/
 
 /-- L7.4: the chart `κ` of the first-difference cap: the target prefix chart before `U_b`, and the
@@ -11983,23 +11952,6 @@ noncomputable def readmitHeight (pk : SourcePacket.{u}) (F' : Forest) (kind' : R
       | .role t x => if t = tg then δ x else pk.asg nm
       | .aux _ => pk.asg nm }
 
--- provides: U3, L7.5b (closure of the packet class under §8.5 Case 2; consumer: U5 L8.8)
-theorem readmit_height {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
-    (hv : pk.Valid P) {A'' : Forest} (kind' : RecKind pk.rk.E)
-    (hadm' : ({ pk.rk with F := pk.rk.F.setHeight pk.rk.a A'', kind := kind' } : SrcRecord).Admitted)
-    (δ : Role → Ordinal.{u})
-    (hgraph : BaseHolds P (graph (pk.rk.F.setHeight pk.rk.a A''))
-      (fun x => if x ∈ prefixRoles pk.rk.F pk.rk.a then pk.asg (pk.srcChart x) else δ x))
-    (hheads : ∃ o v, pk.tgtFrame.reps[pk.rk.tgtSel]? = some (o, v) ∧
-      P.Edge (δ (.slot pk.rk.a)) (pk.asg pk.host) (pk.asg o) ∧
-      P.Edge (δ (.slot pk.rk.a)) (pk.asg pk.host) (pk.asg v))
-    (hlow : ∀ x ∈ pk.lowNames, pk.asg x < δ (.slot pk.rk.a)) :
-    let pk' := readmitHeight pk (pk.rk.F.setHeight pk.rk.a A'') kind' δ
-    pk'.rk.Admitted ∧ pk'.Valid P ∧ pk'.asg pk'.owner = δ (.slot pk.rk.a) ∧
-    pk'.host = pk.host ∧ pk'.tgtFrame = pk.tgtFrame ∧ pk'.lowNames = pk.lowNames ∧
-    (∀ x ∈ pk.lowNames, pk'.asg x = pk.asg x) ∧ pk'.rk.tgtKey = pk.rk.tgtKey ∧
-    pk'.rk.tgtSel = pk.rk.tgtSel := by sorry
-
 /-- L7.5c: readmission after the repaired-cap descent (§8.5 Case 3): a repair record for the
 original target; the source prefix is the surviving restriction of the target prefix (names
 `tgtChart ∘ capRole`); the marked slot and height of the output get fresh names with values `γ`;
@@ -12016,28 +11968,6 @@ noncomputable def readmitRepair (pk : SourcePacket.{u}) (w : Closure.AdmCap pk.r
     asg := fun nm => match nm with
       | .role t x => if t = tg then γ x else b' nm
       | .aux _ => b' nm }
-
--- provides: U3, L7.5c (closure of the packet class under §8.5 Case 3; consumer: U5 L8.8)
-theorem readmit_repair {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
-    (hv : pk.Valid P) {c : ColAddr} {k p : Nat} (hfd : pk.rk.firstDiff = .capAt c k p)
-    (w : Closure.AdmCap pk.rk.E) (hw : w.col = c ∧ w.cut = k ∧ w.par = p)
-    {n : Nat} {Hk : Forest} (hexp : expand w.H n = some Hk) (habove : pk.rk.E < Hk)
-    (γ : Role → Ordinal.{u}) (b' : Name → Ordinal.{u})
-    (hsrc : BaseHolds P (graph (Hk.truncAfter (Closure.moveAddr w.moves pk.rk.b))) γ)
-    (hshare : ∀ x ∈ prefixRoles w.H (Closure.moveAddr w.moves pk.rk.b),
-      γ x = b' (pk.tgtChart (capRole w x)))
-    (htgt : BaseHolds P ((prefixGraph pk.rk.E pk.rk.b).map (BaseAtom.map pk.tgtChart)) b')
-    (haux : pk.aux.Holds P b')
-    (hheads : ∃ o v, pk.tgtFrame.reps[pk.rk.tgtSel]? = some (o, v) ∧
-      P.Edge (γ (.slot (Closure.moveAddr w.moves pk.rk.b))) (b' pk.host) (b' o) ∧
-      P.Edge (γ (.slot (Closure.moveAddr w.moves pk.rk.b))) (b' pk.host) (b' v))
-    (hlow : ∀ x ∈ pk.lowNames, b' x < γ (.slot (Closure.moveAddr w.moves pk.rk.b))) :
-    let bm := Closure.moveAddr w.moves pk.rk.b
-    let pk' := readmitRepair pk w Hk γ b'
-    pk'.rk.Admitted ∧ pk'.Valid P ∧ pk'.asg pk'.owner = γ (.slot bm) ∧ pk'.host = pk.host ∧
-    pk'.tgtFrame = pk.tgtFrame ∧ (∀ x ∈ pk.lowNames, pk'.asg x = b' x) ∧
-    pk'.rk.tgtKey = pk.rk.tgtKey ∧ pk'.rk.tgtSel = pk.rk.tgtSel ∧ pk'.rk.E = pk.rk.E ∧
-    pk'.rk.b = pk.rk.b := by sorry
 
 -- SCR2 applied at integration: the bridge holds by `rfl`
 theorem ScanSetup.valid_iff_def (S : ScanSetup.{u}) (P : Prims.{u}) :

@@ -72,7 +72,19 @@
     "L6.6",
     "L6.6a",
     "N4.2"
-   ]
+   ],
+   "cleanup": {
+    "reason": "Removed in the 2026-10-28 cleanup: off the main theorem dependency path (test mirrors, T3.2q, alternative readmission, unused graph lemmas, R9.2)",
+    "ids": [
+     "N1.1",
+     "T3.2q",
+     "L6.2b",
+     "L6.2d",
+     "L7.3b",
+     "L7.3a",
+     "R9.2"
+    ]
+   }
   }
  },
  "tasks": [
@@ -1650,44 +1662,6 @@
    ]
   },
   {
-   "id": "N1.1",
-   "unit": "U1",
-   "kind": "def",
-   "loc": "new",
-   "title": "Decidable mirrors and test generators",
-   "fidelity": "new",
-   "difficulty": "M",
-   "uses": [
-    "D1.3",
-    "D2.2",
-    "D2.2a",
-    "D2.3"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Scan.condVb",
-    "BTBMS.Scan.condIb",
-    "BTBMS.Scan.condHb",
-    "BTBMS.Scan.pathAux",
-    "BTBMS.Scan.pathb",
-    "BTBMS.Scan.condAKb",
-    "BTBMS.Scan.isOwnerReturnb",
-    "BTBMS.Scan.condSb",
-    "BTBMS.Scan.inLb",
-    "BTBMS.Scan.condV_iff",
-    "BTBMS.Scan.condI_iff",
-    "BTBMS.Scan.condH_iff",
-    "BTBMS.Scan.path_iff_pathb",
-    "BTBMS.Scan.condAK_iff_b",
-    "BTBMS.Scan.condS_iff",
-    "BTBMS.Scan.inL_iff",
-    "BTBMS.Scan.stdUpTo",
-    "BTBMS.Scan.isStd_of_mem_stdUpTo"
-   ]
-  },
-  {
    "id": "D1.2e",
    "unit": "U1",
    "kind": "def",
@@ -2885,33 +2859,6 @@
    ]
   },
   {
-   "id": "T3.2q",
-   "unit": "U2",
-   "kind": "theorem",
-   "loc": "txt:390-394",
-   "title": "Paths through heads",
-   "fidelity": "as-paper",
-   "difficulty": "L",
-   "uses": [
-    "L2.1",
-    "L2.2",
-    "L2.5",
-    "T3.2h",
-    "T3.2i",
-    "T3.2p"
-   ],
-   "testable": true,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Closure.head_path",
-    "BTBMS.Closure.head_path_rev"
-   ],
-   "notes": [
-    "OP-U2-2 (major): decorated variant must restrict the query (74 failures for arbitrary W)"
-   ]
-  },
-  {
    "id": "T3.2r",
    "unit": "U2",
    "kind": "theorem",
@@ -2925,8 +2872,7 @@
     "T3.2i",
     "T3.2k",
     "T3.2n",
-    "T3.2p",
-    "T3.2q"
+    "T3.2p"
    ],
    "testable": true,
    "gaps": [],
@@ -3543,7 +3489,6 @@
    "difficulty": "M",
    "uses": [
     "T3.2i",
-    "T3.2q",
     "T3.8li"
    ],
    "testable": true,
@@ -3610,8 +3555,7 @@
    "difficulty": "M",
    "uses": [
     "L2.3",
-    "T3.2p",
-    "T3.2q"
+    "T3.2p"
    ],
    "testable": true,
    "gaps": [],
@@ -3698,7 +3642,6 @@
     "T3.2e",
     "T3.2h",
     "T3.2i",
-    "T3.2q",
     "T3.8ln"
    ],
    "testable": true,
@@ -3825,7 +3768,6 @@
    "fidelity": "as-paper",
    "difficulty": "L",
    "uses": [
-    "T3.2q",
     "T3.8lm",
     "T3.8ln"
    ],
@@ -4077,8 +4019,7 @@
    "fidelity": "as-paper",
    "difficulty": "S",
    "uses": [
-    "L6.2",
-    "L6.2d"
+    "L6.2"
    ],
    "testable": true,
    "gaps": [],
@@ -4163,25 +4104,6 @@
    ]
   },
   {
-   "id": "L6.2b",
-   "unit": "U3",
-   "kind": "lemma",
-   "loc": "txt:96-97",
-   "title": "Graph of a deletion step",
-   "fidelity": "new",
-   "difficulty": "S",
-   "uses": [
-    "D1.6a",
-    "D6.1a"
-   ],
-   "testable": true,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Packet.graph_deletion"
-   ]
-  },
-  {
    "id": "L6.2c",
    "unit": "U3",
    "kind": "lemma",
@@ -4203,25 +4125,6 @@
     "BTBMS.Packet.specialRoles",
     "BTBMS.Packet.specialCopy",
     "BTBMS.Packet.graph_special"
-   ]
-  },
-  {
-   "id": "L6.2d",
-   "unit": "U3",
-   "kind": "lemma",
-   "loc": "txt:965-966",
-   "title": "Pre-stop prefixes are unchanged (`graph_prefix`)",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "D6.1a",
-    "L6.2"
-   ],
-   "testable": true,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Packet.graph_prefix"
    ]
   },
   {
@@ -4859,43 +4762,6 @@
    ]
   },
   {
-   "id": "L7.3b",
-   "unit": "U3",
-   "kind": "lemma",
-   "loc": "txt:1079-1080",
-   "title": "Target blocks are block realizations",
-   "fidelity": "new",
-   "difficulty": "S",
-   "uses": [
-    "D7.2a"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Packet.targetAbove_blockAbove"
-   ]
-  },
-  {
-   "id": "L7.3a",
-   "unit": "U3",
-   "kind": "lemma",
-   "loc": "txt:1079-1081",
-   "title": "The failure label at the raised floor, (23)",
-   "fidelity": "simplified",
-   "difficulty": "S",
-   "uses": [
-    "L7.3",
-    "N3.1"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {},
-   "lean_decls": [
-    "BTBMS.Packet.factorization_noB"
-   ]
-  },
-  {
    "id": "L7.4",
    "unit": "U3",
    "kind": "lemma",
@@ -4994,8 +4860,7 @@
    "gaps": [],
    "review": {},
    "lean_decls": [
-    "BTBMS.Packet.readmitHeight",
-    "BTBMS.Packet.readmit_height"
+    "BTBMS.Packet.readmitHeight"
    ],
    "notes": [
     "I-5: readmission duplicated by U5 L8.8c; keep one side"
@@ -5014,7 +4879,6 @@
     "D6.1a",
     "D7.2c",
     "L4.3",
-    "L6.2d",
     "L7.5a",
     "N3.1"
    ],
@@ -5022,8 +4886,7 @@
    "gaps": [],
    "review": {},
    "lean_decls": [
-    "BTBMS.Packet.readmitRepair",
-    "BTBMS.Packet.readmit_repair"
+    "BTBMS.Packet.readmitRepair"
    ],
    "notes": [
     "I-5: readmission duplicated by U5 L8.8f; keep one side"
@@ -6905,28 +6768,6 @@
    "review": {},
    "lean_decls": [
     "BTBMS.Descent.finalHyps"
-   ]
-  },
-  {
-   "id": "R9.2",
-   "unit": "U5",
-   "kind": "remark",
-   "loc": "§9 txt:1505-1512",
-   "title": "Ordinal interpretation σ",
-   "fidelity": "as-paper",
-   "difficulty": "S",
-   "uses": [
-    "T9.1"
-   ],
-   "testable": false,
-   "gaps": [],
-   "review": {
-    "claude": "sound",
-    "codex": "sound"
-   },
-   "lean_decls": [
-    "BTBMS.Descent.sigma",
-    "BTBMS.Descent.sigma_lt"
    ]
   },
   {
