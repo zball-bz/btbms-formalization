@@ -4367,8 +4367,223 @@ theorem anchorOrigin_prefix {E : Forest} {cap : Option (AdmCap E)} (hE : InL (an
     ∀ x ∈ Packet.rolesBefore (anchor E cap) (.ord sd.col),
       ∃ y, anchorOrigin E cap x = some y ∧ y ∈ Packet.rolesBefore E T' ∧ y ∈ E.roles := by sorry
 
+/-! ### D3.1d helpers: legal moves raise the expression -/
+
+theorem cmpCols_append_same {α : Type} (c : α → α → Ordering) [Std.ReflCmp c] :
+    ∀ (P A B : List (List (α × Tree α))), Tree.cmpCols c (P ++ A) (P ++ B) = Tree.cmpCols c A B
+  | [], A, B => rfl
+  | x :: P, A, B => by
+    simp only [List.cons_append, Tree.cmpCols, Tree.cmpCol_self, Ordering.eq_then]
+    exact cmpCols_append_same c P A B
+
+theorem modify_split {α : Type} {l : List α} {n : Nat} {x : α} (h : l[n]? = some x) (f : α → α) :
+    l = l.take n ++ x :: l.drop (n + 1) ∧ l.modify n f = l.take n ++ f x :: l.drop (n + 1) := by
+  have hn : n < l.length := (List.getElem?_eq_some_iff.1 h).1
+  have hx : l[n] = x := (List.getElem?_eq_some_iff.1 h).2
+  constructor
+  · conv_lhs => rw [← List.take_append_drop n l, List.drop_eq_getElem_cons hn, hx]
+  · rw [List.modify_eq_take_drop, List.drop_eq_getElem_cons hn, hx]; rfl
+
+/-- helper: a legal move strictly raises the expression. -/
+theorem cmp_modifyColAux_lt (f : Column → Column) (cc : Nat) :
+    ∀ (P : List (Nat × Nat)) (K : Forest) (col : Column), K.colAt ⟨P, cc⟩ = some col →
+      Tree.cmpCol compare col (f col) = .lt →
+      Tree.cmp compare K (modifyColAux f P cc K) = .lt
+  | [], .node cols, col, hcol, hlt => by
+    rw [colAt_node_nil] at hcol
+    obtain ⟨h1, h2⟩ := modify_split hcol f
+    simp only [modifyColAux, Tree.cmp]
+    rw [h2]
+    generalize cols.take cc = T at h1 ⊢
+    generalize cols.drop (cc + 1) = D at h1 ⊢
+    subst h1
+    rw [cmpCols_append_same, Tree.cmpCols, hlt]; rfl
+  | (a, b) :: P, .node cols, col, hcol, hlt => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    have ih := cmp_modifyColAux_lt f cc P H col hcolx hlt
+    simp only [modifyColAux, Tree.cmp]
+    obtain ⟨h1, h2⟩ := modify_split hc
+      (fun col => col.modify b fun x => (x.1, modifyColAux f P cc x.2))
+    rw [h2]
+    generalize cols.take a = T at h1 ⊢
+    generalize cols.drop (a + 1) = D at h1 ⊢
+    subst h1
+    rw [cmpCols_append_same, Tree.cmpCols]
+    obtain ⟨h3, h4⟩ := modify_split hx' (fun x => (x.1, modifyColAux f P cc x.2))
+    rw [h4]
+    generalize colc.take b = T' at h3 ⊢
+    generalize colc.drop (b + 1) = D' at h3 ⊢
+    subst h3
+    rw [cmpCol_append_same, Tree.cmpCol]
+    simp only [Std.ReflCmp.compare_self, Ordering.eq_then]
+    rw [show Tree.cmp compare H (modifyColAux f P cc H) = .lt from ih]; rfl
+
+theorem lt_applyMove {K : Forest} {m : Move} (hm : MoveOK K m) : K < applyMove K m := by
+  obtain ⟨col, sd, hcol, -, hj, hij, -, hpar, hlt, -⟩ := hm
+  have hj' : m.j < col.length := by omega
+  rw [applyMove_eq_mod hcol hij hj', Forest.lt_iff_cmp]
+  apply cmp_modifyColAux_lt _ _ _ _ col hcol
+  -- compare the column with its moved version at index `i`
+  have hi : col[m.i]? = some (col.getD m.i (0, Tree.empty)) := by
+    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]; rfl
+  have hjx : col[m.j]? = some (col.getD m.j (0, Tree.empty)) := by
+    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]; rfl
+  have hc1 : col = col.take m.i ++ col.getD m.i (0, Tree.empty) :: col.drop (m.i + 1) :=
+    (modify_split hi id).1
+  have hc2 : moveFun m col = col.take m.i ++ col.getD m.j (0, Tree.empty) :: col.drop (m.j + 1) := by
+    simp only [moveFun]
+    rw [List.drop_eq_getElem_cons hj', (List.getElem?_eq_some_iff.1 hjx).2]
+  rw [hc2]
+  have hp := hpar m.i le_rfl hij.le
+  generalize col.getD m.i (0, Tree.empty) = x1 at hc1 hp hlt
+  generalize col.getD m.j (0, Tree.empty) = x2 at hp hlt ⊢
+  generalize col.take m.i = T at hc1 ⊢
+  generalize col.drop (m.j + 1) = D
+  generalize col.drop (m.i + 1) = D0 at hc1
+  subst hc1
+  rw [cmpCol_append_same]
+  obtain ⟨p1, H1⟩ := x1
+  obtain ⟨p2, H2⟩ := x2
+  simp only at hp hlt
+  subst hp
+  simp only [Tree.cmpCol, Std.ReflCmp.compare_self, Ordering.eq_then]
+  rw [show Tree.cmp compare H1 H2 = .lt from hlt]; rfl
+
+theorem le_applyMoves {K : Forest} : ∀ {ms : List Move}, MovesValid K ms → K ≤ applyMoves K ms := by
+  intro ms
+  induction ms using List.reverseRecOn with
+  | nil => intro _; exact le_rfl
+  | append_singleton ms m ih =>
+    intro h
+    obtain ⟨hv, hm⟩ := movesValid_append h
+    rw [applyMoves_snoc]
+    exact le_trans (ih hv) (le_of_lt (lt_applyMove hm))
+
 -- provides: U2, D3.1d (requested by U5 R17): an admissible upward cap lies strictly above `E`.
-theorem lt_admCap {E : Forest} (w : AdmCap E) : E < w.H := by sorry
+theorem lt_admCap {E : Forest} (w : AdmCap E) : E < w.H :=
+  lt_of_lt_of_le (lt_litCap w.upward) (le_applyMoves w.movesValid)
+
+
+/-! ### D3.1e helpers: roles of a literal cap -/
+
+theorem rolesCols_append {α : Type} (π : List (Nat × Nat)) :
+    ∀ (c : Nat) (l₁ l₂ : List (List (α × Tree α))),
+      Tree.rolesCols π c (l₁ ++ l₂) = Tree.rolesCols π c l₁ ++ Tree.rolesCols π (c + l₁.length) l₂
+  | c, [], l₂ => by simp [Tree.rolesCols]
+  | c, x :: l₁, l₂ => by
+    rw [List.length_cons, show c + (l₁.length + 1) = c + 1 + l₁.length by omega]
+    simp only [List.cons_append, Tree.rolesCols, rolesCols_append π (c + 1) l₁ l₂,
+      List.append_assoc, List.cons_append]
+
+theorem rolesCol_append {α : Type} (π : List (Nat × Nat)) (c : Nat) :
+    ∀ (i : Nat) (l₁ l₂ : List (α × Tree α)),
+      Tree.rolesCol π c i (l₁ ++ l₂) = Tree.rolesCol π c i l₁ ++ Tree.rolesCol π c (i + l₁.length) l₂
+  | i, [], l₂ => by simp [Tree.rolesCol]
+  | i, (x, h) :: l₁, l₂ => by
+    rw [List.length_cons, show i + (l₁.length + 1) = i + 1 + l₁.length by omega]
+    simp only [List.cons_append, Tree.rolesCol, rolesCol_append π c (i + 1) l₁ l₂,
+      List.append_assoc, List.cons_append]
+
+theorem rolesF_empty {α : Type} (π : List (Nat × Nat)) : Tree.rolesF π (Tree.empty : Tree α) = [] := by
+  simp [Tree.empty, Tree.rolesF, Tree.rolesCols]
+
+theorem roles_litCapAux (k p : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (F : Forest) (col : Column) (π : List (Nat × Nat)),
+      F.colAt ⟨ρ, j⟩ = some col → k ≤ col.length →
+      ∃ n, n ≤ (Tree.rolesF π F).length ∧
+        Tree.rolesF π (litCapAux k p ρ j F) = (Tree.rolesF π F).take n ++ [.slot ⟨⟨π ++ ρ, j⟩, k⟩]
+  | [], j, .node cols, col, π, hcol, hk => by
+    rw [colAt_node_nil] at hcol
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    obtain ⟨h1, -⟩ := modify_split hcol id
+    have hl : (cols.take j).length = j := List.length_take_of_le hj.le
+    have hkl : (col.take k).length = k := List.length_take_of_le hk
+    have hKr : Tree.rolesF π (litCapAux k p [] j (.node cols)) =
+        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
+          (Tree.rolesCol π j 0 (col.take k) ++ [Role.slot ⟨⟨π, j⟩, k⟩]) := by
+      rw [litCapAux_nil, List.getD_eq_getElem?_getD, hcol, Option.getD_some]
+      simp only [Tree.rolesF]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols, List.append_nil]
+      rw [rolesCol_append, Nat.zero_add, hkl]
+      simp [Tree.rolesCol, rolesF_empty]
+    have hEr : Tree.rolesF π (.node cols) =
+        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
+          (Tree.rolesCol π j 0 (col.take k) ++ (Tree.rolesCol π j k (col.drop k) ++
+            Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) := by
+      simp only [Tree.rolesF]
+      conv_lhs => rw [h1]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols]
+      conv_lhs => rw [← List.take_append_drop k col]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hkl, List.append_assoc]
+    rw [hKr, hEr]
+    set A := Tree.rolesCols π 0 (cols.take j)
+    set B := Tree.rolesCol π j 0 (col.take k)
+    refine ⟨A.length + 1 + B.length, by simp; omega, ?_⟩
+    rw [show A.length + 1 + B.length = (A ++ Role.ord ⟨π, j⟩ :: B).length by simp; omega]
+    rw [show A ++ Role.ord ⟨π, j⟩ :: (B ++ (Tree.rolesCol π j k (col.drop k) ++
+        Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) = (A ++ Role.ord ⟨π, j⟩ :: B) ++
+        (Tree.rolesCol π j k (col.drop k) ++ Tree.rolesCols π (j + 1) (cols.drop (j + 1))) by simp,
+      List.take_left]
+    simp
+  | (ci, ei) :: ρ, j, .node cols, col, π, hcol, hk => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+    have hei : ei < colc.length := (List.getElem?_eq_some_iff.1 hx').1
+    have hget : (cols.getD ci [])[ei]? = some (q, H) := by
+      rw [List.getD_eq_getElem?_getD, hc, Option.getD_some]; exact hx'
+    obtain ⟨n', hn', hih⟩ := roles_litCapAux k p ρ j H col (π ++ [(ci, ei)]) hcolx hk
+    obtain ⟨h1, -⟩ := modify_split hc id
+    obtain ⟨h3, -⟩ := modify_split hx' id
+    have hl : (cols.take ci).length = ci := List.length_take_of_le hci.le
+    have hl' : (colc.take ei).length = ei := List.length_take_of_le hei.le
+    have hKr : Tree.rolesF π (litCapAux k p ((ci, ei) :: ρ) j (.node cols)) =
+        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
+          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
+            ((Tree.rolesF (π ++ [(ci, ei)]) H).take n' ++
+              [Role.slot ⟨⟨π ++ [(ci, ei)] ++ ρ, j⟩, k⟩])) := by
+      rw [litCapAux_cons k p ci ei j ρ cols hget, List.getD_eq_getElem?_getD, hc, Option.getD_some]
+      simp only [Tree.rolesF]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols, List.append_nil]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_nil]
+      rw [hih]
+    have hEr : Tree.rolesF π (.node cols) =
+        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
+          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
+            (Tree.rolesF (π ++ [(ci, ei)]) H ++ (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++
+              Tree.rolesCols π (ci + 1) (cols.drop (ci + 1))))) := by
+      simp only [Tree.rolesF]
+      conv_lhs => rw [h1]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols]
+      conv_lhs => rw [h3]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_assoc, List.cons_append]
+    rw [hKr, hEr]
+    set A := Tree.rolesCols π 0 (cols.take ci)
+    set B := Tree.rolesCol π ci 0 (colc.take ei)
+    set R := Tree.rolesF (π ++ [(ci, ei)]) H
+    refine ⟨(A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩])).length + n', by
+      simp only [List.length_append, List.length_cons, List.length_singleton, List.length_nil]; omega, ?_⟩
+    have e1 : ∀ (X T : List Role), (X ++ (R ++ T)).take (X.length + n') = X ++ R.take n' := by
+      intro X T
+      rw [List.take_append, List.take_of_length_le (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
+        List.take_append_of_le_length hn']
+    have e2 := e1 (A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩]))
+      (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++ Tree.rolesCols π (ci + 1) (cols.drop (ci + 1)))
+    simp only [List.append_assoc, List.cons_append, List.singleton_append, List.nil_append] at e2 ⊢
+    rw [e2]
+    simp
 
 -- provides: U2, D3.1e (requested by U3 R11): roles and stopping data of a literal cap.
 theorem litCap_spec {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
@@ -4380,7 +4595,34 @@ theorem litCap_spec {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddr
     K.entryAt ⟨c, k⟩ = some (p, Tree.empty) ∧
     (c.path ≠ [] → CondI E → CondV K →
       ∃ sd, stopData K = some sd ∧ sd.col = c ∧ sd.r = p ∧
-        sd.Q = ((E.colAt c).getD []).take k) := by sorry
+        sd.Q = ((E.colAt c).getD []).take k) := by
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff E c).1 hc)
+  have hk' : k ≤ col.length := by simpa [parents, hcol] using hk
+  intro K
+  refine ⟨?_, ?_, ?_, entryAt_litCap_closing hcol hk' p, ?_⟩
+  · obtain ⟨n, -, h⟩ := roles_litCapAux k p c.path c.col E col [] hcol hk'
+    refine ⟨n, ?_⟩
+    show Tree.rolesF [] (litCap E c k p) = _
+    rw [litCap_eq_aux hcol, h]; rfl
+  · intro e he hne
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 he)
+    rcases entryAt_litCap_cases hcol hk' hx with h | ⟨ρ, hρ⟩ | h
+    · exact absurd h hne
+    · obtain ⟨q, J, hE⟩ := heightAt_of_prefix hcol ⟨ρ, hρ⟩
+      show ((litCap E c k p).entryAt e).map Prod.fst = _
+      rw [entryAt_litCap_container hcol hρ hE, hE]; rfl
+    · show ((litCap E c k p).entryAt e).map Prod.fst = _
+      rw [hx, h]
+  · intro e he hne hnc
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 he)
+    rcases entryAt_litCap_cases hcol hk' hx with h | h | h
+    · exact absurd h hne
+    · exact absurd h hnc
+    · show (litCap E c k p).entryAt e = _
+      rw [hx, h]
+  · intro _ _ _
+    refine ⟨_, stopData_litCap' hcol k p, rfl, rfl, by rw [hcol]; rfl⟩
+
 
 /-- D3.1e (G-016 / BP-04): every move avoids the marked height at its *current* address
 (after the earlier moves have relocated it). -/
@@ -4412,7 +4654,24 @@ theorem moves_violate {E : Forest} (w : AdmCap E) :
         (⟨w.moves[idx].col, w.moves[idx].j⟩ : EntryAddr).heightPath <+: sd.col.path ∧
         col[w.moves[idx].i]? = some (q, Hi) ∧ col[w.moves[idx].j]? = some (q, C) ∧
         (∀ x, w.moves[idx].i ≤ x → x ≤ w.moves[idx].j → (col[x]?).map Prod.fst = some q) ∧
-        Hi < C := by sorry
+        Hi < C := by
+  intro idx hidx
+  obtain ⟨col, sd, hcol, hsd, hj, hij, hpre, hpar, hlt, -⟩ := w.movesValid idx hidx
+  refine ⟨col, sd, (col.getD w.moves[idx].j (0, Tree.empty)).1,
+    (col.getD w.moves[idx].i (0, Tree.empty)).2, (col.getD w.moves[idx].j (0, Tree.empty)).2,
+    hcol, hsd, hj, hij, hpre, ?_, ?_, ?_, hlt⟩
+  · have := hpar w.moves[idx].i le_rfl hij.le
+    rw [List.getElem?_eq_getElem (by omega), ← this]
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show w.moves[idx].i < col.length by omega)]
+  · rw [List.getElem?_eq_getElem (by omega)]
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show w.moves[idx].j < col.length by omega)]
+  · intro x h1 h2
+    have := hpar x h1 h2
+    rw [List.getElem?_eq_getElem (by omega)]
+    simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show x < col.length by omega),
+      List.getElem?_eq_getElem (show w.moves[idx].j < col.length by omega), Option.getD_some] at this
+    simp [this, List.getElem?_eq_getElem (show w.moves[idx].j < col.length by omega)]
+
 
 -- provides: U2, D3.1e (requested by U3 R18): address form of L3.1h — each prefix of the repair
 -- is the literal cap of `E` at the relocated column.
@@ -4428,14 +4687,80 @@ theorem applyMoves_litCap_addr {E : Forest} (hH : CondH E) (w : AdmCap E)
           w.col.path.drop b.heightPath.length, w.col.col⟩).getD []).take w.cut =
         ((E.colAt w.col).getD []).take w.cut := by sorry
 
+theorem num_mapPath (g : Nat → Nat) (m : Move) (π : List (Nat × Nat)) (c b : Nat) :
+    ColAddr.num b ⟨m.mapPath g π, c⟩ = ColAddr.num b ⟨π, c⟩ := by
+  simp only [ColAddr.num]
+  have := congrArg (fun l => (l.map (· + 1)).sum) (mapPath_fst g m π)
+  simp only [List.map_map] at this
+  rw [show (fun x : Nat × Nat => x.1 + 1) = ((· + 1) ∘ Prod.fst) from rfl, this]
+
+theorem mapEntry_num (g : Nat → Nat) (m : Move) (b : EntryAddr) :
+    (m.mapEntry g b).col.num 0 = b.col.num 0 := by
+  rw [mapEntry_col]
+  exact num_mapPath g m b.col.path b.col.col 0
+
 -- provides: U2, D3.1e (requested by U3 R19(a)): a move rewrites only entry indices.
 theorem moveAddr_num (ms : List Move) (b : EntryAddr) :
-    (moveAddr ms b).col.num 0 = b.col.num 0 := by sorry
+    (moveAddr ms b).col.num 0 = b.col.num 0 := by
+  induction ms generalizing b with
+  | nil => rfl
+  | cons m ms ih =>
+    show (moveAddrBody ms (m.mapEntry m.fwdIdx b)).col.num 0 = b.col.num 0
+    rw [← moveAddr_eq_body, ih, mapEntry_num]
+
+
+theorem moveAddr_snoc (ms : List Move) (m : Move) (b : EntryAddr) :
+    moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (moveAddr ms b) := by
+  simp [moveAddr, moveAddrBody, List.foldl_append]
+
+theorem repairList_append {K : Forest} {b : EntryAddr} {ms : List Move} {m : Move}
+    (h : RepairList K b (ms ++ [m])) :
+    RepairList K b ms ∧ RepairStepOK (applyMoves K ms) (moveAddr ms b) m := by
+  refine ⟨fun idx hidx => ?_, ?_⟩
+  · have := h idx (by simp; omega)
+    rw [List.take_append_of_le_length hidx.le, List.getElem_append_left hidx] at this
+    exact this
+  · have := h ms.length (by simp)
+    rw [List.take_left, List.getElem_append_right (by omega)] at this
+    simpa using this
+
+theorem fwdIdx_j (m : Move) (hij : m.i < m.j) : m.fwdIdx m.j = m.i := by
+  unfold Move.fwdIdx; rw [if_pos le_rfl]; omega
+
+theorem heightAt_repairStep {K : Forest} {b : EntryAddr} {m : Move} (h : RepairStepOK K b m) :
+    (applyMove K m).heightAt (m.mapEntry m.fwdIdx b) = K.heightAt b := by
+  obtain ⟨col, hcol, hij, hj, -, -, hb⟩ := h
+  rw [← Tree.forestAt_heightPath, ← Tree.forestAt_heightPath]
+  rcases hb with rfl | ⟨R, hR⟩
+  · have hme : m.mapEntry m.fwdIdx ⟨m.col, m.j⟩ = ⟨m.col, m.i⟩ := by
+      unfold Move.mapEntry; dsimp only
+      rw [mapPath_off _ _ _ (fun e D he => by have := congrArg List.length he; simp at this), if_pos rfl,
+        fwdIdx_j m hij]
+    rw [hme]
+    simp only [EntryAddr.heightPath]
+    exact forestAt_applyMove_through hcol hij hj []
+  · simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hR
+    have hme : m.mapEntry m.fwdIdx b = ⟨⟨m.col.path ++ (m.col.col, m.i) :: R, b.col.col⟩, b.idx⟩ := by
+      unfold Move.mapEntry; dsimp only
+      rw [← hR, mapPath_through, fwdIdx_j m hij, if_neg]
+      intro h'; have := congrArg (fun c : ColAddr => c.path.length) h'; simp at this
+    rw [hme]
+    simp only [EntryAddr.heightPath]
+    rw [← hR, List.append_assoc, List.cons_append, List.append_assoc, List.cons_append]
+    exact forestAt_applyMove_through hcol hij hj _
 
 -- provides: U2, D3.1e (requested by U3 R19(b)): a repair list carries the marked height.
 theorem repairList_height {K : Forest} {b : EntryAddr} {ms : List Move}
     (h : RepairList K b ms) :
-    (applyMoves K ms).heightAt (moveAddr ms b) = K.heightAt b := by sorry
+    (applyMoves K ms).heightAt (moveAddr ms b) = K.heightAt b := by
+  revert h
+  induction ms using List.reverseRecOn with
+  | nil => intro _; rfl
+  | append_singleton ms m ih =>
+    intro h
+    obtain ⟨h1, h2⟩ := repairList_append h
+    rw [applyMoves_snoc, moveAddr_snoc, heightAt_repairStep h2, ih h1]
+
 
 /-! ## D3.3, L3.5 — kernels, contexts, filling identity, cancellation -/
 
