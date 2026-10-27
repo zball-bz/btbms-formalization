@@ -3355,6 +3355,268 @@ theorem ker_under_transport {A : Forest} {sd : StopData} {rd : RootData}
       · rintro ⟨h3, h4⟩; exact ⟨by omega, h4⟩
     · rw [ho] at h3; cases h3
 
+/-- T3.2i helper: addresses on the root column's forest are not query material. -/
+theorem ker_isQMat_rootpath {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) {a : ColAddr}
+    (ha : a.path = rd.col.path) : isQMat sd a = false := by
+  obtain ⟨hpath, hle⟩ := ker_rootPath hsd hrd
+  obtain ⟨-, hdep, -⟩ := stopData_spec hsd
+  obtain ⟨-, -, hlay, -⟩ := rootData_path hsd hrd
+  unfold isQMat
+  rw [ha]
+  have hl : rd.col.path.length ≤ sd.col.path.length := by rw [← hlay, ← hdep]; exact hle
+  rw [List.take_of_length_le hl]
+  by_cases h : rd.col.path = sd.col.path
+  · rw [h, List.drop_length]; simp
+  · simp [h]
+
+theorem ker_root_ne_stop {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) : rd.col ≠ sd.col := by
+  intro h
+  obtain ⟨-, -, -, hnum, hrt, -⟩ := rootData_spec hsd hrd
+  have ht := (stopData_spec hsd).2.2.1
+  rw [h] at hnum
+  omega
+
+/-- T3.2i helper: template images avoid the region of the kernel hole. -/
+theorem ker_kerCol_not_under {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hkd : KernelDefined A rd)
+    {a a' : ColAddr} (ha : a = rd.col ∨ IsTmplCol A sd rd a) (h : kerCol sd rd a = some a') :
+    ¬ KerUnder (kerHole sd rd) a' := by
+  intro hu
+  have hamem : a ∈ A.colAddrs := by
+    rcases ha with rfl | h'
+    · exact (rootData_spec hsd hrd).2.2.2.2.2.1
+    · exact h'.1
+  have hane : a ≠ sd.col := by
+    rcases ha with rfl | h'
+    · exact ker_root_ne_stop hsd hrd
+    · exact h'.2.1
+  have key : KerUnder sd.col a → False := by
+    intro hs
+    rcases ker_under_stop hsd hamem hs with h1 | h1
+    · exact hane h1
+    · rcases ker_kerCol_shape h with ⟨-, -⟩ | ⟨hq, -⟩ | ⟨hq, -⟩ | ⟨hq, -⟩ | ⟨hq, -⟩
+      · -- query material is never in the hole region of the kernel: handled below
+        exact absurd hu (by
+          rcases ker_kerCol_shape h with ⟨-, j, rest, -, hj, rfl⟩ | ⟨hq', -⟩ | ⟨hq', -⟩ |
+              ⟨hq', -⟩ | ⟨hq', -⟩
+          · rcases ker_kerHole_cases hsd hrd hkd with ⟨-, -, hlt, hkh⟩ |
+                ⟨-, ci, e, rest', -, hlt, hkh⟩ | ⟨-, e, rest', -, -, hkh⟩ <;> rw [hkh]
+            · rw [ker_under_nil_cons]; omega
+            · rw [ker_under_cons_cons]; simp only [Prod.mk.injEq, not_and]; intro h0; omega
+            · rw [ker_under_cons_cons]; simp only [Prod.mk.injEq, not_and]; intro _ h0; omega
+          all_goals (rw [hq'] at h1; cases h1))
+      all_goals (rw [hq] at h1; cases h1)
+  rcases ker_kerCol_shape h with ⟨-, j, rest, -, hj, rfl⟩ | ⟨-, -, -, rfl⟩ |
+      ⟨-, hp, hc, ho, rfl⟩ | ⟨-, e, rest, hp, he, rfl⟩ | ⟨-, ci, e, rest, hp, hci, ho, rfl⟩
+  · rcases ker_kerHole_cases hsd hrd hkd with ⟨-, -, hlt, hkh⟩ |
+        ⟨-, ci, e, rest', -, hlt, hkh⟩ | ⟨-, e, rest', -, -, hkh⟩ <;> rw [hkh] at hu
+    · rw [ker_under_nil_cons] at hu; omega
+    · rw [ker_under_cons_cons] at hu; simp only [Prod.mk.injEq] at hu; omega
+    · rw [ker_under_cons_cons] at hu; simp only [Prod.mk.injEq] at hu; omega
+  · rcases ker_kerHole_cases hsd hrd hkd with ⟨-, -, hlt, hkh⟩ |
+        ⟨-, ci, e, rest', -, hlt, hkh⟩ | ⟨-, e, rest', -, -, hkh⟩ <;> rw [hkh] at hu
+    · rw [ker_under_nil_nil] at hu; omega
+    · exact ker_under_cons_nil _ _ _ _ hu
+    · exact ker_under_cons_nil _ _ _ _ hu
+  · exact key ((ker_under_transport hsd hrd hkd (Or.inl ⟨hp, hc, ho, rfl⟩)).1 hu)
+  · exact key ((ker_under_transport hsd hrd hkd (Or.inr (Or.inl ⟨e, rest, hp, he, rfl⟩))).1 hu)
+  · exact key ((ker_under_transport hsd hrd hkd
+      (Or.inr (Or.inr ⟨ci, e, rest, hp, hci, ho, rfl⟩))).1 hu)
+
+/-- T3.2i helper: shifting an entry does not change which addresses below it are columns. -/
+theorem ker_isSome_shift_entry (r d : Nat) (o : Option (Nat × Forest)) (rest : List (Nat × Nat))
+    (c : Nat) :
+    (((o.map fun x => (shiftVal r d x.1, Tree.map (shiftVal r d) x.2)).bind
+        fun x => x.2.forestAt rest).bind fun f => f.cols[c]?).isSome =
+      ((o.bind fun x => x.2.forestAt rest).bind fun f => f.cols[c]?).isSome := by
+  cases o with
+  | none => rfl
+  | some x =>
+    simp only [Option.map_some, Option.bind_some]
+    rw [ker_forestAt_map]
+    cases x.2.forestAt rest with
+    | none => rfl
+    | some F => simp [ker_map_cols, List.getElem?_map]
+
+theorem ker_isSome_shift_entry' (r d : Nat) (o : Option (Nat × Forest)) (rest : List (Nat × Nat))
+    (c : Nat) :
+    (((o.map fun x => (x.1, shift r d x.2)).bind
+        fun x => x.2.forestAt rest).bind fun f => f.cols[c]?).isSome =
+      ((o.bind fun x => x.2.forestAt rest).bind fun f => f.cols[c]?).isSome := by
+  cases o with
+  | none => rfl
+  | some x =>
+    simp only [Option.map_some, Option.bind_some]
+    unfold shift
+    rw [ker_forestAt_map]
+    cases x.2.forestAt rest with
+    | none => rfl
+    | some F => simp [ker_map_cols, List.getElem?_map]
+
+/-- T3.2i helper: every column of the open kernel outside its hole region is a template image. -/
+theorem ker_kerOpen_preimage {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hkd : KernelDefined A rd)
+    {y : ColAddr} (hy : y ∈ (kerOpen A sd rd).colAddrs) (hu : ¬ KerUnder (kerHole sd rd) y) :
+    ∃ a, (a = rd.col ∨ IsTmplCol A sd rd a) ∧ kerCol sd rd a = some y := by
+  obtain ⟨hF, -⟩ := ker_route_rootForest hsd hrd
+  obtain ⟨-, -, hidx, -, -, hmem, -⟩ := rootData_spec hsd hrd
+  obtain ⟨hkc, -⟩ := ker_kerCol_stop hsd hrd hkd
+  obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+  have hne_stop : ∀ a, kerCol sd rd a = some y → a ≠ sd.col := by
+    intro a ha h
+    subst h
+    rw [hkc] at ha
+    cases ha
+    exact hu ((ker_under_pre (kerHole sd rd).path _ _).2 le_rfl)
+  have htmpl : ∀ a, a ∈ A.colAddrs → a ≠ rd.col → kerCol sd rd a = some y →
+      ∃ a, (a = rd.col ∨ IsTmplCol A sd rd a) ∧ kerCol sd rd a = some y := by
+    intro a ha hr hk
+    exact ⟨a, Or.inr ⟨ha, hne_stop a hk, hr, by rw [hk]; rfl⟩, hk⟩
+  rcases hFF : rootForest A rd with ⟨cs⟩
+  rw [hFF] at hF
+  have hU : unconsumed A rd = ((cs[rd.idx]?).getD []).drop rd.cursor := by
+    unfold unconsumed rootCol Tree.colAt; rw [hF, Option.bind_some, hidx]; rfl
+  have hK0 : (kerOpen A sd rd).cols[0]? = some (sd.Q ++ (unconsumed A rd).map fun x =>
+      (x.1, shift sd.r (period sd) x.2)) := by
+    unfold kerOpen; split <;> rfl
+  have hK1 : ∀ k, (kerOpen A sd rd).cols[k + 1]? =
+      if rd.owner then none else (cs[rd.idx + 1 + k]?).map
+        (Tree.mapCol (shiftVal sd.r (period sd))) := by
+    intro k
+    unfold kerOpen
+    split
+    · rename_i ho; simp [ho, Tree.cols]
+    · rename_i ho
+      simp only [ho, Bool.false_eq_true, if_false, hFF, ker_shift_node, Tree.cols,
+        List.getElem?_cons_succ, List.getElem?_map, List.getElem?_drop]
+  have hcolA : ∀ c, A.colAt ⟨rd.col.path, c⟩ = cs[c]? := by
+    intro c; unfold Tree.colAt; rw [hF]; rfl
+  have hfA : ∀ ci e rest, A.forestAt (rd.col.path ++ (ci, e) :: rest) =
+      ((cs[ci]?).bind (·[e]?)).bind fun x => x.2.forestAt rest := by
+    intro ci e rest; rw [Tree.forestAt_append, hF, Option.bind_some, ker_forestAt_cons]; rfl
+  obtain ⟨yp, yc⟩ := y
+  rw [Tree.mem_colAddrs_iff] at hy
+  cases yp with
+  | nil =>
+    cases yc with
+    | zero => exact ⟨rd.col, Or.inl rfl, ker_kerCol_root hsd hrd⟩
+    | succ k =>
+      have hy' : ((kerOpen A sd rd).cols[k + 1]?).isSome := hy
+      rw [hK1] at hy'
+      by_cases ho : rd.owner = true
+      · rw [if_pos ho] at hy'; cases hy'
+      rw [if_neg ho] at hy'
+      have ho' : rd.owner = false := by simpa using ho
+      refine htmpl ⟨rd.col.path, rd.idx + (k + 1)⟩ ?_ ?_ ?_
+      · rw [Tree.mem_colAddrs_iff, hcolA]
+        rw [show rd.idx + (k + 1) = rd.idx + 1 + k by omega]
+        simpa using hy'
+      · intro h; have := congrArg ColAddr.col h; simp only at this; omega
+      · have hq0 : isQMat sd ⟨rd.col.path, rd.idx + (k + 1)⟩ = false :=
+          ker_isQMat_rootpath hsd hrd rfl
+        unfold kerCol
+        rw [if_neg (by rw [hq0]; simp), if_pos (List.take_length), List.drop_length]
+        simp only
+        rw [if_neg (by omega), if_pos ⟨by omega, ho'⟩]
+        congr 2; omega
+  | cons x rest =>
+    obtain ⟨c0, e0⟩ := x
+    have hy' : ((((kerOpen A sd rd).cols[c0]?).bind (·[e0]?)).bind fun x =>
+        x.2.forestAt rest).bind (fun f => f.cols[yc]?) |>.isSome := by
+      unfold Tree.colAt at hy; rw [ker_forestAt_cons] at hy; exact hy
+    cases c0 with
+    | zero =>
+      rw [hK0, Option.bind_some] at hy'
+      rcases Nat.lt_or_ge e0 sd.Q.length with he | he
+      · -- query material
+        rw [List.getElem?_append_left he] at hy'
+        refine htmpl ⟨sd.col.path ++ (sd.col.col, e0) :: rest, yc⟩ ?_ ?_ ?_
+        · rw [Tree.mem_colAddrs_iff]
+          unfold Tree.colAt
+          simp only
+          rw [Tree.forestAt_append, hG, Option.bind_some, ker_forestAt_cons, hGc, Option.bind_some,
+            List.getElem?_append_left he]
+          exact hy'
+        · intro h
+          have := congrArg (fun c : ColAddr => c.path.length) h
+          have hle := (ker_rootPath hsd hrd).2
+          have hdep := (stopData_spec hsd).2.1
+          have hlay := (rootData_path hsd hrd).2.2.1
+          simp at this; omega
+        · unfold kerCol
+          have hq : isQMat sd ⟨sd.col.path ++ (sd.col.col, e0) :: rest, yc⟩ = true := by
+            unfold isQMat; simp only [List.take_left' rfl, List.drop_left' rfl]; simp [he]
+          rw [if_pos hq]
+          simp only [List.drop_left' rfl]
+      · -- restored root entries
+        rw [List.getElem?_append_right he, List.getElem?_map, hU, List.getElem?_drop] at hy'
+        set e := rd.cursor + (e0 - sd.Q.length) with he_def
+        have hyform : (⟨(0, e0) :: rest, yc⟩ : ColAddr) =
+            ⟨(0, sd.Q.length + (e - rd.cursor)) :: rest, yc⟩ := by
+          congr 3; omega
+        have htr := ker_under_transport hsd hrd hkd (a := ⟨rd.col.path ++ (rd.idx, e) :: rest, yc⟩)
+          (Or.inr (Or.inl ⟨e, rest, rfl, by omega, hyform⟩))
+        have hnu : ¬ KerUnder sd.col ⟨rd.col.path ++ (rd.idx, e) :: rest, yc⟩ :=
+          fun h => hu (htr.2 h)
+        have hq : isQMat sd ⟨rd.col.path ++ (rd.idx, e) :: rest, yc⟩ = false := by
+          cases h : isQMat sd ⟨rd.col.path ++ (rd.idx, e) :: rest, yc⟩
+          · rfl
+          · exact absurd (ker_qmat_under h) hnu
+        refine htmpl ⟨rd.col.path ++ (rd.idx, e) :: rest, yc⟩ ?_ ?_ ?_
+        · rw [Tree.mem_colAddrs_iff]
+          unfold Tree.colAt
+          simp only
+          rw [hfA]
+          cases hR : cs[rd.idx]? with
+          | none => rw [hR] at hy'; simp at hy'
+          | some R =>
+            rw [hR, Option.getD_some] at hy'
+            rw [Option.bind_some, ← ker_isSome_shift_entry' sd.r (period sd)]
+            exact hy'
+        · intro h
+          have := congrArg (fun c : ColAddr => c.path.length) h
+          simp at this
+        · unfold kerCol
+          rw [if_neg (by rw [hq]; simp), if_pos (List.take_left' rfl), List.drop_left' rfl]
+          simp only
+          rw [if_pos (by refine ⟨?_, ?_⟩ <;> first | trivial | rfl | omega), ← hyform]
+    | succ k =>
+      rw [hK1] at hy'
+      by_cases ho : rd.owner = true
+      · rw [if_pos ho] at hy'; cases hy'
+      rw [if_neg ho] at hy'
+      have ho' : rd.owner = false := by simpa using ho
+      set ci := rd.idx + 1 + k with hci
+      have hyform : (⟨(k + 1, e0) :: rest, yc⟩ : ColAddr) = ⟨(ci - rd.idx, e0) :: rest, yc⟩ := by
+        congr 3; omega
+      have htr := ker_under_transport hsd hrd hkd (a := ⟨rd.col.path ++ (ci, e0) :: rest, yc⟩)
+        (Or.inr (Or.inr ⟨ci, e0, rest, rfl, by omega, ho', hyform⟩))
+      have hnu : ¬ KerUnder sd.col ⟨rd.col.path ++ (ci, e0) :: rest, yc⟩ := fun h => hu (htr.2 h)
+      have hq : isQMat sd ⟨rd.col.path ++ (ci, e0) :: rest, yc⟩ = false := by
+        cases h : isQMat sd ⟨rd.col.path ++ (ci, e0) :: rest, yc⟩
+        · rfl
+        · exact absurd (ker_qmat_under h) hnu
+      refine htmpl ⟨rd.col.path ++ (ci, e0) :: rest, yc⟩ ?_ ?_ ?_
+      · rw [Tree.mem_colAddrs_iff]
+        unfold Tree.colAt
+        simp only
+        rw [hfA]
+        cases hR : cs[ci]? with
+        | none => rw [hR] at hy'; simp at hy'
+        | some R =>
+          rw [hR, Option.map_some, Option.bind_some, treeMapCol_eq_map, List.getElem?_map] at hy'
+          rw [Option.bind_some, ← ker_isSome_shift_entry sd.r (period sd)]
+          exact hy'
+      · intro h
+        have := congrArg (fun c : ColAddr => c.path.length) h
+        simp at this
+      · unfold kerCol
+        rw [if_neg (by rw [hq]; simp), if_pos (List.take_left' rfl), List.drop_left' rfl]
+        simp only
+        rw [if_neg (by omega), if_pos ⟨by omega, ho'⟩, ← hyform]
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
