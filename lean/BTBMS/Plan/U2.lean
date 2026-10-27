@@ -2274,21 +2274,331 @@ theorem expand_strictMono {E X Y : Forest} {n n' : Nat} (hL : InL E)
     simp [wordLater]
 
 -- T3.8c: stop data of a literal cap
+/-! ### T3.8c helpers: the route of a literal cap -/
+
+theorem ker_stopCols_snoc (π : List (Nat × Nat)) (X : Column) :
+    ∀ (A : List Column) (ci : Nat), stopCols π ci (A ++ [X]) = stopCol π (ci + A.length) 0 [] X
+  | [], ci => by simp [stopCols]
+  | a :: A, ci => by
+    obtain ⟨y, ys, h⟩ := List.exists_cons_of_ne_nil (by simp : A ++ [X] ≠ [])
+    rw [List.cons_append, h]
+    simp only [stopCols]
+    rw [← h, ker_stopCols_snoc π X A (ci + 1)]
+    congr 1
+    simp; omega
+
+theorem ker_stopCol_snoc_stop (π : List (Nat × Nat)) (ci p : Nat) :
+    ∀ (T : Column) (ei : Nat) (Q0 : Column),
+      stopCol π ci ei Q0 (T ++ [(p, Tree.node [])]) =
+        some ⟨π.length, ⟨π, ci⟩, ColAddr.num 0 ⟨π, ci⟩, p, Q0 ++ T⟩
+  | [], ei, Q0 => by simp [stopCol]
+  | t :: T, ei, Q0 => by
+    obtain ⟨y, ys, h⟩ := List.exists_cons_of_ne_nil (by simp : T ++ [(p, Tree.node [])] ≠ [])
+    rw [List.cons_append, h]
+    simp only [stopCol]
+    rw [← h, ker_stopCol_snoc_stop π ci p T (ei + 1) (Q0 ++ [t])]
+    simp
+
+theorem ker_stopCol_snoc_descend (π : List (Nat × Nat)) (ci q : Nat) (g : Column)
+    (gs : List Column) :
+    ∀ (T : Column) (ei : Nat) (Q0 : Column),
+      stopCol π ci ei Q0 (T ++ [(q, Tree.node (g :: gs))]) =
+        stopCols (π ++ [(ci, ei + T.length)]) 0 (g :: gs)
+  | [], ei, Q0 => by simp [stopCol]
+  | t :: T, ei, Q0 => by
+    obtain ⟨y, ys, h⟩ := List.exists_cons_of_ne_nil
+      (by simp : T ++ [(q, Tree.node (g :: gs))] ≠ [])
+    rw [List.cons_append, h]
+    simp only [stopCol]
+    rw [← h, ker_stopCol_snoc_descend π ci q g gs T (ei + 1) (Q0 ++ [t])]
+    congr 3
+    simp; omega
+
+/-- helper: unfolding one level of `litCapAux` at an existing entry. -/
+theorem ker_litCapAux_cons (k p ci ei j : Nat) (rest : List (Nat × Nat)) (cols : List Column)
+    {col : Column} {q : Nat} {h : Forest} (hc : cols[ci]? = some col) (he : col[ei]? = some (q, h)) :
+    litCapAux k p ((ci, ei) :: rest) j (Tree.node cols) =
+      Tree.node (cols.take ci ++ [col.take ei ++ [(q, litCapAux k p rest j h)]]) := by
+  have hg : cols.getD ci [] = col := by rw [List.getD_eq_getElem?_getD, hc]; rfl
+  simp only [litCapAux, hg, he]
+
+/-- helper: the lookup of a column address one level down. -/
+theorem ker_colAt_cons {α : Type} (cols : List (List (α × Tree α))) (ci ei j : Nat)
+    (rest : List (Nat × Nat)) :
+    (Tree.node cols).colAt ⟨(ci, ei) :: rest, j⟩ =
+      ((cols[ci]?).bind (·[ei]?)).bind fun x => x.2.colAt ⟨rest, j⟩ := by
+  unfold Tree.colAt
+  simp only [ker_forestAt_cons, Tree.cols]
+  cases (cols[ci]?).bind (·[ei]?) with
+  | none => rfl
+  | some x => rfl
+
+/-- helper: a literal cap at an existing column is a nonempty forest. -/
+theorem ker_litCapAux_ne (k p : Nat) :
+    ∀ (σ : List (Nat × Nat)) (j : Nat) (F : Forest), (F.colAt ⟨σ, j⟩).isSome →
+      ∃ g gs, litCapAux k p σ j F = Tree.node (g :: gs) ∧
+        ∃ x xs, (g :: gs).getLast? = some (x :: xs)
+  | [], j, .node cols, _ => by
+    obtain ⟨g, gs, h⟩ := List.exists_cons_of_ne_nil
+      (by simp : cols.take j ++ [(cols.getD j []).take k ++ [(p, Tree.empty)]] ≠ [])
+    refine ⟨g, gs, by simp only [litCapAux]; rw [h], ?_⟩
+    rw [← h, List.getLast?_append, List.getLast?_singleton]
+    obtain ⟨x, xs, hx⟩ := List.exists_cons_of_ne_nil
+      (by simp : (cols.getD j []).take k ++ [(p, Tree.empty)] ≠ [])
+    exact ⟨x, xs, by rw [hx]; rfl⟩
+  | (ci, ei) :: rest, j, .node cols, hc => by
+    rw [ker_colAt_cons] at hc
+    cases hcol : cols[ci]? with
+    | none => rw [hcol] at hc; cases hc
+    | some col =>
+      rw [hcol, Option.bind_some] at hc
+      cases hent : col[ei]? with
+      | none => rw [hent] at hc; cases hc
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [ker_litCapAux_cons k p ci ei j rest cols hcol hent]
+        obtain ⟨g, gs, hg⟩ := List.exists_cons_of_ne_nil
+          (by simp : cols.take ci ++ [col.take ei ++ [(q, litCapAux k p rest j h)]] ≠ [])
+        refine ⟨g, gs, by rw [hg], ?_⟩
+        rw [← hg, List.getLast?_append, List.getLast?_singleton]
+        obtain ⟨y, ys, hy⟩ := List.exists_cons_of_ne_nil
+          (by simp : col.take ei ++ [(q, litCapAux k p rest j h)] ≠ [])
+        exact ⟨y, ys, by rw [hy]; rfl⟩
+
+/-- helper: the route of a literal cap stops at its cap column. -/
+theorem ker_stopF_litCapAux (k p : Nat) :
+    ∀ (σ : List (Nat × Nat)) (j : Nat) (F : Forest) (π : List (Nat × Nat)),
+      (F.colAt ⟨σ, j⟩).isSome →
+      stopF π (litCapAux k p σ j F) =
+        some ⟨(π ++ σ).length, ⟨π ++ σ, j⟩, ColAddr.num 0 ⟨π ++ σ, j⟩, p,
+          ((F.colAt ⟨σ, j⟩).getD []).take k⟩
+  | [], j, .node cols, π, hc => by
+    have hj : j < cols.length := by
+      unfold Tree.colAt at hc
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols] at hc
+      by_contra h; rw [List.getElem?_eq_none (by omega)] at hc; cases hc
+    simp only [litCapAux, stopF]
+    rw [ker_stopCols_snoc, List.length_take, Nat.min_eq_left (by omega), Nat.zero_add]
+    rw [show (p, Tree.empty) = (p, (Tree.node [] : Forest)) from rfl, ker_stopCol_snoc_stop]
+    simp only [List.append_nil, List.nil_append]
+    congr 3
+  | (ci, ei) :: rest, j, .node cols, π, hc => by
+    have hc' := hc
+    rw [ker_colAt_cons] at hc'
+    cases hcol : cols[ci]? with
+    | none => rw [hcol] at hc'; cases hc'
+    | some col =>
+      rw [hcol, Option.bind_some] at hc'
+      cases hent : col[ei]? with
+      | none => rw [hent] at hc'; cases hc'
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [hent, Option.bind_some] at hc'
+        have hci : ci < cols.length := by
+          by_contra hh; rw [List.getElem?_eq_none (by omega)] at hcol; cases hcol
+        have hei : ei < col.length := by
+          by_contra hh; rw [List.getElem?_eq_none (by omega)] at hent; cases hent
+        rw [ker_litCapAux_cons k p ci ei j rest cols hcol hent]
+        obtain ⟨g, gs, hg, -⟩ := ker_litCapAux_ne k p rest j h hc'
+        simp only [stopF]
+        rw [ker_stopCols_snoc, List.length_take, Nat.min_eq_left (by omega), Nat.zero_add, hg,
+          ker_stopCol_snoc_descend, List.length_take, Nat.min_eq_left (by omega), Nat.zero_add]
+        have ih := ker_stopF_litCapAux k p rest j h (π ++ [(ci, ei)]) hc'
+        rw [hg] at ih
+        simp only [stopF] at ih
+        rw [ih, ker_colAt_cons, hcol, Option.bind_some, hent, Option.bind_some]
+        simp only [List.append_assoc, List.singleton_append]
+
+/-- helper: replacing the cap column by `∅` gives a forest below the original. -/
+theorem ker_cmpCols_append_left (A B C : List Column) :
+    Tree.cmpCols compare (A ++ B) (A ++ C) = Tree.cmpCols compare B C := by
+  induction A with
+  | nil => rfl
+  | cons a A ih =>
+    simp only [List.cons_append, Tree.cmpCols]
+    rw [Tree.cmpCol_self compare a, ih]
+    rfl
+
+theorem ker_cmp_snoc_lt (A R : List Column) (T R2 : Column) (q : Nat) {X' H : Forest}
+    (hX : X' < H) :
+    Tree.cmp compare (Tree.node (A ++ [T ++ [(q, X')]])) (Tree.node (A ++ (T ++ (q, H) :: R2) :: R))
+      = .lt := by
+  simp only [Tree.cmp]
+  rw [ker_cmpCols_append_left]
+  simp only [Tree.cmpCols]
+  rw [ker_cmpCol_append_left]
+  simp only [Tree.cmpCol]
+  have hX' : Tree.cmp compare X' H = .lt := hX
+  rw [hX', Nat.compare_eq_eq.2 rfl]
+  rfl
+
+theorem ker_context_litCapAux_lt (k p : Nat) :
+    ∀ (σ : List (Nat × Nat)) (j : Nat) (F : Forest), (F.colAt ⟨σ, j⟩).isSome →
+      replaceAt 0 0 Tree.empty σ.length (litCapAux k p σ j F) < F
+  | [], j, .node cols, hc => by
+    have hj : j < cols.length := by
+      unfold Tree.colAt at hc
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols] at hc
+      by_contra h; rw [List.getElem?_eq_none (by omega)] at hc; cases hc
+    simp only [litCapAux, List.length_nil]
+    rw [ker_replaceAt_zero_zero _ _ (by simp)]
+    simp only [Tree.empty, Tree.cols, List.append_nil]
+    rw [List.dropLast_concat]
+    show Tree.cmp compare _ _ = .lt
+    obtain ⟨y, ys, hy⟩ := List.exists_cons_of_ne_nil
+      (by intro h; have := congrArg List.length h; simp at this; omega : cols.drop j ≠ [])
+    have hsplit : cols = cols.take j ++ y :: ys := by rw [← hy, List.take_append_drop]
+    have key : Tree.cmp compare (Tree.node (cols.take j ++ [])) (Tree.node (cols.take j ++ y :: ys))
+        = .lt := by
+      simp only [Tree.cmp]; rw [ker_cmpCols_append_left]; rfl
+    rw [← hsplit, List.append_nil] at key
+    exact key
+  | (ci, ei) :: rest, j, .node cols, hc => by
+    have hc' := hc
+    rw [ker_colAt_cons] at hc'
+    cases hcol : cols[ci]? with
+    | none => rw [hcol] at hc'; cases hc'
+    | some col =>
+      rw [hcol, Option.bind_some] at hc'
+      cases hent : col[ei]? with
+      | none => rw [hent] at hc'; cases hc'
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [hent, Option.bind_some] at hc'
+        have hci : ci < cols.length := by
+          by_contra hh; rw [List.getElem?_eq_none (by omega)] at hcol; cases hcol
+        have hei : ei < col.length := by
+          by_contra hh; rw [List.getElem?_eq_none (by omega)] at hent; cases hent
+        have ih := ker_context_litCapAux_lt k p rest j h hc'
+        rw [ker_litCapAux_cons k p ci ei j rest cols hcol hent, List.length_cons,
+          ker_replaceAt_zero_succ, ker_mapLast_append _ _ _ _ (by simp), List.map_id]
+        simp only [mapLast]
+        rw [ker_mapLast_append _ _ _ _ (by simp), List.map_id]
+        simp only [mapLast]
+        obtain ⟨_, hcolE⟩ := List.getElem?_eq_some_iff.1 hcol
+        obtain ⟨_, hentE⟩ := List.getElem?_eq_some_iff.1 hent
+        have hcols : cols = cols.take ci ++ col :: cols.drop (ci + 1) := by
+          conv_lhs => rw [← List.take_append_drop ci cols]
+          rw [List.drop_eq_getElem_cons hci, hcolE]
+        have hcol2 : col = col.take ei ++ (q, h) :: col.drop (ei + 1) := by
+          conv_lhs => rw [← List.take_append_drop ei col]
+          rw [List.drop_eq_getElem_cons hei, hentE]
+        have key := ker_cmp_snoc_lt (cols.take ci) (cols.drop (ci + 1)) (col.take ei)
+          (col.drop (ei + 1)) q ih
+        rw [← hcol2, ← hcols] at key
+        exact key
+
 theorem stopData_litCap {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) :
     stopData (litCap B c k p) =
-      some ⟨colDepth c, c, c.num 0, p, ((B.colAt c).getD []).take k⟩ := by sorry
+      some ⟨colDepth c, c, c.num 0, p, ((B.colAt c).getD []).take k⟩ := by
+  have hc : (B.colAt c).isSome := by
+    unfold IsUpward at hup
+    split at hup
+    · rename_i col hcol; rw [hcol]; rfl
+    · exact hup.elim
+  unfold stopData stopDataBody litCap litCapBody
+  rw [if_pos hc, ker_stopF_litCapAux k p c.path c.col B [] hc]
+  rfl
 
 -- T3.8c (txt:539-540): an upward cap of an I-expression that satisfies V and I is ordinary
 theorem litCap_ordinary {B : Forest} (hI : CondI B) {c : ColAddr} {k p : Nat}
     (hup : IsUpward B c k p) (hKV : CondV (litCap B c k p)) (hKI : CondI (litCap B c k p)) :
-    stepKind (litCap B c k p) = some .ordinary := by sorry
+    stepKind (litCap B c k p) = some .ordinary := by
+  have hsd := stopData_litCap hup
+  obtain ⟨col, hcol⟩ : ∃ col, B.colAt c = some col := by
+    unfold IsUpward at hup
+    split at hup
+    · rename_i col hcol; exact ⟨col, hcol⟩
+    · exact hup.elim
+  have hc : (B.colAt c).isSome := by rw [hcol]; rfl
+  rw [hcol, Option.getD_some] at hsd
+  obtain ⟨g, gs, hg, x, xs, hlast⟩ := ker_litCapAux_ne k p c.path c.col B hc
+  have hK : litCap B c k p = Tree.node (g :: gs) := by
+    unfold litCap litCapBody; rw [if_pos hc]; exact hg
+  have hspec : specialStop ⟨colDepth c, c, c.num 0, p, col.take k⟩ = false := by
+    unfold specialStop
+    by_contra hcon
+    simp only [Bool.not_eq_false, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff,
+      beq_iff_eq] at hcon
+    obtain ⟨⟨hd, hQ⟩, hnum⟩ := hcon
+    unfold colDepth at hd
+    have hpne : c.path ≠ [] := by intro h; rw [h] at hd; simp at hd
+    obtain ⟨pre, last, hpath⟩ : ∃ pre last, c.path = pre ++ [last] :=
+      ⟨c.path.dropLast, c.path.getLast hpne, (List.dropLast_append_getLast hpne).symm⟩
+    obtain ⟨ci, ei⟩ := last
+    have hfa : B.forestAt c.path = B.heightAt ⟨⟨pre, ci⟩, ei⟩ := by
+      rw [← Tree.forestAt_heightPath]
+      simp [EntryAddr.heightPath, hpath]
+    have hcol' := hcol
+    unfold Tree.colAt at hcol'
+    cases hF : B.forestAt c.path with
+    | none => rw [hF] at hcol'; cases hcol'
+    | some h =>
+      rw [hF, Option.bind_some] at hcol'
+      have hh : B.heightAt ⟨⟨pre, ci⟩, ei⟩ = some h := by rw [← hfa, hF]
+      obtain ⟨y, hy⟩ : ∃ y, B.entryAt ⟨⟨pre, ci⟩, ei⟩ = some (y, h) := by
+        unfold Tree.heightAt at hh
+        cases hE : B.entryAt ⟨⟨pre, ci⟩, ei⟩ with
+        | none => rw [hE] at hh; cases hh
+        | some z =>
+          rw [hE] at hh
+          simp only [Option.map_some, Option.some.injEq] at hh
+          exact ⟨z.1, by rw [← hh]⟩
+      have hmem : (⟨⟨pre, ci⟩, ei⟩ : EntryAddr) ∈ B.entryAddrs :=
+        (Tree.mem_entryAddrs_iff _ _).2 (by rw [hy]; rfl)
+      have hne : h ≠ Tree.empty := by
+        intro h0; subst h0; simp [Tree.empty, Tree.cols] at hcol'
+      have hcolmem : col ∈ h.cols := List.mem_of_getElem? hcol'
+      obtain ⟨q, H, rest, hcq, hq⟩ := hI _ hmem y h hy hne col hcolmem
+      have hk0 : k = 0 := by
+        rw [hcq] at hQ
+        rcases List.take_eq_nil_iff.1 hQ with h0 | h0
+        · exact h0
+        · cases h0
+      subst hk0
+      unfold IsUpward at hup
+      rw [hcol, hcq] at hup
+      simp only [List.getElem?_cons_zero] at hup
+      have hpn : p = ColAddr.num 0 ⟨pre, ci⟩ := by
+        unfold ColAddr.num at hnum ⊢
+        simp only [hpath, List.map_append, List.sum_append, List.map_cons,
+          List.map_nil, List.sum_cons, List.sum_nil] at hnum ⊢
+        omega
+      have hq' : ColAddr.num 0 ⟨pre, ci⟩ ≤ q := hq
+      omega
+  have hres : (c.resolve 0 p).isSome := by
+    obtain ⟨hcolK, -⟩ := stopData_spec hsd
+    have hent : (litCap B c k p).entryAt ⟨c, (col.take k).length⟩ = some (p, Tree.empty) := by
+      unfold Tree.entryAt; rw [hcolK]; simp
+    have hmemK := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl)
+    exact hKV _ hmemK p Tree.empty hent
+  unfold stepKind stepKindBody
+  have hl' : (litCap B c k p).cols.getLast? = some (x :: xs) := by rw [hK]; exact hlast
+  rw [hl']
+  simp only []
+  rw [show stopDataBody (litCap B c k p) = _ from hsd]
+  simp only [hspec, hres, Bool.false_eq_true, if_false, if_true]
 
 -- T3.8c: the approximant at `0` of a cap lies strictly below its target
 -- VERIFY-U2 (F6): `hI` added (the doc's proof uses part 2, which needs I of `B`)
 theorem expand_zero_litCap_lt {B : Forest} (hI : CondI B) {c : ColAddr} {k p : Nat}
     (hup : IsUpward B c k p)
     (hKV : CondV (litCap B c k p)) (hKI : CondI (litCap B c k p)) {K0 : Forest}
-    (h0 : expand (litCap B c k p) 0 = some K0) : K0 < B := by sorry
+    (h0 : expand (litCap B c k p) 0 = some K0) : K0 < B := by
+  have hsd := stopData_litCap hup
+  have hord := litCap_ordinary hI hup hKV hKI
+  have hKne : litCap B c k p ≠ Tree.empty := by
+    intro h; rw [h] at hsd; simp [stopData, stopDataBody, stopF, stopCols, Tree.empty] at hsd
+  rw [expand_zero_eq_context hKne hKV hKI hord hsd] at h0
+  cases h0
+  have hc : (B.colAt c).isSome := by
+    unfold IsUpward at hup
+    split at hup
+    · rename_i col hcol; rw [hcol]; rfl
+    · exact hup.elim
+  unfold context litCap litCapBody
+  rw [if_pos hc]
+  exact ker_context_litCapAux_lt k p c.path c.col B hc
 
 -- N2.2: the word of `B` at a column: context prefix, local suffix at depth `e`, shallower rest
 theorem word_localSuffix {B : Forest} {c : ColAddr} (hc : c ∈ B.colAddrs) :
