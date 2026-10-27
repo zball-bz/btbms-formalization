@@ -2269,12 +2269,69 @@ theorem stepKind_ordinary_iff_unfold {E : Forest} (hE : E ≠ Tree.empty) (hV : 
     obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp h3
     exact ⟨sd, o, h1, (hsp sd).mpr h2, ho⟩
 
+/-- D1.6d (helper): the last column of the reference's route (`routeColsAux`), when it ends in an
+entry with empty height, is where the paper's route `stopF` stops. -/
+theorem routeColsAux_stop : ∀ (fuel : Nat) (F : Forest) (π : List (Nat × Nat)) (c : ColAddr),
+    (routeColsAux fuel F π).getLast? = some c →
+    ∃ ρ, c.path = π ++ ρ ∧ ∀ Q r, F.colAt ⟨ρ, c.col⟩ = some (Q ++ [(r, Tree.empty)]) →
+      stopF π F = some { depth := c.path.length, col := c, t := c.num 0, r := r, Q := Q }
+  | 0, F, π, c, h => by simp [routeColsAux] at h
+  | fuel + 1, F, π, c, h => by
+    rcases hcF : F.cols.getLast? with _ | col
+    · simp [routeColsAux, hcF] at h
+    have hcl : F.cols[F.cols.length - 1]? = some col := by
+      rw [← List.getLast?_eq_getElem?]; exact hcF
+    have hhead : ∀ Q r, F.colAt ⟨[], F.cols.length - 1⟩ = some (Q ++ [(r, Tree.empty)]) →
+        col = Q ++ [(r, Tree.empty)] := by
+      intro Q r hq
+      simp only [Tree.colAt, Tree.forestAt, Option.bind_some, hcl, Option.some.injEq] at hq
+      exact hq
+    rcases he : col.getLast? with _ | ⟨p, hh⟩
+    · simp only [routeColsAux, hcF, he, List.getLast?_singleton, Option.some.injEq] at h
+      subst h
+      refine ⟨[], by simp, fun Q r hq => ?_⟩
+      rw [hhead Q r hq] at he; simp at he
+    · rw [routeColsAux_of_last fuel π hcF he] at h
+      by_cases hL : routeColsAux fuel hh (π ++ [(F.cols.length - 1, col.length - 1)]) = []
+      · rw [hL, List.getLast?_singleton, Option.some.injEq] at h
+        subst h
+        refine ⟨[], by simp, fun Q r hq => ?_⟩
+        have hcol := hhead Q r hq
+        rw [hcol, List.getLast?_concat, Option.some.injEq, Prod.mk.injEq] at he
+        obtain ⟨rfl, rfl⟩ := he
+        rw [stopF_eq, hcF]
+        simp [hcol, Tree.empty, Tree.cols]
+      · obtain ⟨y, L', hyL⟩ := List.exists_cons_of_ne_nil hL
+        rw [hyL, List.getLast?_cons_cons, ← hyL] at h
+        obtain ⟨ρ, hp, hst⟩ := routeColsAux_stop fuel hh _ c h
+        have hel : col[col.length - 1]? = some (p, hh) := by
+          rw [← List.getLast?_eq_getElem?]; exact he
+        have hhne : hh.cols.isEmpty = false := by
+          cases hx : hh.cols.isEmpty
+          · rfl
+          · exfalso; apply hL
+            have : hh = Tree.empty := by
+              obtain ⟨hc⟩ := hh; simp [Tree.cols] at hx; subst hx; rfl
+            rw [this, routeColsAux_empty]
+        refine ⟨(F.cols.length - 1, col.length - 1) :: ρ, by rw [hp]; simp, fun Q r hq => ?_⟩
+        have hq' : hh.colAt ⟨ρ, c.col⟩ = some (Q ++ [(r, Tree.empty)]) := by
+          simpa [Tree.colAt, Tree.forestAt, hcl, hel] using hq
+        rw [stopF_eq, hcF]
+        simp only [he, hhne, Bool.false_eq_true, if_false]
+        exact hst Q r hq'
+
 /-- D1.6d (requested by U2 REQ-U1-3, converse; used by U2 D3.1e item 1): if the last route column
 of `E` ends in an entry with empty height, the paper's route stops there. -/
 theorem stopData_of_route {E : Forest} {c : ColAddr} {Q : Column} {r : Nat}
     (hc : (routeCols E).getLast? = some c) (hcol : E.colAt c = some (Q ++ [(r, Tree.empty)])) :
     stopData E = some { depth := c.path.length, col := c, t := c.num 0, r := r, Q := Q } := by
-  sorry
+  obtain ⟨ρ, hp, hst⟩ := routeColsAux_stop _ E [] c hc
+  have hc' : c = ⟨ρ, c.col⟩ := by
+    obtain ⟨cp, cc⟩ := c
+    simp only [List.nil_append] at hp
+    simp [hp]
+  rw [hc'] at hcol
+  exact hst Q r hcol
 
 /-- D1.9b (requested by U2 REQ-U1-14, for N2.1): a one-atom extension of a word. If
 `w(E) = w(G) ⌢ [z]` with `z` an entry atom at depth `e` (`(2e,1,p)` if `first`, else
