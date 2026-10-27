@@ -2170,13 +2170,179 @@ theorem colAt_context_onStack {A : Forest} {sd : StopData} (hsd : stopData A = s
     | none => rw [hR, hA] at h1; cases h1
     | some C2 => rw [hR, hA] at h1; simpa using h1
 
+-- G9 (helper): columns of a forest below a step, when the step's column and entry are given
+theorem colAt_cons_of {cols : List Column} {ci ei : Nat} {colci : Column} {q : Nat} {h : Forest}
+    (hc : cols[ci]? = some colci) (he : colci[ei]? = some (q, h)) (π : List (Nat × Nat)) (col : Nat) :
+    (Tree.node cols).colAt ⟨(ci, ei) :: π, col⟩ = h.colAt ⟨π, col⟩ := by
+  rw [colAt_cons, hc]
+  simp only [Option.bind_some, he]
+
+-- G9 (helper): the column-level form of G9.4m', by induction along the route
+theorem replaceAt_colAt_off (Z : Forest) (π : List (Nat × Nat)) (F : Forest)
+    (hroute : Scan.IsRoutePath F π) {j : Nat}
+    (hlast : ∃ G, F.forestAt π = some G ∧ G.cols.length = j + 1)
+    (o : ColAddr) (ho : (F.colAt o).isSome) (hne : o ≠ ⟨π, j⟩)
+    (hin : (⟨π, j⟩ : ColAddr).container o = none) (hnc : o.container ⟨π, j⟩ = none) :
+    (replaceAt 0 0 Z π.length F).colAt o = F.colAt o := by
+  induction π generalizing F o with
+  | nil =>
+    obtain ⟨cols⟩ := F
+    obtain ⟨G, hG, hlen⟩ := hlast
+    simp only [Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    simp only [Tree.cols] at hlen
+    have hcne : cols ≠ [] := by intro h; rw [h] at hlen; simp at hlen
+    rw [List.length_nil, replaceAt_zero_eq Z cols hcne]
+    obtain ⟨op, oc⟩ := o
+    cases op with
+    | nil =>
+      have hoc : oc < cols.length := by
+        unfold Tree.colAt at ho
+        simp only [Tree.forestAt, Option.bind_some, Tree.cols] at ho
+        cases h : cols[oc]? with
+        | none => rw [h] at ho; cases ho
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      have hoj : oc ≠ j := fun h => hne (by rw [h])
+      unfold Tree.colAt
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_dropLast]
+      simp [show oc < cols.length - 1 by omega]
+    | cons s rest =>
+      obtain ⟨c', e'⟩ := s
+      have hc' : c' < cols.length := by
+        rw [colAt_cons] at ho
+        cases h : cols[c']? with
+        | none => rw [h] at ho; cases ho
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      have hcj : c' ≠ j := by
+        intro h
+        apply Option.some_ne_none (⟨⟨[], j⟩, e'⟩ : EntryAddr)
+        rw [← hin]
+        simp [ColAddr.container, h]
+      rw [colAt_cons, colAt_cons]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_dropLast]
+      simp [show c' < cols.length - 1 by omega]
+  | cons s rest ih =>
+    obtain ⟨ci, ei⟩ := s
+    obtain ⟨cols⟩ := F
+    obtain ⟨G0, hG0, hls⟩ := hroute 0 (by simp)
+    simp only [List.take_zero, Tree.forestAt, Option.some.injEq] at hG0
+    subst hG0
+    unfold Tree.lastStep? at hls
+    simp only [Tree.cols, List.getElem?_cons_zero] at hls
+    obtain ⟨lc, hlc, hlcne, hci, hei⟩ : ∃ lc, cols.getLast? = some lc ∧ lc ≠ [] ∧
+        ci = cols.length - 1 ∧ ei = lc.length - 1 := by
+      cases hg : cols.getLast? with
+      | none => rw [hg] at hls; cases hls
+      | some lc =>
+        rw [hg] at hls
+        simp only [Option.bind_some] at hls
+        split_ifs at hls with hemp
+        simp only [Option.some.injEq, Prod.mk.injEq] at hls
+        exact ⟨lc, rfl, by simpa using hemp, hls.1.symm, hls.2.symm⟩
+    obtain ⟨pq, hpq⟩ : ∃ x, lc.getLast? = some x := by
+      cases h : lc.getLast? with
+      | none => simp at h; exact absurd h hlcne
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨q, h⟩ := pq
+    have hcolci : cols[ci]? = some lc := by
+      rw [hci, ← List.getLast?_eq_getElem?]; exact hlc
+    have heiq : lc[ei]? = some (q, h) := by
+      rw [hei, ← List.getLast?_eq_getElem?]; exact hpq
+    have hcil : ci < cols.length := (List.getElem?_eq_some_iff.mp hcolci).1
+    have heil : ei < lc.length := (List.getElem?_eq_some_iff.mp heiq).1
+    have hR : replaceAt 0 0 Z ((ci, ei) :: rest).length (Tree.node cols) =
+        .node (cols.dropLast ++ [lc.dropLast ++ [(q, replaceAt 0 0 Z rest.length h)]]) := by
+      rw [List.length_cons, replaceAt_succ_eq, hlc]
+      simp only [Option.map_some, Option.toList_some, hpq]
+    rw [hR]
+    have hlen1 : cols.dropLast.length = ci := by simp; omega
+    have hlen2 : lc.dropLast.length = ei := by simp; omega
+    have hRci : (cols.dropLast ++ [lc.dropLast ++ [(q, replaceAt 0 0 Z rest.length h)]])[ci]? =
+        some (lc.dropLast ++ [(q, replaceAt 0 0 Z rest.length h)]) := by
+      rw [List.getElem?_append_right (le_of_eq hlen1), hlen1, Nat.sub_self]; rfl
+    have hRei : (lc.dropLast ++ [(q, replaceAt 0 0 Z rest.length h)])[ei]? =
+        some (q, replaceAt 0 0 Z rest.length h) := by
+      rw [List.getElem?_append_right (le_of_eq hlen2), hlen2, Nat.sub_self]; rfl
+    have hroute' := isRoutePath_cons rfl hcolci heiq hroute
+    have hlast' : ∃ G, h.forestAt rest = some G ∧ G.cols.length = j + 1 := by
+      obtain ⟨G, hG, hl⟩ := hlast
+      refine ⟨G, ?_, hl⟩
+      simpa [Tree.forestAt, Tree.cols, hcolci, heiq] using hG
+    obtain ⟨op, oc⟩ := o
+    cases op with
+    | nil =>
+      have hoc : oc < cols.length := by
+        unfold Tree.colAt at ho
+        simp only [Tree.forestAt, Option.bind_some, Tree.cols] at ho
+        cases h : cols[oc]? with
+        | none => rw [h] at ho; cases ho
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      have hoci : oc ≠ ci := by
+        intro h
+        apply Option.some_ne_none (⟨⟨[], oc⟩, ei⟩ : EntryAddr)
+        rw [← hnc]
+        simp [ColAddr.container, h]
+      unfold Tree.colAt
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by omega), List.getElem?_dropLast]
+      simp [show oc < cols.length - 1 by omega]
+    | cons s rest_o =>
+      obtain ⟨c', e'⟩ := s
+      have hc' : c' < cols.length := by
+        rw [colAt_cons] at ho
+        cases h : cols[c']? with
+        | none => rw [h] at ho; cases ho
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      rcases Nat.lt_or_ge c' ci with hlt | hge
+      · rw [colAt_cons, colAt_cons]
+        rw [List.getElem?_append_left (by omega), List.getElem?_dropLast]
+        simp [show c' < cols.length - 1 by omega]
+      · have hc'ci : c' = ci := by omega
+        subst hc'ci
+        have he' : e' < lc.length := by
+          rw [colAt_cons, hcolci] at ho
+          simp only [Option.bind_some] at ho
+          cases h : lc[e']? with
+          | none => rw [h] at ho; cases ho
+          | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+        rcases Nat.lt_or_ge e' ei with hlt | hge'
+        · rw [colAt_cons, colAt_cons, hRci, hcolci]
+          simp only [Option.bind_some]
+          rw [List.getElem?_append_left (by omega), List.getElem?_dropLast]
+          simp [show e' < lc.length - 1 by omega]
+        · have he'ei : e' = ei := by omega
+          subst he'ei
+          rw [colAt_cons_of hRci hRei, colAt_cons_of hcolci heiq]
+          rw [colAt_cons_of hcolci heiq] at ho
+          rw [container_cons] at hin hnc
+          apply ih h hroute' hlast' _ ho
+          · intro heq
+            apply hne
+            simp only [ColAddr.mk.injEq] at heq ⊢
+            rw [heq.1, heq.2]
+            exact ⟨rfl, rfl⟩
+          · cases hce : (⟨rest, j⟩ : ColAddr).container ⟨rest_o, oc⟩ with
+            | none => rfl
+            | some _ => rw [hce] at hin; cases hin
+          · cases hce : (⟨rest_o, oc⟩ : ColAddr).container ⟨rest, j⟩ with
+            | none => rfl
+            | some _ => rw [hce] at hnc; cases hnc
+
 -- G9.4m' (added by the G-009 verification, used by G9.6 for template columns off the stopping
 -- column's stack): a context `C_A(Z)` keeps every column of `A` that is not the stopping column,
 -- not inside one of its heights and not a container of it
 theorem colAt_context_of_not_route {A : Forest} {sd : StopData} (hsd : stopData A = some sd)
     (Z : Forest) {o : ColAddr} (ho : o ∈ A.colAddrs) (hne : o ≠ sd.col)
     (hin : sd.col.container o = none) (hnc : o.container sd.col = none) :
-    (context A sd Z).colAt o = A.colAt o := by sorry
+    (context A sd Z).colAt o = A.colAt o := by
+  obtain ⟨-, hdepth, -, hroute, -⟩ := stopData_spec hsd
+  obtain ⟨hpath, F, hF, hFlen⟩ := (Scan.mem_routeCols_iff _ _).mp hroute
+  have hctx : context A sd Z = replaceAt 0 0 Z sd.col.path.length A := by
+    unfold context; rw [hdepth]
+  rw [hctx]
+  exact replaceAt_colAt_off Z sd.col.path A hpath ⟨F, hF, hFlen⟩ o
+    ((Tree.mem_colAddrs_iff _ _).mp ho) hne hin hnc
 
 -- G9.4n: the column of a root-tail phase copy is the shifted column of the shorter output
 -- `A' = A[n−h]` (the first column of `localSuffix_phase`, T3.2i.6)
