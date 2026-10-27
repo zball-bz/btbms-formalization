@@ -1914,14 +1914,66 @@ structure FinalHyps (Conf : Forest → Ordinal.{u} → Prop) : Prop where
     A' ≠ Tree.empty → ∃ θ', θ' < θ ∧ Conf A' θ'
 
 -- provides: U5, N5.1
+-- Self-contained (Spine precedes U5): the three `have`s are N5.1a, N5.1c and N5.1b, which U5
+-- restates as `std_configured`, `acc_empty` and `acc_of_conf`.
 theorem abstract_wellOrder {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) :
-    IsWellOrder Std Std.lt := by sorry
+    IsWellOrder Std Std.lt := by
+  -- N5.1a: every nonempty standard expression has a configuration.
+  have configured : ∀ {A : Forest}, IsStd A → A ≠ Tree.empty → ∃ θ, Conf A θ := by
+    intro A hA hne
+    induction hA with
+    | seed m => exact h.seed m
+    | @expand e e' n hs he ih =>
+      have hne' : e ≠ Tree.empty := by
+        rintro rfl
+        exact hne (Option.some.inj ((Scan.expand_empty n).symm.trans he)).symm
+      obtain ⟨θ, hθ⟩ := ih hne'
+      obtain ⟨θ', -, hθ'⟩ := h.descent e e' n θ hs hne' hθ he hne
+      exact ⟨θ', hθ'⟩
+  -- N5.1c: nothing is below the empty forest.
+  have accEmpty : ∀ B : Std, B.1 = Tree.empty → Acc Std.lt B := by
+    intro B hB
+    refine Acc.intro _ fun C hCB => ?_
+    change C.1 < B.1 at hCB
+    rw [hB] at hCB
+    have hC : C.1 ≠ Tree.empty := by
+      intro hh
+      rw [hh] at hCB
+      exact lt_irrefl _ hCB
+    exact absurd (h.empty_least C.1 hC) (lt_asymm hCB)
+  -- N5.1b: accessibility below a configured expression, by induction on its maximum `θ`.
+  have accConf : ∀ (θ : Ordinal.{u}) (A : Forest), IsStd A → A ≠ Tree.empty → Conf A θ →
+      ∀ B : Std, B.1 ≤ A → Acc Std.lt B := by
+    intro θ
+    induction θ using WellFoundedLT.induction with
+    | _ θ ih =>
+      intro A hA hne hconf B hBA
+      refine Acc.intro _ fun C hCB => ?_
+      by_cases hC : C.1 = Tree.empty
+      · exact accEmpty C hC
+      · have hCA : C.1 < A := lt_of_lt_of_le hCB hBA
+        obtain ⟨n, A', hex, hCA'⟩ := h.cofinal C.1 A C.2 (h.closure A hA) hCA
+        have hne' : A' ≠ Tree.empty := by
+          intro hh
+          rw [hh] at hCA'
+          exact not_lt_of_ge hCA' (h.empty_least C.1 hC)
+        obtain ⟨θ', hlt, hconf'⟩ := h.descent A A' n θ hA hne hconf hex hne'
+        exact ih θ' hlt A' (IsStd.expand n hA hex) hne' hconf' C hCA'
+  exact {
+    wf := ⟨fun B => by
+      by_cases hB : B.1 = Tree.empty
+      · exact accEmpty B hB
+      · obtain ⟨θ, hθ⟩ := configured B.2 hB
+        exact accConf θ B.1 B.2 hB hθ B le_rfl⟩
+    trichotomous := fun a b hab hba =>
+      Subtype.ext (le_antisymm (not_lt.mp hba) (not_lt.mp hab)) }
 
 -- provides: U5, N5.1
 theorem abstract_implies_main
     (h : (∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) →
       ∃ Conf : Forest → Ordinal.{u} → Prop, FinalHyps Conf) :
-    MainTheorem.{u} := by sorry
+    MainTheorem.{u} :=
+  fun hM => (h hM).elim fun _ hC => abstract_wellOrder hC
 
 -- provides: U5, T9.1 (assembly of all units into the S-5 hypotheses)
 theorem finalHyps (I : Interface.{u}) (hM : ∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) :
