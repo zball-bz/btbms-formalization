@@ -2631,6 +2631,93 @@ theorem ker_kernel_open {E : Forest} {sd : StopData} {rd : RootData} (hsd : stop
         refine ⟨⟨⟨by omega, by omega⟩, hGhole.1.2⟩, hGhole.2⟩
       · exact absurd ho'' ho
 
+/-- T3.2i helper: the kernel hole law (columns under the hole are those of `T_d X`). -/
+theorem ker_kernel_hole_law {E : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData E = some sd) (hrd : rootData E = some rd) (hkd : KernelDefined E rd)
+    (X : Forest) (y : ColAddr) :
+    (kernel E sd rd X).colAt (underCol (kerHole sd rd) y) = (shift sd.r (period sd) X).colAt y ∧
+      localSuffix (kernel E sd rd X) (underCol (kerHole sd rd) y) =
+        localSuffix (shift sd.r (period sd) X) y := by
+  obtain ⟨h1, h2, h3⟩ := ker_kernel_open hsd hrd hkd X
+  rw [h1, ← h3]
+  exact ker_hole_law _ h2 y
+
+/-- T3.2i helper: `k` kernel layers above an address shift it by `τ_k`. -/
+theorem ker_iterate_law {E : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData E = some sd) (hrd : rootData E = some rd) (hkd : KernelDefined E rd) :
+    ∀ (k m : Nat) (w : ColAddr),
+      ((kernel E sd rd)^[m + k] Tree.empty).colAt ((underCol (kerHole sd rd))^[k] w) =
+        (((kernel E sd rd)^[m] Tree.empty).colAt w).map
+          (Tree.mapCol (shiftVal sd.r (k * period sd))) ∧
+      localSuffix ((kernel E sd rd)^[m + k] Tree.empty) ((underCol (kerHole sd rd))^[k] w) =
+        shift sd.r (k * period sd) (localSuffix ((kernel E sd rd)^[m] Tree.empty) w)
+  | 0, m, w => by
+    simp only [Nat.add_zero, Function.iterate_zero_apply, Nat.zero_mul, shift_zero]
+    rw [shiftVal_zero_fun, treeMapCol_id_fun, Option.map_id]
+    exact ⟨by simp, by simp⟩
+  | k + 1, m, w => by
+    rw [show m + (k + 1) = (m + k) + 1 by omega, Function.iterate_succ_apply',
+      Function.iterate_succ_apply']
+    obtain ⟨h1, h2⟩ := ker_kernel_hole_law hsd hrd hkd ((kernel E sd rd)^[m + k] Tree.empty)
+      ((underCol (kerHole sd rd))^[k] w)
+    obtain ⟨h3, h4⟩ := ker_shift_law sd.r (period sd) ((kernel E sd rd)^[m + k] Tree.empty)
+      ((underCol (kerHole sd rd))^[k] w)
+    obtain ⟨ih1, ih2⟩ := ker_iterate_law hsd hrd hkd k m w
+    refine ⟨?_, ?_⟩
+    · rw [h1, h3, ih1, Option.map_map]
+      congr 1
+      funext c
+      rw [Function.comp, treeMapCol_map, shiftVal_add, Nat.succ_mul, Nat.add_comm]
+    · rw [h2, h4, ih2, shift_add, Nat.succ_mul, Nat.add_comm]
+
+/-- T3.2i helper: the root column is not query material. -/
+theorem ker_isQMat_root {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) : isQMat sd rd.col = false := by
+  obtain ⟨hpath, hle⟩ := ker_rootPath hsd hrd
+  obtain ⟨-, hdep, -⟩ := stopData_spec hsd
+  obtain ⟨-, -, hlay, -⟩ := rootData_path hsd hrd
+  unfold isQMat
+  have hl : rd.col.path.length ≤ sd.col.path.length := by rw [← hlay, ← hdep]; exact hle
+  rw [List.take_of_length_le hl]
+  by_cases h : rd.col.path = sd.col.path
+  · rw [h, List.drop_length]; simp
+  · simp [h]
+
+theorem ker_kerCol_root {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) : kerCol sd rd rd.col = some ⟨[], 0⟩ := by
+  have hq := ker_isQMat_root hsd hrd
+  have hidx := (rootData_spec hsd hrd).2.2.1
+  unfold kerCol
+  rw [if_neg (by simp [hq]), if_pos (List.take_length), List.drop_length]
+  simp only
+  rw [if_pos hidx.symm]
+
+/-- T3.2i helper: the head column of a kernel output. -/
+theorem ker_kernel_col0 (E : Forest) (sd : StopData) (rd : RootData) (X : Forest) :
+    ∃ V, (kernel E sd rd X).colAt ⟨[], 0⟩ = some (sd.Q ++ V) ∧
+      V.length = (unconsumed E rd).length ∧
+      ∀ v x, (unconsumed E rd)[v]? = some x → ∃ y, V[v]? = some y ∧ y.1 = x.1 ∧
+        (¬ (rd.owner = true ∧ v + 1 = (unconsumed E rd).length) →
+          y.2 = shift sd.r (period sd) x.2) := by
+  unfold kernel
+  by_cases ho : rd.owner = true
+  · simp only [ho, if_true]
+    refine ⟨_, rfl, ker_length_mapLast _ _ _, ?_⟩
+    intro v x hx
+    rcases Nat.lt_or_ge (v + 1) (unconsumed E rd).length with hlt | hge
+    · rw [ker_mapLast_getElem?_lt _ _ hlt, hx]
+      exact ⟨_, rfl, rfl, fun _ => rfl⟩
+    · have hv : v < (unconsumed E rd).length := by
+        by_contra h; rw [List.getElem?_eq_none (by omega)] at hx; cases hx
+      have hve : v = (unconsumed E rd).length - 1 := by omega
+      rw [hve, ker_mapLast_getElem?_last, List.getLast?_eq_getElem?, ← hve, hx]
+      exact ⟨_, rfl, rfl, fun h => (h ⟨by simp [ho], by omega⟩).elim⟩
+  · simp only [ho, Bool.false_eq_true, if_false]
+    refine ⟨_, rfl, List.length_map _, ?_⟩
+    intro v x hx
+    rw [List.getElem?_map, hx]
+    exact ⟨_, rfl, rfl, fun _ => rfl⟩
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
@@ -2683,7 +2770,40 @@ theorem colAt_head {A B : Forest} {sd : StopData} {rd : RootData} {n i : Nat} {c
       col.take sd.Q.length = Tree.mapCol (shiftVal sd.r ((i - 1) * period sd)) sd.Q ∧
       ∀ v x, (unconsumed A rd)[v]? = some x → ∃ y, col[sd.Q.length + v]? = some y ∧ y.1 = x.1 ∧
         (¬ (rd.owner = true ∧ v + 1 = (unconsumed A rd).length) →
-          y.2 = shift sd.r (i * period sd) x.2) := by sorry
+          y.2 = shift sd.r (i * period sd) x.2) := by
+  have hkd := ker_kernelDefined hL hsd hrd
+  obtain ⟨hV, hI, -⟩ := hL
+  have hU := ker_unconsumed_lt hV hsd hrd
+  obtain ⟨hBeq, -⟩ := ker_expand_out hV hI hk hsd hrd hB
+  subst hBeq
+  unfold phaseCol at hc
+  rw [ker_kerCol_root hsd hrd, Option.map_some, Option.some.injEq] at hc
+  subst hc
+  rw [(ker_context_law hsd _ _).1]
+  have hit := (ker_iterate_law hsd hrd hkd (i - 1) (n - (i - 1)) ⟨[], 0⟩).1
+  rw [show n - (i - 1) + (i - 1) = n by omega] at hit
+  rw [hit, show n - (i - 1) = (n - i) + 1 by omega, Function.iterate_succ_apply']
+  obtain ⟨V, hV0, hVlen, hVent⟩ := ker_kernel_col0 A sd rd ((kernel A sd rd)^[n - i] Tree.empty)
+  rw [hV0, Option.map_some]
+  refine ⟨_, rfl, ?_, ?_, ?_⟩
+  · rw [treeMapCol_eq_map, List.length_map, List.length_append, hVlen]
+  · rw [ker_mapCol_append, List.take_left' (by rw [treeMapCol_eq_map, List.length_map])]
+  · intro v x hx
+    have hxm : x ∈ unconsumed A rd := List.mem_of_getElem? hx
+    obtain ⟨y, hy, hy1, hy2⟩ := hVent v x hx
+    have hlenQ : (Tree.mapCol (shiftVal sd.r ((i - 1) * period sd)) sd.Q).length ≤
+        sd.Q.length + v := by rw [treeMapCol_eq_map, List.length_map]; omega
+    rw [ker_mapCol_append, List.getElem?_append_right hlenQ, treeMapCol_eq_map, treeMapCol_eq_map,
+      List.length_map, Nat.add_sub_cancel_left, List.getElem?_map, hy]
+    have := hU x hxm
+    refine ⟨_, rfl, ?_, fun h => ?_⟩
+    · show shiftVal sd.r ((i - 1) * period sd) y.1 = x.1
+      rw [hy1]; unfold shiftVal; rw [if_neg (by omega)]
+    · show shift sd.r ((i - 1) * period sd) y.2 = _
+      rw [hy2 h, shift_add]
+      congr 1
+      obtain ⟨i', rfl⟩ : ∃ i', i = i' + 1 := ⟨i - 1, by omega⟩
+      rw [Nat.add_sub_cancel, Nat.succ_mul]
 
 -- T3.2i/T3.2l: local suffixes of phase copies; root-tail material reads the shorter output
 -- `A_{n−i}` (txt:586-592)
@@ -2702,7 +2822,20 @@ theorem localSuffix_head {A B : Forest} {sd : StopData} {rd : RootData} {n i : N
     (hrd : rootData A = some rd) (hB : expand A n = some B) (hi : 1 ≤ i ∧ i ≤ n)
     (hc : phaseCol sd rd i rd.col = some c) :
     localSuffix B c = shift sd.r ((i - 1) * period sd) ((kernel A sd rd)^[n - i + 1] Tree.empty) := by
-  sorry
+  have hkd := ker_kernelDefined hL hsd hrd
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨hBeq, -⟩ := ker_expand_out hV hI hk hsd hrd hB
+  subst hBeq
+  unfold phaseCol at hc
+  rw [ker_kerCol_root hsd hrd, Option.map_some, Option.some.injEq] at hc
+  subst hc
+  rw [(ker_context_law hsd _ _).2]
+  have hit := (ker_iterate_law hsd hrd hkd (i - 1) (n - (i - 1)) ⟨[], 0⟩).2
+  rw [show n - (i - 1) + (i - 1) = n by omega] at hit
+  rw [hit, show n - (i - 1) = n - i + 1 by omega]
+  congr 1
+  unfold localSuffix
+  simp only [Tree.forestAt, Option.getD_some, List.drop_zero, ker_node_cols]
 
 -- T3.2l (txt:345-349): a changed continuation is smaller than its complete prototype, with its
 -- first difference at the old terminal
