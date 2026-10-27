@@ -4398,13 +4398,485 @@ theorem origin_reps {E : Forest} (w : AdmCap E) :
         c'.rep 0 q := by
   sorry
 
+theorem modify_split {α : Type} {l : List α} {n : Nat} {x : α} (h : l[n]? = some x) (f : α → α) :
+    l = l.take n ++ x :: l.drop (n + 1) ∧ l.modify n f = l.take n ++ f x :: l.drop (n + 1) := by
+  have hn : n < l.length := (List.getElem?_eq_some_iff.1 h).1
+  have hx : l[n] = x := (List.getElem?_eq_some_iff.1 h).2
+  constructor
+  · conv_lhs => rw [← List.take_append_drop n l, List.drop_eq_getElem_cons hn, hx]
+  · rw [List.modify_eq_take_drop, List.drop_eq_getElem_cons hn, hx]; rfl
+
+/-! ### D3.1e helpers: roles of a literal cap -/
+
+theorem rolesCols_append {α : Type} (π : List (Nat × Nat)) :
+    ∀ (c : Nat) (l₁ l₂ : List (List (α × Tree α))),
+      Tree.rolesCols π c (l₁ ++ l₂) = Tree.rolesCols π c l₁ ++ Tree.rolesCols π (c + l₁.length) l₂
+  | c, [], l₂ => by simp [Tree.rolesCols]
+  | c, x :: l₁, l₂ => by
+    rw [List.length_cons, show c + (l₁.length + 1) = c + 1 + l₁.length by omega]
+    simp only [List.cons_append, Tree.rolesCols, rolesCols_append π (c + 1) l₁ l₂,
+      List.append_assoc, List.cons_append]
+
+theorem rolesCol_append {α : Type} (π : List (Nat × Nat)) (c : Nat) :
+    ∀ (i : Nat) (l₁ l₂ : List (α × Tree α)),
+      Tree.rolesCol π c i (l₁ ++ l₂) = Tree.rolesCol π c i l₁ ++ Tree.rolesCol π c (i + l₁.length) l₂
+  | i, [], l₂ => by simp [Tree.rolesCol]
+  | i, (x, h) :: l₁, l₂ => by
+    rw [List.length_cons, show i + (l₁.length + 1) = i + 1 + l₁.length by omega]
+    simp only [List.cons_append, Tree.rolesCol, rolesCol_append π c (i + 1) l₁ l₂,
+      List.append_assoc, List.cons_append]
+
+theorem rolesF_empty {α : Type} (π : List (Nat × Nat)) : Tree.rolesF π (Tree.empty : Tree α) = [] := by
+  simp [Tree.empty, Tree.rolesF, Tree.rolesCols]
+
+theorem roles_litCapAux (k p : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (j : Nat) (F : Forest) (col : Column) (π : List (Nat × Nat)),
+      F.colAt ⟨ρ, j⟩ = some col → k ≤ col.length →
+      ∃ n, n ≤ (Tree.rolesF π F).length ∧
+        Tree.rolesF π (litCapAux k p ρ j F) = (Tree.rolesF π F).take n ++ [.slot ⟨⟨π ++ ρ, j⟩, k⟩]
+  | [], j, .node cols, col, π, hcol, hk => by
+    rw [colAt_node_nil] at hcol
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    obtain ⟨h1, -⟩ := modify_split hcol id
+    have hl : (cols.take j).length = j := List.length_take_of_le hj.le
+    have hkl : (col.take k).length = k := List.length_take_of_le hk
+    have hKr : Tree.rolesF π (litCapAux k p [] j (.node cols)) =
+        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
+          (Tree.rolesCol π j 0 (col.take k) ++ [Role.slot ⟨⟨π, j⟩, k⟩]) := by
+      rw [litCapAux_nil, List.getD_eq_getElem?_getD, hcol, Option.getD_some]
+      simp only [Tree.rolesF]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols, List.append_nil]
+      rw [rolesCol_append, Nat.zero_add, hkl]
+      simp [Tree.rolesCol, rolesF_empty]
+    have hEr : Tree.rolesF π (.node cols) =
+        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
+          (Tree.rolesCol π j 0 (col.take k) ++ (Tree.rolesCol π j k (col.drop k) ++
+            Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) := by
+      simp only [Tree.rolesF]
+      conv_lhs => rw [h1]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols]
+      conv_lhs => rw [← List.take_append_drop k col]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hkl, List.append_assoc]
+    rw [hKr, hEr]
+    set A := Tree.rolesCols π 0 (cols.take j)
+    set B := Tree.rolesCol π j 0 (col.take k)
+    refine ⟨A.length + 1 + B.length, by simp; omega, ?_⟩
+    rw [show A.length + 1 + B.length = (A ++ Role.ord ⟨π, j⟩ :: B).length by simp; omega]
+    rw [show A ++ Role.ord ⟨π, j⟩ :: (B ++ (Tree.rolesCol π j k (col.drop k) ++
+        Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) = (A ++ Role.ord ⟨π, j⟩ :: B) ++
+        (Tree.rolesCol π j k (col.drop k) ++ Tree.rolesCols π (j + 1) (cols.drop (j + 1))) by simp,
+      List.take_left]
+    simp
+  | (ci, ei) :: ρ, j, .node cols, col, π, hcol, hk => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+    have hei : ei < colc.length := (List.getElem?_eq_some_iff.1 hx').1
+    have hget : (cols.getD ci [])[ei]? = some (q, H) := by
+      rw [List.getD_eq_getElem?_getD, hc, Option.getD_some]; exact hx'
+    obtain ⟨n', hn', hih⟩ := roles_litCapAux k p ρ j H col (π ++ [(ci, ei)]) hcolx hk
+    obtain ⟨h1, -⟩ := modify_split hc id
+    obtain ⟨h3, -⟩ := modify_split hx' id
+    have hl : (cols.take ci).length = ci := List.length_take_of_le hci.le
+    have hl' : (colc.take ei).length = ei := List.length_take_of_le hei.le
+    have hKr : Tree.rolesF π (litCapAux k p ((ci, ei) :: ρ) j (.node cols)) =
+        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
+          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
+            ((Tree.rolesF (π ++ [(ci, ei)]) H).take n' ++
+              [Role.slot ⟨⟨π ++ [(ci, ei)] ++ ρ, j⟩, k⟩])) := by
+      rw [litCapAux_cons k p ci ei j ρ cols hget, List.getD_eq_getElem?_getD, hc, Option.getD_some]
+      simp only [Tree.rolesF]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols, List.append_nil]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_nil]
+      rw [hih]
+    have hEr : Tree.rolesF π (.node cols) =
+        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
+          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
+            (Tree.rolesF (π ++ [(ci, ei)]) H ++ (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++
+              Tree.rolesCols π (ci + 1) (cols.drop (ci + 1))))) := by
+      simp only [Tree.rolesF]
+      conv_lhs => rw [h1]
+      rw [rolesCols_append, hl]
+      simp only [Tree.rolesCols]
+      conv_lhs => rw [h3]
+      rw [rolesCol_append]
+      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_assoc, List.cons_append]
+    rw [hKr, hEr]
+    set A := Tree.rolesCols π 0 (cols.take ci)
+    set B := Tree.rolesCol π ci 0 (colc.take ei)
+    set R := Tree.rolesF (π ++ [(ci, ei)]) H
+    refine ⟨(A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩])).length + n', by
+      simp only [List.length_append, List.length_cons, List.length_singleton, List.length_nil]; omega, ?_⟩
+    have e1 : ∀ (X T : List Role), (X ++ (R ++ T)).take (X.length + n') = X ++ R.take n' := by
+      intro X T
+      rw [List.take_append, List.take_of_length_le (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
+        List.take_append_of_le_length hn']
+    have e2 := e1 (A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩]))
+      (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++ Tree.rolesCols π (ci + 1) (cols.drop (ci + 1)))
+    simp only [List.append_assoc, List.cons_append, List.singleton_append, List.nil_append] at e2 ⊢
+    rw [e2]
+    simp
+
+/-! ### reading order under a move -/
+
+theorem mapRole_off (g : Nat → Nat) (m : Move) (x : Role)
+    (h1 : ∀ e D, x.path ≠ m.col.path ++ (m.col.col, e) :: D) (h2 : ∀ e, x ≠ .slot ⟨m.col, e⟩) :
+    m.mapRole g x = x := by
+  cases x with
+  | ord c => simp only [Move.mapRole]; rw [mapPath_off g m c.path h1]
+  | slot e =>
+    simp only [Move.mapRole]
+    unfold Move.mapEntry; dsimp only
+    rw [mapPath_off g m e.col.path h1, if_neg]
+    intro h; apply h2 e.idx; rw [← h]
+
+mutual
+/-- helper: relabelling the entry index of one step of the path of every role of a height. -/
+theorem rolesF_relabel (g : Nat → Nat) (m : Move) :
+    ∀ (e : Nat) (R : List (Nat × Nat)) (h : Forest),
+      (Tree.rolesF (m.col.path ++ (m.col.col, e) :: R) h).map (m.mapRole g) =
+        Tree.rolesF (m.col.path ++ (m.col.col, g e) :: R) h
+  | e, R, .node cols => by simp only [Tree.rolesF]; exact rolesCols_relabel g m e R 0 cols
+theorem rolesCols_relabel (g : Nat → Nat) (m : Move) :
+    ∀ (e : Nat) (R : List (Nat × Nat)) (c : Nat) (cols : List Column),
+      (Tree.rolesCols (m.col.path ++ (m.col.col, e) :: R) c cols).map (m.mapRole g) =
+        Tree.rolesCols (m.col.path ++ (m.col.col, g e) :: R) c cols
+  | _, _, _, [] => by simp [Tree.rolesCols]
+  | e, R, c, col :: rest => by
+    simp only [Tree.rolesCols, List.map_cons, List.map_append]
+    rw [rolesCol_relabel g m e R c 0 col, rolesCols_relabel g m e R (c + 1) rest]
+    simp only [Move.mapRole, mapPath_through]
+theorem rolesCol_relabel (g : Nat → Nat) (m : Move) :
+    ∀ (e : Nat) (R : List (Nat × Nat)) (c i : Nat) (col : Column),
+      (Tree.rolesCol (m.col.path ++ (m.col.col, e) :: R) c i col).map (m.mapRole g) =
+        Tree.rolesCol (m.col.path ++ (m.col.col, g e) :: R) c i col
+  | _, _, _, _, [] => by simp [Tree.rolesCol]
+  | e, R, c, i, (x, h) :: rest => by
+    simp only [Tree.rolesCol, List.map_cons, List.map_append]
+    have h1 := rolesF_relabel g m e (R ++ [(c, i)]) h
+    simp only [List.append_assoc, List.cons_append] at h1 ⊢
+    rw [h1, rolesCol_relabel g m e R c (i + 1) rest]
+    congr 1
+    simp only [Move.mapRole]
+    unfold Move.mapEntry; dsimp only
+    rw [mapPath_through, if_neg]
+    intro h'; have := congrArg (fun c : ColAddr => c.path.length) h'; simp at this
+end
+
+mutual
+theorem rolesF_path : ∀ (π : List (Nat × Nat)) (h : Forest), ∀ x ∈ Tree.rolesF π h, π <+: x.path
+  | π, .node cols => by
+    intro x hx
+    simp only [Tree.rolesF] at hx
+    obtain ⟨c', -, -, h⟩ := rolesCols_path π 0 cols x hx
+    rcases h with rfl | ⟨e, rfl | h⟩
+    · exact List.prefix_refl _
+    · exact List.prefix_refl _
+    · exact (List.prefix_append _ _).trans h
+theorem rolesCols_path : ∀ (π : List (Nat × Nat)) (c : Nat) (cols : List Column),
+    ∀ x ∈ Tree.rolesCols π c cols, ∃ c', c ≤ c' ∧ c' < c + cols.length ∧
+      (x = .ord ⟨π, c'⟩ ∨ ∃ e, x = .slot ⟨⟨π, c'⟩, e⟩ ∨ π ++ [(c', e)] <+: x.path)
+  | _, _, [] => by simp [Tree.rolesCols]
+  | π, c, col :: rest => by
+    intro x hx
+    simp only [Tree.rolesCols, List.mem_cons, List.mem_append] at hx
+    rcases hx with rfl | hx | hx
+    · exact ⟨c, le_rfl, by simp, Or.inl rfl⟩
+    · obtain ⟨e, -, -, h⟩ := rolesCol_path π c 0 col x hx
+      exact ⟨c, le_rfl, by simp, Or.inr ⟨e, h⟩⟩
+    · obtain ⟨c', h1, h2, h⟩ := rolesCols_path π (c + 1) rest x hx
+      exact ⟨c', by omega, by simp; omega, h⟩
+theorem rolesCol_path : ∀ (π : List (Nat × Nat)) (c i : Nat) (col : Column),
+    ∀ x ∈ Tree.rolesCol π c i col, ∃ e, i ≤ e ∧ e < i + col.length ∧
+      (x = .slot ⟨⟨π, c⟩, e⟩ ∨ π ++ [(c, e)] <+: x.path)
+  | _, _, _, [] => by simp [Tree.rolesCol]
+  | π, c, i, (y, h) :: rest => by
+    intro x hx
+    simp only [Tree.rolesCol, List.mem_cons, List.mem_append] at hx
+    rcases hx with rfl | hx | hx
+    · exact ⟨i, le_rfl, by simp, Or.inl rfl⟩
+    · exact ⟨i, le_rfl, by simp, Or.inr (rolesF_path _ h x hx)⟩
+    · obtain ⟨e, h1, h2, h⟩ := rolesCol_path π c (i + 1) rest x hx
+      exact ⟨e, by omega, by simp; omega, h⟩
+end
+
+theorem path_ne_of_div {π P D : List (Nat × Nat)} {x y : Nat × Nat} (hxy : x ≠ y) :
+    ∀ D', π ++ x :: D ≠ π ++ y :: D' := by
+  intro D' h; simp at h; exact hxy h.1
+
+/-- helper: roles at the move level, in columns other than the move column, are fixed. -/
+theorem off_base (g : Nat → Nat) (m : Move) (c0 : Nat) (cols : List Column)
+    (hcc : ¬ (c0 ≤ m.col.col ∧ m.col.col < c0 + cols.length)) :
+    ∀ x ∈ Tree.rolesCols m.col.path c0 cols, m.mapRole g x = x := by
+  intro x hx
+  obtain ⟨c', h1, h2, h⟩ := rolesCols_path _ _ _ x hx
+  have hc' : c' ≠ m.col.col := fun h' => hcc ⟨h' ▸ h1, h' ▸ h2⟩
+  apply mapRole_off
+  · intro e D he
+    rcases h with rfl | ⟨e', rfl | ⟨D', hD'⟩⟩
+    · simp [Role.path] at he
+    · simp [Role.path] at he
+    · rw [he] at hD'; simp at hD'; exact hc' hD'.1.1
+  · intro e he
+    rcases h with rfl | ⟨e', rfl | ⟨D', hD'⟩⟩
+    · simp at he
+    · simp at he; exact hc' (congrArg ColAddr.col he.1)
+    · rw [he] at hD'; simp [Role.path] at hD'
+
+/-- helper: roles above the move level, off the move's path, are fixed. -/
+theorem off_step_cols (g : Nat → Nat) (m : Move) {π P'' : List (Nat × Nat)} {a b : Nat}
+    (hP : m.col.path = π ++ (a, b) :: P'') (c0 : Nat) (cols : List Column)
+    (ha : ¬ (c0 ≤ a ∧ a < c0 + cols.length)) :
+    ∀ x ∈ Tree.rolesCols π c0 cols, m.mapRole g x = x := by
+  intro x hx
+  obtain ⟨c', h1, h2, h⟩ := rolesCols_path _ _ _ x hx
+  have hc' : c' ≠ a := fun h' => ha ⟨h' ▸ h1, h' ▸ h2⟩
+  apply mapRole_off
+  · intro e D he
+    rw [hP] at he
+    rcases h with rfl | ⟨e', rfl | ⟨D', hD'⟩⟩
+    · simp [Role.path] at he
+    · simp [Role.path] at he
+    · rw [he] at hD'; simp at hD'; exact hc' hD'.1.1
+  · intro e he
+    have hl : x.path = m.col.path := by rw [he]; rfl
+    rw [hP] at hl
+    rcases h with rfl | ⟨e', rfl | ⟨D', hD'⟩⟩
+    · simp [Role.path] at hl
+    · simp [Role.path] at hl
+    · rw [hl] at hD'; simp at hD'; exact hc' hD'.1.1
+
+theorem off_step_col (g : Nat → Nat) (m : Move) {π P'' : List (Nat × Nat)} {a b : Nat}
+    (hP : m.col.path = π ++ (a, b) :: P'') (i : Nat) (col : Column)
+    (hb : ¬ (i ≤ b ∧ b < i + col.length)) :
+    ∀ x ∈ Tree.rolesCol π a i col, m.mapRole g x = x := by
+  intro x hx
+  obtain ⟨e', h1, h2, h⟩ := rolesCol_path _ _ _ _ x hx
+  have he' : e' ≠ b := fun h' => hb ⟨h' ▸ h1, h' ▸ h2⟩
+  apply mapRole_off
+  · intro e D he
+    rw [hP] at he
+    rcases h with rfl | ⟨D', hD'⟩
+    · simp [Role.path] at he
+    · rw [he] at hD'; simp at hD'; exact he' hD'.1
+  · intro e he
+    have hl : x.path = m.col.path := by rw [he]; rfl
+    rw [hP] at hl
+    rcases h with rfl | ⟨D', hD'⟩
+    · simp [Role.path] at hl
+    · rw [hl] at hD'; simp at hD'; exact he' hD'.1
+
+theorem off_short (g : Nat → Nat) (m : Move) {x : Role} (h : x.path.length < m.col.path.length) :
+    m.mapRole g x = x := by
+  apply mapRole_off
+  · intro e D he; rw [he] at h; simp at h
+  · intro e he; rw [he] at h; simp [Role.path] at h
+
+/-- helper: column-level relabelling of the move column's entries by a shift. -/
+theorem rolesCol_shift (g : Nat → Nat) (m : Move) :
+    ∀ (s : Nat) (l : Column), (∀ t, t < l.length → g (s + t) = g s + t) →
+      (Tree.rolesCol m.col.path m.col.col s l).map (m.mapRole g) =
+        Tree.rolesCol m.col.path m.col.col (g s) l
+  | _, [], _ => by simp [Tree.rolesCol]
+  | s, (y, h) :: rest, hg => by
+    simp only [Tree.rolesCol, List.map_cons, List.map_append]
+    have h1 := rolesF_relabel g m s [] h
+    rw [h1]
+    rw [rolesCol_shift g m (s + 1) rest (fun t ht => by
+      rw [show s + 1 + t = s + (t + 1) by omega, hg (t + 1) (by simp; omega),
+        hg 1 (by simp; omega)]; omega)]
+    have key : Tree.rolesCol m.col.path m.col.col (g (s + 1)) rest =
+        Tree.rolesCol m.col.path m.col.col (g s + 1) rest := by
+      cases rest with
+      | nil => simp [Tree.rolesCol]
+      | cons _ _ => rw [hg 1 (by simp)]
+    rw [key]
+    congr 1
+    simp only [Move.mapRole]
+    unfold Move.mapEntry; dsimp only
+    rw [mapPath_off _ _ _ (fun e D he => by have := congrArg List.length he; simp at this), if_pos rfl]
+
+theorem map_eq_self_of {α : Type} {f : α → α} : ∀ {l : List α}, (∀ x ∈ l, f x = x) → l.map f = l
+  | [], _ => rfl
+  | x :: l, h => by
+    simp only [List.map_cons]
+    rw [h x (by simp), map_eq_self_of (fun y hy => h y (by simp [hy]))]
+
+/-- helper: the roles of the moved tree, read backwards, are a sublist of the original roles. -/
+theorem roles_mod_sublist (m : Move) {col : Column} (hij : m.i < m.j) (hj : m.j < col.length) :
+    ∀ (P' π : List (Nat × Nat)) (F : Forest), π ++ P' = m.col.path → F.colAt ⟨P', m.col.col⟩ = some col →
+      List.Sublist ((Tree.rolesF π (modifyColAux (moveFun m) P' m.col.col F)).map (m.mapRole m.bwdIdx))
+        (Tree.rolesF π F)
+  | [], π, .node cols, hπ, hcol => by
+    simp only [List.append_nil] at hπ
+    subst hπ
+    rw [colAt_node_nil] at hcol
+    have hcc : m.col.col < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
+    obtain ⟨h1, h2⟩ := modify_split hcol (moveFun m)
+    have hl : (cols.take m.col.col).length = m.col.col := List.length_take_of_le hcc.le
+    simp only [modifyColAux, Tree.rolesF]
+    rw [h2]
+    conv_rhs => rw [h1]
+    rw [rolesCols_append, rolesCols_append, hl]
+    simp only [Tree.rolesCols, List.map_append, List.map_cons]
+    have hti : (col.take m.i).length = m.i := List.length_take_of_le (by omega)
+    have hcolsplit : col = col.take m.i ++ ((col.take m.j).drop m.i ++ col.drop m.j) := by
+      have : col.take m.i ++ (col.take m.j).drop m.i = col.take m.j := by
+        conv_rhs => rw [← List.take_append_drop m.i (col.take m.j)]
+        rw [List.take_take, Nat.min_eq_left hij.le]
+      rw [← List.append_assoc, this, List.take_append_drop]
+    have hmid : ((col.take m.j).drop m.i).length = m.j - m.i := by simp; omega
+    conv_rhs => rw [hcolsplit]
+    simp only [moveFun]
+    rw [rolesCol_append, rolesCol_append, rolesCol_append, hti, hmid]
+    simp only [Nat.zero_add]
+    rw [show m.i + (m.j - m.i) = m.j by omega]
+    rw [map_eq_self_of (off_base _ m 0 _ (by simp [hl])),
+      map_eq_self_of (off_base _ m (m.col.col + 1) _ (by omega)),
+      mapRole_off _ m (.ord m.col) (fun e D he => by have := congrArg List.length he; simp [Role.path] at this)
+        (fun e he => by simp at he)]
+    simp only [List.map_append]
+    rw [rolesCol_shift _ m m.i (col.drop m.j) (fun t ht => by unfold Move.bwdIdx; split_ifs <;> omega)]
+    have hb0 : (Tree.rolesCol m.col.path m.col.col 0 (col.take m.i)).map (m.mapRole m.bwdIdx) =
+        Tree.rolesCol m.col.path m.col.col 0 (col.take m.i) := by
+      rcases Nat.eq_zero_or_pos m.i with h0 | h0
+      · rw [h0]; simp [Tree.rolesCol]
+      · rw [rolesCol_shift _ m 0 _ (fun t ht => by
+          simp at ht; unfold Move.bwdIdx; split_ifs <;> omega)]
+        unfold Move.bwdIdx; rw [if_neg (by omega)]
+    rw [hb0, show m.bwdIdx m.i = m.j by unfold Move.bwdIdx; rw [if_pos le_rfl]; omega]
+    simp only [List.append_assoc, List.cons_append]
+    exact List.Sublist.append_left (List.Sublist.cons_cons _ (List.Sublist.append_left
+      (List.sublist_append_right _ _) _)) _
+  | (a, b) :: P'', π, .node cols, hπ, hcol => by
+    rw [colAt_node_cons] at hcol
+    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
+    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
+    obtain ⟨q, H⟩ := x
+    have hP : m.col.path = π ++ (a, b) :: P'' := hπ.symm
+    have hci : a < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+    have hei : b < colc.length := (List.getElem?_eq_some_iff.1 hx').1
+    have ih := roles_mod_sublist m hij hj P'' (π ++ [(a, b)]) H (by rw [hP]; simp) hcolx
+    obtain ⟨h1, h2⟩ := modify_split hc (fun col => col.modify b fun x => (x.1, modifyColAux (moveFun m) P'' m.col.col x.2))
+    obtain ⟨h3, h4⟩ := modify_split hx' (fun x => (x.1, modifyColAux (moveFun m) P'' m.col.col x.2))
+    have hl : (cols.take a).length = a := List.length_take_of_le hci.le
+    have hl' : (colc.take b).length = b := List.length_take_of_le hei.le
+    have hshort : π.length < m.col.path.length := by rw [hP]; simp
+    simp only [modifyColAux, Tree.rolesF]
+    rw [h2]
+    conv_rhs => rw [h1]
+    rw [rolesCols_append, rolesCols_append, hl]
+    simp only [Tree.rolesCols, List.map_append, List.map_cons]
+    rw [h4]
+    conv_rhs => rw [h3]
+    rw [rolesCol_append, rolesCol_append, hl']
+    simp only [Tree.rolesCol, Nat.zero_add, List.map_append, List.map_cons]
+    rw [map_eq_self_of (off_step_cols _ m hP 0 _ (by simp [hl])),
+      map_eq_self_of (off_step_cols _ m hP (a + 1) _ (by omega)),
+      map_eq_self_of (off_step_col _ m hP 0 _ (by simp [hl'])),
+      map_eq_self_of (off_step_col _ m hP (b + 1) _ (by omega)),
+      off_short _ m (x := .ord ⟨π, a⟩) (by simpa [Role.path] using hshort),
+      off_short _ m (x := .slot ⟨⟨π, a⟩, b⟩) (by simpa [Role.path] using hshort)]
+    simp only [List.append_assoc, List.cons_append]
+    exact List.Sublist.append_left (List.Sublist.cons_cons _ (List.Sublist.append_left
+      (List.Sublist.cons_cons _ (List.Sublist.append_right ih _)) _)) _
+
+/-- helper: `x` occurs before `y` in `l`. -/
+def ListBefore {α : Type} (l : List α) (x y : α) : Prop :=
+  ∃ i j : Nat, l[i]? = some x ∧ l[j]? = some y ∧ i < j
+
+theorem before_map {α β : Type} (f : α → β) {l : List α} {x y : α} (h : ListBefore l x y) :
+    ListBefore (l.map f) (f x) (f y) := by
+  obtain ⟨i, j, hi, hj, hij⟩ := h
+  exact ⟨i, j, by simp [hi], by simp [hj], hij⟩
+
+theorem before_sublist {α : Type} {l₁ l₂ : List α} (hs : List.Sublist l₁ l₂) :
+    ∀ {x y : α}, ListBefore l₁ x y → ListBefore l₂ x y := by
+  induction hs with
+  | slnil => intro x y ⟨i, j, hi, _, _⟩; simp at hi
+  | cons a _ ih =>
+    intro x y h
+    obtain ⟨i, j, hi, hj, hij⟩ := ih h
+    exact ⟨i + 1, j + 1, by simpa using hi, by simpa using hj, by omega⟩
+  | cons_cons a hsub ih =>
+    intro x y ⟨i, j, hi, hj, hij⟩
+    rcases i with _ | i
+    · simp at hi; subst hi
+      obtain ⟨j', hj'⟩ : ∃ j', j = j' + 1 := ⟨j - 1, by omega⟩
+      subst hj'
+      simp at hj
+      obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 (hsub.subset (List.mem_of_getElem? hj))
+      exact ⟨0, k + 1, rfl, by simpa using hk, by omega⟩
+    · obtain ⟨j', hj'⟩ : ∃ j', j = j' + 1 := ⟨j - 1, by omega⟩
+      subst hj'
+      obtain ⟨i₂, j₂, h1, h2, h3⟩ := ih ⟨i, j', by simpa using hi, by simpa using hj, by omega⟩
+      exact ⟨i₂ + 1, j₂ + 1, by simpa using h1, by simpa using h2, by omega⟩
+
+theorem before_applyMove {K : Forest} {m : Move} (hm : MoveOK K m) {x y : Role}
+    (h : ListBefore (applyMove K m).roles x y) :
+    ListBefore K.roles (m.mapRole m.bwdIdx x) (m.mapRole m.bwdIdx y) := by
+  obtain ⟨col, -, hcol, -, hj, hij, -⟩ := hm
+  have hj' : m.j < col.length := by omega
+  rw [applyMove_eq_mod hcol hij hj'] at h
+  have hs := roles_mod_sublist m hij hj' m.col.path [] K (by simp) hcol
+  exact before_sublist hs (before_map _ h)
+
+theorem before_applyMoves {K : Forest} :
+    ∀ ms : List Move, MovesValid K ms → ∀ {x y : Role}, ListBefore (applyMoves K ms).roles x y →
+      ListBefore K.roles (backRole ms x) (backRole ms y) := by
+  intro ms
+  induction ms using List.reverseRecOn with
+  | nil => intro _ x y h; exact h
+  | append_singleton ms m ih =>
+    intro hv x y h
+    obtain ⟨hv, hm⟩ := movesValid_append hv
+    rw [applyMoves_snoc] at h
+    rw [backRole_append, backRole_append]
+    exact ih hv (before_applyMove hm h)
+
 /-- helper (D3.1d, reading-order clause of `origin_spec_full`). -/
 theorem origin_order {E : Forest} (w : AdmCap E) :
     ∀ x y, (∃ i j : Nat, w.H.roles[i]? = some x ∧ w.H.roles[j]? = some y ∧ i < j) →
       (w.origin x).isSome → (w.origin y).isSome →
       ∃ i j : Nat, E.roles[i]? = some (Packet.anchorD E (some w) x) ∧
         E.roles[j]? = some (Packet.anchorD E (some w) y) ∧ i < j := by
-  sorry
+  intro x y hxy hx hy
+  have hb := before_applyMoves w.moves w.movesValid hxy
+  have hxo : ∀ z, (w.origin z).isSome → Packet.anchorD E (some w) z = backRole w.moves z ∧
+      backRole w.moves z ≠ .slot ⟨w.col, w.cut⟩ := by
+    intro z hz
+    rw [originBody_eq] at hz
+    split_ifs at hz with h
+    · simp at hz
+    · refine ⟨?_, h⟩
+      simp only [Packet.anchorD, anchorOrigin, originBody_eq, if_neg h, Option.getD_some]
+  obtain ⟨hax, hnx⟩ := hxo x hx
+  obtain ⟨hay, hny⟩ := hxo y hy
+  rw [hax, hay]
+  obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 w.upward
+  obtain ⟨n, hn, hroles⟩ := roles_litCapAux w.cut w.par w.col.path w.col.col E col [] hcol hk
+  have hK : (litCap E w.col w.cut w.par).roles = E.roles.take n ++ [.slot ⟨w.col, w.cut⟩] := by
+    show Tree.rolesF [] _ = _
+    rw [litCap_eq_aux hcol, hroles]; rfl
+  obtain ⟨i, j, hi, hj, hij⟩ := hb
+  rw [hK] at hi hj
+  have hln : (E.roles.take n).length = n := List.length_take_of_le hn
+  have hjn : j < n := by
+    by_contra hc
+    rw [List.getElem?_append_right (by omega), hln] at hj
+    rcases Nat.lt_or_ge (j - n) 1 with h | h
+    · rw [show j - n = 0 by omega] at hj; simp at hj; exact hny hj.symm
+    · rw [List.getElem?_eq_none (by simp; omega)] at hj; simp at hj
+  rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt (by omega)] at hi
+  rw [List.getElem?_append_left (by omega), List.getElem?_take_of_lt hjn] at hj
+  exact ⟨i, j, hi, hj, hij⟩
 
 -- provides: U2, D3.1d (requested by U3 R10; refines `origin_spec`†): χ is injective on the
 -- roles of `w.H`, `none` exactly on the closing slot, valued in `E`, sends ordinary roles to
@@ -4533,14 +5005,6 @@ theorem cmpCols_append_same {α : Type} (c : α → α → Ordering) [Std.ReflCm
     simp only [List.cons_append, Tree.cmpCols, Tree.cmpCol_self, Ordering.eq_then]
     exact cmpCols_append_same c P A B
 
-theorem modify_split {α : Type} {l : List α} {n : Nat} {x : α} (h : l[n]? = some x) (f : α → α) :
-    l = l.take n ++ x :: l.drop (n + 1) ∧ l.modify n f = l.take n ++ f x :: l.drop (n + 1) := by
-  have hn : n < l.length := (List.getElem?_eq_some_iff.1 h).1
-  have hx : l[n] = x := (List.getElem?_eq_some_iff.1 h).2
-  constructor
-  · conv_lhs => rw [← List.take_append_drop n l, List.drop_eq_getElem_cons hn, hx]
-  · rw [List.modify_eq_take_drop, List.drop_eq_getElem_cons hn, hx]; rfl
-
 /-- helper: a legal move strictly raises the expression. -/
 theorem cmp_modifyColAux_lt (f : Column → Column) (cc : Nat) :
     ∀ (P : List (Nat × Nat)) (K : Forest) (col : Column), K.colAt ⟨P, cc⟩ = some col →
@@ -4623,124 +5087,6 @@ theorem le_applyMoves {K : Forest} : ∀ {ms : List Move}, MovesValid K ms → K
 theorem lt_admCap {E : Forest} (w : AdmCap E) : E < w.H :=
   lt_of_lt_of_le (lt_litCap w.upward) (le_applyMoves w.movesValid)
 
-
-/-! ### D3.1e helpers: roles of a literal cap -/
-
-theorem rolesCols_append {α : Type} (π : List (Nat × Nat)) :
-    ∀ (c : Nat) (l₁ l₂ : List (List (α × Tree α))),
-      Tree.rolesCols π c (l₁ ++ l₂) = Tree.rolesCols π c l₁ ++ Tree.rolesCols π (c + l₁.length) l₂
-  | c, [], l₂ => by simp [Tree.rolesCols]
-  | c, x :: l₁, l₂ => by
-    rw [List.length_cons, show c + (l₁.length + 1) = c + 1 + l₁.length by omega]
-    simp only [List.cons_append, Tree.rolesCols, rolesCols_append π (c + 1) l₁ l₂,
-      List.append_assoc, List.cons_append]
-
-theorem rolesCol_append {α : Type} (π : List (Nat × Nat)) (c : Nat) :
-    ∀ (i : Nat) (l₁ l₂ : List (α × Tree α)),
-      Tree.rolesCol π c i (l₁ ++ l₂) = Tree.rolesCol π c i l₁ ++ Tree.rolesCol π c (i + l₁.length) l₂
-  | i, [], l₂ => by simp [Tree.rolesCol]
-  | i, (x, h) :: l₁, l₂ => by
-    rw [List.length_cons, show i + (l₁.length + 1) = i + 1 + l₁.length by omega]
-    simp only [List.cons_append, Tree.rolesCol, rolesCol_append π c (i + 1) l₁ l₂,
-      List.append_assoc, List.cons_append]
-
-theorem rolesF_empty {α : Type} (π : List (Nat × Nat)) : Tree.rolesF π (Tree.empty : Tree α) = [] := by
-  simp [Tree.empty, Tree.rolesF, Tree.rolesCols]
-
-theorem roles_litCapAux (k p : Nat) :
-    ∀ (ρ : List (Nat × Nat)) (j : Nat) (F : Forest) (col : Column) (π : List (Nat × Nat)),
-      F.colAt ⟨ρ, j⟩ = some col → k ≤ col.length →
-      ∃ n, n ≤ (Tree.rolesF π F).length ∧
-        Tree.rolesF π (litCapAux k p ρ j F) = (Tree.rolesF π F).take n ++ [.slot ⟨⟨π ++ ρ, j⟩, k⟩]
-  | [], j, .node cols, col, π, hcol, hk => by
-    rw [colAt_node_nil] at hcol
-    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hcol).1
-    obtain ⟨h1, -⟩ := modify_split hcol id
-    have hl : (cols.take j).length = j := List.length_take_of_le hj.le
-    have hkl : (col.take k).length = k := List.length_take_of_le hk
-    have hKr : Tree.rolesF π (litCapAux k p [] j (.node cols)) =
-        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
-          (Tree.rolesCol π j 0 (col.take k) ++ [Role.slot ⟨⟨π, j⟩, k⟩]) := by
-      rw [litCapAux_nil, List.getD_eq_getElem?_getD, hcol, Option.getD_some]
-      simp only [Tree.rolesF]
-      rw [rolesCols_append, hl]
-      simp only [Tree.rolesCols, List.append_nil]
-      rw [rolesCol_append, Nat.zero_add, hkl]
-      simp [Tree.rolesCol, rolesF_empty]
-    have hEr : Tree.rolesF π (.node cols) =
-        Tree.rolesCols π 0 (cols.take j) ++ Role.ord ⟨π, j⟩ ::
-          (Tree.rolesCol π j 0 (col.take k) ++ (Tree.rolesCol π j k (col.drop k) ++
-            Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) := by
-      simp only [Tree.rolesF]
-      conv_lhs => rw [h1]
-      rw [rolesCols_append, hl]
-      simp only [Tree.rolesCols]
-      conv_lhs => rw [← List.take_append_drop k col]
-      rw [rolesCol_append]
-      simp only [Nat.zero_add, hkl, List.append_assoc]
-    rw [hKr, hEr]
-    set A := Tree.rolesCols π 0 (cols.take j)
-    set B := Tree.rolesCol π j 0 (col.take k)
-    refine ⟨A.length + 1 + B.length, by simp; omega, ?_⟩
-    rw [show A.length + 1 + B.length = (A ++ Role.ord ⟨π, j⟩ :: B).length by simp; omega]
-    rw [show A ++ Role.ord ⟨π, j⟩ :: (B ++ (Tree.rolesCol π j k (col.drop k) ++
-        Tree.rolesCols π (j + 1) (cols.drop (j + 1)))) = (A ++ Role.ord ⟨π, j⟩ :: B) ++
-        (Tree.rolesCol π j k (col.drop k) ++ Tree.rolesCols π (j + 1) (cols.drop (j + 1))) by simp,
-      List.take_left]
-    simp
-  | (ci, ei) :: ρ, j, .node cols, col, π, hcol, hk => by
-    rw [colAt_node_cons] at hcol
-    obtain ⟨x, hx, hcolx⟩ := Option.bind_eq_some_iff.1 hcol
-    obtain ⟨colc, hc, hx'⟩ := Option.bind_eq_some_iff.1 hx
-    obtain ⟨q, H⟩ := x
-    have hci : ci < cols.length := (List.getElem?_eq_some_iff.1 hc).1
-    have hei : ei < colc.length := (List.getElem?_eq_some_iff.1 hx').1
-    have hget : (cols.getD ci [])[ei]? = some (q, H) := by
-      rw [List.getD_eq_getElem?_getD, hc, Option.getD_some]; exact hx'
-    obtain ⟨n', hn', hih⟩ := roles_litCapAux k p ρ j H col (π ++ [(ci, ei)]) hcolx hk
-    obtain ⟨h1, -⟩ := modify_split hc id
-    obtain ⟨h3, -⟩ := modify_split hx' id
-    have hl : (cols.take ci).length = ci := List.length_take_of_le hci.le
-    have hl' : (colc.take ei).length = ei := List.length_take_of_le hei.le
-    have hKr : Tree.rolesF π (litCapAux k p ((ci, ei) :: ρ) j (.node cols)) =
-        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
-          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
-            ((Tree.rolesF (π ++ [(ci, ei)]) H).take n' ++
-              [Role.slot ⟨⟨π ++ [(ci, ei)] ++ ρ, j⟩, k⟩])) := by
-      rw [litCapAux_cons k p ci ei j ρ cols hget, List.getD_eq_getElem?_getD, hc, Option.getD_some]
-      simp only [Tree.rolesF]
-      rw [rolesCols_append, hl]
-      simp only [Tree.rolesCols, List.append_nil]
-      rw [rolesCol_append]
-      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_nil]
-      rw [hih]
-    have hEr : Tree.rolesF π (.node cols) =
-        Tree.rolesCols π 0 (cols.take ci) ++ Role.ord ⟨π, ci⟩ ::
-          (Tree.rolesCol π ci 0 (colc.take ei) ++ Role.slot ⟨⟨π, ci⟩, ei⟩ ::
-            (Tree.rolesF (π ++ [(ci, ei)]) H ++ (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++
-              Tree.rolesCols π (ci + 1) (cols.drop (ci + 1))))) := by
-      simp only [Tree.rolesF]
-      conv_lhs => rw [h1]
-      rw [rolesCols_append, hl]
-      simp only [Tree.rolesCols]
-      conv_lhs => rw [h3]
-      rw [rolesCol_append]
-      simp only [Nat.zero_add, hl', Tree.rolesCol, List.append_assoc, List.cons_append]
-    rw [hKr, hEr]
-    set A := Tree.rolesCols π 0 (cols.take ci)
-    set B := Tree.rolesCol π ci 0 (colc.take ei)
-    set R := Tree.rolesF (π ++ [(ci, ei)]) H
-    refine ⟨(A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩])).length + n', by
-      simp only [List.length_append, List.length_cons, List.length_singleton, List.length_nil]; omega, ?_⟩
-    have e1 : ∀ (X T : List Role), (X ++ (R ++ T)).take (X.length + n') = X ++ R.take n' := by
-      intro X T
-      rw [List.take_append, List.take_of_length_le (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
-        List.take_append_of_le_length hn']
-    have e2 := e1 (A ++ Role.ord ⟨π, ci⟩ :: (B ++ [Role.slot ⟨⟨π, ci⟩, ei⟩]))
-      (Tree.rolesCol π ci (ei + 1) (colc.drop (ei + 1)) ++ Tree.rolesCols π (ci + 1) (cols.drop (ci + 1)))
-    simp only [List.append_assoc, List.cons_append, List.singleton_append, List.nil_append] at e2 ⊢
-    rw [e2]
-    simp
 
 -- provides: U2, D3.1e (requested by U3 R11): roles and stopping data of a literal cap.
 theorem litCap_spec {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs)
