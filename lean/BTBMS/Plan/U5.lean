@@ -5205,7 +5205,29 @@ theorem dLab_of_wFit (I : Interface.{u}) (n : Nat) (hW : WFit I.toPrims n) :
 /-- D8.1a: the label-free core follows from `DLab` (`E = H`, no cap, `Λ` the prefix graph of
 `H` before `T`, `ν = eν = id`, `b = α`, nothing fixed). -/
 theorem dCore_of_dLab (P : Prims.{u}) (n : Nat) (h : DLab P n) : DCore P n := by
-  sorry
+  intro H H' k α sd hA hsd hα hk
+  obtain ⟨hL, hord, sd', hsd', hQ⟩ := hA
+  rw [hsd] at hsd'; cases hsd'
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.1 (Scan.rootData_of_ordinary hord)
+  have hmapid : ∀ a : BaseAtom Role, a.map id = a := fun a => by cases a <;> rfl
+  obtain ⟨γ, -, hγ, hlt, -⟩ := h H none α sd rd hL hord hsd hrd hα hQ Role
+    (Diagram.ofBase (restrictTo (graph H) (rolesBefore H (.ord sd.col)))) id id α (fun _ => False)
+    (fun _ _ => rfl)
+    (fun x _ y hy => by
+      have : some x = some y := hy
+      cases this; rfl)
+    (fun T' a hT' ha => by
+      have : some (Role.ord sd.col) = some T' := hT'
+      cases this
+      rw [hmapid]
+      exact List.mem_map_of_mem ha)
+    ((holds_ofBase _ _).2 fun a ha => hα a (List.mem_filter.1 ha).1)
+    (fun v hv => by
+      rw [ofBase_vars] at hv
+      obtain ⟨a, ha, hva⟩ := List.mem_flatMap.1 hv
+      exact config_lt_of_before hα (Scan.stopData_col_mem hsd) (mem_of_restrictTo_D4 ha hva))
+    (fun _ _ h => h.elim) k H' hk
+  exact ⟨γ, hγ, hlt⟩
 
 /-! ## §8.4: special descent -/
 
