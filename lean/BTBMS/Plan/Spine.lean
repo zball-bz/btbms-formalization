@@ -2103,18 +2103,13 @@ def StrictDescent (P : Prims.{u}) : Prop :=
 -- `seed_config` (provides: U5, L6.7, seed lemma) moved to `Plan/U5.lean`, after the seed lemmas
 -- L6.7a–c that its proof uses; nothing in between uses it.
 
--- provides: U5, L8.4–L8.8 and (18)
-theorem sStrict_all (I : Interface.{u}) (n : Nat) : SStrict I.toPrims n := by sorry
--- provides: U5, L8.5
-theorem wFit_all (I : Interface.{u}) (n : Nat) : WFit I.toPrims n := by sorry
--- provides: U5, L8.6
-theorem dLab_all (I : Interface.{u}) (n : Nat) : DLab I.toPrims n := by sorry
--- provides: U5, L8.6 (label-free core)
-theorem dCore_all (I : Interface.{u}) (n : Nat) : DCore I.toPrims n := by sorry
+-- `sStrict_all`, `wFit_all`, `dLab_all`, `dCore_all` (provides: U5, D8.1, the induction (18))
+-- and `strictDescent` (provides: U5, T9.1 (27)) moved to the end of `Plan/U5.lean`, after
+-- L8.4–L8.8, D8.1a and T9.1b–d that their proofs use (brief rule 5); nothing in between uses
+-- them.
+
 -- provides: U5, L8.7
 theorem specialDesc (I : Interface.{u}) : SpecialDesc I.toPrims := by sorry
--- provides: U5, T9.1 (27)
-theorem strictDescent (I : Interface.{u}) : StrictDescent I.toPrims := by sorry
 
 /-! ## §c.13 The S-5 abstract final theorem (U5: N5.1, T9.1a) -/
 
@@ -2197,9 +2192,9 @@ theorem abstract_implies_main
     MainTheorem.{u} :=
   fun hM => (h hM).elim fun _ hC => abstract_wellOrder hC
 
--- provides: U5, T9.1 (assembly of all units into the S-5 hypotheses)
-theorem finalHyps (I : Interface.{u}) (hM : ∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) :
-    FinalHyps (Configured I.toPrims) := by sorry
+-- `finalHyps` (provides: U5, T9.1a, the assembly of all units into the S-5 hypotheses) moved to
+-- the end of `Plan/U5.lean`, after `strictDescent` and `seed_config` that its proof uses (brief
+-- rule 5); only `Main.lean`, which imports U5, uses it.
 
 end Descent
 
