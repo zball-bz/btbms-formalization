@@ -1977,13 +1977,189 @@ theorem condP_special {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
 theorem condA_special {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .special)
     (hB : expand A n = some B) : CondA B := by sorry
 
--- T3.2v (txt:412-413): seeds lie in L and satisfy P
-theorem seed_inL (m : Nat) : InL (seed m) := by sorry
-theorem seed_condP (m : Nat) : CondP (seed m) := by sorry
+/-! T3.2v helpers: the columns of a seed. -/
+
+/-- The height below the branch entry with parent `l` of `L_{m+1}`. -/
+def spxSeedH (l s : Nat) : Forest := if s = 0 then Tree.empty else .node [branch (l + 1) (s - 1)]
+
+theorem spx_branch (l s : Nat) : branch l s = [(l, spxSeedH l s)] := by
+  cases s <;> rfl
+
+/-- Columns of a branch forest. -/
+theorem spx_branch_colAt : ∀ (k i : Nat) (P : List (Nat × Nat)) (j : Nat) (col : Column),
+    (Tree.node [branch i k]).colAt ⟨P, j⟩ = some col →
+      ∃ l ≤ k, P = List.replicate l (0, 0) ∧ j = 0 ∧ col = branch (i + l) (k - l)
+  | k, i, [], j, col, h => by
+    simp only [Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    cases j with
+    | zero => simp only [List.getElem?_cons_zero, Option.some.injEq] at h; exact ⟨0, by omega, rfl, rfl, by simp [h]⟩
+    | succ j => simp at h
+  | k, i, (a, b) :: P, j, col, h => by
+    rw [Tree.colAt_cons] at h
+    simp only [Tree.cols] at h
+    cases a with
+    | succ a => simp at h
+    | zero =>
+      cases k with
+      | zero => cases b <;> simp [branch, spx_colAt_empty] at h
+      | succ k =>
+        cases b with
+        | succ b => simp [branch] at h
+        | zero =>
+          simp only [branch, List.getElem?_cons_zero, Option.bind_some] at h
+          obtain ⟨l, hl, rfl, rfl, rfl⟩ := spx_branch_colAt k (i + 1) P j col h
+          exact ⟨l + 1, by omega, by simp [List.replicate_succ], rfl, by
+            rw [show i + 1 + l = i + (l + 1) by omega, show k - l = k + 1 - (l + 1) by omega]⟩
+
+/-- Columns of `L_{m+1}`: the empty outer column, and one singleton column per level. -/
+theorem spx_seed_colAt (m : Nat) (c : ColAddr) (col : Column)
+    (h : (seed (m + 1)).colAt c = some col) :
+    (c = ⟨[], 0⟩ ∧ col = []) ∨ ∃ l ≤ m, c.num 0 = l + 1 ∧ col = branch l (m - l) := by
+  obtain ⟨P, j⟩ := c
+  cases P with
+  | nil =>
+    simp only [seed, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols] at h
+    match j, h with
+    | 0, h => left; simp at h; exact ⟨rfl, h⟩
+    | 1, h => right; simp at h; exact ⟨0, by omega, by simp [ColAddr.num], by simp [h]⟩
+    | j + 2, h => simp at h
+  | cons x P =>
+    obtain ⟨a, b⟩ := x
+    rw [seed, Tree.colAt_cons] at h
+    simp only [Tree.cols] at h
+    match a, b, h with
+    | 0, b, h => simp at h
+    | a + 2, b, h => simp at h
+    | 1, b + 1, h => simp [spx_branch] at h
+    | 1, 0, h =>
+      cases m with
+      | zero => simp [branch, spx_colAt_empty] at h
+      | succ k =>
+        simp only [branch, List.getElem?_cons_succ, List.getElem?_cons_zero, Option.bind_some] at h
+        obtain ⟨l, hl, rfl, rfl, rfl⟩ := spx_branch_colAt k 1 P j col h
+        right
+        refine ⟨l + 1, by omega, ?_, by rw [show 1 + l = l + 1 by omega,
+          show k - l = k + 1 - (l + 1) by omega]⟩
+        simp [ColAddr.num, List.map_replicate, List.sum_replicate]; omega
+
+/-- Entries of `L_{m+1}`: the entry at level `l` has parent `l`, column number `l + 1`. -/
+theorem spx_seed_entryAt (m : Nat) (e : EntryAddr) (q : Nat) (h : Forest)
+    (he : (seed (m + 1)).entryAt e = some (q, h)) :
+    ∃ l ≤ m, e.idx = 0 ∧ e.col.num 0 = l + 1 ∧ q = l ∧ h = spxSeedH l (m - l) := by
+  obtain ⟨col, hcol, hi⟩ := Tree.colAt_of_entryAt he
+  rcases spx_seed_colAt m e.col col hcol with ⟨-, rfl⟩ | ⟨l, hl, hn, rfl⟩
+  · simp at hi
+  · rw [spx_branch] at hi
+    cases hidx : e.idx with
+    | zero =>
+      rw [hidx] at hi
+      simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hi
+      exact ⟨l, hl, rfl, hn, hi.1.symm, hi.2.symm⟩
+    | succ i => rw [hidx] at hi; simp at hi
+
+theorem spx_profile_branch : ∀ (s i : Nat),
+    profile (Tree.node [branch i s]) = ((toLex (s, 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+  | 0, i => by simp [branch, profile, profileBody, profileAux, Tree.empty]
+  | s + 1, i => by
+    rw [spx_profile_node (by simp), branch, spx_profileAux_cons 0 i (by simp [Tree.cols]),
+      spx_profileAux_one]
+    have := spx_profile_branch s (i + 1)
+    rw [spx_profile_node (by simp), WithBot.coe_inj] at this
+    rw [this]; rfl
+
+theorem spx_seed_zero_entryAt (e : EntryAddr) : (seed 0).entryAt e = none := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil =>
+    simp only [seed, Tree.entryAt, Tree.colAt, Tree.forestAt, Option.bind_some, Tree.cols]
+    cases j <;> simp
+  | cons x P =>
+    obtain ⟨a, b⟩ := x
+    rw [seed, Tree.entryAt, Tree.colAt_cons]
+    cases a <;> simp [Tree.cols]
+
+theorem spx_empty_entryAddrs : (Tree.empty : Forest).entryAddrs = [] := rfl
+theorem spx_empty_colAddrs : (Tree.empty : Forest).colAddrs = [] := rfl
+
+-- T3.2v (txt:412-413): seeds lie in L and satisfy P (`seed_condP` is stated first: the proof
+-- of `seed_inL` gets S from P by L3.1a)
+theorem seed_condP (m : Nat) : CondP (seed m) := by
+  intro e0 he0 e he hret
+  obtain ⟨-, q, J, hJ, hres⟩ := hret
+  cases m with
+  | zero => exact absurd hJ (by rw [spx_seed_zero_entryAt]; simp)
+  | succ m =>
+    obtain ⟨x0, hx0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ e0).1 he0)
+    obtain ⟨q0, H0⟩ := x0
+    obtain ⟨l0, hl0, -, hn0, -, rfl⟩ := spx_seed_entryAt m e0 q0 H0 hx0
+    obtain ⟨l1, hl1, -, -, hq1, hJ1⟩ := spx_seed_entryAt m e q J hJ
+    have hq : e0.col.num 0 = l1 := hq1 ▸ ColAddr.resolve_num hres
+    rw [Tree.heightAt, Tree.heightAt, hJ, hx0, hJ1]
+    simp only [Option.map_some, Option.getD_some]
+    have hm : m - l0 = m - l1 + 1 := by omega
+    rw [hm]
+    simp only [spxSeedH, Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel]
+    rw [show l0 + 1 = l1 by omega, spx_profile_branch]
+    by_cases hs : m - l1 = 0
+    · simp only [hs, if_true]; exact WithBot.bot_lt_coe _
+    · rw [if_neg hs, spx_profile_branch]
+      exact WithBot.coe_lt_coe.2 (Prod.Lex.toLex_lt_toLex.2 (Or.inl (by simp; omega)))
+
+theorem seed_inL (m : Nat) : InL (seed m) := by
+  have hV : CondV (seed m) := by
+    rw [condV_iff_lt]
+    intro e _ q h he
+    cases m with
+    | zero => rw [spx_seed_zero_entryAt] at he; cases he
+    | succ m =>
+      obtain ⟨l, -, -, hn, rfl, -⟩ := spx_seed_entryAt m e q h he
+      omega
+  have hI : CondI (seed m) := by
+    intro e _ q h he hne col hcol
+    cases m with
+    | zero => rw [spx_seed_zero_entryAt] at he; cases he
+    | succ m =>
+      obtain ⟨l, -, -, hn, -, rfl⟩ := spx_seed_entryAt m e q _ he
+      unfold spxSeedH at hne hcol
+      split_ifs at hne hcol with hs
+      · exact absurd rfl hne
+      · simp only [Tree.cols, List.mem_singleton] at hcol
+        subst hcol
+        rw [spx_branch]
+        exact ⟨l + 1, _, [], rfl, by omega⟩
+  have hH : CondH (seed m) := by
+    intro c hc i x y hx hy
+    obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 hc)
+    rw [hcol, Option.getD_some] at hx hy
+    cases m with
+    | zero =>
+      have he : (seed 0).entryAt ⟨c, i⟩ = some x := by rw [Tree.entryAt, hcol]; exact hx
+      rw [spx_seed_zero_entryAt] at he; cases he
+    | succ m =>
+      rcases spx_seed_colAt m c col hcol with ⟨-, rfl⟩ | ⟨l, -, -, rfl⟩
+      · simp at hx
+      · rw [spx_branch] at hy; simp at hy
+  have hA : CondA (seed m) := by
+    intro c _ i p hp
+    rw [parents_getElem?] at hp
+    obtain ⟨⟨q, h⟩, he, rfl⟩ := Option.map_eq_some_iff.1 hp
+    cases m with
+    | zero => rw [spx_seed_zero_entryAt] at he; cases he
+    | succ m =>
+      obtain ⟨l, -, hi, hn, rfl, -⟩ := spx_seed_entryAt m ⟨c, i⟩ q h he
+      simp only at hi hn
+      subst hi
+      simp only [if_true, hn, Nat.add_sub_cancel]
+      exact Relation.ReflTransGen.refl
+  exact ⟨hV, hI, hH, hA, condS_of_condP hV hI hH (seed_condP m)⟩
 
 -- T3.2w: the empty forest lies in L and satisfies P
-theorem inL_empty : InL Tree.empty := by sorry
-theorem condP_empty : CondP Tree.empty := by sorry
+theorem inL_empty : InL Tree.empty := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> intro c hc <;> simp [spx_empty_entryAddrs, spx_empty_colAddrs] at hc
+
+theorem condP_empty : CondP Tree.empty := by
+  intro e0 he0; simp [spx_empty_entryAddrs] at he0
+
 
 /-! ## §T3.8 — cofinality -/
 
