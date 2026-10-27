@@ -1126,12 +1126,44 @@ theorem filling_identity {K : Forest} {sd : StopData} {rd : RootData} (hV : Cond
     exact (shift_replaceAt _ _ _ _ _).symm
 
 -- L3.5 (2) (txt:448-458): cancellation of a prefix `Q`
+/-- L3.5 helper: the continuation word of a column splits over an append. -/
+theorem ker_wordLater_append (e : Nat) (l₁ l₂ : Column) :
+    wordLater e (l₁ ++ l₂) = wordLater e l₁ ++ wordLater e l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons x l ih =>
+    obtain ⟨p, h⟩ := x
+    simp only [List.cons_append, wordLater, ih, List.append_assoc]
+
 theorem cancel_eq (Q : Column) {X : Forest} (hX : X ≠ Tree.empty) :
-    word (diamond Q X) = (if Q = [] then [] else word (.node [Q])) ++ encEps Q X := by sorry
+    word (diamond Q X) = (if Q = [] then [] else word (.node [Q])) ++ encEps Q X := by
+  obtain ⟨cols⟩ := X
+  cases cols with
+  | nil => exact absurd rfl hX
+  | cons c cs =>
+    unfold encEps
+    cases Q with
+    | nil => simp [diamond]
+    | cons q qs =>
+      obtain ⟨p, h⟩ := q
+      simp only [diamond, encOne, reduceCtorEq, if_false, word, wordAt, wordCols, List.cons_append,
+        wordCol, ker_wordLater_append, List.append_nil, List.append_assoc]
+
+/-- L3.5 helper: a common prefix cancels in the list order. -/
+theorem ker_append_lt_append_iff {α : Type} [LinearOrder α] (P a b : List α) :
+    P ++ a < P ++ b ↔ a < b := by
+  induction P with
+  | nil => rfl
+  | cons x P ih =>
+    rw [List.cons_append, List.cons_append, List.cons_lt_cons_iff, ih]
+    simp
 
 -- L3.5 (2): comparisons after deleting the same nonempty prefix
 theorem diamond_lt_iff {Q : Column} (hQ : Q ≠ []) {X X' : Forest} (hX : X ≠ Tree.empty)
-    (hX' : X' ≠ Tree.empty) : diamond Q X < diamond Q X' ↔ encOne X < encOne X' := by sorry
+    (hX' : X' ≠ Tree.empty) : diamond Q X < diamond Q X' ↔ encOne X < encOne X' := by
+  rw [← word_lt_iff, cancel_eq Q hX, cancel_eq Q hX']
+  unfold encEps
+  rw [if_neg hQ, if_neg hQ, if_neg hQ, ker_append_lt_append_iff]
 
 -- L3.5c (txt:476-478, 579-580): root restriction preserves proper word extension when the cut of
 -- the shorter filling lies after the start of the retained root entry
