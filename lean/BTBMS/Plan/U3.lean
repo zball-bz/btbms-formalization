@@ -5531,6 +5531,689 @@ theorem container_trans_D8 {o d : ColAddr} {e : EntryAddr} {u : Nat}
   obtain ⟨-, h2⟩ := (ColAddr.container_spec _ _ _).1 ho
   exact (ColAddr.container_spec _ _ _).2 ⟨rfl, h2.trans ((List.prefix_append _ _).trans hd)⟩
 
+/-- G011-L1/L2 helper: the forests of `modifyColAux` along its path. -/
+theorem forestAt_modifyColAux_take_E8 (f : Column → Column) (j : Nat) :
+    ∀ (P : List (Nat × Nat)) (t : Forest) (n : Nat), n ≤ P.length →
+    (Closure.modifyColAux f P j t).forestAt (P.take n) =
+      (t.forestAt (P.take n)).map (Closure.modifyColAux f (P.drop n) j)
+  | [], t, n, hn => by
+    have : n = 0 := by simpa using hn
+    subst this; rfl
+  | (c0, i0) :: rest, .node cols, n, hn => by
+    cases n with
+    | zero => rfl
+    | succ n =>
+      rw [List.take_succ_cons, List.drop_succ_cons, Tree.forestAt_cons, Tree.forestAt_cons]
+      simp only [Closure.modifyColAux, Tree.cols, List.getElem?_modify_eq]
+      cases hc : cols[c0]? with
+      | none => rfl
+      | some col =>
+        simp only [Option.map_eq_map, Option.map_some, Option.bind_some, List.getElem?_modify_eq]
+        cases hx : col[i0]? with
+        | none => rfl
+        | some x =>
+          simp only [Option.map_some, Option.bind_some]
+          exact forestAt_modifyColAux_take_E8 f j rest x.2 n (by simp at hn; omega)
+
+/-- G011-L1/L2 helper: `modifyColAux` at a containing level. -/
+theorem modifyColAux_cons_E8 (f : Column → Column) (s : Nat × Nat) (rest : List (Nat × Nat))
+    (j : Nat) (cols : List Column) :
+    Closure.modifyColAux f (s :: rest) j (.node cols) =
+      .node (cols.modify s.1 fun col =>
+        col.modify s.2 fun x => (x.1, Closure.modifyColAux f rest j x.2)) := by
+  obtain ⟨a, b⟩ := s; rfl
+
+/-- G011-L1/L2 helper: `modifyColAux` at the level of the column. -/
+theorem modifyColAux_nil_E8 (f : Column → Column) (j : Nat) (cols : List Column) :
+    Closure.modifyColAux f [] j (.node cols) = .node (cols.modify j f) := rfl
+
+/-- G011-L1/L2 helper: a column strictly above the modified column. -/
+theorem colAt_modifyColAux_above_E8 (f : Column → Column) (π : List (Nat × Nat)) (J : Nat)
+    (X : Forest) {L : Nat} (hL : L < π.length) (x : Nat) :
+    (x ≠ π[L].1 → (Closure.modifyColAux f π J X).colAt ⟨π.take L, x⟩ = X.colAt ⟨π.take L, x⟩) ∧
+    (Closure.modifyColAux f π J X).colAt ⟨π.take L, π[L].1⟩ =
+      (X.colAt ⟨π.take L, π[L].1⟩).map (fun col => col.modify π[L].2
+        (fun y => (y.1, Closure.modifyColAux f (π.drop (L + 1)) J y.2))) := by
+  have h1 := forestAt_modifyColAux_take_E8 f J π X L hL.le
+  rw [List.drop_eq_getElem_cons hL] at h1
+  unfold Tree.colAt
+  simp only
+  rw [h1]
+  cases X.forestAt (π.take L) with
+  | none => simp
+  | some F =>
+    obtain ⟨cols⟩ := F
+    simp only [Option.map_some, Option.bind_some, modifyColAux_cons_E8, Tree.cols]
+    refine ⟨fun hx => ?_, ?_⟩
+    · rw [List.getElem?_modify_ne _ _ (Ne.symm hx)]
+    · rw [List.getElem?_modify_eq]; rfl
+
+/-- G011-L1/L2 helper: a column at the level of the modified column. -/
+theorem colAt_modifyColAux_at_E8 (f : Column → Column) (π : List (Nat × Nat)) (J : Nat)
+    (X : Forest) (x : Nat) :
+    (x ≠ J → (Closure.modifyColAux f π J X).colAt ⟨π, x⟩ = X.colAt ⟨π, x⟩) ∧
+    (Closure.modifyColAux f π J X).colAt ⟨π, J⟩ = (X.colAt ⟨π, J⟩).map f := by
+  have h1 := forestAt_modifyColAux_take_E8 f J π X π.length le_rfl
+  rw [List.take_length, List.drop_length] at h1
+  unfold Tree.colAt
+  simp only
+  rw [h1]
+  cases X.forestAt π with
+  | none => simp
+  | some F =>
+    obtain ⟨cols⟩ := F
+    simp only [Option.map_some, Option.bind_some, modifyColAux_nil_E8, Tree.cols]
+    refine ⟨fun hx => ?_, ?_⟩
+    · rw [List.getElem?_modify_ne _ _ (Ne.symm hx)]
+    · rw [List.getElem?_modify_eq]; rfl
+
+/-- G011-L1/L2 helper: inside the modified column, an entry `e'` of the new column that is the
+old entry `e` carries the same forests. -/
+theorem forestAt_modifyColAux_inside_E8 (f : Column → Column) (π : List (Nat × Nat)) (J : Nat)
+    {X : Forest} {col : Column} (hcol : X.colAt ⟨π, J⟩ = some col) {e e' : Nat}
+    (he : (f col)[e']? = col[e]?) (σ : List (Nat × Nat)) :
+    (Closure.modifyColAux f π J X).forestAt (π ++ (J, e') :: σ) =
+      X.forestAt (π ++ (J, e) :: σ) := by
+  have h1 := forestAt_modifyColAux_take_E8 f J π X π.length le_rfl
+  rw [List.take_length, List.drop_length] at h1
+  unfold Tree.colAt at hcol
+  simp only at hcol
+  rw [Tree.forestAt_append, Tree.forestAt_append, h1]
+  cases hF : X.forestAt π with
+  | none => rw [hF] at hcol; simp at hcol
+  | some F =>
+    rw [hF, Option.bind_some] at hcol
+    obtain ⟨cols⟩ := F
+    simp only [Tree.cols] at hcol
+    simp only [Option.map_some, Option.bind_some, modifyColAux_nil_E8, Tree.forestAt_cons,
+      Tree.cols, List.getElem?_modify_eq, hcol, Option.map_eq_map, Option.map_some, he]
+
+/-- G011-L1/L2 helper: a legal move is the column modification `take i ++ drop j`. -/
+theorem applyMove_eq_E8 {X : Forest} {m : Closure.Move} {col : Column}
+    (hcol : X.colAt m.col = some col) (hij : m.i < m.j) (hj : m.j < col.length) :
+    Closure.applyMove X m = Closure.modifyColAux (fun col => col.take m.i ++ col.drop m.j)
+      m.col.path m.col.col X := by
+  show Closure.applyMoveBody X m = _
+  simp only [Closure.applyMoveBody, hcol, if_pos (And.intro hij hj)]
+  rfl
+
+/-- G011-L1/L2 helper: the retained entry of a move is at index `i`. -/
+theorem moveCol_getElem_E8 {col : Column} {i j : Nat} (hij : i < j) (hj : j < col.length) :
+    (col.take i ++ col.drop j)[i]? = col[j]? := by
+  rw [List.getElem?_append_right (by simp)]
+  simp only [List.length_take, Nat.min_eq_left (by omega : i ≤ col.length), Nat.sub_self,
+    List.getElem?_drop, Nat.add_zero]
+
+/-- G011-L1/L2 helper: a move of the last entry `j` to `i` leaves `i + 1` entries. -/
+theorem moveCol_length_E8 {col : Column} {i j : Nat} (hij : i < j) (hj : j + 1 = col.length) :
+    (col.take i ++ col.drop j).length = i + 1 := by
+  simp only [List.length_append, List.length_take, List.length_drop]; omega
+
+/-- G011-L1 helper: modifying the column list keeps the last step when column lengths are kept. -/
+theorem lastStep_modify_E8 (cols : List Column) (a : Nat) (g : Column → Column)
+    (hg : ∀ col, (g col).length = col.length) :
+    Tree.lastStep? (Tree.node (cols.modify a g)) = Tree.lastStep? (Tree.node cols) := by
+  unfold Tree.lastStep?
+  simp only [Tree.cols]
+  rw [List.getLast?_eq_getElem?, List.getLast?_eq_getElem?, List.length_modify,
+    List.getElem?_modify]
+  cases cols[cols.length - 1]? with
+  | none => rfl
+  | some col =>
+    simp only [Option.map_eq_map, Option.map_some, Option.bind_some]
+    have he : (g col).isEmpty = col.isEmpty := by
+      have := hg col
+      revert this
+      cases g col <;> cases col <;> simp
+    by_cases ha : a = cols.length - 1
+    · simp only [ha, if_true, he, hg]
+    · simp only [ha, if_false]
+
+/-- G011-L1/L2 helper: column numbers read only column indices. -/
+theorem num_of_fst_E8 {p p' : List (Nat × Nat)} (hp : p'.map Prod.fst = p.map Prod.fst)
+    (x b : Nat) : (⟨p', x⟩ : ColAddr).num b = (⟨p, x⟩ : ColAddr).num b := by
+  simp only [ColAddr.num]
+  have : ∀ l : List (Nat × Nat), l.map (·.1 + 1) = (l.map Prod.fst).map (· + 1) := by
+    intro l; simp [List.map_map, Function.comp_def]
+  rw [this p', this p, hp]
+
+/-- G011-L1/L2 helper: `resolve` reads only column indices. -/
+theorem resolve_fst_E8 {c c' o : ColAddr} {q : Nat}
+    (hp : c'.path.map Prod.fst = c.path.map Prod.fst) (hc : c'.col = c.col)
+    (h : c.resolve 0 q = some o) :
+    c'.resolve 0 q = some ⟨c'.path.take o.path.length, o.col⟩ := by
+  obtain ⟨hs, hn⟩ := (ColAddr.resolve_spec 0 c o q).1 h
+  rw [ColAddr.resolve_spec]
+  have hlen : c'.path.length = c.path.length := by simpa using congrArg List.length hp
+  have hget : ∀ k : Nat, (c'.path[k]?).map Prod.fst = (c.path[k]?).map Prod.fst := by
+    intro k; rw [← List.getElem?_map, ← List.getElem?_map, hp]
+  have hnum : ∀ L, (⟨c'.path.take L, o.col⟩ : ColAddr).num 0 = (⟨c.path.take L, o.col⟩ : ColAddr).num 0 := by
+    intro L; apply num_of_fst_E8; rw [List.map_take, List.map_take, hp]
+  rcases hs with ⟨k, ck, ik, hk, hpth, hle⟩ | ⟨hpth, hlt⟩
+  · have hk' : k < c.path.length := (List.getElem?_eq_some_iff.1 hk).1
+    obtain ⟨ik', hk''⟩ : ∃ ik', c'.path[k]? = some (ck, ik') := by
+      have := hget k; rw [hk] at this
+      cases h' : c'.path[k]? with
+      | none => simp [h'] at this
+      | some s => obtain ⟨a, b⟩ := s; simp [h'] at this; exact ⟨b, by rw [this]⟩
+    have hol : o.path.length = k := by rw [hpth, List.length_take]; omega
+    refine ⟨Or.inl ⟨k, ck, ik', hk'', by simp [hol], hle⟩, ?_⟩
+    rw [hol, hnum, ← hpth, ← hn]
+  · have hol : o.path.length = c.path.length := by rw [hpth]
+    refine ⟨Or.inr ⟨by simp [hol, hlen], by simp [hc]; exact hlt⟩, ?_⟩
+    rw [hnum, hol, List.take_length, ← hpth, ← hn]
+
+/-- G011-L1/L2 helper: the container of a stack-level column, read from the path. -/
+theorem container_take_E8 (c : ColAddr) (L x : Nat) :
+    (⟨c.path.take L, x⟩ : ColAddr).container c =
+      (c.path[L]?).bind (fun s => if s.1 = x then some ⟨⟨c.path.take L, x⟩, s.2⟩ else none) := by
+  unfold ColAddr.container
+  simp only [List.length_take]
+  rcases Nat.lt_or_ge L c.path.length with hL | hL
+  · rw [Nat.min_eq_left hL.le, List.drop_eq_getElem_cons hL, List.getElem?_eq_getElem hL]
+    simp
+  · rw [Nat.min_eq_right hL, List.drop_length, List.getElem?_eq_none hL]
+    rfl
+
+/-- G011-L1/L2 helper: a stack column is read along the path. -/
+theorem onStack_eq_take_E8 {c o : ColAddr} (h : c.OnStack o) :
+    o = ⟨c.path.take o.path.length, o.col⟩ := by
+  have := List.prefix_iff_eq_take.1 (onStack_path_prefix h)
+  obtain ⟨op, oc⟩ := o
+  simp only at this ⊢
+  rw [← this]
+
+/-- G011-L1/L2: the alternative of the stack correspondence at one number. -/
+def StackAlt_E8 (E X : Forest) (c oX cE oE : ColAddr) : Prop :=
+  (oX.container c = none ∧ oE.container cE = none ∧ X.colAt oX = E.colAt oE) ∨
+  (∃ eX eE, oX.container c = some ⟨oX, eX⟩ ∧ oE.container cE = some ⟨oE, eE⟩ ∧
+    BlockForm_D8 ((X.colAt oX).getD []) ((E.colAt oE).getD []) eX eE)
+
+/-- G011-L1/L2: the stack correspondence below the number of `cE`. -/
+def StackRel_E8 (E : Forest) (cE : ColAddr) (X : Forest) (c : ColAddr) : Prop :=
+  ∀ q, q < cE.num 0 → ∃ oX oE, c.resolve 0 q = some oX ∧ cE.resolve 0 q = some oE ∧
+    StackAlt_E8 E X c oX cE oE
+
+/-- G011-L1/L2 helper: transfer of the alternative to a new column. -/
+theorem stackAlt_transfer_E8 {E X X' : Forest} {c c' oX oX' cE oE : ColAddr}
+    (halt : StackAlt_E8 E X c oX cE oE)
+    (hcl : oX.container c = none → oX'.container c' = none ∧ X'.colAt oX' = X.colAt oX)
+    (hbl : ∀ e, oX.container c = some ⟨oX, e⟩ → ∀ eE, BlockForm_D8 ((X.colAt oX).getD [])
+      ((E.colAt oE).getD []) e eE → ∃ e', oX'.container c' = some ⟨oX', e'⟩ ∧
+        BlockForm_D8 ((X'.colAt oX').getD []) ((E.colAt oE).getD []) e' eE) :
+    StackAlt_E8 E X' c' oX' cE oE := by
+  rcases halt with ⟨h1, h2, h3⟩ | ⟨eX, eE, h1, h2, h3⟩
+  · obtain ⟨h4, h5⟩ := hcl h1
+    exact Or.inl ⟨h4, h2, h5.trans h3⟩
+  · obtain ⟨e', h4, h5⟩ := hbl eX h1 eE h3
+    exact Or.inr ⟨e', eE, h4, h2, h5⟩
+
+/-- G011-L1/L2 helper: block form survives a change of heights of the active entry. -/
+theorem blockForm_modify_E8 {col colE : Column} {e eE : Nat} (g : Forest → Forest)
+    (h : BlockForm_D8 col colE e eE) :
+    BlockForm_D8 (col.modify e fun y => (y.1, g y.2)) colE e eE := by
+  obtain ⟨h1, h2, h3, h4, h5⟩ := h
+  refine ⟨by rw [List.length_modify]; exact h1, h2, h3, ?_, ?_⟩
+  · rw [List.take_modify, List.modify_eq_self (by simp)]; exact h4
+  · intro x hx1 hx2
+    rw [h5 x hx1 hx2, List.getElem?_modify_eq]
+    cases col[e]? <;> rfl
+
+/-- G011-L1 step (route level): block form after a move in the column. -/
+theorem blockForm_move_E8 {col colE : Column} {i j eE : Nat} (hbf : BlockForm_D8 col colE j eE)
+    (hij : i < j)
+    (hlab : ∀ x, i ≤ x → x ≤ j → (col[x]?).map Prod.fst = (col[j]?).map Prod.fst) :
+    BlockForm_D8 (col.take i ++ col.drop j) colE i eE := by
+  obtain ⟨h1, h2, h3, h4, h5⟩ := hbf
+  have hi : (col.take i ++ col.drop j)[i]? = col[j]? := moveCol_getElem_E8 hij (by omega)
+  refine ⟨moveCol_length_E8 hij h1.symm, by omega, h3, ?_, ?_⟩
+  · rw [List.take_left' (by simp; omega)]
+    have : col.take i = (col.take j).take i := by rw [List.take_take, Nat.min_eq_left hij.le]
+    rw [this, h4, List.take_take, Nat.min_eq_left hij.le]
+  · intro x hx1 hx2
+    rw [hi]
+    rcases Nat.lt_or_ge x j with hxj | hxj
+    · have := congrArg (·[x]?) h4
+      simp only [List.getElem?_take_of_lt hxj] at this
+      rw [← this]; exact hlab x hx1 hxj.le
+    · exact h5 x hxj hx2
+
+/-- G011-L1/L2 helper: equal path steps at a level give the same container shape. -/
+theorem container_shape_E8 {c c' : ColAddr} {L x : Nat} (h : c'.path[L]? = c.path[L]?) :
+    (⟨c'.path.take L, x⟩ : ColAddr).container c' =
+      ((⟨c.path.take L, x⟩ : ColAddr).container c).map
+        (fun e => ⟨⟨c'.path.take L, x⟩, e.idx⟩) := by
+  rw [container_take_E8, container_take_E8, h]
+  cases c.path[L]? with
+  | none => rfl
+  | some s => simp only [Option.bind_some]; split_ifs <;> rfl
+
+/-- G011-L1/L2 helper: an unchanged column keeps the alternative. -/
+theorem stackAlt_same_E8 {E X X' : Forest} {c c' oX oX' cE oE : ColAddr}
+    (halt : StackAlt_E8 E X c oX cE oE)
+    (hcont : oX'.container c' = (oX.container c).map (fun e => ⟨oX', e.idx⟩))
+    (hcol : X'.colAt oX' = X.colAt oX) : StackAlt_E8 E X' c' oX' cE oE := by
+  refine stackAlt_transfer_E8 halt (fun h => ⟨by rw [hcont, h]; rfl, hcol⟩) ?_
+  intro e he eE hbf
+  exact ⟨e, by rw [hcont, he]; rfl, by rw [hcol]; exact hbf⟩
+
+/-- G011-L1/L2 helper: a containing column whose active height changed keeps the
+alternative. -/
+theorem stackAlt_modify_E8 {E X X' : Forest} {c c' oX oX' cE oE : ColAddr} {e : Nat}
+    (g : Forest → Forest) (halt : StackAlt_E8 E X c oX cE oE)
+    (hc : oX.container c = some ⟨oX, e⟩) (hc' : oX'.container c' = some ⟨oX', e⟩)
+    (hcol : X'.colAt oX' = (X.colAt oX).map (fun col => col.modify e fun y => (y.1, g y.2))) :
+    StackAlt_E8 E X' c' oX' cE oE := by
+  refine stackAlt_transfer_E8 halt (fun h => by rw [hc] at h; cases h) ?_
+  intro e₁ he₁ eE hbf
+  rw [hc] at he₁
+  simp only [Option.some.injEq, EntryAddr.mk.injEq, true_and] at he₁
+  subst he₁
+  refine ⟨e, hc', ?_⟩
+  cases hX : X.colAt oX with
+  | none => rw [hX] at hbf; exact absurd hbf.1 (by simp)
+  | some colo =>
+    rw [hcol, hX]; rw [hX] at hbf
+    exact blockForm_modify_E8 g hbf
+
+/-- G011-L1/L2 step helper: a stack column strictly above the move column. -/
+theorem stackAlt_above_E8 {E X : Forest} {c c' cE oE : ColAddr} (f : Column → Column)
+    (π : List (Nat × Nat)) (J : Nat) {L x : Nat} (hL : L < π.length)
+    (h1 : c.path.take L = π.take L) (h1' : c'.path.take L = π.take L)
+    (h2 : c.path[L]? = π[L]?) (h2' : c'.path[L]? = π[L]?)
+    (halt : StackAlt_E8 E X c ⟨π.take L, x⟩ cE oE) :
+    StackAlt_E8 E (Closure.modifyColAux f π J X) c' ⟨π.take L, x⟩ cE oE := by
+  have hc1 := container_take_E8 c L x
+  have hc2 := container_take_E8 c' L x
+  rw [h1, h2, List.getElem?_eq_getElem hL, Option.bind_some] at hc1
+  rw [h1', h2', List.getElem?_eq_getElem hL, Option.bind_some] at hc2
+  have hab := colAt_modifyColAux_above_E8 f π J X hL x
+  by_cases hx : π[L].1 = x
+  · rw [if_pos hx] at hc1 hc2
+    subst hx
+    exact stackAlt_modify_E8 _ halt hc1 hc2 hab.2
+  · rw [if_neg hx] at hc1 hc2
+    exact stackAlt_same_E8 halt (by rw [hc1, hc2]; rfl) (hab.1 (Ne.symm hx))
+
+/-- G011-L1/L2 helper: prefixes of a path through a middle step. -/
+theorem take_mid_E8 (π ρ : List (Nat × Nat)) (s : Nat × Nat) (t : Nat) :
+    (π ++ s :: ρ).take (π.length + 1 + t) = π ++ s :: ρ.take t := by
+  rw [List.take_append, List.take_of_length_le (by omega),
+    show π.length + 1 + t - π.length = t + 1 by omega, List.take_succ_cons]
+
+/-- G011-L1/L2 helper: steps of a path after a middle step. -/
+theorem getElem_mid_E8 (π ρ : List (Nat × Nat)) (s : Nat × Nat) (t : Nat) :
+    (π ++ s :: ρ)[π.length + 1 + t]? = ρ[t]? := by
+  rw [List.getElem?_append_right (by omega), show π.length + 1 + t - π.length = t + 1 by omega,
+    List.getElem?_cons_succ]
+
+/-- G011-L1/L2 step: one move in a containing column (or in the column itself) carries the stack
+correspondence to the moved column. -/
+theorem stackRel_move_E8 {E X : Forest} {cE c : ColAddr} {m : Closure.Move} {col : Column}
+    (hcol : X.colAt m.col = some col) (hij : m.i < m.j) (hj : m.j + 1 = col.length)
+    (hlab : ∀ x, m.i ≤ x → x ≤ m.j → (col[x]?).map Prod.fst = (col[m.j]?).map Prod.fst)
+    (hpos : m.col = c ∨ (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: c.path)
+    (hst : StackRel_E8 E cE X c) :
+    StackRel_E8 E cE (Closure.applyMove X m) ⟨m.mapPath m.fwdIdx c.path, c.col⟩ := by
+  obtain ⟨⟨π, J⟩, i, j⟩ := m
+  simp only at hcol hij hj hlab hpos ⊢
+  rw [applyMove_eq_E8 hcol hij (by show j < col.length; omega)]
+  simp only
+  set f : Column → Column := fun col => col.take i ++ col.drop j with hf
+  rcases hpos with hpos | hpre
+  · -- the move is in the column itself
+    subst hpos
+    have hmp : Closure.Move.mapPath (Closure.Move.fwdIdx ⟨⟨π, J⟩, i, j⟩) ⟨⟨π, J⟩, i, j⟩ π = π := by
+      unfold Closure.Move.mapPath; simp
+    rw [hmp]
+    intro q hq
+    obtain ⟨oX, oE, hoX, hoE, halt⟩ := hst q hq
+    have hs : (⟨π, J⟩ : ColAddr).OnStack oX := ((ColAddr.resolve_spec 0 _ oX q).1 hoX).1
+    have hpfx := onStack_path_prefix hs
+    obtain ⟨op, x⟩ := oX
+    obtain ⟨L, hLc, rfl⟩ : ∃ L, L ≤ π.length ∧ op = π.take L :=
+      ⟨op.length, hpfx.length_le, List.prefix_iff_eq_take.1 hpfx⟩
+    refine ⟨_, oE, hoX, hoE, ?_⟩
+    rcases Nat.lt_or_ge L π.length with hlt | hge
+    · exact stackAlt_above_E8 f π J hlt rfl rfl rfl rfl halt
+    · have hL : L = π.length := by omega
+      subst hL
+      have hxJ : x < J := by
+        rcases hs with ⟨k, ck, ik, hk, hp, -⟩ | ⟨-, hlt⟩
+        · exfalso
+          have h1 : k < π.length := (List.getElem?_eq_some_iff.1 hk).1
+          have h2 := congrArg List.length hp
+          simp only [List.length_take] at h2
+          omega
+        · exact hlt
+      have hc1 := container_take_E8 ⟨π, J⟩ π.length x
+      simp only [List.getElem?_eq_none (le_refl π.length), Option.bind_none] at hc1
+      exact stackAlt_same_E8 halt (by rw [hc1]; rfl)
+        (by rw [List.take_length]; exact (colAt_modifyColAux_at_E8 f π J X x).1 (by omega))
+  · -- the move column contains the column
+    obtain ⟨ρ, hρ⟩ := hpre
+    obtain ⟨cp, cc⟩ := c
+    simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
+    subst hρ
+    have hmp : Closure.Move.mapPath (Closure.Move.fwdIdx ⟨⟨π, J⟩, i, j⟩) ⟨⟨π, J⟩, i, j⟩
+        (π ++ (J, j) :: ρ) = π ++ (J, i) :: ρ := by
+      unfold Closure.Move.mapPath Closure.Move.fwdIdx; simp; omega
+    rw [hmp]
+    intro q hq
+    obtain ⟨oX, oE, hoX, hoE, halt⟩ := hst q hq
+    have hs : (⟨π ++ (J, j) :: ρ, cc⟩ : ColAddr).OnStack oX :=
+      ((ColAddr.resolve_spec 0 _ oX q).1 hoX).1
+    have hpfx := onStack_path_prefix hs
+    have hres := @resolve_fst_E8 ⟨π ++ (J, j) :: ρ, cc⟩ ⟨π ++ (J, i) :: ρ, cc⟩ _ _ (by simp) rfl hoX
+    obtain ⟨op, x⟩ := oX
+    obtain ⟨L, hLc, rfl⟩ : ∃ L, L ≤ (π ++ (J, j) :: ρ).length ∧ op = (π ++ (J, j) :: ρ).take L :=
+      ⟨op.length, hpfx.length_le, List.prefix_iff_eq_take.1 hpfx⟩
+    simp only [List.length_take, Nat.min_eq_left hLc] at hres
+    refine ⟨_, oE, hres, hoE, ?_⟩
+    simp only
+    rcases Nat.lt_trichotomy L π.length with hlt | heq | hgt
+    · rw [List.take_append_of_le_length hlt.le] at halt ⊢
+      exact stackAlt_above_E8 f π J hlt (List.take_append_of_le_length hlt.le)
+        (List.take_append_of_le_length hlt.le) (List.getElem?_append_left hlt)
+        (List.getElem?_append_left hlt) halt
+    · subst heq
+      rw [List.take_left' rfl] at halt ⊢
+      have hc1 := container_take_E8 ⟨π ++ (J, j) :: ρ, cc⟩ π.length x
+      have hc2 := container_take_E8 ⟨π ++ (J, i) :: ρ, cc⟩ π.length x
+      simp only [List.take_left' rfl, List.getElem?_append_right (le_refl _), Nat.sub_self,
+        List.getElem?_cons_zero, Option.bind_some] at hc1 hc2
+      have hat := colAt_modifyColAux_at_E8 f π J X x
+      by_cases hx : J = x
+      · rw [if_pos hx] at hc1 hc2
+        subst hx
+        refine stackAlt_transfer_E8 halt (fun h => by rw [hc1] at h; cases h) ?_
+        intro e he eE hbf
+        rw [hc1] at he
+        simp only [Option.some.injEq, EntryAddr.mk.injEq, true_and] at he
+        subst he
+        refine ⟨i, hc2, ?_⟩
+        have hcol' : X.colAt ⟨π, J⟩ = some col := hcol
+        rw [hat.2, hcol', Option.map_some, Option.getD_some]
+        rw [hcol', Option.getD_some] at hbf
+        exact blockForm_move_E8 hbf hij hlab
+      · rw [if_neg hx] at hc1 hc2
+        exact stackAlt_same_E8 halt (by rw [hc1, hc2]; rfl) (hat.1 (Ne.symm hx))
+    · obtain ⟨t, rfl⟩ : ∃ t, L = π.length + 1 + t := ⟨L - π.length - 1, by omega⟩
+      have hcs := container_shape_E8 (c := ⟨π ++ (J, j) :: ρ, cc⟩) (c' := ⟨π ++ (J, i) :: ρ, cc⟩)
+        (L := π.length + 1 + t) (x := x) (by simp only [getElem_mid_E8])
+      refine stackAlt_same_E8 halt hcs ?_
+      have hcol' : X.colAt ⟨π, J⟩ = some col := hcol
+      unfold Tree.colAt
+      simp only [take_mid_E8]
+      rw [forestAt_modifyColAux_inside_E8 f π J hcol' (moveCol_getElem_E8 hij (by omega))]
+
+/-- G011-L1 helper: route paths are prefixes of each other. -/
+theorem isRoutePath_take_E8 {X : Forest} {π σ : List (Nat × Nat)} (hπ : IsRoutePath X π)
+    (hσ : IsRoutePath X σ) (hle : π.length ≤ σ.length) : σ.take π.length = π := by
+  suffices h : ∀ d, d ≤ π.length → σ.take d = π.take d by
+    rw [h _ le_rfl, List.take_length]
+  intro d
+  induction d with
+  | zero => intro _; rfl
+  | succ d ih =>
+    intro hd
+    have h1 := ih (by omega)
+    obtain ⟨F, hF, hl⟩ := hπ d (by omega)
+    obtain ⟨F', hF', hl'⟩ := hσ d (by omega)
+    rw [h1, hF] at hF'
+    cases hF'
+    rw [List.take_add_one, List.take_add_one, h1, ← hl', hl]
+
+/-- G011-L1 helper: a route column whose column ends with an empty height is not followed by
+another route column. -/
+theorem route_stop_not_lt_E8 {X : Forest} {c d : ColAddr} (hc : c ∈ routeCols X)
+    (hd : d ∈ routeCols X) {Q : Column} {r : Nat}
+    (hcc : X.colAt c = some (Q ++ [(r, Tree.empty)])) : ¬ c.path.length < d.path.length := by
+  intro hlt
+  obtain ⟨hrc, F, hF, hFl⟩ := (Scan.mem_routeCols_iff X c).1 hc
+  obtain ⟨hrd, G, hG, hGl⟩ := (Scan.mem_routeCols_iff X d).1 hd
+  have htk := isRoutePath_take_E8 hrc hrd hlt.le
+  have hFc : F.cols[c.col]? = some (Q ++ [(r, Tree.empty)]) := by
+    simpa [Tree.colAt, hF] using hcc
+  have hlast : F.lastStep? = some (c.col, Q.length) := by
+    unfold Tree.lastStep?
+    rw [List.getLast?_eq_getElem?, show F.cols.length - 1 = c.col by omega, hFc]
+    simp
+  obtain ⟨F', hF', hl'⟩ := hrd c.path.length hlt
+  rw [htk, hF] at hF'
+  cases hF'
+  rw [hlast] at hl'
+  have hE : X.forestAt (d.path.take (c.path.length + 1)) = some Tree.empty := by
+    rw [List.take_add_one, htk, ← hl', Option.toList_some, Tree.forestAt_append, hF,
+      Option.bind_some, Tree.forestAt_cons, hFc]
+    simp [Tree.forestAt]
+  rcases Nat.lt_or_ge (c.path.length + 1) d.path.length with h2 | h2
+  · obtain ⟨F'', hF'', hl''⟩ := hrd (c.path.length + 1) h2
+    rw [hE] at hF''
+    cases hF''
+    have : d.path[c.path.length + 1]? ≠ none := by simp; omega
+    rw [← hl''] at this
+    exact this (by simp [Tree.lastStep?, Tree.empty, Tree.cols])
+  · rw [List.take_of_length_le h2, hG] at hE
+    cases hE
+    simp [Tree.empty, Tree.cols] at hGl
+
+/-- G011-L1 helper: a route column whose column ends with an empty height is the only one. -/
+theorem route_stop_unique_E8 {X : Forest} {c d : ColAddr} (hc : c ∈ routeCols X)
+    (hd : d ∈ routeCols X) {Q Q' : Column} {r r' : Nat}
+    (hcc : X.colAt c = some (Q ++ [(r, Tree.empty)]))
+    (hdc : X.colAt d = some (Q' ++ [(r', Tree.empty)])) : c = d := by
+  have h1 := route_stop_not_lt_E8 hc hd hcc
+  have h2 := route_stop_not_lt_E8 hd hc hdc
+  obtain ⟨hrc, F, hF, hFl⟩ := (Scan.mem_routeCols_iff X c).1 hc
+  obtain ⟨hrd, G, hG, hGl⟩ := (Scan.mem_routeCols_iff X d).1 hd
+  have hlen : c.path.length = d.path.length := by omega
+  have htk := isRoutePath_take_E8 hrc hrd hlen.le
+  rw [hlen, List.take_length] at htk
+  rw [← htk, hG] at hF
+  cases hF
+  obtain ⟨cp, cc⟩ := c
+  obtain ⟨dp, dc⟩ := d
+  simp only at htk hFl hGl ⊢
+  subst htk
+  simp only [ColAddr.mk.injEq, true_and]
+  omega
+
+/-- G011-L1 helper: the moved column is a route column of the moved expression. -/
+theorem routeCols_move_E8 {X : Forest} {π ρ : List (Nat × Nat)} {J i j cc : Nat} {col : Column}
+    (hc : (⟨π ++ (J, j) :: ρ, cc⟩ : ColAddr) ∈ routeCols X) (hcol : X.colAt ⟨π, J⟩ = some col)
+    (hij : i < j) (hj : j + 1 = col.length) :
+    (⟨π ++ (J, i) :: ρ, cc⟩ : ColAddr) ∈
+      routeCols (Closure.modifyColAux (fun col => col.take i ++ col.drop j) π J X) := by
+  set f : Column → Column := fun col => col.take i ++ col.drop j with hf
+  obtain ⟨hr, F, hF, hFl⟩ := (Scan.mem_routeCols_iff X _).1 hc
+  have hin : ∀ σ, (Closure.modifyColAux f π J X).forestAt (π ++ (J, i) :: σ) =
+      X.forestAt (π ++ (J, j) :: σ) :=
+    forestAt_modifyColAux_inside_E8 f π J hcol (moveCol_getElem_E8 hij (by omega))
+  rw [Scan.mem_routeCols_iff]
+  refine ⟨?_, F, by simp only; rw [hin]; exact hF, hFl⟩
+  intro d hd
+  simp only [List.length_append, List.length_cons] at hd
+  rcases Nat.lt_trichotomy d π.length with hlt | heq | hgt
+  · obtain ⟨F0, hF0, hl0⟩ := hr d (by simp; omega)
+    simp only [List.take_append_of_le_length hlt.le, List.getElem?_append_left hlt] at hF0 hl0 ⊢
+    have h1 := forestAt_modifyColAux_take_E8 f J π X d hlt.le
+    rw [hF0, Option.map_some, List.drop_eq_getElem_cons hlt] at h1
+    refine ⟨_, h1, ?_⟩
+    obtain ⟨cols⟩ := F0
+    rw [modifyColAux_cons_E8, lastStep_modify_E8 _ _ _ (fun col => List.length_modify _ _ _)]
+    exact hl0
+  · subst heq
+    obtain ⟨F0, hF0, hl0⟩ := hr π.length (by simp)
+    simp only [List.take_left' rfl, List.getElem?_append_right (le_refl _), Nat.sub_self,
+      List.getElem?_cons_zero] at hF0 hl0 ⊢
+    have h1 := forestAt_modifyColAux_take_E8 f J π X π.length le_rfl
+    rw [List.take_length, List.drop_length, hF0, Option.map_some] at h1
+    refine ⟨_, h1, ?_⟩
+    obtain ⟨col0, p0, h0, hc0, he0, hs0, -⟩ := Scan.lastStep?_eq_some hl0
+    simp only [Prod.mk.injEq] at hs0
+    obtain ⟨hJ, hj0⟩ := hs0
+    have hFc : F0.cols[J]? = some col := by simpa [Tree.colAt, hF0] using hcol
+    obtain ⟨cols⟩ := F0
+    simp only [Tree.cols] at hFc hJ hc0 ⊢
+    rw [modifyColAux_nil_E8]
+    unfold Tree.lastStep?
+    simp only [Tree.cols]
+    rw [List.getLast?_eq_getElem?, List.length_modify, ← hJ, List.getElem?_modify_eq, hFc]
+    have hlen : (f col).length = i + 1 := moveCol_length_E8 hij hj
+    have hne : (f col).isEmpty = false := by
+      cases h : f col with
+      | nil => rw [h] at hlen; simp at hlen
+      | cons _ _ => rfl
+    simp only [Option.map_eq_map, Option.map_some, Option.bind_some, hne, Bool.false_eq_true,
+      if_false, hlen, Nat.add_sub_cancel]
+  · obtain ⟨t, rfl⟩ : ∃ t, d = π.length + 1 + t := ⟨d - π.length - 1, by omega⟩
+    obtain ⟨F0, hF0, hl0⟩ := hr (π.length + 1 + t) (by simp; omega)
+    rw [take_mid_E8] at hF0 ⊢
+    rw [getElem_mid_E8] at hl0 ⊢
+    exact ⟨F0, by rw [hin]; exact hF0, hl0⟩
+
+/-- G011-L1 (I1): after a legal move of the stopping route, the stopping column is the moved
+column. -/
+theorem stop_move_E8 {X : Forest} {sd sd' : StopData} {m : Closure.Move} {col : Column}
+    (hsd : stopData X = some sd) (hcol : X.colAt m.col = some col) (hij : m.i < m.j)
+    (hj : m.j + 1 = col.length) (hpre : (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: sd.col.path)
+    (hsd' : stopData (Closure.applyMove X m) = some sd') :
+    sd'.col = ⟨m.mapPath m.fwdIdx sd.col.path, sd.col.col⟩ := by
+  obtain ⟨hcolsd, -, -, hmem, -, -⟩ := stopData_spec hsd
+  obtain ⟨hcolsd', -, -, hmem', -, -⟩ := stopData_spec hsd'
+  generalize sd.col = c at hcolsd hmem hpre ⊢
+  obtain ⟨⟨π, J⟩, i, j⟩ := m
+  simp only at hcol hij hj hpre hsd' hmem' hcolsd' ⊢
+  rw [applyMove_eq_E8 hcol hij (by show j < col.length; omega)] at hmem' hcolsd'
+  simp only at hmem' hcolsd'
+  obtain ⟨ρ, hρ⟩ := hpre
+  obtain ⟨cp, cc⟩ := c
+  simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
+  subst hρ
+  have hmp : Closure.Move.mapPath (Closure.Move.fwdIdx ⟨⟨π, J⟩, i, j⟩) ⟨⟨π, J⟩, i, j⟩
+      (π ++ (J, j) :: ρ) = π ++ (J, i) :: ρ := by
+    unfold Closure.Move.mapPath Closure.Move.fwdIdx; simp; omega
+  simp only
+  rw [hmp]
+  have hc' := routeCols_move_E8 hmem hcol hij hj
+  have hcc' : (Closure.modifyColAux (fun col => col.take i ++ col.drop j) π J X).colAt
+      ⟨π ++ (J, i) :: ρ, cc⟩ = some (sd.Q ++ [(sd.r, Tree.empty)]) := by
+    rw [← hcolsd]
+    unfold Tree.colAt
+    simp only
+    rw [forestAt_modifyColAux_inside_E8 _ π J hcol (moveCol_getElem_E8 hij (by omega))]
+  exact route_stop_unique_E8 hmem' hc' hcolsd' hcc'
+
+/-- G011-L1/L2 helper: a move rewrites only entry indices of paths. -/
+theorem mapPath_fst_E8 (m : Closure.Move) (g : Nat → Nat) (π : List (Nat × Nat)) :
+    (m.mapPath g π).map Prod.fst = π.map Prod.fst := by
+  unfold Closure.Move.mapPath
+  split_ifs with h1
+  · split
+    · rename_i c e he
+      split_ifs with h2
+      · have hlt : m.col.path.length < π.length := (List.getElem?_eq_some_iff.1 he).1
+        have hget := (List.getElem?_eq_some_iff.1 he).2
+        conv_rhs => rw [← List.take_append_drop m.col.path.length π, List.drop_eq_getElem_cons hlt]
+        rw [hget]
+        simp
+      · rfl
+    · rfl
+  · rfl
+
+/-- G011-L1/L2 base helper: a truncated active column is in block form against itself. -/
+theorem blockForm_trunc_E8 {col : Column} {u q : Nat} {X X' : Forest}
+    (hu : col[u]? = some (q, X)) : BlockForm_D8 (col.take u ++ [(q, X')]) col u u := by
+  have hul : u < col.length := (List.getElem?_eq_some_iff.1 hu).1
+  refine ⟨by simp; omega, le_rfl, hul, by rw [List.take_left' (by simp; omega)], ?_⟩
+  intro x h1 h2
+  have : x = u := by omega
+  subst this
+  rw [hu, List.getElem?_append_right (by simp)]
+  simp [Nat.min_eq_left hul.le]
+
+/-- G011-L1/L2 base: a tree that keeps the closed stack columns and truncates the containing ones
+at their active entries is in stack correspondence with the original. -/
+theorem stackRel_base_E8 {E G : Forest} {c : ColAddr}
+    (hcl : ∀ o, c.OnStack o → o.container c = none → G.colAt o = E.colAt o)
+    (hbl : ∀ o u, o.container c = some ⟨o, u⟩ → ∃ (col : Column) (q : Nat) (X X' : Forest),
+      E.colAt o = some col ∧ col[u]? = some (q, X) ∧ G.colAt o = some (col.take u ++ [(q, X')])) :
+    StackRel_E8 E c G c := by
+  intro q hq
+  obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1
+    ((ColAddr.resolve_isSome_iff 0 c q).2 ⟨Nat.zero_le _, hq⟩)
+  have hs : c.OnStack o := ((ColAddr.resolve_spec 0 c o q).1 ho).1
+  refine ⟨o, o, ho, ho, ?_⟩
+  rcases hc : o.container c with _ | e
+  · exact Or.inl ⟨hc, hc, hcl o hs hc⟩
+  · obtain ⟨he, -⟩ := (ColAddr.container_spec _ _ _).1 hc
+    obtain ⟨eo, u⟩ := e
+    simp only at he
+    subst he
+    obtain ⟨col, q', X, X', h1, h2, h3⟩ := hbl eo u hc
+    exact Or.inr ⟨u, u, hc, hc, by rw [h1, h3]; exact blockForm_trunc_E8 h2⟩
+
+/-- G011-L1 base: the literal cap. -/
+theorem cap_base_E8 {E : Forest} {c : ColAddr} {k p : Nat} (hc : c ∈ E.colAddrs) :
+    StackRel_E8 E c (Closure.litCap E c k p) c := by
+  refine stackRel_base_E8 (fun o ho hno => (Closure.colAt_litCap_onStack hc ho).2 hno)
+    (fun o u hou => ?_)
+  obtain ⟨-, hd⟩ := (ColAddr.container_spec _ _ _).1 hou
+  obtain ⟨colX, q, h, h', h1, h2, h3⟩ := litCap_colAt_container_D8 (k := k) (p := p) hc hd
+  exact ⟨colX, q, h, h', h1, h2, h3⟩
+
+/-- G011-L1/L2 helper: one more move. -/
+theorem applyMoves_take_succ_E8 (K : Forest) (ms : List Closure.Move) {n : Nat}
+    (hn : n < ms.length) :
+    Closure.applyMoves K (ms.take (n + 1)) =
+      Closure.applyMove (Closure.applyMoves K (ms.take n)) ms[n] := by
+  rw [List.take_add_one, List.getElem?_eq_getElem hn, Option.toList_some]
+  simp only [Closure.applyMoves, List.foldl_append, List.foldl_cons, List.foldl_nil]
+
+/-- G011-L1: the induction along the moves of an admissible cap. -/
+theorem cap_inv_E8 {E : Forest} (w : Closure.AdmCap E) :
+    ∀ n, n ≤ w.moves.length → ∀ sd, stopData (Closure.applyMoves
+        (Closure.litCap E w.col w.cut w.par) (w.moves.take n)) = some sd →
+      sd.col.path.map Prod.fst = w.col.path.map Prod.fst ∧ sd.col.col = w.col.col ∧
+      StackRel_E8 E w.col (Closure.applyMoves (Closure.litCap E w.col w.cut w.par)
+        (w.moves.take n)) sd.col := by
+  have hc : w.col ∈ E.colAddrs := by
+    have hup := w.upward
+    unfold Closure.IsUpward at hup
+    rw [Tree.mem_colAddrs_iff]
+    split at hup
+    · rename_i col hcol; rw [hcol]; rfl
+    · exact hup.elim
+  intro n
+  induction n with
+  | zero =>
+    intro _ sd hsd
+    simp only [List.take_zero] at hsd ⊢
+    have h0 : Closure.applyMoves (Closure.litCap E w.col w.cut w.par) [] =
+        Closure.litCap E w.col w.cut w.par := rfl
+    rw [h0, Closure.stopData_litCap w.upward] at hsd
+    cases hsd
+    rw [h0]
+    exact ⟨rfl, rfl, cap_base_E8 hc⟩
+  | succ n ih =>
+    intro hn sd hsd
+    have hn' : n < w.moves.length := by omega
+    obtain ⟨col, sd0, q, Hi, C, hcol, hsd0, hj, hij, hpre, hi, hjq, hlab0, -⟩ :=
+      Closure.moves_violate w n hn'
+    obtain ⟨hf, hcc, hst⟩ := ih (by omega) sd0 hsd0
+    rw [applyMoves_take_succ_E8 _ _ hn'] at hsd ⊢
+    generalize Closure.applyMoves (Closure.litCap E w.col w.cut w.par) (w.moves.take n) = X
+      at hsd hcol hsd0 hst ⊢
+    generalize w.moves[n] = m at hsd hcol hj hij hpre hi hjq hlab0 ⊢
+    have hlab : ∀ x, m.i ≤ x → x ≤ m.j →
+        (col[x]?).map Prod.fst = (col[m.j]?).map Prod.fst := by
+      intro x h1 h2
+      rw [hlab0 x h1 h2, hjq]; rfl
+    rw [stop_move_E8 hsd0 hcol hij hj hpre hsd]
+    exact ⟨by rw [mapPath_fst_E8, hf], hcc, stackRel_move_E8 hcol hij hj hlab (Or.inr hpre) hst⟩
+
+
 /-- G011-L1 (owner U2; requested by U3 L4.2c steps 4(b3), 4(c)). The stack of an admissible cap
 against `E`: below the host number `sd.t`, the stopping column of `w.H` and the cap column
 `w.col` resolve to columns that are either both closed and equal, or both containing (active
@@ -5541,7 +6224,17 @@ theorem admCap_stack_D8 {E : Forest} (hE : InL E) (w : Closure.AdmCap E) {sd : S
       ((oH.container sd.col = none ∧ oE.container w.col = none ∧ w.H.colAt oH = E.colAt oE) ∨
        (∃ eH eE, oH.container sd.col = some ⟨oH, eH⟩ ∧ oE.container w.col = some ⟨oE, eE⟩ ∧
          BlockForm_D8 ((w.H.colAt oH).getD []) ((E.colAt oE).getD []) eH eE)) := by
-  sorry
+  intro q hq
+  have hM := cap_inv_E8 w w.moves.length le_rfl sd (by rw [List.take_length]; exact hsd)
+  rw [List.take_length] at hM
+  obtain ⟨hf, hcc, hst⟩ := hM
+  have ht : sd.t = w.col.num 0 := by
+    rw [(stopData_spec hsd).2.2.1]
+    calc sd.col.num 0 = (⟨sd.col.path, sd.col.col⟩ : ColAddr).num 0 := rfl
+      _ = (⟨w.col.path, sd.col.col⟩ : ColAddr).num 0 := num_of_fst_E8 hf _ _
+      _ = w.col.num 0 := by rw [hcc]
+  obtain ⟨oH, oE, h1, h2, h3⟩ := hst q (ht ▸ hq)
+  exact ⟨oH, oE, h1, h2, h3⟩
 
 /-- G011-L7 helper: the containing columns of a route column are route columns. -/
 theorem container_mem_routeCols_D8 {H : Forest} {T o : ColAddr} (hT : T ∈ routeCols H) {e : Nat}
@@ -6676,6 +7369,161 @@ theorem kappaW_self_D8 (r : Nat) : kappaW_D8 r r = id := by
     show WithTop.map (Tree.map (kappa r r)) (K : WithTop Key) = K
     rw [this, WithTop.map_coe, Scan.treeMap_id]
 
+/-- G011-L2 base: the truncation after `b`. -/
+theorem repair_base_E8 {E : Forest} {b : EntryAddr} (hb : b ∈ E.entryAddrs) :
+    BlockForm_D8 (((E.truncAfter b).colAt b.col).getD []) ((E.colAt b.col).getD []) b.idx b.idx ∧
+    StackRel_E8 E b.col (E.truncAfter b) b.col := by
+  set A := (E.heightAt b).getD Tree.empty
+  have hbT := (Tree.truncAfter_spec E b hb).2.1
+  have hid : (E.truncAfter b).setHeight b A = E.truncAfter b := by
+    apply (Tree.setHeight_basic (E.truncAfter b) b A hbT).2.2.2.1
+    rw [(Tree.truncAfter_spec E b hb).2.2.1]
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff E b).1 hb)
+    simp [A, Tree.heightAt, hx]
+  refine ⟨?_, stackRel_base_E8 (fun o ho hno => ?_) (fun o u hou => ?_)⟩
+  · obtain ⟨col, q, X, X', h1, h2, h3, -⟩ := colAt_truncSet_active_D8 hb A (Or.inl ⟨rfl, rfl⟩)
+    rw [hid] at h3
+    rw [h1, h3]; exact blockForm_trunc_E8 h2
+  · rw [← hid]
+    refine colAt_truncSet_closed_D8 hb A ho (fun u hu => ?_)
+    have := (ColAddr.container_spec o b.col ⟨o, u⟩).2 ⟨rfl, hu⟩
+    rw [hno] at this; cases this
+  · obtain ⟨col, q, X, X', h1, h2, h3, -⟩ := colAt_truncSet_active_D8 hb A (Or.inr hou)
+    rw [hid] at h3
+    exact ⟨col, q, X, X', h1, h2, h3⟩
+
+/-- G011-L2 helper: the marked address after one more move. -/
+theorem moveAddr_take_succ_E8 (b : EntryAddr) (ms : List Closure.Move) {n : Nat}
+    (hn : n < ms.length) :
+    Closure.moveAddr (ms.take (n + 1)) b =
+      ms[n].mapEntry ms[n].fwdIdx (Closure.moveAddr (ms.take n) b) := by
+  rw [List.take_add_one, List.getElem?_eq_getElem hn, Option.toList_some]
+  simp only [Closure.moveAddr, Closure.moveAddrBody, List.foldl_append, List.foldl_cons,
+    List.foldl_nil]
+
+/-- G011-L2 helper: the moved entry `j` goes to `i`. -/
+theorem mapEntry_self_E8 (m : Closure.Move) (hij : m.i < m.j) :
+    m.mapEntry m.fwdIdx ⟨m.col, m.j⟩ = ⟨m.col, m.i⟩ := by
+  obtain ⟨⟨π, J⟩, i, j⟩ := m
+  simp only at hij ⊢
+  have hmp : Closure.Move.mapPath (Closure.Move.fwdIdx ⟨⟨π, J⟩, i, j⟩) ⟨⟨π, J⟩, i, j⟩ π = π := by
+    unfold Closure.Move.mapPath; simp
+  unfold Closure.Move.mapEntry
+  simp only [hmp, if_true]
+  congr 1
+  simp only [Closure.Move.fwdIdx]
+  split <;> omega
+
+/-- G011-L2 helper: an entry inside the moved entry follows it. -/
+theorem mapEntry_inside_E8 (m : Closure.Move) (hij : m.i < m.j) (ρ : List (Nat × Nat))
+    (cc idx : Nat) :
+    m.mapEntry m.fwdIdx ⟨⟨m.col.path ++ (m.col.col, m.j) :: ρ, cc⟩, idx⟩ =
+      ⟨⟨m.col.path ++ (m.col.col, m.i) :: ρ, cc⟩, idx⟩ := by
+  obtain ⟨⟨π, J⟩, i, j⟩ := m
+  simp only at hij ⊢
+  have hmp : Closure.Move.mapPath (Closure.Move.fwdIdx ⟨⟨π, J⟩, i, j⟩) ⟨⟨π, J⟩, i, j⟩
+      (π ++ (J, j) :: ρ) = π ++ (J, i) :: ρ := by
+    unfold Closure.Move.mapPath Closure.Move.fwdIdx; simp; omega
+  have hne : (⟨π ++ (J, i) :: ρ, cc⟩ : ColAddr) ≠ ⟨π, J⟩ := by
+    intro h; have := congrArg (fun c : ColAddr => c.path.length) h; simp at this
+  unfold Closure.Move.mapEntry
+  simp only [hmp, if_neg hne]
+
+/-- G011-L2: the induction along the repair list. -/
+theorem repair_inv_E8 {E : Forest} {b : EntryAddr} (hb : b ∈ E.entryAddrs)
+    {ms : List Closure.Move} (hms : Closure.RepairList (E.truncAfter b) b ms) :
+    ∀ n, n ≤ ms.length →
+      (Closure.moveAddr (ms.take n) b).col.path.map Prod.fst = b.col.path.map Prod.fst ∧
+      (Closure.moveAddr (ms.take n) b).col.col = b.col.col ∧
+      BlockForm_D8 (((Closure.applyMoves (E.truncAfter b) (ms.take n)).colAt
+          (Closure.moveAddr (ms.take n) b).col).getD [])
+        ((E.colAt b.col).getD []) (Closure.moveAddr (ms.take n) b).idx b.idx ∧
+      StackRel_E8 E b.col (Closure.applyMoves (E.truncAfter b) (ms.take n))
+        (Closure.moveAddr (ms.take n) b).col := by
+  intro n
+  induction n with
+  | zero =>
+    intro _
+    obtain ⟨h1, h2⟩ := repair_base_E8 hb
+    exact ⟨rfl, rfl, h1, h2⟩
+  | succ n ih =>
+    intro hn
+    have hn' : n < ms.length := by omega
+    obtain ⟨hf, hcc, hbf, hst⟩ := ih (by omega)
+    have hstep := hms n hn'
+    rw [applyMoves_take_succ_E8 _ _ hn', moveAddr_take_succ_E8 _ _ hn']
+    generalize Closure.applyMoves (E.truncAfter b) (ms.take n) = X at *
+    generalize Closure.moveAddr (ms.take n) b = a at *
+    generalize ms[n] = m at *
+    obtain ⟨col, hcol, hij, hjl, -, hlab0, hret⟩ := hstep
+    have hlab : ∀ x, m.i ≤ x → x ≤ m.j →
+        (col[x]?).map Prod.fst = (col[m.j]?).map Prod.fst := by
+      intro x h1 h2
+      have := hlab0 x h1 h2
+      rw [List.getElem?_eq_getElem (by omega), List.getElem?_eq_getElem hjl]
+      simp only [Option.map_some, Option.some.injEq]
+      simpa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega : x < col.length),
+        List.getElem?_eq_getElem hjl] using this
+    have hmove := applyMove_eq_E8 hcol hij hjl
+    rcases hret with hret | hpre
+    · -- the move is at the marked entry itself
+      subst hret
+      have hj : m.j + 1 = col.length := by
+        have := hbf.1; rw [hcol, Option.getD_some] at this; simp only at this; omega
+      have hst' := stackRel_move_E8 hcol hij hj hlab (Or.inl rfl) hst
+      have hmp : m.mapPath m.fwdIdx m.col.path = m.col.path := by
+        unfold Closure.Move.mapPath; simp
+      rw [hmp] at hst'
+      rw [mapEntry_self_E8 m hij]
+      refine ⟨hf, hcc, ?_, hst'⟩
+      rw [hmove, (colAt_modifyColAux_at_E8 _ m.col.path m.col.col X m.col.col).2]
+      have hcol' : X.colAt ⟨m.col.path, m.col.col⟩ = some col := hcol
+      rw [hcol', Option.map_some, Option.getD_some]
+      rw [hcol, Option.getD_some] at hbf
+      exact blockForm_move_E8 hbf hij hlab
+    · -- the move is in a containing column
+      have hq : m.col.num 0 < b.col.num 0 := by
+        have h1 := ColAddr.resolve_lt (resolve_host_D8 hpre)
+        have h2 : a.col.num 0 = b.col.num 0 := by
+          calc a.col.num 0 = (⟨a.col.path, a.col.col⟩ : ColAddr).num 0 := rfl
+            _ = (⟨b.col.path, a.col.col⟩ : ColAddr).num 0 := num_of_fst_E8 hf _ _
+            _ = b.col.num 0 := by rw [hcc]
+        exact h2 ▸ h1
+      obtain ⟨oX, oE, hoX, hoE, halt⟩ := hst _ hq
+      rw [resolve_host_D8 hpre] at hoX
+      cases hoX
+      have hcont : m.col.container a.col = some ⟨m.col, m.j⟩ :=
+        (ColAddr.container_spec _ _ _).2 ⟨rfl, hpre⟩
+      have hj : m.j + 1 = col.length := by
+        rcases halt with ⟨h1, -, -⟩ | ⟨eX, eE, h1, -, h3⟩
+        · rw [hcont] at h1; cases h1
+        · rw [hcont] at h1
+          simp only [Option.some.injEq, EntryAddr.mk.injEq, true_and] at h1
+          subst h1
+          have := h3.1; rw [hcol, Option.getD_some] at this; omega
+      have hst' := stackRel_move_E8 hcol hij hj hlab (Or.inr hpre) hst
+      obtain ⟨ρ, hρ⟩ := hpre
+      obtain ⟨⟨ap, ac⟩, ai⟩ := a
+      simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hρ
+      subst hρ
+      have hmp : m.mapPath m.fwdIdx (m.col.path ++ (m.col.col, m.j) :: ρ) =
+          m.col.path ++ (m.col.col, m.i) :: ρ := by
+        obtain ⟨⟨π, J⟩, i, j⟩ := m
+        simp only at hij ⊢
+        unfold Closure.Move.mapPath Closure.Move.fwdIdx; simp; omega
+      simp only at hst' hf hcc hbf ⊢
+      rw [hmp] at hst'
+      rw [mapEntry_inside_E8 m hij]
+      refine ⟨?_, hcc, ?_, hst'⟩
+      · rw [← hf]; simp
+      · rw [hmove]
+        have hcol' : X.colAt ⟨m.col.path, m.col.col⟩ = some col := hcol
+        unfold Tree.colAt
+        simp only
+        rw [forestAt_modifyColAux_inside_E8 _ _ _ hcol' (moveCol_getElem_E8 hij hjl)]
+        exact hbf
+
+
 /-- G011-L2 (owner U2; requested by U3 L4.2c step 4(c), repair records). The stack of a repair
 list: the moved truncation `applyMoves (E.truncAfter b) ms` read along the stack of
 `moveAddr ms b`, against `E` read along the stack of `b`. The column of `b` itself is in block
@@ -6695,7 +7543,24 @@ theorem repairList_stack_D8 {E : Forest} {b : EntryAddr} (hb : b ∈ E.entryAddr
          oE.container b.col = some ⟨oE, eE⟩ ∧
          BlockForm_D8 (((Closure.applyMoves (E.truncAfter b) ms).colAt oX).getD [])
            ((E.colAt oE).getD []) eX eE)) := by
-  sorry
+  have hM := repair_inv_E8 hb hms ms.length le_rfl
+  rw [List.take_length] at hM
+  obtain ⟨hf, hcc, hbf, hst⟩ := hM
+  generalize Closure.applyMoves (E.truncAfter b) ms = X at *
+  generalize Closure.moveAddr ms b = a at *
+  refine ⟨?_, ?_, hbf, fun q hq => ?_⟩
+  · calc a.col.num 0 = (⟨a.col.path, a.col.col⟩ : ColAddr).num 0 := rfl
+      _ = (⟨b.col.path, a.col.col⟩ : ColAddr).num 0 := num_of_fst_E8 hf _ _
+      _ = b.col.num 0 := by rw [hcc]
+  · have hl := hbf.1
+    rw [Tree.mem_entryAddrs_iff, Tree.entryAt]
+    cases hX : X.colAt a.col with
+    | none => rw [hX] at hl; simp at hl
+    | some colX =>
+      rw [hX, Option.getD_some] at hl
+      rw [Option.bind_some, List.getElem?_eq_getElem (by omega)]; rfl
+  · obtain ⟨oX, oE, h1, h2, h3⟩ := hst q hq
+    exact ⟨oX, oE, h1, h2, by rw [ColAddr.resolve_num h1, ColAddr.resolve_num h2], h3⟩
 
 /-- G011-L11 (L4.2c step 4(c), repair records). The same for repair records (`r = t`, κ = id),
 through the repair list's block form. -/
