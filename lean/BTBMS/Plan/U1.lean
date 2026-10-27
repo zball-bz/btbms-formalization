@@ -1869,11 +1869,39 @@ theorem routeCols_of_word_snoc {G E : Forest} {e p : Nat} {first : Bool}
       (k ≠ 0 → (routeCols G)[e]? = some c ∧ G.colAt c = some (((E.colAt c).getD []).take k)) := by
   sorry
 
+mutual
+/-- N1.4 helper: `wordAt_add` with its column, entry and later-entry forms. -/
+theorem wordAt_add' (δ : Nat) : (e : Nat) → (X : Forest) →
+    wordAt (e + δ) X = (wordAt e X).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2)
+  | e, .node cols => by simp only [wordAt]; exact wordCols_add δ e cols
+theorem wordCols_add (δ : Nat) : (e : Nat) → (cs : List Column) →
+    wordCols (e + δ) cs = (wordCols e cs).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2)
+  | _, [] => rfl
+  | e, c :: cs => by
+    simp only [wordCols, List.map_append]
+    rw [wordCol_add δ e c, wordCols_add δ e cs]
+theorem wordCol_add (δ : Nat) : (e : Nat) → (c : Column) →
+    wordCol (e + δ) c = (wordCol e c).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2)
+  | e, [] => by simp only [wordCol, List.map_cons, List.map_nil, ofLex_toLex, Nat.mul_add]
+  | e, (p, h) :: es => by
+    simp only [wordCol, List.map_cons, List.map_append]
+    rw [show e + δ + 1 = e + 1 + δ by omega, wordAt_add' δ (e + 1) h, wordLater_add δ e es]
+    simp only [ofLex_toLex, Nat.mul_add]
+theorem wordLater_add (δ : Nat) : (e : Nat) → (c : Column) →
+    wordLater (e + δ) c = (wordLater e c).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2)
+  | _, [] => rfl
+  | e, (p, h) :: es => by
+    simp only [wordLater, List.map_cons, List.map_append]
+    rw [show e + δ + 1 = e + 1 + δ by omega, wordAt_add' δ (e + 1) h, wordLater_add δ e es]
+    simp only [ofLex_toLex, Nat.mul_add]
+    rw [show 2 * e + 2 * δ + 1 = 2 * e + 1 + 2 * δ by omega]
+end
+
 /-- N1.4 (requested by U2 REQ-U1-18): the word at a deeper starting depth adds `2δ` to every depth
 coordinate. -/
 theorem wordAt_add (e δ : Nat) (X : Forest) :
-    wordAt (e + δ) X = (wordAt e X).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2) := by
-  sorry
+    wordAt (e + δ) X = (wordAt e X).map fun A => toLex ((ofLex A).1 + 2 * δ, (ofLex A).2) :=
+  wordAt_add' δ e X
 
 /-- N1.4: relabelling of a word atom: the empty-column atom (even depth coordinate, marker `0`)
 is fixed; every entry atom has its third coordinate relabelled. -/
@@ -1881,9 +1909,36 @@ def WordAtom.relabel (f : Nat → Nat) (A : WordAtom) : WordAtom :=
   if (ofLex A).1 % 2 = 0 ∧ (ofLex (ofLex A).2).1 = 0 then A
   else toLex ((ofLex A).1, toLex ((ofLex (ofLex A).2).1, f (ofLex (ofLex A).2).2))
 
+mutual
+/-- N1.4 helper: `wordAt_map` with its column, entry and later-entry forms. -/
+theorem wordAt_map' (f : Nat → Nat) : (e : Nat) → (X : Forest) →
+    wordAt e (Tree.map f X) = (wordAt e X).map (WordAtom.relabel f)
+  | e, .node cols => by simp only [Tree.map, wordAt]; exact wordCols_map f e cols
+theorem wordCols_map (f : Nat → Nat) : (e : Nat) → (cs : List Column) →
+    wordCols e (Tree.mapCols f cs) = (wordCols e cs).map (WordAtom.relabel f)
+  | _, [] => rfl
+  | e, c :: cs => by
+    simp only [Tree.mapCols, wordCols, List.map_append]
+    rw [wordCol_map f e c, wordCols_map f e cs]
+theorem wordCol_map (f : Nat → Nat) : (e : Nat) → (c : Column) →
+    wordCol e (Tree.mapCol f c) = (wordCol e c).map (WordAtom.relabel f)
+  | e, [] => by simp [Tree.mapCol, wordCol, WordAtom.relabel]
+  | e, (p, h) :: es => by
+    simp only [Tree.mapCol, wordCol, List.map_cons, List.map_append]
+    rw [wordAt_map' f (e + 1) h, wordLater_map f e es]
+    simp [WordAtom.relabel]
+theorem wordLater_map (f : Nat → Nat) : (e : Nat) → (c : Column) →
+    wordLater e (Tree.mapCol f c) = (wordLater e c).map (WordAtom.relabel f)
+  | _, [] => rfl
+  | e, (p, h) :: es => by
+    simp only [Tree.mapCol, wordLater, List.map_cons, List.map_append]
+    rw [wordAt_map' f (e + 1) h, wordLater_map f e es]
+    simp [WordAtom.relabel, Nat.add_mod]
+end
+
 /-- N1.4 (requested by U2 REQ-U1-18): relabelling a forest relabels its word atom by atom. -/
 theorem wordAt_map (e : Nat) (f : Nat → Nat) (X : Forest) :
-    wordAt e (Tree.map f X) = (wordAt e X).map (WordAtom.relabel f) := by sorry
+    wordAt e (Tree.map f X) = (wordAt e X).map (WordAtom.relabel f) := wordAt_map' f e X
 
 /-- L2.1d (requested by U3 R7): a reduced `⊤`-free query below the boundary of entry `u` stops at
 or before `u`, and the scan is unchanged when the column is cut after `u` with key `u` raised
