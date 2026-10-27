@@ -1192,9 +1192,8 @@ def anchorOrigin (E : Forest) : Option (AdmCap E) → Role → Option Role
   | none => some
   | some w => w.origin
 
--- provides: U2, L3.1a (G-002: `V ∧ I ∧ H ∧ P ⇒ S`)
-theorem condS_of_condP {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) (hH : Scan.CondH E)
-    (hP : CondP E) : Scan.CondS E := by sorry
+-- provides: U2, L3.1a (G-002: `V ∧ I ∧ H ∧ P ⇒ S`): `condS_of_condP` moved to `Plan/U2.lean`, after
+-- L3.1b (brief rule 5: its proof needs L3.1b; nothing in between uses it).
 
 -- provides: U2, T3.2
 theorem std_inL {E : Forest} (h : IsStd E) : Scan.InL E := by sorry

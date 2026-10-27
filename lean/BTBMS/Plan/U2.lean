@@ -983,23 +983,364 @@ end Words
 
 /-! ## L3.1 — profile and repair -/
 
+/-! ### L3.1b helpers: the first-entry branch is a pure tower -/
+
+/-- helper: the first-entry branch of a height with host number `a + k`, as V, I and H shape it:
+the first column starts with an entry of parent `a + k`, its entries are nonincreasing, and the
+branch continues in the height of that entry when nonempty. -/
+inductive BranchOK (a : Nat) : Nat → Forest → Prop
+  | mk {k : Nat} {h₀ : Forest} {rest : List (Nat × Forest)} {cs : List Column} :
+      (∀ i x y, ((a + k, h₀) :: rest)[i]? = some x → ((a + k, h₀) :: rest)[i + 1]? = some y →
+        EntryLe y x) →
+      (h₀ ≠ Tree.empty → BranchOK a (k + 1) h₀) →
+      BranchOK a k (.node (((a + k, h₀) :: rest) :: cs))
+
+/-- helper: a nonincreasing column starting with `(q, ∅)`: its run of parent `q` has empty
+heights, and the entry after the run has a smaller parent. -/
+theorem run_split {q : Nat} :
+    ∀ (rest : List (Nat × Forest)),
+      (∀ i x y, ((q, Tree.empty) :: rest)[i]? = some x → ((q, Tree.empty) :: rest)[i + 1]? = some y →
+        EntryLe y x) →
+      rest = List.replicate (rest.takeWhile fun x => x.1 == q).length (q, Tree.empty) ++
+        rest.dropWhile (fun x => x.1 == q) ∧
+      ∀ y ∈ (rest.dropWhile fun x => x.1 == q).head?, y.1 < q
+  | [], _ => by simp
+  | y :: rest, h => by
+    have h0 := h 0 _ _ rfl rfl
+    rcases h0 with hlt | ⟨heq, hle⟩
+    · have hne : (y.1 == q) = false := by simp; omega
+      simp [List.takeWhile_cons, List.dropWhile_cons, hne, hlt]
+    · have hy : y.2 = Tree.empty := by
+        by_contra hne
+        exact absurd hle (not_le.2 (Forest.empty_lt hne))
+      obtain ⟨y1, y2⟩ := y
+      simp only at heq hy; subst heq hy
+      have ih := run_split rest (fun i x z hx hz => h (i + 1) x z hx hz)
+      simp only [List.takeWhile_cons, List.dropWhile_cons, beq_self_eq_true, if_true,
+        List.length_cons, List.replicate_succ, List.cons_append]
+      exact ⟨by rw [← ih.1], ih.2⟩
+
+theorem relLabel_host (a k : Nat) : relLabel a (a + k) = (true, k) := by
+  unfold relLabel; rw [if_neg (by omega)]; simp
+
+theorem relKey_node (a : Nat) (cols : List Column) :
+    relKey a (.node cols) = .node (Tree.mapCols (relLabel a) cols) := rfl
+
+theorem cmpCol_rep_append {α : Type} (c : α → α → Ordering) [Std.ReflCmp c] (X : α × Tree α) :
+    ∀ (m : Nat) (A B : List (α × Tree α)),
+      Tree.cmpCol c (List.replicate m X ++ A) (List.replicate m X ++ B) = Tree.cmpCol c A B
+  | 0, A, B => rfl
+  | m + 1, A, B => by
+    obtain ⟨x, h⟩ := X
+    simp only [List.replicate_succ, List.cons_append, Tree.cmpCol, Std.ReflCmp.compare_self,
+      Tree.cmp_self, Ordering.eq_then]
+    exact cmpCol_rep_append c (x, h) m A B
+
+theorem profileAux_branch {a : Nat} : ∀ {k : Nat} {J : Forest}, BranchOK a k J →
+    ∃ d m, profileAux k J = toLex (d, m) ∧ 1 ≤ m ∧ k ≤ d := by
+  intro k J hb
+  induction hb with
+  | @mk k h₀ rest cs hH hrec ih =>
+    obtain ⟨gs⟩ := h₀
+    cases gs with
+    | nil => exact ⟨k, 1 + (rest.takeWhile fun x => x.1 == a + k).length, by simp [profileAux],
+        by omega, le_refl _⟩
+    | cons g gs =>
+      obtain ⟨d, m, h1, h2, h3⟩ := ih (by simp [Tree.empty])
+      exact ⟨d, m, by simp only [profileAux]; exact h1, h2, by omega⟩
+
+/-- helper: the relabelled first column of a branch level with empty first height. -/
+theorem mapCol_run (a k : Nat) (rest : List (Nat × Forest))
+    (hH : ∀ i x y, ((a + k, Tree.empty) :: rest)[i]? = some x →
+      ((a + k, Tree.empty) :: rest)[i + 1]? = some y → EntryLe y x) :
+    ∃ A, Tree.mapCol (relLabel a) ((a + k, (Tree.empty : Forest)) :: rest) =
+      List.replicate (1 + (rest.takeWhile fun x => x.1 == a + k).length) ((true, k), Tree.empty) ++ A ∧
+      ∀ y ∈ A.head?, keyLabelCmp y.1 (true, k) = .lt := by
+  obtain ⟨h1, h2⟩ := run_split rest hH
+  refine ⟨Tree.mapCol (relLabel a) (rest.dropWhile fun x => x.1 == a + k), ?_, ?_⟩
+  · conv_lhs => rw [h1]
+    rw [treeMapCol_eq_map, treeMapCol_eq_map]
+    simp only [List.map_cons, List.map_append, List.map_replicate, relLabel_host]
+    rw [Nat.add_comm 1, List.replicate_succ]
+    simp [Tree.empty, Tree.map, Tree.mapCols]
+  · intro y hy
+    rw [treeMapCol_eq_map] at hy
+    cases hd : (rest.dropWhile fun x => x.1 == a + k) with
+    | nil => rw [hd] at hy; simp at hy
+    | cons z zs =>
+      rw [hd] at hy h2
+      simp only [List.map_cons, List.head?_cons, Option.mem_def, Option.some.injEq] at hy
+      subst hy
+      have := h2 z (by simp)
+      rw [← relLabel_host a k, keyLabelCmp_relLabel]
+      exact Nat.compare_eq_lt.2 this
+
+theorem relKey_lt_tower {a : Nat} : ∀ {k : Nat} {J : Forest}, BranchOK a k J →
+    ∀ {d m : Nat}, profileAux k J = toLex (d, m) →
+      keyCmp (relKey a J) (towKeyAt k (d - k) (m + 1)) = .lt := by
+  intro k J hb
+  induction hb with
+  | @mk k h₀ rest cs hH hrec ih =>
+    intro d m hp
+    obtain ⟨gs⟩ := h₀
+    cases gs with
+    | nil =>
+      simp only [profileAux] at hp
+      obtain ⟨hd, hm⟩ := Prod.mk.inj (toLex.injective hp)
+      rw [← hd, ← hm]
+      obtain ⟨A, hA, hAh⟩ := mapCol_run a k rest hH
+      rw [Nat.sub_self, towKeyAt, keyCmp, relKey_node, Tree.mapCols, Tree.cmp]
+      rw [Tree.cmpCols]
+      simp only [Tree.empty] at hA ⊢
+      rw [hA, List.replicate_succ', cmpCol_rep_append]
+      cases A with
+      | nil => rfl
+      | cons y A =>
+        obtain ⟨l, h⟩ := y
+        simp only [Tree.cmpCol]
+        rw [hAh (l, h) rfl]; rfl
+    | cons g gs =>
+      have hne : Tree.node (g :: gs) ≠ (Tree.empty : Forest) := by simp [Tree.empty]
+      have hp' : profileAux (k + 1) (.node (g :: gs)) = toLex (d, m) := by
+        simp only [profileAux] at hp; exact hp
+      obtain ⟨d', m', h1, -, h3⟩ := profileAux_branch (hrec hne)
+      rw [hp'] at h1; obtain ⟨hd, -⟩ := Prod.mk.inj (toLex.injective h1)
+      have ih' := ih hne hp'
+      rw [show d - k = (d - (k + 1)) + 1 by omega, towKeyAt, keyCmp, relKey_node, Tree.mapCols,
+        Tree.cmp, Tree.cmpCols, Tree.mapCol, Tree.cmpCol, relLabel_host]
+      rw [keyCmp, relKey_eq_map] at ih'
+      simp only [Std.ReflCmp.compare_self, Ordering.eq_then]
+      rw [ih']; rfl
+
+theorem ordering_then_ne_gt {a b : Ordering} (ha : a ≠ .gt) (hb : b ≠ .gt) : a.then b ≠ .gt := by
+  cases a <;> simp_all [Ordering.then]
+
+theorem cmpCols_nil_ne_gt {α : Type} (c : α → α → Ordering) (l : List (List (α × Tree α))) :
+    Tree.cmpCols c [] l ≠ .gt := by cases l <;> simp [Tree.cmpCols]
+
+theorem cmpCol_nil_ne_gt {α : Type} (c : α → α → Ordering) (l : List (α × Tree α)) :
+    Tree.cmpCol c [] l ≠ .gt := by cases l <;> simp [Tree.cmpCol]
+
+theorem tower_le_relKey {a : Nat} : ∀ {k : Nat} {J : Forest}, BranchOK a k J →
+    ∀ {d m : Nat}, k ≤ d → (toLex (d, m) : Nat ×ₗ Nat) < profileAux k J →
+      keyCmp (towKeyAt k (d - k) (m + 1)) (relKey a J) ≠ .gt := by
+  intro k J hb
+  induction hb with
+  | @mk k h₀ rest cs hH hrec ih =>
+    intro d m hkd hp
+    obtain ⟨gs⟩ := h₀
+    cases gs with
+    | nil =>
+      simp only [profileAux] at hp
+      rw [Prod.Lex.toLex_lt_toLex] at hp
+      have hd : d = k := by rcases hp with h | ⟨h, -⟩ <;> omega
+      have hm : m < 1 + (rest.takeWhile fun x => x.1 == a + k).length := by
+        rcases hp with h | ⟨-, h⟩
+        · omega
+        · exact h
+      subst hd
+      obtain ⟨A, hA, -⟩ := mapCol_run a d rest hH
+      rw [Nat.sub_self, towKeyAt, keyCmp, relKey_node, Tree.mapCols, Tree.cmp, Tree.cmpCols]
+      simp only [Tree.empty] at hA ⊢
+      rw [hA]
+      obtain ⟨r, hr⟩ : ∃ r, 1 + (rest.takeWhile fun x => x.1 == a + d).length = (m + 1) + r :=
+        ⟨_, (Nat.add_sub_cancel' hm).symm⟩
+      rw [hr, List.replicate_add (m + 1) r, List.append_assoc]
+      have := cmpCol_rep_append keyLabelCmp ((true, d), (Tree.node [] : Key)) (m + 1) []
+        (List.replicate r ((true, d), Tree.node []) ++ A)
+      rw [List.append_nil] at this
+      rw [this]
+      exact ordering_then_ne_gt (cmpCol_nil_ne_gt _ _) (cmpCols_nil_ne_gt _ _)
+    | cons g gs =>
+      have hne : Tree.node (g :: gs) ≠ (Tree.empty : Forest) := by simp [Tree.empty]
+      have hp' : (toLex (d, m) : Nat ×ₗ Nat) < profileAux (k + 1) (.node (g :: gs)) := by
+        simp only [profileAux] at hp; exact hp
+      rcases Nat.eq_or_lt_of_le hkd with rfl | hlt
+      · rw [Nat.sub_self, towKeyAt, keyCmp, relKey_node, Tree.mapCols, Tree.cmp, Tree.cmpCols,
+          List.replicate_succ, Tree.mapCol, Tree.cmpCol, relLabel_host]
+        simp only [Std.ReflCmp.compare_self, Ordering.eq_then]
+        have : Tree.cmp keyLabelCmp (Tree.empty : Key) (Tree.map (relLabel a) (.node (g :: gs))) = .lt := by
+          simp [Tree.empty, Tree.map, Tree.mapCols, Tree.cmp, Tree.cmpCols]
+        rw [this]; simp [Ordering.then]
+      · have ih' := ih hne (by omega) hp'
+        rw [show d - k = (d - (k + 1)) + 1 by omega, towKeyAt, keyCmp, relKey_node, Tree.mapCols,
+          Tree.cmp, Tree.cmpCols, Tree.mapCol, Tree.cmpCol, relLabel_host]
+        rw [keyCmp, relKey_eq_map] at ih'
+        simp only [Std.ReflCmp.compare_self, Ordering.eq_then]
+        exact ordering_then_ne_gt (ordering_then_ne_gt ih' (cmpCol_nil_ne_gt _ _))
+          (cmpCols_nil_ne_gt _ _)
+
+theorem heightAt_of_entryAt {E : Forest} {e : EntryAddr} {p : Nat} {J : Forest}
+    (h : E.entryAt e = some (p, J)) : E.heightAt e = some J := by
+  simp [Tree.heightAt, h]
+
+/-- helper: the first column and first entry of the height of `f`. -/
+theorem first_of_height {E : Forest} {f : EntryAddr} {cols : List Column} {col0 : Column}
+    (hf : E.heightAt f = some (.node cols)) (h0 : cols[0]? = some col0) :
+    E.colAt ⟨f.heightPath, 0⟩ = some col0 := by
+  simp only [Tree.colAt]
+  rw [Tree.forestAt_heightPath, hf]; exact h0
+
+theorem num_heightPath (f : EntryAddr) (j : Nat) :
+    ColAddr.num 0 ⟨f.heightPath, j⟩ = f.col.num 0 + 1 + j := by
+  simp [ColAddr.num, EntryAddr.heightPath]; omega
+
+theorem branchOK_of_height {E : Forest} (hV : CondV E) (hI : CondI E) (hH : CondH E) (a : Nat) :
+    ∀ (J : Forest) (f : EntryAddr) (k : Nat), E.heightAt f = some J → f.col.num 0 = a + k →
+      J ≠ Tree.empty → BranchOK a k J
+  | .node [], _, _, _, _, hne => absurd rfl hne
+  | .node ([] :: cs), f, k, hf, _, hne => by
+    exfalso
+    obtain ⟨x, hx⟩ : ∃ x, E.entryAt f = some x := by
+      simp only [Tree.heightAt, Option.map_eq_some_iff] at hf
+      obtain ⟨x, hx, -⟩ := hf; exact ⟨x, hx⟩
+    obtain ⟨p, H⟩ := x
+    have hHJ : H = .node ([] :: cs) := by
+      rw [heightAt_of_entryAt hx] at hf; exact Option.some.inj hf
+    subst hHJ
+    obtain ⟨q, H', rest, h, -⟩ := hI f ((Tree.mem_entryAddrs_iff E f).2 (by rw [hx]; rfl)) p _ hx hne
+      [] (by simp [Tree.cols])
+    simp at h
+  | .node (((q₀, h₀) :: rest) :: cs), f, k, hf, hn, hne => by
+    obtain ⟨x, hx⟩ : ∃ x, E.entryAt f = some x := by
+      simp only [Tree.heightAt, Option.map_eq_some_iff] at hf
+      obtain ⟨x, hx, -⟩ := hf; exact ⟨x, hx⟩
+    obtain ⟨p, H⟩ := x
+    have hHJ : H = .node (((q₀, h₀) :: rest) :: cs) := by
+      rw [heightAt_of_entryAt hx] at hf; exact Option.some.inj hf
+    subst hHJ
+    have hfm : f ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff E f).2 (by rw [hx]; rfl)
+    obtain ⟨q, H', rest', h, hq⟩ := hI f hfm p _ hx hne ((q₀, h₀) :: rest) (by simp [Tree.cols])
+    simp only [List.cons.injEq, Prod.mk.injEq] at h
+    obtain ⟨⟨rfl, rfl⟩, rfl⟩ := h
+    have hcol := first_of_height (col0 := (q₀, h₀) :: rest) hf (by simp)
+    let f₀ : EntryAddr := ⟨⟨f.heightPath, 0⟩, 0⟩
+    have he₀ : E.entryAt f₀ = some (q₀, h₀) := by simp [f₀, Tree.entryAt, hcol]
+    have hf₀ : f₀ ∈ E.entryAddrs := (Tree.mem_entryAddrs_iff E f₀).2 (by rw [he₀]; rfl)
+    have hv := (ColAddr.resolve_isSome_iff 0 f₀.col q₀).1 (hV f₀ hf₀ q₀ h₀ he₀)
+    have hnum : f₀.col.num 0 = f.col.num 0 + 1 := by simpa [f₀] using num_heightPath f 0
+    have hqa : q₀ = a + k := by omega
+    subst hqa
+    refine BranchOK.mk ?_ ?_
+    · intro i x y hx' hy'
+      have hc : f₀.col ∈ E.colAddrs := (Tree.mem_colAddrs_iff E f₀.col).2 (by rw [hcol]; rfl)
+      exact hH f₀.col hc i x y (by rw [hcol]; exact hx') (by rw [hcol]; exact hy')
+    · intro hne'
+      exact branchOK_of_height hV hI hH a h₀ f₀ (k + 1) (heightAt_of_entryAt he₀)
+        (by rw [hnum, hn]; omega) hne'
+
+theorem profileAux_of_height {E : Forest} (hI : CondI E) :
+    ∀ (J : Forest) (f : EntryAddr) (k : Nat), E.heightAt f = some J → J ≠ Tree.empty →
+      ∃ d m, profileAux k J = toLex (d, m) ∧ 1 ≤ m
+  | .node [], _, _, _, hne => absurd rfl hne
+  | .node ([] :: cs), f, k, hf, hne => by
+    exfalso
+    obtain ⟨x, hx⟩ : ∃ x, E.entryAt f = some x := by
+      simp only [Tree.heightAt, Option.map_eq_some_iff] at hf
+      obtain ⟨x, hx, -⟩ := hf; exact ⟨x, hx⟩
+    obtain ⟨p, H⟩ := x
+    have hHJ : H = .node ([] :: cs) := by
+      rw [heightAt_of_entryAt hx] at hf; exact Option.some.inj hf
+    subst hHJ
+    obtain ⟨q, H', rest, h, -⟩ := hI f ((Tree.mem_entryAddrs_iff E f).2 (by rw [hx]; rfl)) p _ hx hne
+      [] (by simp [Tree.cols])
+    simp at h
+  | .node (((q₀, h₀) :: rest) :: cs), f, k, hf, hne => by
+    obtain ⟨gs⟩ := h₀
+    cases gs with
+    | nil => exact ⟨k, 1 + (rest.takeWhile fun x => x.1 == q₀).length, by simp [profileAux], by omega⟩
+    | cons g gs =>
+      have hcol := first_of_height (col0 := (q₀, .node (g :: gs)) :: rest) hf (by simp)
+      let f₀ : EntryAddr := ⟨⟨f.heightPath, 0⟩, 0⟩
+      have he₀ : E.entryAt f₀ = some (q₀, .node (g :: gs)) := by simp [f₀, Tree.entryAt, hcol]
+      obtain ⟨d, m, h1, h2⟩ := profileAux_of_height hI (.node (g :: gs)) f₀ (k + 1)
+        (heightAt_of_entryAt he₀) (by simp [Tree.empty])
+      exact ⟨d, m, by simp only [profileAux]; exact h1, h2⟩
+
+theorem profile_of_ne {J : Forest} (h : J ≠ Tree.empty) :
+    profile J = ((profileAux 0 J : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  obtain ⟨cols⟩ := J
+  cases cols with
+  | nil => exact absurd rfl h
+  | cons c cs => rfl
+
 -- L3.1b (txt:265-266, G-002: needs V, I, H): the first-entry branch of a nonempty height is a
 -- pure tower; `h_a(J)` is strictly below the tower with one more terminal entry
 theorem relKey_lt_towKey {E : Forest} (hV : CondV E) (hI : CondI E) (hH : CondH E)
     {e : EntryAddr} {p : Nat} {J : Forest} (he : E.entryAt e = some (p, J)) (hJ : J ≠ Tree.empty)
     {d m : Nat} (hπ : profile J = ((toLex (d, m) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) :
-    relKey (e.col.num 0) J < towKey d (m + 1) := by sorry
+    relKey (e.col.num 0) J < towKey d (m + 1) := by
+  rw [profile_of_ne hJ, WithBot.coe_inj] at hπ
+  have hb := branchOK_of_height hV hI hH (e.col.num 0) J e 0 (heightAt_of_entryAt he) rfl hJ
+  have := relKey_lt_tower hb hπ
+  rw [Nat.sub_zero] at this
+  exact this
+
 
 -- L3.1b: and above every tower of smaller profile
 theorem towKey_le_relKey {E : Forest} (hV : CondV E) (hI : CondI E) (hH : CondH E)
     {e : EntryAddr} {p : Nat} {H : Forest} (he : E.entryAt e = some (p, H)) {d m : Nat}
     (hπ : ((toLex (d, m) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) < profile H) :
-    towKey d (m + 1) ≤ relKey (e.col.num 0) H := by sorry
+    towKey d (m + 1) ≤ relKey (e.col.num 0) H := by
+  have hH0 : H ≠ Tree.empty := by
+    rintro rfl; exact absurd hπ (by simp [profile, profileBody, Tree.empty])
+  rw [profile_of_ne hH0, WithBot.coe_lt_coe] at hπ
+  have hb := branchOK_of_height hV hI hH (e.col.num 0) H e 0 (heightAt_of_entryAt he) rfl hH0
+  have := tower_le_relKey hb (Nat.zero_le d) hπ
+  rw [Nat.sub_zero] at this
+  exact this
+
 
 -- L3.1b: profiles of I-legal nonempty heights are `(d, m)` with `m ≥ 1`
 theorem profile_of_entry {E : Forest} (hI : CondI E) {e : EntryAddr} {p : Nat} {J : Forest}
     (he : E.entryAt e = some (p, J)) (hJ : J ≠ Tree.empty) :
-    ∃ d m, 1 ≤ m ∧ profile J = ((toLex (d, m) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by sorry
+    ∃ d m, 1 ≤ m ∧ profile J = ((toLex (d, m) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  obtain ⟨d, m, h1, h2⟩ := profileAux_of_height hI J e 0 (heightAt_of_entryAt he) hJ
+  exact ⟨d, m, h2, by rw [profile_of_ne hJ, h1]⟩
+
+/-- helper: the height of an entry that contains another entry's column is nonempty. -/
+theorem height_ne_of_contains {E : Forest} {e₀ e : EntryAddr} (hc : e₀.heightPath <+: e.col.path)
+    (he : (E.entryAt e).isSome) :
+    ∃ H, E.heightAt e₀ = some H ∧ H ≠ Tree.empty := by
+  obtain ⟨rest, hrest⟩ := hc
+  simp only [Tree.entryAt, Option.isSome_iff_exists, Option.bind_eq_some_iff] at he
+  obtain ⟨x, col, hcol, -⟩ := he
+  simp only [Tree.colAt, Option.bind_eq_some_iff] at hcol
+  obtain ⟨G, hG, hGc⟩ := hcol
+  rw [← hrest, Tree.forestAt_append, Tree.forestAt_heightPath, Option.bind_eq_some_iff] at hG
+  obtain ⟨H, hH, hG⟩ := hG
+  refine ⟨H, hH, ?_⟩
+  rintro rfl
+  cases rest with
+  | nil =>
+    rw [forestAt_nil_path] at hG; obtain rfl := Option.some.inj hG
+    simp [Tree.empty, Tree.cols] at hGc
+  | cons x rest => rw [forestAt_empty_node_cons] at hG; simp at hG
+
+-- provides: U2, L3.1a (G-002: `V ∧ I ∧ H ∧ P ⇒ S`). Moved here from `Plan/Spine.lean` (brief rule 5):
+-- its proof needs L3.1b; nothing in between uses it.
+theorem condS_of_condP {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) (hH : Scan.CondH E)
+    (hP : CondP E) : Scan.CondS E := by
+  intro e₀ he₀ e he hown
+  have hP' := hP e₀ he₀ e he hown
+  obtain ⟨hc, q, J, hJ, -⟩ := hown
+  obtain ⟨H, hHe, hHne⟩ := height_ne_of_contains hc (by rw [hJ]; rfl)
+  obtain ⟨p₀, hp₀⟩ : ∃ p₀, E.entryAt e₀ = some (p₀, H) := by
+    simp only [Tree.heightAt, Option.map_eq_some_iff] at hHe
+    obtain ⟨⟨p₀, H'⟩, h1, h2⟩ := hHe
+    exact ⟨p₀, by simp only at h2; rw [h1, h2]⟩
+  rw [hHe, Option.getD_some] at hP' ⊢
+  rw [heightAt_of_entryAt hJ, Option.getD_some] at hP' ⊢
+  by_cases hJ0 : J = Tree.empty
+  · subst hJ0
+    obtain ⟨cols⟩ := H
+    cases cols with
+    | nil => exact absurd rfl hHne
+    | cons c cs => rfl
+  · obtain ⟨d, m, -, hπ⟩ := profile_of_entry hI hJ hJ0
+    rw [hπ] at hP'
+    exact lt_of_lt_of_le (relKey_lt_towKey hV hI hH hJ hJ0 hπ) (towKey_le_relKey hV hI hH hp₀ hP')
+
 
 /-! ### L3.1c helpers: words of literal caps -/
 
