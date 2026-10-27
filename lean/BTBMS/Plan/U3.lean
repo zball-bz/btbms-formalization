@@ -8296,40 +8296,8 @@ noncomputable def extendFit (j : Nat) (β : Role → Ordinal.{u}) (γ : BlkVar �
 
 end ScanSetup
 
--- provides: U3, L7.6a (explicit form of the spine's `scan_packet`)
-theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
-    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
-    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
-    (hheads : S.HeadsAt P j i β) :
-    let pk := S.scanPacket i j β
-    pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧ pk.asg pk.owner = S.ownerVal i ∧
-    ∀ L, S.Lmax j β ≤ L → ∀ γ : BlkVar → Ordinal.{u},
-      (∀ w x, pk.tgtFrame.toFr w = some x → γ w = pk.asg x) →
-      (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), pk.tgtFrame.toFr w = none →
-        L < γ w ∧ ∀ x ∈ pk.lowNames, pk.asg x < γ w) →
-      (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), γ w < pk.asg pk.owner) →
-      BaseHolds P (posBlock pk.rk.tgtKey pk.rk.tgtSel) γ →
-      S.Fitted P (j + 1) (S.extendFit j β γ) ∧ (∀ x ∈ S.fittedRoles j, S.extendFit j β γ x = β x) ∧
-      ∀ x ∈ S.entryRoles j, L < S.extendFit j β γ x ∧ S.extendFit j β γ x < S.ownerVal i := by
-  sorry
-
--- provides: U3, L7.6 (complete packets at a scan, (17))
--- Moved here from `Plan/Spine.lean` (brief rule 5; name and statement unchanged): the proof uses
--- L7.6a `scanPacket_spec`; nothing between the spine and this point uses it. `h17b` is not needed
--- (blueprint L7.6).
-theorem scan_packet {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
-    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
-    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
-    (h17b : S.Lmax j β ≤ S.Cmax j) (hheads : S.HeadsAt P j i β) :
-    ∃ pk : SourcePacket.{u}, pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧
-      pk.asg pk.owner = S.ownerVal i ∧
-      ∀ L, S.Lmax j β ≤ L → pk.TargetAbove P L →
-        ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
-          ∀ x ∈ S.entryRoles j, L < β' x ∧ β' x < S.ownerVal i := by
-  obtain ⟨h1, h2, h3, h4, h5⟩ := scanPacket_spec S hS hij hfit h17a hheads
-  refine ⟨S.scanPacket i j β, h1, h2, h3, h4, fun L hL hT => ?_⟩
-  obtain ⟨γ, g1, g2, g3, g4⟩ := hT
-  exact ⟨S.extendFit j β γ, h5 L hL γ g1 g2 g3 g4⟩
+-- L7.6a `scanPacket_spec` and L7.6 `scan_packet`: moved below L7.6b `fit_of_block` (brief rule 5;
+-- names and statements unchanged; nothing in between uses them).
 
 /-! ## Integration additions (nodes D7.1b, L6.2e, L6.2f, D7.2d, L7.6b, L4.3d, L7.5d; requested
 by U5 R10, R18, R19, R22, R23, R25–R27, R29, R30; formerly stubs in `U5.lean`) -/
@@ -8896,9 +8864,8 @@ theorem nodup_getElem?_inj_E8 {β : Type} {l : List β} (h : l.Nodup) {i k : Nat
 
 end FitBlock_E8
 
--- provides: U3, L7.6b (requested by U5 R26, target advance txt:1160-1162): a positive block of query
--- entry `j` above `L ≥ L_j` at the fitted frame extends a fitting by entry `j`.
-theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : Nat}
+/-- L7.6b with the explicit fitting `extendFit j β βb` (L7.6a step 12). -/
+theorem fitExtend_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : Nat}
     (hj : j < S.sd.Q.length) {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β)
     {L : Ordinal.{u}} (hL : S.Lmax j β ≤ L) {βb : BlkVar → Ordinal.{u}}
     (hfr : ∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → βb w = S.fitVal β x)
@@ -8907,10 +8874,11 @@ theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : N
       (frameOf ⟨S.sd.col, j⟩).toFr w = none → L < βb w)
     (hholds : BaseHolds P (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
         (((S.sd.Q[j]?).map Prod.fst).getD 0)) βb) :
-    ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
+    S.Fitted P (j + 1) (S.extendFit j β βb) ∧
+      (∀ x ∈ S.fittedRoles j, S.extendFit j β βb x = β x) ∧
       ∀ x ∈ S.entryRoles j, ∃ w ∈ baseVars (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
           (((S.sd.Q[j]?).map Prod.fst).getD 0)),
-        (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ β' x = βb w := by
+        (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ S.extendFit j β βb x = βb w := by
   obtain ⟨⟨-, hInL, -, hsd, -, -, -⟩, ⟨-, -, hPE⟩, -⟩ := hS
   have hV : Scan.CondV S.H := hInL.1
   obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
@@ -9204,7 +9172,7 @@ theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : N
       List.getElem?_zip_eq_some.2 ⟨hw1, hw2⟩
     exact List.mem_map_of_mem (f := fun xy : BlkVar × BlkVar => BaseAtom.lt xy.1 xy.2)
       (List.mem_of_getElem? hz)
-  refine ⟨β', fun a ha => ?_, fun x hx => hβout x (hdisj x hx), hnewv⟩
+  refine ⟨fun a ha => ?_, fun x hx => hβout x (hdisj x hx), hnewv⟩
   obtain ⟨haq, hall⟩ := List.mem_filter.1 ha
   have hvars : ∀ v ∈ a.vars, v ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles (j + 1) := by
     intro v hv; simpa using List.all_eq_true.1 hall v hv
@@ -9281,6 +9249,58 @@ theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : N
     · exact (hβout v (hA v hv)).symm
     · rfl
 
+
+-- provides: U3, L7.6b (requested by U5 R26, target advance txt:1160-1162): a positive block of query
+-- entry `j` above `L ≥ L_j` at the fitted frame extends a fitting by entry `j`.
+theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : Nat}
+    (hj : j < S.sd.Q.length) {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β)
+    {L : Ordinal.{u}} (hL : S.Lmax j β ≤ L) {βb : BlkVar → Ordinal.{u}}
+    (hfr : ∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → βb w = S.fitVal β x)
+    (hnew : ∀ w ∈ baseVars (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
+        (((S.sd.Q[j]?).map Prod.fst).getD 0)),
+      (frameOf ⟨S.sd.col, j⟩).toFr w = none → L < βb w)
+    (hholds : BaseHolds P (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
+        (((S.sd.Q[j]?).map Prod.fst).getD 0)) βb) :
+    ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
+      ∀ x ∈ S.entryRoles j, ∃ w ∈ baseVars (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
+          (((S.sd.Q[j]?).map Prod.fst).getD 0)),
+        (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ β' x = βb w := by
+  exact ⟨_, fitExtend_E8 S hS hj hfit hL hfr hnew hholds⟩
+
+-- provides: U3, L7.6a (explicit form of the spine's `scan_packet`)
+theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
+    (hheads : S.HeadsAt P j i β) :
+    let pk := S.scanPacket i j β
+    pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧ pk.asg pk.owner = S.ownerVal i ∧
+    ∀ L, S.Lmax j β ≤ L → ∀ γ : BlkVar → Ordinal.{u},
+      (∀ w x, pk.tgtFrame.toFr w = some x → γ w = pk.asg x) →
+      (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), pk.tgtFrame.toFr w = none →
+        L < γ w ∧ ∀ x ∈ pk.lowNames, pk.asg x < γ w) →
+      (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), γ w < pk.asg pk.owner) →
+      BaseHolds P (posBlock pk.rk.tgtKey pk.rk.tgtSel) γ →
+      S.Fitted P (j + 1) (S.extendFit j β γ) ∧ (∀ x ∈ S.fittedRoles j, S.extendFit j β γ x = β x) ∧
+      ∀ x ∈ S.entryRoles j, L < S.extendFit j β γ x ∧ S.extendFit j β γ x < S.ownerVal i := by
+  sorry
+
+-- provides: U3, L7.6 (complete packets at a scan, (17))
+-- Moved here from `Plan/Spine.lean` (brief rule 5; name and statement unchanged): the proof uses
+-- L7.6a `scanPacket_spec`; nothing between the spine and this point uses it. `h17b` is not needed
+-- (blueprint L7.6).
+theorem scan_packet {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
+    (h17b : S.Lmax j β ≤ S.Cmax j) (hheads : S.HeadsAt P j i β) :
+    ∃ pk : SourcePacket.{u}, pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧
+      pk.asg pk.owner = S.ownerVal i ∧
+      ∀ L, S.Lmax j β ≤ L → pk.TargetAbove P L →
+        ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
+          ∀ x ∈ S.entryRoles j, L < β' x ∧ β' x < S.ownerVal i := by
+  obtain ⟨h1, h2, h3, h4, h5⟩ := scanPacket_spec S hS hij hfit h17a hheads
+  refine ⟨S.scanPacket i j β, h1, h2, h3, h4, fun L hL hT => ?_⟩
+  obtain ⟨γ, g1, g2, g3, g4⟩ := hT
+  exact ⟨S.extendFit j β γ, h5 L hL γ g1 g2 g3 g4⟩
 
 /-- L4.3d (moved from U5 `Req.ChildData`; requested by U5 R29): the data of §8.5 Case 2
 (txt:1364-1368): a safe truncation `F₁` of the source context, a confined step of it, and the
