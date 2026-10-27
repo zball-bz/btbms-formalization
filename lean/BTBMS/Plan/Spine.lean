@@ -2101,8 +2101,8 @@ def StrictDescent (P : Prims.{u}) : Prop :=
 -- L8.4–L8.8, D8.1a and T9.1b–d that their proofs use (brief rule 5); nothing in between uses
 -- them.
 
--- provides: U5, L8.7
-theorem specialDesc (I : Interface.{u}) : SpecialDesc I.toPrims := by sorry
+-- `specialDesc` (provides: U5, L8.7) moved to `Plan/U5.lean`, after `special_copies` (L8.7a)
+-- that its proof uses; nothing in between uses it.
 
 /-! ## §c.13 The S-5 abstract final theorem (U5: N5.1, T9.1a) -/
 
