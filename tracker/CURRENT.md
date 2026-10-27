@@ -25,7 +25,10 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
   - Best H base: Mathlib plus the Apache-2.0 CU library in `1Y-Well-Ordering-Lean/vendor/cu`
     (collapse, condensation for full elementarity, history budgets).
   - Best O base: KP1Y/YesMetaZFC.
-- **Running:** T-010, Codex packaging all bounded checks into `checks/`.
+- **Lean statement:** `lean/BTBMS/Statement.lean` (commit 82c3f01).
+  - Codex's independent fidelity review (`tracker/review/codex-statement-review.md`, with its
+    follow-up) finds it faithful, with no remaining required change.
+  - **Waiting on the user: gate G2** (sign off, then lock).
 
 ## Decisions
 - **D-1 = H** (user, 2026-10-27): a host-Lean theorem
