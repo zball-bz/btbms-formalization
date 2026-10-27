@@ -979,35 +979,107 @@ def kappaLabel (r d j : Nat) (x : Bool × Nat) : Bool × Nat :=
 
 def kappa (r d j : Nat) (K : Key) : Key := K.map (kappaLabel r d j)
 
+/-- T3.2h helper: on false fields `κ_j` is the parent shift `T_{r,jd}`. -/
+theorem ker_kappaLabel_false (r d j p : Nat) :
+    kappaLabel r d j (false, p) = (false, shiftVal r (j * d) p) := by
+  unfold kappaLabel shiftVal
+  by_cases h : r ≤ p <;> simp [h]
+
+theorem ker_kappaLabel_true (r d j p : Nat) : kappaLabel r d j (true, p) = (true, p) := by
+  unfold kappaLabel; simp
+
+/-- T3.2h helper: shifts preserve `compare`. -/
+theorem ker_compare_shiftVal (r d p q : Nat) :
+    compare (shiftVal r d p) (shiftVal r d q) = compare p q := by
+  rcases Nat.lt_trichotomy p q with h | rfl | h
+  · rw [Nat.compare_eq_lt.2 h, Nat.compare_eq_lt.2 (ker_shiftVal_strictMono r d h)]
+  · rw [Nat.compare_eq_eq.2 rfl, Nat.compare_eq_eq.2 rfl]
+  · rw [Nat.compare_eq_gt.2 h, Nat.compare_eq_gt.2 (ker_shiftVal_strictMono r d h)]
+
+/-- T3.2h helper: `κ_j` preserves the key-label comparison. -/
+theorem ker_kappaLabel_cmp (r d j : Nat) (x y : Bool × Nat) :
+    keyLabelCmp (kappaLabel r d j x) (kappaLabel r d j y) = keyLabelCmp x y := by
+  obtain ⟨a, p⟩ := x
+  obtain ⟨b, q⟩ := y
+  cases a <;> cases b <;>
+    simp only [ker_kappaLabel_false, ker_kappaLabel_true, keyLabelCmp, ker_compare_shiftVal] <;> rfl
+
 -- T3.2h: `h_{x+jd}(τ_j H) = κ_j(h_x(H))` for `x ≥ r`
 theorem relKey_shift (r d j x : Nat) (hx : r ≤ x) (H : Forest) :
-    relKey (x + j * d) (shift r (j * d) H) = kappa r d j (relKey x H) := by sorry
+    relKey (x + j * d) (shift r (j * d) H) = kappa r d j (relKey x H) := by
+  unfold relKey shift kappa
+  rw [treeMap_map, treeMap_map]
+  congr 1
+  funext p
+  simp only [Function.comp]
+  by_cases h1 : p < r
+  · have h2 : p < x := by omega
+    rw [show shiftVal r (j * d) p = p by unfold shiftVal; rw [if_neg (by omega)],
+      if_pos (by omega), if_pos h2, ker_kappaLabel_false]
+    unfold shiftVal; rw [if_neg (by omega)]
+  · by_cases h2 : p < x
+    · rw [show shiftVal r (j * d) p = p + j * d by unfold shiftVal; rw [if_pos (by omega)],
+        if_pos (by omega), if_pos h2, ker_kappaLabel_false]
+      unfold shiftVal; rw [if_pos (by omega)]
+    · rw [show shiftVal r (j * d) p = p + j * d by unfold shiftVal; rw [if_pos (by omega)],
+        if_neg (by omega), if_neg h2, ker_kappaLabel_true]
+      congr 1; omega
 
 -- T3.2h: `κ_i κ_j = κ_{i+j}`
 theorem kappa_add (r d i j : Nat) (K : Key) : kappa r d i (kappa r d j K) = kappa r d (i + j) K := by
-  sorry
+  unfold kappa
+  rw [treeMap_map]
+  congr 1
+  funext x
+  obtain ⟨b, p⟩ := x
+  cases b
+  · simp only [Function.comp, ker_kappaLabel_false]
+    unfold shiftVal
+    by_cases h : r ≤ p
+    · rw [if_pos h, if_pos (by omega), if_pos h]; congr 1; rw [Nat.add_mul]; omega
+    · rw [if_neg h, if_neg h, if_neg h]
+  · simp only [Function.comp, ker_kappaLabel_true]
 
 -- T3.2h: `κ_j` is an order embedding of keys
-theorem kappa_strictMono (r d j : Nat) : StrictMono (kappa r d j) := by sorry
+theorem kappa_strictMono (r d j : Nat) : StrictMono (kappa r d j) := by
+  intro K K' h
+  show keyCmp (kappa r d j K) (kappa r d j K') = .lt
+  unfold keyCmp kappa
+  rw [Tree.cmp_map (ker_kappaLabel_cmp r d j)]
+  exact h
 
 -- T3.2h: `κ_j` commutes with `ν`
 theorem kappa_nu (r d j : Nat) (l : List Key) : nu (l.map (kappa r d j)) = (nu l).map (kappa r d j) := by
-  sorry
+  exact nu_map (kappa_strictMono r d j) l
 
 -- T3.2h: keys normalized at or below `r` are fixed
 theorem kappa_fix (r d j x : Nat) (hx : x ≤ r) (H : Forest) : kappa r d j (relKey x H) = relKey x H := by
-  sorry
+  unfold kappa relKey
+  rw [treeMap_map]
+  congr 1
+  funext p
+  simp only [Function.comp]
+  by_cases h : p < x
+  · rw [if_pos h, ker_kappaLabel_false]
+    unfold shiftVal; rw [if_neg (by omega)]
+  · rw [if_neg h, ker_kappaLabel_true]
 
 -- T3.2h (3) (txt:572-575): `T_{ρ,x+δ−ρ} = τ_δ ∘ T_{ρ,x−ρ}` for `ρ ≤ r ≤ x`
 theorem shiftVal_comp {ρ r x δ : Nat} (hρ : ρ ≤ r) (hx : r ≤ x) (p : Nat) :
-    shiftVal ρ (x + δ - ρ) p = shiftVal r δ (shiftVal ρ (x - ρ) p) := by sorry
+    shiftVal ρ (x + δ - ρ) p = shiftVal r δ (shiftVal ρ (x - ρ) p) := by
+  unfold shiftVal
+  split_ifs <;> omega
 
 -- T3.2h: `T_{ρ'+δ,d} ∘ τ_δ = τ_δ ∘ T_{ρ',d}` for `r ≤ ρ'` (phase conjugacy of root shifts)
 theorem shiftVal_conj {r ρ' δ d : Nat} (hr : r ≤ ρ') (p : Nat) :
-    shiftVal (ρ' + δ) d (shiftVal r δ p) = shiftVal r δ (shiftVal ρ' d p) := by sorry
+    shiftVal (ρ' + δ) d (shiftVal r δ p) = shiftVal r δ (shiftVal ρ' d p) :=
+  ker_shiftVal_conj hr p
 
 -- T3.2h: shifts are order embeddings of forests
-theorem shift_lt_shift (r d : Nat) {X Y : Forest} : shift r d X < shift r d Y ↔ X < Y := by sorry
+theorem shift_lt_shift (r d : Nat) {X Y : Forest} : shift r d X < shift r d Y ↔ X < Y := by
+  show Tree.cmp compare (shift r d X) (shift r d Y) = .lt ↔ Tree.cmp compare X Y = .lt
+  unfold shift
+  rw [Tree.cmp_map (ker_compare_shiftVal r d)]
 
 /-- T3.2i: placement of an address of a forest `X` whose columns are put at the hole column `h`
 (the address-level fill law of `A_{r,d,ℓ,X}` and `C_E(X)`). -/
