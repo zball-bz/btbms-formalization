@@ -2235,20 +2235,47 @@ end Scan
 
 /-! ## D1.7a — seeds and generation witnesses -/
 
-theorem seed_ne_empty (m : Nat) : seed m ≠ Tree.empty := by sorry
+theorem seed_ne_empty (m : Nat) : seed m ≠ Tree.empty := by
+  cases m <;> simp [seed, Tree.empty]
 
 /-- D1.7a: the seed's columns (txt:139-140): `L_0 = ()`, `L_{m+1} = (0)` followed by the branch. -/
 theorem seed_cols (m : Nat) : (seed m).cols = if m = 0 then [[]] else [[], branch 0 (m - 1)] := by
-  sorry
+  cases m <;> simp [seed, Tree.cols]
 
 /-- D1.7a: the branch has singleton columns with parents `i, i+1, …`. -/
 theorem branch_spec (i k : Nat) :
-    branch i k = [(i, if k = 0 then Tree.empty else .node [branch (i + 1) (k - 1)])] := by sorry
+    branch i k = [(i, if k = 0 then Tree.empty else .node [branch (i + 1) (k - 1)])] := by
+  cases k <;> simp [branch]
+
+/-- D1.7a helper: running a witness from a standard expression stays standard. -/
+theorem isStd_foldlM {E : Forest} :
+    ∀ (ns : List Nat) (F : Forest), IsStd F →
+      ns.foldlM (fun F n => expand F n) F = some E → IsStd E
+  | [], F, hF, h => by
+    simp only [List.foldlM_nil] at h
+    exact (Option.some.inj h) ▸ hF
+  | n :: ns, F, hF, h => by
+    simp only [List.foldlM_cons] at h
+    cases hx : expand F n with
+    | none => rw [hx] at h; simp at h
+    | some F' =>
+      rw [hx] at h
+      exact isStd_foldlM ns F' (IsStd.expand n hF hx) h
 
 /-- D1.7a (txt:141-142): a seed index and a finite parameter list are a generation witness. -/
 theorem isStd_iff_witness (E : Forest) :
     IsStd E ↔ ∃ (m : Nat) (ns : List Nat), ns.foldlM (fun F n => expand F n) (seed m) = some E := by
-  sorry
+  constructor
+  · intro h
+    induction h with
+    | seed m => exact ⟨m, [], rfl⟩
+    | expand n _ hexp ih =>
+      obtain ⟨m, ns, hns⟩ := ih
+      refine ⟨m, ns ++ [n], ?_⟩
+      rw [List.foldlM_append, hns]
+      simp [hexp]
+  · rintro ⟨m, ns, h⟩
+    exact isStd_foldlM ns (seed m) (IsStd.seed m) h
 
 namespace Scan
 
