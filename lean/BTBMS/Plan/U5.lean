@@ -1320,15 +1320,24 @@ theorem owner_path_elem (I : Interface.{u}) {E : Forest} (hV : Scan.CondV E)
     (hI : Scan.CondI E) {e : EntryAddr} (he : e ∈ E.entryAddrs) {D : List (BaseAtom Role)}
     (hD : ∀ a ∈ localStruct E e, a ∈ D) {β : Role → Ordinal.{u}}
     (hβ : BaseHolds I.toPrims D β) (hlim : IsLim (β (.slot e))) {z : Role} (hz : z ∈ E.roles)
-    (hin : z.inEntry e = true) : I.Elem (β (.slot e)) (β z) := by
-  sorry
+    (hin : z.inEntry e = true) : I.Elem (β (.slot e)) (β z) :=
+  elem_of_steps I hβ hlim (steps_mono hD (graph_chain hV hI he hz hin))
+
+/-- L8.2 (helper): the slot of an entry is a role. -/
+theorem slot_mem_roles {α : Type} {t : Tree α} {e : EntryAddr} (he : e ∈ t.entryAddrs) :
+    Role.slot e ∈ t.roles := by
+  obtain ⟨x, hx, hxe⟩ := List.mem_filterMap.1 he
+  cases x with
+  | slot d => cases hxe; exact hx
+  | ord _ => cases hxe
 
 /-- L8.2, (19), for configurations. -/
 theorem owner_path_elem_config (I : Interface.{u}) {E : Forest} (hV : Scan.CondV E)
     (hI : Scan.CondI E) {α : Role → Ordinal.{u}} (hα : IsConfig I.toPrims E α) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {z : Role} (hz : z ∈ E.roles) (hin : z.inEntry e = true) :
-    I.Elem (α (.slot e)) (α z) := by
-  sorry
+    I.Elem (α (.slot e)) (α z) :=
+  owner_path_elem I hV hI he (fun _ ha => (List.mem_filter.1 ha).1) hα
+    (config_lim hα (slot_mem_roles he)) hz hin
 
 /-- L8.2d: roles on the terminal route towards the stopping column `T`: an ordinary role of a
 route forest at or before that forest's route column, or the slot of a containing entry of
