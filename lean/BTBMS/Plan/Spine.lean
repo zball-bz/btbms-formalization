@@ -721,11 +721,32 @@ theorem stepKind_isSome {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI 
 
 -- provides: U1, D1.6 (branch data exist)
 theorem stopData_of_stepKind {E : Forest} {k : StepKind} (h : stepKind E = some k)
-    (hk : k ≠ .deletion) : (stopData E).isSome := by sorry
+    (hk : k ≠ .deletion) : (stopData E).isSome := by
+  simp only [stepKind, stepKindBody] at h
+  simp only [stopData]
+  split at h
+  · simp at h
+  · simp at h; exact absurd h.symm hk
+  · split at h
+    · simp at h
+    · rename_i sd hsd; rw [hsd]; rfl
 
 -- provides: U1, D1.6
 theorem rootData_of_ordinary {E : Forest} (h : stepKind E = some .ordinary) :
-    (rootData E).isSome := by sorry
+    (rootData E).isSome := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind h (by decide))
+  have h' : stepKindBody E = some .ordinary := h
+  have hsd' : stopDataBody E = some sd := hsd
+  have hres : (sd.col.resolve 0 sd.r).isSome := by
+    have h'' := h'
+    simp only [stepKindBody, hsd'] at h''
+    split at h''
+    · simp at h''
+    · simp at h''
+    · split_ifs at h'' with h1 h2 <;> first | exact h2 | simp at h''
+  simp only [rootData, rootDataBody, h', hsd']
+  obtain ⟨o, ho⟩ := Option.isSome_iff_exists.mp hres
+  simp [ho]
 
 -- provides: U1, D1.6
 theorem ownerEntry_of_special {E : Forest} {sd : StopData} (h : stepKind E = some .special)
