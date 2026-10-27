@@ -3359,7 +3359,160 @@ theorem scan_eq (I : Interface.{u}) (S : ScanSetup.{u}) (hS : S.Valid I.toPrims)
     {β : Role → Ordinal.{u}} (hinv : ScanInv I.toPrims S i j β) {x : Key}
     (hx : (Scan.rootKeys S.H S.rd)[i]? = some x) (hy : (Scan.queryKeys S.sd)[j]? = some x)
     (hi : i < S.rd.cursor) : ∃ β', ScanInv I.toPrims S (i + 1) (j + 1) β' := by
-  sorry
+  have hS' := (valid_iff S).1 hS
+  have hsd := hS'.1.2.2.2.1
+  have hL := hS'.1.2.1
+  have hj : j < S.sd.Q.length := by
+    have := (List.getElem?_eq_some_iff.1 hy).1
+    simpa [Scan.queryKeys] using this
+  obtain ⟨hfit, h17a, h17b⟩ := hinv
+  have hKq : queryKey S j = x := by simp [queryKey, hy]
+  subst hKq
+  -- the floor, the fitted frame of query entry `j`, and the two candidates
+  obtain ⟨hPh, hPfr, hPnew⟩ := posCand_spec_D4 hS' hj β
+  obtain ⟨hBh, hBfr, hBin⟩ := bankCand_spec_D4 hS' (j := j) hi.le hx β
+  have hρL : S.asg S.stopNm ≤ S.Lmax j β := le_foldr_max_init_D4 _ _
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := not_query_D4 hsd (Or.inr rfl)
+  have hfrlow : ∀ w y, (frameOf ⟨S.sd.col, j⟩).toFr w = some y → S.fitVal β y ≤ S.Lmax j β := by
+    intro w y hy
+    rcases toFr_frameOf_D4 hy with rfl | ⟨ov, hov, rfl | rfl⟩
+    · simpa [ScanSetup.fitVal, hTq, ScanSetup.baseVal] using hρL
+    · have hp := (reps0_preStop_D4 hsd hov).1
+      simp only [ScanSetup.fitVal, not_query_D4 hsd (Or.inl hp), if_false]
+      exact (baseVal_preStop_lt_D4 hS' hp).le.trans hρL
+    · have hp := (reps0_preStop_D4 hsd hov).2
+      simp only [ScanSetup.fitVal, not_query_D4 hsd (Or.inl hp), if_false]
+      exact (baseVal_preStop_lt_D4 hS' hp).le.trans hρL
+  have hfree_sub : ∀ w ∈ baseVars (freeBlock (queryKey S j)),
+      w ∈ baseVars (posBlock (queryKey S j) (querySel S j)) := by
+    intro w hw
+    simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hw
+  let fr : BlkVar → Option Ordinal.{u} := fun w =>
+    ((frameOf ⟨S.sd.col, j⟩).toFr w).map (S.fitVal β)
+  have hnew : ∀ w ∈ baseVars (freeBlock (queryKey S j)), fr w = none →
+      w = .owner ∨ ∃ r, w = .inner r := by
+    intro w hw hn
+    rcases freeBlock_new_D4 hS' hj (hfree_sub w hw) (Option.map_eq_none_iff.1 hn) with h | ⟨r, -, h⟩
+    · exact Or.inl h
+    · exact Or.inr ⟨r, h⟩
+  have hXP : IsFreeReal I.toPrims (queryKey S j) fr (S.Lmax j β) (posCand_D4 S j β) := by
+    refine ⟨fun w o hwo => ?_, fun w hw hn => ?_, fun a ha => hPh a (List.mem_append_left _ ha)⟩
+    · obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hwo
+      exact hPfr w y hy
+    · obtain ⟨-, hm, hv⟩ := hPnew w (hfree_sub w hw) (Option.map_eq_none_iff.1 hn)
+      rw [hv]; exact h17b.trans_lt (Cmax_lt_entry_D4 hS' hm)
+  have hown_S : bankCand_D4 S i j β .owner = S.ownerVal i := by
+    simp [bankCand_D4, Frame.toFr, blockMap, setupBankVal_slot_D4 S hS' hi.le]
+  have hXS : IsFreeReal I.toPrims (queryKey S j) fr (S.Lmax j β) (bankCand_D4 S i j β) := by
+    refine ⟨fun w o hwo => ?_, fun w hw hn => ?_, hBh⟩
+    · obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hwo
+      exact hBfr w y hy
+    · rcases hnew w hw hn with rfl | ⟨r, rfl⟩
+      · rw [hown_S]; exact h17a
+      · have hr : r ∈ (queryKey S j).roles := inner_of_mem_freeBlock hw
+        exact h17a.trans (by rw [← hown_S]; exact freeBlock_owner_lt_D4 hBh hr)
+  -- owner paths (19) on both sides
+  obtain ⟨_, _, _, _, heQ⟩ := query_entry_D4 hsd hj
+  obtain ⟨pR, Rh, _, heR, -⟩ := root_entry_D4 hS' hx
+  have hpP : ∀ r ∈ (queryKey S j).roles,
+      I.Elem (posCand_D4 S j β .owner) (posCand_D4 S j β (.inner r)) := by
+    intro r hr
+    obtain ⟨-, hm, -⟩ := hPnew (.inner r) (hfree_sub _ (inner_mem_freeBlock hr)) rfl
+    obtain ⟨hmq, hmin⟩ := List.mem_filter.1 hm
+    have hmr := ((mem_queryRoles_iff_D4 hsd).1 hmq).1
+    have hlim : IsLim (setupPosVal S (.slot ⟨S.sd.col, j⟩)) := by
+      have := hPh (BaseAtom.lim .owner) (by simp [posBlock, freeBlock])
+      simpa [BaseAtom.Holds, posCand_D4, Frame.toFr, blockMap] using this
+    have := owner_path_elem I hL.1 hL.2.1 heQ (localStruct_query_D4 hL hsd hj) hS'.2.2.2.1 hlim
+      hmr hmin
+    simpa [posCand_D4, Frame.toFr, blockMap] using this
+  have hpS : ∀ r ∈ (queryKey S j).roles,
+      I.Elem (bankCand_D4 S i j β .owner) (bankCand_D4 S i j β (.inner r)) := by
+    intro r hr
+    obtain ⟨hz, hin⟩ := hBin r hr
+    have hlim : IsLim (setupBankVal S (.slot ⟨S.rd.col, i⟩)) :=
+      bank_lim_D4 hS' (slot_mem_bank_D4 S hS' hi.le)
+    have := owner_path_elem I hL.1 hL.2.1 heR (localStruct_bank_D4 hS' hi.le heR)
+      hS'.2.2.2.2.1 hlim hz hin
+    simpa [bankCand_D4, Frame.toFr, blockMap] using this
+  have hfr' : ∀ w ∈ baseVars (freeBlock (queryKey S j)), ∀ o, fr w = some o → o ≤ S.Lmax j β := by
+    intro w _ o hwo
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hwo
+    exact hfrlow w y hy
+  -- L8.3: one realization below both candidates
+  obtain ⟨β₀, hβ₀, -, hoP, hmS, hmP⟩ := two_candidates I hXS hXP hpS hpP hfr' hnew
+  -- the target heads at `β₀ owner`, restricted from the positive heads at `h_j`
+  obtain ⟨p, o, v, hp, hov, -, -, heo, hev⟩ := query_heads_D4 hS' hj β
+  have hsel : querySel S j = p := by simp [querySel, hp]
+  have hsq := slot_entryRoles_D4 hsd hj
+  have hown_P : posCand_D4 S j β .owner = queryOwnerVal S j := by
+    simp [posCand_D4, Frame.toFr, blockMap, setupPosVal, ScanSetup.fitVal,
+      (List.mem_filter.1 hsq).1, queryOwnerVal]
+  have hlimβ : IsLim (β₀ .owner) := hβ₀.2.2 (BaseAtom.lim .owner) (by simp [freeBlock])
+  have hLβ : S.Lmax j β < β₀ .owner := hβ₀.2.1 .owner (owner_mem_freeBlock _) rfl
+  have hρβ : S.asg S.stopNm < β₀ .owner := hρL.trans_lt hLβ
+  have hβh : β₀ .owner ≤ queryOwnerVal S j := hown_P ▸ hoP
+  have hβhost : β₀ .host = S.asg S.stopNm := by
+    have := hβ₀.1 .host (S.fitVal β (.ord S.sd.col)) (by simp [fr, Frame.toFr, frameOf])
+    simpa [ScanSetup.fitVal, hTq, ScanSetup.baseVal] using this
+  have hβo : β₀ (.ord p) = S.fitVal β o := hβ₀.1 _ _ (by simp [fr, Frame.toFr, hov])
+  have hβv : β₀ (.cur p) = S.fitVal β v := hβ₀.1 _ _ (by simp [fr, Frame.toFr, hov])
+  have hpos : BaseHolds I.toPrims (posBlock (queryKey S j) (querySel S j)) β₀ := by
+    intro a ha
+    rcases List.mem_append.1 ha with ha | ha
+    · exact hβ₀.2.2 a ha
+    · simp only [List.mem_cons, List.mem_nil_iff, or_false] at ha
+      rcases ha with rfl | rfl
+      · show I.Edge (β₀ .owner) (β₀ .host) (β₀ (.ord (querySel S j)))
+        rw [hsel, hβhost, hβo]; exact I.edge_restrict heo hlimβ hρβ hβh
+      · show I.Edge (β₀ .owner) (β₀ .host) (β₀ (.cur (querySel S j)))
+        rw [hsel, hβhost, hβv]; exact I.edge_restrict hev hlimβ hρβ hβh
+  -- R26: extend the fitting by entry `j`
+  obtain ⟨β', hfit', hagree, hent⟩ := fit_of_block S hS hj hfit (L := S.Lmax j β) le_rfl
+    (βb := β₀) (fun w y hy => hβ₀.1 w _ (by simp [fr, hy])) (fun w hw hn => by
+      obtain ⟨hcl, -, -⟩ := hPnew w hw hn
+      rcases hcl with rfl | ⟨r, hr, rfl⟩
+      · exact hLβ
+      · exact hβ₀.2.1 _ (inner_mem_freeBlock hr) rfl) hpos
+  -- (17) at `(i + 1, j + 1)`
+  have hu : S.ownerVal i < S.ownerVal (i + 1) := by
+    rw [← setupBankVal_slot_D4 S hS' hi.le, ← setupBankVal_slot_D4 S hS' hi]
+    exact bank_entry_lt_D4 S hS' (slot_root_mem_D4 S hS' hi.le) (by simp [Role.inEntry])
+      (slot_root_mem_D4 S hS' hi) (by simp [Role.inEntry]) (Nat.lt_succ_self i) hi
+  have hMS : blkMax (queryKey S j) (bankCand_D4 S i j β) < S.ownerVal (i + 1) := by
+    unfold blkMax
+    refine foldr_max_lt_iff_D4.2 ⟨lt_of_le_of_lt zero_le hu, fun z hz => ?_⟩
+    simp only [List.map_cons, List.map_map, List.mem_cons, List.mem_map, Function.comp] at hz
+    rcases hz with rfl | ⟨r, hr, rfl⟩
+    · rw [hown_S]; exact hu
+    · obtain ⟨hz, hin⟩ := hBin r hr
+      have hb : bankCand_D4 S i j β (.inner r) =
+          setupBankVal S (Role.under (EntryAddr.heightPath ⟨S.rd.col, i⟩) r) := by
+        simp [bankCand_D4, Frame.toFr, blockMap]
+      rw [hb, ← setupBankVal_slot_D4 S hS' hi]
+      exact bank_entry_lt_D4 S hS' hz hin (slot_root_mem_D4 S hS' hi) (by simp [Role.inEntry])
+        (Nat.lt_succ_self i) hi
+  have hcb : ∀ y ∈ S.entryRoles j, S.asg (S.qNm y) ≤ queryBlockMax S j := fun y hy =>
+    le_foldr_max_mem_D4 (List.mem_map_of_mem (f := fun x => S.asg (S.qNm x)) hy)
+  have hMP : blkMax (queryKey S j) (posCand_D4 S j β) ≤ queryBlockMax S j := by
+    refine blkMax_le ?_ fun r hr => ?_
+    · rw [hown_P]; exact hcb _ hsq
+    · obtain ⟨-, hm, hv⟩ := hPnew (.inner r) (hfree_sub _ (inner_mem_freeBlock hr)) rfl
+      rw [hv]; exact hcb _ hm
+  have hβmax : ∀ w ∈ baseVars (posBlock (queryKey S j) (querySel S j)),
+      (frameOf ⟨S.sd.col, j⟩).toFr w = none → β₀ w ≤ blkMax (queryKey S j) β₀ := by
+    intro w hw hn
+    obtain ⟨hcl, -, -⟩ := hPnew w hw hn
+    rcases hcl with rfl | ⟨r, hr, rfl⟩
+    · exact le_blkMax_owner _ _
+    · exact le_blkMax_inner _ hr
+  refine ⟨β', inv_step_D4 S hfit' hagree (h17a.trans hu) h17b (fun y hy => ?_) (fun y hy => ?_)⟩
+  · obtain ⟨w, hw, hn, hy'⟩ := hent y hy
+    rw [hy']
+    exact ((hβmax w hw hn).trans hmS).trans_lt hMS
+  · obtain ⟨w, hw, hn, hy'⟩ := hent y hy
+    rw [hy']
+    exact (((hβmax w hw hn).trans hmP).trans hMP).trans (queryBlockMax_le_Cmax_D4 S j)
 
 /-- L8.5g: the invariant along the whole actual trace (txt:1242-1244). -/
 theorem scan_trace (I : Interface.{u}) {n : Nat} (hSn : ∀ m < n, SStrict I.toPrims m)
