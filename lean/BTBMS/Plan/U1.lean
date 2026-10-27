@@ -1869,13 +1869,96 @@ def NestPred (E : Forest) (ks : KeySys) (x : Nat) : Prop :=
   ∀ (c : ColAddr) (W Z : List (WithTop Key)) (p : Nat), Noninc W → Noninc Z → W ≤ Z →
     Edge E ks c Z x p → Path E ks c W x p
 
+/-- L2.2a helper: under V, a parent of a column is below the column's printed number. -/
+theorem parent_lt_num {E : Forest} (hV : CondV E) {o : ColAddr} {k q : Nat}
+    (h : (parents E o)[k]? = some q) : q < o.num 0 := by
+  rw [parents_getElem?, Option.map_eq_some_iff] at h
+  obtain ⟨⟨q', H⟩, hq, rfl⟩ := h
+  have hmem : (⟨o, k⟩ : EntryAddr) ∈ E.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hq]; rfl
+  exact ((ColAddr.resolve_isSome_iff 0 o q').1 (hV _ hmem q' H hq)).2
+
+/-- L2.2a helper: a response is the parent of the entry at the cursor. -/
+theorem resp_eq_parents (E : Forest) (ks : KeySys) (o : ColAddr) (W : List (WithTop Key)) :
+    resp E ks o W = (parents E o)[cursor (ks o) W]? := by
+  simp [resp, parents]
+
+/-- L2.2a helper: a `Y`-path from `s` is a `W`-path once every `Y`-edge from a source `≤ s` is
+replaced by a `W`-path (under V every vertex of the path is `≤ s`). -/
+theorem path_replace {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr}
+    {Y W : List (WithTop Key)} {s t : Nat}
+    (hrep : ∀ y ≤ s, ∀ y', Edge E ks c Y y y' → Path E ks c W y y')
+    (h : Path E ks c Y s t) : Path E ks c W s t := by
+  have key : ∀ a, Path E ks c Y a t → a ≤ s → Path E ks c W a t := by
+    intro a ha
+    induction ha using Relation.ReflTransGen.head_induction_on with
+    | refl => intro _; exact Relation.ReflTransGen.refl
+    | head hab _ ihb =>
+      intro has
+      exact (hrep _ has _ hab).trans (ihb (le_trans (le_of_lt (edge_lt hV hab)) has))
+  exact key s h le_rfl
+
 /-- L2.2a: the induction step (strong induction on `x`). -/
 theorem nestPred_step {E : Forest} (hV : CondV E) {ks : KeySys} (hA : CondAK E ks) (x : Nat)
-    (ih : ∀ y < x, NestPred E ks y) : NestPred E ks x := by sorry
+    (ih : ∀ y < x, NestPred E ks y) : NestPred E ks x := by
+  intro c W Z p hW hZ hWZ hedge
+  obtain ⟨o, ho, hresp⟩ := hedge
+  have hox : o.num 0 = x := ColAddr.resolve_num ho
+  rw [resp_eq_parents] at hresp
+  have hji : cursor (ks o) W ≤ cursor (ks o) Z := cursor_mono (ks o) hW hZ hWZ
+  have hil : cursor (ks o) Z ≤ (ks o).length := cursor_le_length _ _
+  have hoE : o ∈ E.colAddrs := by
+    rw [Tree.mem_colAddrs_iff]
+    cases h : E.colAt o with
+    | none => simp [parents, h] at hresp
+    | some _ => rfl
+  have hst : ∀ q < x, o.resolve 0 q = c.resolve 0 q := fun q hq =>
+    ColAddr.resolve_of_resolve_lt ho hq
+  -- the chain `x → p_j ⇝ p_{j+1} ⇝ … ⇝ p_{j+m}`
+  have claim : ∀ m, cursor (ks o) W + m ≤ cursor (ks o) Z → ∀ q,
+      (parents E o)[cursor (ks o) W + m]? = some q → Path E ks c W x q := by
+    intro m
+    induction m with
+    | zero =>
+      intro _ q hq
+      refine Relation.ReflTransGen.single ⟨o, ho, ?_⟩
+      rw [resp_eq_parents]; simpa using hq
+    | succ m ihm =>
+      intro hm q hq
+      set j := cursor (ks o) W
+      have hlt : j + m < (parents E o).length := by
+        have := (List.getElem?_eq_some_iff.1 hq).1; omega
+      obtain ⟨q', hq'⟩ : ∃ q', (parents E o)[j + m]? = some q' :=
+        ⟨_, List.getElem?_eq_getElem hlt⟩
+      have hpath := hA o hoE (j + m + 1) q (by simpa [Nat.add_assoc] using hq)
+      simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel, hq', Option.getD_some] at hpath
+      have hq'x : q' < x := hox ▸ parent_lt_num hV hq'
+      rw [path_congr_stack hV hst hq'x] at hpath
+      have hjlen : j < (ks o).length := by omega
+      have hWY : W ≤ cutQuery (ks o) (j + m + 1) :=
+        le_trans (le_of_lt ((cursor_spec (ks o) W hW).2 hjlen))
+          (cutQuery_mono (ks o) (by omega))
+      refine (ihm (by omega) q' hq').trans (path_replace hV ?_ hpath)
+      intro y hy y' he
+      exact ih y (lt_of_le_of_lt hy hq'x) c W _ y' hW (cutQuery_noninc _ _) hWY he
+  have := claim (cursor (ks o) Z - cursor (ks o) W) (by omega) p
+  rw [Nat.add_sub_cancel' hji] at this
+  exact this hresp
 
 /-- L2.2a. -/
 theorem nestPred_all {E : Forest} (hV : CondV E) {ks : KeySys} (hA : CondAK E ks) (x : Nat) :
-    NestPred E ks x := by sorry
+    NestPred E ks x := by
+  induction x using Nat.strong_induction_on with
+  | _ x ih => exact nestPred_step hV hA x ih
+
+-- Moved here from `Plan/Spine.lean` (brief rule 5): its proof needs `nestPred_all`; nothing in
+-- between uses it. Statement unchanged.
+-- provides: U1, L2.2 (path nesting)
+theorem path_nesting {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks) (c : ColAddr)
+    {W Z : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x)
+    (hZ : Z.Pairwise fun x y => y ≤ x) (hWZ : W ≤ Z) {x p : Nat} (h : Edge E ks c Z x p) :
+    Path E ks c W x p :=
+  nestPred_all hV hA x c W Z p hW hZ hWZ h
 
 /-! ## L2.3, L2.3a — the barrier (G-006 predicates) -/
 
