@@ -877,7 +877,56 @@ theorem isClub_reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (h�
 /-- N4.9b: every reflection point carries an edge `Edge w κ x`. -/
 theorem edge_of_reflPoint (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
     (hreg : κ.IsRegular) (hwl : IsLim w) (hκw : κ.ord < w) {x : Set.Iio κ.ord}
-    (hx : x ∈ reflPoints κ w hw) : prims.Edge w κ.ord x.1 := by sorry
+    (hx : x ∈ reflPoints κ w hw) : prims.Edge w κ.ord x.1 := by
+  classical
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  have hxκ : x.1 < κ.ord := x.2
+  have hxw : x.1 < w := hxκ.trans hκw
+  let S := hullAt κ w hw x.1
+  have hmem : ∀ o (ho : o < x.1), (⟨o, ho.trans hxw⟩ : M w) ∈ S :=
+    fun o ho => subset_hull w hw _ (Or.inl ho)
+  let k : S := ⟨⟨κ.ord, hκw⟩, subset_hull w hw _ (Or.inr rfl)⟩
+  obtain ⟨ν, π, -, hπ, hfix, hcard⟩ := condensation S
+  have hνκ : ν < κ.ord := by
+    rw [Cardinal.lt_ord, ← Cardinal.lift_lt.{_, u + 1}, hcard]
+    exact card_hullAt_lt κ w hw hκ hxκ
+  have hpt : ∀ o (ho : o < x.1), (π ⟨⟨o, ho.trans hxw⟩, hmem o ho⟩).val = o :=
+    fun o ho => hfix _ fun o' ho' => ⟨⟨⟨o', _⟩, hmem o' (ho'.trans ho)⟩, rfl⟩
+  have hk : (π k).val = x.1 :=
+    collapse_eq_of_cut S π hπ k (fun y => ⟨fun hy => hx.2 y hy, fun hy => hy.trans hxκ⟩)
+      (fun o ho => ⟨⟨⟨o, _⟩, hmem o ho⟩, rfl⟩)
+  have hElem : prims.Elem x.1 κ.ord := by
+    refine elem_iff.2 ⟨hx.1, hκl, hxκ.le, ?_⟩
+    intro V D F σ hσ hreal
+    let p : V → S := fun y => if h : y ∈ D.vars ∧ F y then
+        ⟨⟨σ y, (hσ y h.1 h.2).trans hxw⟩, hmem _ (hσ y h.1 h.2)⟩ else k
+    have hp : ∀ y ∈ D.vars, F y → (p y : M w).val = σ y ∧ (π (p y)).val = σ y := by
+      intro y hy hF
+      have hpy : p y = ⟨_, hmem (σ y) (hσ y hy hF)⟩ := dif_pos ⟨hy, hF⟩
+      rw [hpy]
+      exact ⟨rfl, hpt _ (hσ y hy hF)⟩
+    have := transfer S π D F σ σ p hp k hreal
+    rwa [hk] at this
+  refine edge_iff.2 ⟨hx.1, hκl, hwl, hxκ, hκw, hElem, card_elem κ w hκ hwl hκw, ?_⟩
+  intro V _ D F σ t ht hσ hreal
+  let p : V → S := fun y => if y = t then k else if h : y ∈ D.vars ∧ F y then
+      ⟨⟨σ y, (hσ y h.1 h.2).trans hxw⟩, hmem _ (hσ y h.1 h.2)⟩ else k
+  have hp : ∀ y ∈ D.vars, (F y ∨ y = t) →
+      (p y : M w).val = Function.update σ t κ.ord y ∧
+        (π (p y)).val = Function.update σ t x.1 y := by
+    intro y hy hF
+    by_cases hyt : y = t
+    · subst hyt
+      have hpy : p y = k := if_pos rfl
+      rw [hpy, Function.update_self, Function.update_self]
+      exact ⟨rfl, hk⟩
+    · have hFy : F y := hF.resolve_right hyt
+      have hpy : p y = ⟨_, hmem (σ y) (hσ y hy hFy)⟩ := by
+        simp only [p]
+        rw [if_neg hyt, dif_pos ⟨hy, hFy⟩]
+      rw [hpy, Function.update_of_ne hyt, Function.update_of_ne hyt]
+      exact ⟨rfl, hpt _ (hσ y hy hFy)⟩
+  exact Diagram.realizableBelow_mono _ _ _ _ hνκ.le (transfer_top S π D _ _ _ p hp hreal)
 
 /-- N4.9b (14). -/
 theorem club_edge (κ : Cardinal.{u}) (w : Ordinal.{u}) (hκ : ℵ₀ < κ) (hreg : κ.IsRegular)
