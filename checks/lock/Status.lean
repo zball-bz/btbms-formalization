@@ -22,7 +22,8 @@ run_cmd do
       | _ => "other"
     if kind == "ctor" || kind == "other" then continue
     let value? := match ci with
-      | .thmInfo t => some t.value | .defnInfo d => some d.value | _ => none
+      | .thmInfo t => some t.value | .defnInfo d => some d.value | .opaqueInfo o => some o.value
+      | _ => none
     let direct := ci.type.hasSorry || (value?.map Expr.hasSorry).getD false
     let axioms ← collectAxioms n
     rows := rows.push <| Json.mkObj [

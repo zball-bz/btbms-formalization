@@ -3,14 +3,15 @@
  "signed_off_by": "user",
  "date": "2026-10-27",
  "reviewed_in": [
-  "tracker/review/codex-statement-review.md"
+  "tracker/review/codex-statement-review.md",
+  "tracker/review/codex-lock-review.md"
  ],
  "pins": {
   "lean": "v4.33.1",
   "mathlib": "eba3d887fc52c98627f4b81507c0efc3096e91b9",
   "cu": "7f5a7d03d63d9769172f17350bbe8303996e5b53"
  },
- "files": {
+ "inputs": {
   "lean/BTBMS/Syntax.lean": "8a2a6c69a8fa7d7caf1b36c925fb16aa73b48abc1fe9ecfe94c077d63928c41d",
   "lean/BTBMS/Expansion.lean": "045a3a271fb639c1f1c3d9e0969fe3ebe6d3484de19df497d4f028a918d63b51",
   "lean/BTBMS/Mahlo.lean": "7810b7f108701ed6ea2c779dbfcd97a9be07960eeba378ed958d6a8468f7fcde",
@@ -18,8 +19,19 @@
   "lean/lean-toolchain": "3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71",
   "lean/lakefile.toml": "ed6bcef0361207ffbe9c246a7d5d9d3303c8adbe9dc467fbfde5aa8f61698851",
   "lean/lake-manifest.json": "1cb06ee2f8b1e50c34fbb9400653f636d8c1c9976c2ea6bd6f8645b4f9c46fe3",
-  "checks/lock/LockCheck.lean": "2ab0cc60a472dffba5ebd2cd44d4e4e46c493a30f995a034774e44bf94726913",
-  "mathlib:Mathlib/SetTheory/Cardinal/Cofinality/Club.lean": "8bbc2bcafbbb50036c24c8188dafc5b4b5f62d60cde2ecb7980600715fcd070c",
-  "mathlib:Mathlib/SetTheory/Cardinal/Regular.lean": "90f58bc8df074d6e17470d85290b23e1c6d7711d1bc3d56284869272fc350f37"
+  "checks/lock/LockCheck.lean": "a4edf13b3d441354dc44f2340fc541e32f7369552ba03c6c06e38de844a6e1d4",
+  "checks/lock/lock.py": "76a0dd4cb0781ae695e5a8da0d6c6b5f044efeea8567ddad923fd0382f002db7",
+  "checks/lock/check.sh": "8f1cde225ec8fae941c31f9298250982f28a3d009936ce44f0f3d376b667def1",
+  "package:Cli": "1539e3f350ff73273a7d3abd5bdd65744934a4bc84708402ab77afd2ea896ffc (8 files)",
+  "package:LeanSearchClient": "f723a73413d5193ce34cccbc6372aec282f4f47c49f0ffde503957d8c28d8690 (11 files)",
+  "package:Qq": "4a12c677cae7a69662ec447503453eea9a0191cbab28c61b259a98e683d08707 (31 files)",
+  "package:aesop": "a183fd0a482045306a7086fa13b0422cd592556030390914f3195124924a6e48 (253 files)",
+  "package:batteries": "e2a094a296fe5f6b03d92b1974be88c266dfed27859438163ee84f08f3f1eafb (258 files)",
+  "package:importGraph": "c49d80482f1357dba3045b3cb8537bb06a69e08788bf262c837716e44fc3a13b (40 files)",
+  "package:mathlib": "f03fae5a052e32a40ce6b4cda37aa41b6bd6fbea3b8569d86656e5c063d7e1ef (8814 files)",
+  "package:plausible": "9ede2b99d5621118f9c5bfe1417f30e9380e04b92c43bbc13e26bada8bc8af85 (31 files)",
+  "package:proofwidgets": "d3e4565b176841adf370db6f6f6ab1b67e106e723a18c5542c2d3a9f4a0fd967 (48 files)",
+  "toolchain:bin": "830b28a3b7342e6ef7349d649f77c5b8bdc082710995ec1d34345a41ccf01cd4 (11 files)",
+  "toolchain:src": "256805bdd32c2ba40a50f4842b09c4372433c369e79969e6618cd1713ce9911c (2488 files)"
  }
 }

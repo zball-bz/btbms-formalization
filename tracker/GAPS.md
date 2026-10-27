@@ -11,6 +11,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | G-005 | confirmed | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
 | G-006 | closed | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude | codex |
 | G-007 | closed | repairable | lean/BTBMS/Expansion.lean (statement port) | Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height | codex | claude |
+| G-008 | repaired | repairable | checks/lock/, scripts/lean-status.sh, tracker/refresh.py (tooling, not the paper) | Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed | codex | claude |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -73,6 +74,15 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 **Fix:** rootLayer searches tl+2 forests; expandExtraLayer reproduces the reference (empty query, negative offset, only the j=1 tail survives). Regression cases in checks/lean/gen-regression.mjs. Codex re-checked the branch at source level and reran its own raw corpus (12,000 cases, 0 mismatches; previously 80).
 
 **Refs:** codex-statement-review.md §2
+
+
+## G-008 — Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed
+
+**Detail:** Codex exploits: mainTheorem : True with an admitted Coe True MainTheorem instance passed check.sh with no axioms; axiom auditShortcut : MainTheorem passed and showed as proved; changing a resolved Mathlib file in a relocated copy kept the lock intact; stale status showed a sorry theorem as proved. Claude replayed the coercion, axiom, fixed-universe and opaque exploits in a scratch copy (non-blind: explicit counterexamples).
+
+**Fix:** LockCheck compares the stored ConstantInfo.type of mainTheorem/paperTheorem syntactically with MainTheorem.{u}/PaperTheorem.{u}, rejects axiom declarations in BTBMS and axioms outside {propext, Classical.choice, Quot.sound, sorryAx}; check.sh --final also rejects sorryAx. lock.py hashes every package resolved from lake-manifest.json and the toolchain bin/ and src/. lean-status.json carries an input fingerprint; refresh.py ignores stale or failed status; extra axioms are classified, opaque bodies scanned.
+
+**Refs:** codex-lock-review.md
 
 
 # Decisions

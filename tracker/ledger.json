@@ -275,12 +275,16 @@
    "id": "T-019",
    "phase": "P3",
    "owner": "codex",
-   "status": "doing",
+   "status": "review",
    "title": "Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)",
    "deps": [
     "T-015"
    ],
-   "deliverable": "tracker/review/codex-lock-review.md"
+   "deliverable": "tracker/review/codex-lock-review.md",
+   "evidence": [
+    "tracker/review/codex-lock-review.md"
+   ],
+   "note": "Statement split faithful. Lock/status defects found (G-008); fixed by Claude, awaiting Codex fix check."
   }
  ],
  "nodes": [
@@ -1129,6 +1133,25 @@
    "detail": "Not a paper gap: a defect in Claude's Lean port, outside the standard domain. E.g. [[],[(2,[[]])]] at n=0: reference ∅-column deletion, Lean none.",
    "fix": "rootLayer searches tl+2 forests; expandExtraLayer reproduces the reference (empty query, negative offset, only the j=1 tail survives). Regression cases in checks/lean/gen-regression.mjs. Codex re-checked the branch at source level and reran its own raw corpus (12,000 cases, 0 mismatches; previously 80).",
    "fix_checked_by": "codex"
+  },
+  {
+   "id": "G-008",
+   "status": "repaired",
+   "severity": "repairable",
+   "loc": "checks/lock/, scripts/lean-status.sh, tracker/refresh.py (tooling, not the paper)",
+   "summary": "Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed",
+   "found_by": [
+    "codex"
+   ],
+   "confirmed_by": [
+    "claude"
+   ],
+   "refs": [
+    "codex-lock-review.md"
+   ],
+   "detail": "Codex exploits: mainTheorem : True with an admitted Coe True MainTheorem instance passed check.sh with no axioms; axiom auditShortcut : MainTheorem passed and showed as proved; changing a resolved Mathlib file in a relocated copy kept the lock intact; stale status showed a sorry theorem as proved. Claude replayed the coercion, axiom, fixed-universe and opaque exploits in a scratch copy (non-blind: explicit counterexamples).",
+   "fix": "LockCheck compares the stored ConstantInfo.type of mainTheorem/paperTheorem syntactically with MainTheorem.{u}/PaperTheorem.{u}, rejects axiom declarations in BTBMS and axioms outside {propext, Classical.choice, Quot.sound, sorryAx}; check.sh --final also rejects sorryAx. lock.py hashes every package resolved from lake-manifest.json and the toolchain bin/ and src/. lean-status.json carries an input fingerprint; refresh.py ignores stale or failed status; extra axioms are classified, opaque bodies scanned.",
+   "fix_by": "claude"
   }
  ],
  "simplifications": [

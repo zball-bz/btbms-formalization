@@ -66,7 +66,7 @@ document.getElementById('metrics').innerHTML = [
   [L.nodes.length, 'claims inventoried'],
   [S.open_user_decisions, 'decisions waiting on you'],
   [S.lean.lock_ok ? 'intact' : 'BROKEN', 'statement lock'],
-  [S.lean.sorry_decls, 'Lean declarations with sorry'],
+  [S.lean.status_problem ? '?' : S.lean.sorry_decls, 'Lean declarations with a direct sorry'],
 ].map(([b,s]) => `<div class="metric"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
 const views = {
   Board() {
@@ -103,15 +103,16 @@ const views = {
   Lean() {
     const G = S.lean, auto = /\.(eq_def|eq_\d+|brecOn|below|induct|injEq|inj|sizeOf_spec|ctorIdx|noConfusionType|go)$|\.brecOn_\d+/;
     const ds = G.decls.filter(d => !auto.test(d.name));
-    const state = d => d.direct_sorry ? 'sorry' : d.axioms.includes('sorryAx') ? 'proved modulo sorry' : 'proved';
+    const order = ['axiom (untrusted)','assumes extra axioms','stated','proved modulo sorry','proved','defined'], state = d => d.state;
     return `<p><b>Statement lock:</b> ${G.lock_ok ? 'intact' : 'BROKEN — ' + esc(G.lock_problems.join('; '))}
       <span class="muted">(checks/lock/statement.lock.json, re-verified at every refresh)</span></p>
+      ${G.status_problem ? `<p style="color:var(--blocked)"><b>Lean status not current:</b> ${esc(G.status_problem)}</p>` : ''}
       <p><b>Main theorem axioms:</b> <span class="mono">${esc((G.main_axioms || ['not built']).join(', '))}</span>
       ${G.main_axioms && !G.main_axioms.includes('sorryAx') ? ' — complete' : ''}</p>
       <p class="muted">Declarations from the build of commit <span class="mono">${esc(G.status_head)}</span> at ${esc(G.status_generated)};
       regenerate with <span class="mono">scripts/lean-status.sh</span>. Auto-generated equation lemmas are hidden.</p>
       <div class="wrap"><table><tr><th>Declaration</th><th>Kind</th><th>Module</th><th>State</th><th>Axioms</th></tr>${
-      ds.sort((a,b) => (state(a) > state(b)) - (state(a) < state(b)) || a.module.localeCompare(b.module)).map(d =>
+      ds.sort((a,b) => order.indexOf(state(a)) - order.indexOf(state(b)) || a.module.localeCompare(b.module)).map(d =>
         `<tr><td class="mono">${esc(d.name)}</td><td>${esc(d.kind)}</td><td class="mono">${esc(d.module)}</td><td>${esc(state(d))}</td>
         <td class="mono small">${esc(d.axioms.join(', '))}</td></tr>`).join('')}</table></div>`;
   },

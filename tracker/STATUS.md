@@ -1,6 +1,6 @@
 # Status snapshot
 
-Generated 2026-10-27T08:58:06+00:00 at commit `d1f7c39`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T09:30:03+00:00 at commit `e910929`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P2 Repair & simplify (blueprint)**
 
@@ -10,8 +10,10 @@ Phase: **P2 Repair & simplify (blueprint)**
 - T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
 - T-018 [claude] Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations
 
-## doing (2)
+## doing (1)
 - T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
+
+## review (1)
 - T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)
 
 ## done (13)

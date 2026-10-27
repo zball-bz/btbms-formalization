@@ -77,36 +77,61 @@ def check(ledger):
     return errors
 
 
-def lean_stats(ledger):
-    """Lock state, declaration status from the last build, and each claim's derived Lean status."""
-    ok, problems = lock.verify()
-    status = json.loads(LEAN_STATUS.read_text()) if LEAN_STATUS.exists() else {'decls': []}
-    decls = {d['name']: d for d in status['decls']}
+STANDARD_AXIOMS = {'propext', 'Classical.choice', 'Quot.sound'}
+# Worst first: a claim shows the worst state among its declarations.
+LEAN_STATES = ['axiom (untrusted)', 'assumes extra axioms', 'stated', 'proved modulo sorry', 'proved', 'defined']
 
-    def state(d):
-        if d['direct_sorry']:
-            return 'stated'
-        if 'sorryAx' in d['axioms']:
-            return 'proved modulo sorry'
-        return 'defined' if d['kind'] in ('def', 'inductive') else 'proved'
+
+def decl_state(d):
+    if d['kind'] == 'axiom':
+        return 'axiom (untrusted)'
+    if set(d['axioms']) - STANDARD_AXIOMS - {'sorryAx'}:
+        return 'assumes extra axioms'
+    if d['direct_sorry']:
+        return 'stated'
+    if 'sorryAx' in d['axioms']:
+        return 'proved modulo sorry'
+    return 'defined' if d['kind'] in ('def', 'inductive') else 'proved'
+
+
+def lean_stats(ledger):
+    """Lock state, declaration status from the last build, and each claim's derived Lean status.
+
+    The status record counts only if its fingerprint matches the current inputs and its build
+    succeeded; otherwise every derived state is reported as unknown."""
+    ok, problems = lock.verify()
+    status = json.loads(LEAN_STATUS.read_text()) if LEAN_STATUS.exists() else {}
+    if not status:
+        problem = 'no status recorded; run scripts/lean-status.sh'
+    elif not status.get('build_ok'):
+        problem = 'last build or extraction failed'
+    elif status.get('fingerprint') != lock.fingerprint():
+        problem = 'stale: Lean sources or dependencies changed since the last scripts/lean-status.sh'
+    else:
+        problem = None
+    decls = [] if problem else status['decls']
+    for d in decls:
+        d['state'] = decl_state(d)
+    by_name = {d['name']: d for d in decls}
 
     claims = {}
     for n in ledger['nodes']:
         names = n.get('lean_decls', [])
-        missing = [x for x in names if x not in decls]
         if not names:
             claims[n['id']] = 'not stated'
-        elif missing:
-            claims[n['id']] = 'missing: ' + ', '.join(missing)
+        elif problem:
+            claims[n['id']] = 'unknown (status not current)'
+        elif any(x not in by_name for x in names):
+            claims[n['id']] = 'missing: ' + ', '.join(x for x in names if x not in by_name)
         else:
-            states = {state(decls[x]) for x in names}
-            claims[n['id']] = next(s for s in ('stated', 'proved modulo sorry', 'proved', 'defined') if s in states)
-    main = decls.get('BTBMS.mainTheorem')
+            states = {by_name[x]['state'] for x in names}
+            claims[n['id']] = next(s for s in LEAN_STATES if s in states)
+    main = by_name.get('BTBMS.mainTheorem')
     return {
-        'lock_ok': ok, 'lock_problems': problems,
+        'lock_ok': ok, 'lock_problems': problems, 'status_problem': problem,
         'status_generated': status.get('generated'), 'status_head': status.get('head'),
-        'decls': status['decls'],
-        'sorry_decls': sum(d['direct_sorry'] for d in status['decls']),
+        'decls': decls,
+        'sorry_decls': None if problem else sum(d['direct_sorry'] for d in decls),
         'main_axioms': main['axioms'] if main else None,
         'claims': claims,
     }
@@ -184,7 +209,9 @@ def main():
     (HERE / 'STATUS.md').write_text(status_md(ledger, stats))
     lean = stats['lean']
     print(f"ok: {len(ledger['tasks'])} tasks, {len(ledger['gaps'])} gaps, {len(ledger['nodes'])} claims; "
-          f"lock {'intact' if lean['lock_ok'] else 'BROKEN'}; {lean['sorry_decls']} sorry declarations")
+          f"lock {'intact' if lean['lock_ok'] else 'BROKEN'}; "
+          + (f"Lean status {lean['status_problem']}" if lean['status_problem']
+             else f"{lean['sorry_decls']} declarations with a direct sorry"))
 
 
 if __name__ == '__main__':

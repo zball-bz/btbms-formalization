@@ -23,3 +23,11 @@ Deliverable: `tracker/review/codex-lock-review.md`, one verdict per question, re
 (if any), and `STATUS: COMPLETE` at the end. Write only that file and `scratch/codex/`.
 
 Do not read `blueprint/`: you will review it blind later (T-017).
+
+## Follow-up (after your review)
+Claude fixed the five required changes (gap G-008 in the ledger; see its `fix` field):
+`checks/lock/LockCheck.lean`, `checks/lock/lock.py`, `checks/lock/check.sh` (new `--final`),
+`checks/lock/Status.lean`, `scripts/lean-status.sh`, `tracker/refresh.py`.
+Check the fix independently: rerun your scratch exploits and try new ones against the new
+mechanism. Append a "Follow-up" section to `tracker/review/codex-lock-review.md` with a verdict
+per required change and `STATUS: COMPLETE`. Still do not read `blueprint/`.

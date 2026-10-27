@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """Statement lock (user gate G2).
 
-`lock.py` verifies the locked files against `statement.lock.json`; `lock.py --write` records the
+`lock.py` verifies the locked inputs against `statement.lock.json`; `lock.py --write` records the
 lock. Only root writes the lock, and only after the user signs off a statement gate. The tracker
-imports `verify` so that the board cannot show an intact lock when the files have changed.
+imports `verify` and `fingerprint` so that the board cannot show an intact lock, or current Lean
+status, when the inputs have changed.
+
+Locked inputs (T-019 review):
+  * the statement files and project configuration, by file hash;
+  * every package Lake actually resolves (from `lean/lake-manifest.json`, relative to `lean/`),
+    as one digest over its Lean sources and configuration;
+  * the Lean toolchain the checks run (`bin/` and the core sources under `src/`).
 """
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
+LEAN_DIR = ROOT / 'lean'
 LOCK = HERE / 'statement.lock.json'
-MATHLIB = Path('/home/dev/ggg/.deps/lean-4.33.1/mathlib')
+LEAN_HOME = Path(os.environ.get('BTBMS_LEAN_HOME', '/home/dev/ggg/.tools/lean-4.33.1-linux'))
 
-# Paths relative to the repo root, plus the Mathlib files that define the hypothesis notions.
 LOCKED = [
     'lean/BTBMS/Syntax.lean',
     'lean/BTBMS/Expansion.lean',
@@ -25,28 +33,65 @@ LOCKED = [
     'lean/lakefile.toml',
     'lean/lake-manifest.json',
     'checks/lock/LockCheck.lean',
+    'checks/lock/lock.py',
+    'checks/lock/check.sh',
 ]
-MATHLIB_LOCKED = [
-    'Mathlib/SetTheory/Cardinal/Cofinality/Club.lean',
-    'Mathlib/SetTheory/Cardinal/Regular.lean',
-]
+CONFIG_NAMES = {'lakefile.lean', 'lakefile.toml', 'lean-toolchain', 'lake-manifest.json'}
+SKIP_DIRS = {'.lake', '.git'}
 
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def tree_digest(root, keep):
+    """Digest over (relative path, file hash) of every kept file under root, skipping build dirs."""
+    h = hashlib.sha256()
+    count = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for name in sorted(filenames):
+            p = Path(dirpath) / name
+            if keep(p):
+                h.update(f'{p.relative_to(root)}\0{sha256(p)}\n'.encode())
+                count += 1
+    return f'{h.hexdigest()} ({count} files)'
+
+
+def packages():
+    """Path packages exactly as Lake resolves them from the manifest."""
+    manifest = json.loads((LEAN_DIR / 'lake-manifest.json').read_text())
+    out = {}
+    for p in manifest['packages']:
+        if p['type'] != 'path':
+            raise SystemExit(f"package {p['name']}: only path packages are supported by the lock")
+        out[p['name']] = (LEAN_DIR / p['dir']).resolve()
+    return out
+
+
 def current():
-    files = {p: sha256(ROOT / p) for p in LOCKED}
-    files.update({f'mathlib:{p}': sha256(MATHLIB / p) for p in MATHLIB_LOCKED})
-    return files
+    entries = {p: sha256(ROOT / p) for p in LOCKED}
+    for name, path in sorted(packages().items()):
+        entries[f'package:{name}'] = tree_digest(
+            path, lambda f: f.suffix == '.lean' or f.name in CONFIG_NAMES)
+    entries['toolchain:bin'] = tree_digest(LEAN_HOME / 'bin', lambda f: True)
+    entries['toolchain:src'] = tree_digest(LEAN_HOME / 'src', lambda f: True)
+    return entries
+
+
+def fingerprint():
+    """Everything the Lean status depends on: locked inputs plus all project Lean sources."""
+    h = hashlib.sha256(json.dumps(current(), sort_keys=True).encode())
+    h.update(tree_digest(LEAN_DIR, lambda f: f.suffix == '.lean').encode())
+    h.update(sha256(HERE / 'Status.lean').encode())
+    return h.hexdigest()
 
 
 def verify():
     """Return (ok, problems)."""
     if not LOCK.exists():
         return False, ['no lock recorded']
-    recorded = json.loads(LOCK.read_text())['files']
+    recorded = json.loads(LOCK.read_text())['inputs']
     now = current()
     problems = [f'{p}: changed' for p in recorded if now.get(p) != recorded[p]]
     problems += [f'{p}: not in lock' for p in now if p not in recorded]
@@ -54,15 +99,23 @@ def verify():
 
 
 def main():
-    if sys.argv[1:] == ['--write']:
+    args = sys.argv[1:]
+    if args == ['--lean-home']:
+        print(LEAN_HOME)
+        return
+    if args == ['--fingerprint']:
+        print(fingerprint())
+        return
+    if args == ['--write']:
         LOCK.write_text(json.dumps({
             'gate': 'G2',
             'signed_off_by': 'user',
             'date': '2026-10-27',
-            'reviewed_in': ['tracker/review/codex-statement-review.md'],
+            'reviewed_in': ['tracker/review/codex-statement-review.md',
+                            'tracker/review/codex-lock-review.md'],
             'pins': {'lean': 'v4.33.1', 'mathlib': 'eba3d887fc52c98627f4b81507c0efc3096e91b9',
                      'cu': '7f5a7d03d63d9769172f17350bbe8303996e5b53'},
-            'files': current(),
+            'inputs': current(),
         }, indent=1) + '\n')
         print(f'lock written: {LOCK.relative_to(ROOT)}')
         return

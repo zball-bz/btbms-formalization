@@ -1,6 +1,8 @@
 {
- "generated": "2026-10-27T08:55:42+00:00",
- "head": "23ecdec",
+ "generated": "2026-10-27T09:29:19+00:00",
+ "head": "e910929",
+ "fingerprint": "5e2f1b3c5b6da0b903ecd0f76cc3bb20cde5fbb2b967ffda3903a59de167cbcc",
+ "build_ok": true,
  "decls": [
   {
    "axioms": [

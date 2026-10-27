@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Verify the statement lock: file hashes, then the elaborated statements (LockCheck.lean).
+# Verify the statement lock: input hashes, then the elaborated statements and exported theorems.
+# `check.sh --final` additionally requires the proof to be complete (no sorryAx).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export PATH=/home/dev/ggg/.tools/lean-4.33.1-linux/bin:$PATH
+LEAN_HOME="$(python3 "$HERE/lock.py" --lean-home)"
+export PATH="$LEAN_HOME/bin:$PATH"
+[[ "${1:-}" == "--final" ]] && export BTBMS_FINAL=1
 python3 "$HERE/lock.py"
 cd "$HERE/../../lean"
 lake build >/dev/null
