@@ -2113,8 +2113,8 @@ theorem wFit_all (I : Interface.{u}) (n : Nat) : WFit I.toPrims n := by sorry
 theorem dLab_all (I : Interface.{u}) (n : Nat) : DLab I.toPrims n := by sorry
 -- provides: U5, L8.6 (label-free core)
 theorem dCore_all (I : Interface.{u}) (n : Nat) : DCore I.toPrims n := by sorry
--- provides: U5, L8.7
-theorem specialDesc (I : Interface.{u}) : SpecialDesc I.toPrims := by sorry
+-- `specialDesc` (provides: U5, L8.7) moved to `Plan/U5.lean`, after `special_copies` (L8.7a)
+-- that its proof uses; nothing in between uses it.
 -- provides: U5, T9.1 (27)
 theorem strictDescent (I : Interface.{u}) : StrictDescent I.toPrims := by sorry
 

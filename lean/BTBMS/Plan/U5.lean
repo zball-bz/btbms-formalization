@@ -5294,10 +5294,268 @@ theorem special_copies (I : Interface.{u}) {W : Type} {D : List (BaseAtom W)}
   obtain ⟨βs, -, -, -, h1, -, h2⟩ := key N
   exact ⟨βs, h1, h2⟩
 
--- L8.7 itself is the spine contract `Descent.specialDesc` (txt:1325-1346); its proof plan is in
--- the unit doc and uses `special_copies`, `Packet.special_graph` (U3 L6.2f), `Packet.posBlock_heads_graph`
--- and `Packet.blockMap_frame` (U3 D7.1a, D7.1b),
--- `posBlock_prefix` and `owner_path_elem_config`.
+/-- L8.7 (helper): the roles of a forest whose last column is one entry with empty height: the
+roles of the other columns, then that column and its slot. -/
+theorem roles_lastCol_F4 {t : Forest} {x : Nat}
+    (h : t.cols.getLast? = some [(x, Tree.empty)]) :
+    t.roles = (Tree.node t.cols.dropLast).roles ++
+      [.ord ⟨[], t.cols.dropLast.length⟩, .slot ⟨⟨[], t.cols.dropLast.length⟩, 0⟩] := by
+  obtain ⟨cs⟩ := t
+  simp only [Tree.cols] at h ⊢
+  have hcs : cs = cs.dropLast ++ [[(x, Tree.empty)]] :=
+    (List.dropLast_append_getLast? _ h).symm
+  conv_lhs => rw [hcs]
+  simp only [Tree.roles, Tree.rolesF]
+  rw [rolesCols_append]
+  simp [Tree.rolesCols, Tree.rolesCol, Tree.rolesF, Tree.empty]
+
+/-- L8.7: special descent (txt:1325-1346). Moved here from `Plan/Spine.lean`, after
+`special_copies` (L8.7a) that its proof uses; nothing in between uses it. -/
+theorem specialDesc (I : Interface.{u}) : SpecialDesc I.toPrims := by
+  intro H H' k α sd e L hL hk hsd he hα hH' hpre hLs
+  obtain ⟨N, cm, hroles', hcm, hstruct⟩ := special_graph hL hk hsd he hH'
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨heH, -, h, hh, hlast⟩ := Scan.ownerEntry_mem hk hsd he
+  obtain ⟨⟨p, h'⟩, hent⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff H e).1 heH)
+  have hh' : h' = h := by
+    have : H.heightAt e = some h' := by simp [Tree.heightAt, hent]
+    rw [hh] at this; exact (Option.some.inj this).symm
+  subst hh'
+  have hsel : entrySel H e = p := by simp [entrySel, hent]
+  have hpnum : p < e.col.num 0 :=
+    ((ColAddr.resolve_isSome_iff 0 e.col p).1 (hV e heH p h' hent)).2
+  have hK : specialKey H e = relKey (e.col.num 0) (takeCols h' (h'.cols.length - 1)) := by
+    simp [specialKey, hh, takeCols, List.dropLast_eq_take]
+  have hKroles : (specialKey H e).roles = (Tree.node h'.cols.dropLast).roles := by
+    simp only [specialKey, hh, Option.getD_some, relKey_roles]
+  -- the roles of `H` around `e`
+  obtain ⟨post, hroles, -⟩ := Tree.roles_entry heH
+  rw [hh, Option.getD_some, roles_lastCol_F4 hlast] at hroles
+  have hroles2 : H.roles = prefixRoles H e ++ Role.slot e ::
+      ((specialKey H e).roles.map (Role.under e.heightPath) ++
+        (Role.under e.heightPath (.ord ⟨[], h'.cols.dropLast.length⟩) ::
+          (Role.under e.heightPath (.slot ⟨⟨[], h'.cols.dropLast.length⟩, 0⟩) :: post))) := by
+    rw [hroles, hKroles]; simp [List.map_append, List.append_assoc]
+  have hpw := config_pairwise hα
+  rw [hroles2] at hpw
+  obtain ⟨-, hpw1, -⟩ := List.pairwise_append.1 hpw
+  obtain ⟨hslot_lt, hpw2⟩ := List.pairwise_cons.1 hpw1
+  obtain ⟨-, -, hcross⟩ := List.pairwise_append.1 hpw2
+  have hZmem : Role.under e.heightPath (.ord ⟨[], h'.cols.dropLast.length⟩) ∈ H.roles := by
+    rw [hroles2]; simp
+  have hsZ : α (.slot e) < α (Role.under e.heightPath (.ord ⟨[], h'.cols.dropLast.length⟩)) :=
+    hslot_lt _ (by simp)
+  have hinner : ∀ r ∈ (specialKey H e).roles, α (.slot e) < α (Role.under e.heightPath r) ∧
+      α (Role.under e.heightPath r) <
+        α (Role.under e.heightPath (.ord ⟨[], h'.cols.dropLast.length⟩)) := fun r hr =>
+    ⟨hslot_lt _ (List.mem_append_left _ (List.mem_map_of_mem hr)),
+      hcross _ (List.mem_map_of_mem hr) _ List.mem_cons_self⟩
+  have hZin : (Role.under e.heightPath (.ord ⟨[], h'.cols.dropLast.length⟩)).inEntry e = true := by
+    simp [Role.inEntry, Role.under, Role.path]
+  have hsW := owner_path_elem_config I hV hI hα heH hZmem hZin
+  -- the block problem
+  have hfb : ∀ w ∈ baseVars (freeBlock (specialKey H e)),
+      w ∈ baseVars (posBlock (specialKey H e) (entrySel H e)) := by
+    intro w hw
+    simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]
+    exact Or.inl hw
+  have frame_pre : ∀ w y, (frameOf e).toFr w = some y → y ∈ prefixRoles H e := by
+    intro w y hy
+    obtain ⟨hhost, hreps⟩ := frameOf_mem_prefix heH
+    rcases toFr_frameOf_D4 hy with rfl | ⟨ov, hov, rfl | rfl⟩
+    · exact hhost
+    · exact (hreps ov hov).1
+    · exact (hreps ov hov).2
+  have hcls : ∀ w ∈ baseVars (posBlock (specialKey H e) (entrySel H e)),
+      (frameOf e).toFr w = none →
+        w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner := by
+    intro w hw hn
+    rcases posBlock_vars _ _ w hw with rfl | rfl | ⟨q, hq⟩ | ⟨r, hr, rfl⟩
+    · simp [frameOf, Frame.toFr] at hn
+    · exact List.mem_cons_self
+    · exfalso
+      have hw' : w ∈ baseVars (posBlock (relKey (e.col.num 0)
+          (Tree.node ((H.heightAt e).getD Tree.empty).cols.dropLast)) (entrySel H e)) := hw
+      have hlt : q < e.col.num 0 := by
+        rcases posBlock_ordcur_D4 hw' hq with h1 | h1
+        · exact h1
+        · rw [h1, hsel]; exact hpnum
+      obtain ⟨h1, h2⟩ := toFr_isSome_D4 e hlt
+      rcases hq with rfl | rfl
+      · rw [hn] at h1; exact absurd h1 (by simp)
+      · rw [hn] at h2; exact absurd h2 (by simp)
+    · exact List.mem_cons_of_mem _ (List.mem_map_of_mem hr)
+  have hclD : ∀ w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner,
+      w ∈ baseVars (posBlock (specialKey H e) (entrySel H e)) ∧ (frameOf e).toFr w = none := by
+    intro w hw
+    rcases List.mem_cons.1 hw with rfl | hw
+    · exact ⟨hfb _ (owner_mem_freeBlock _), rfl⟩
+    · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hw
+      exact ⟨hfb _ (inner_mem_freeBlock hr), rfl⟩
+  have hD0 : BaseHolds I.toPrims (posBlock (specialKey H e) (entrySel H e))
+      (fun w => α (blockMap e w)) := by
+    intro a ha
+    have hmap : a.map (blockMap e) ∈ graph H := by
+      unfold posBlock at ha
+      rcases List.mem_append.1 ha with ha | ha
+      · have hfg := freeBlock_graph heH hV (h'.cols.length - 1)
+        rw [hh, Option.getD_some] at hfg
+        rw [hK] at ha
+        exact hfg a ha
+      · have h2 : a ∈ posBlock (relKey (e.col.num 0) ((H.heightAt e).getD Tree.empty))
+            (((H.entryAt e).map Prod.fst).getD 0) := by
+          have e1 : ((H.entryAt e).map Prod.fst).getD 0 = entrySel H e := rfl
+          rw [e1, posBlock]
+          exact List.mem_append_right _ ha
+        exact posBlock_heads_graph heH hV a h2
+    exact (baseAtom_holds_map' _ _ _ _).1 (hα _ hmap)
+  obtain ⟨βs, hβs, hord⟩ := special_copies I (D := posBlock (specialKey H e) (entrySel H e))
+    (fr := fun w => ((frameOf e).toFr w).map α) (L := L) hsW hLs
+    (fun w _ o hw => by
+      obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hw
+      exact (hpre y (frame_pre w y hy)).trans_lt hLs)
+    ⟨fun w => α (blockMap e w), fun w o hw => by
+      obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hw
+      show α (blockMap e w) = α y
+      rw [blockMap_frame e w y hy], hD0, fun w hw hn => by
+      rcases List.mem_cons.1 (hcls w hw (Option.map_eq_none_iff.1 hn)) with rfl | hw'
+      · exact ⟨le_rfl, hsZ⟩
+      · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hw'
+        exact ⟨(hinner r hr).1.le, (hinner r hr).2⟩⟩ N
+  -- the copies are distinct roles of `H'`, disjoint from the prefix
+  have hnd := Tree.roles_nodup H'
+  rw [hroles', List.nodup_append, List.nodup_flatMap] at hnd
+  obtain ⟨-, ⟨hndi, hpd⟩, hdisj⟩ := hnd
+  have hcm_mem : ∀ i w, i < N → w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner →
+      cm i w ∈ (List.range N).flatMap (fun i =>
+        (BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner).map (cm i)) :=
+    fun i w hi hw => List.mem_flatMap.2 ⟨i, List.mem_range.2 hi, List.mem_map_of_mem hw⟩
+  have mem_copies : ∀ x ∈ (List.range N).flatMap (fun i =>
+      (BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner).map (cm i)),
+      ∃ i < N, ∃ w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner, cm i w = x := by
+    intro x hx
+    obtain ⟨i, hi, hx⟩ := List.mem_flatMap.1 hx
+    obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hx
+    exact ⟨i, List.mem_range.1 hi, w, hw, rfl⟩
+  have hinj : ∀ i j w w', i < N → j < N →
+      w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner →
+      w' ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner →
+      cm i w = cm j w' → i = j ∧ w = w' := by
+    intro i j w w' hi hj hw hw' heq
+    by_cases hij : i = j
+    · subst hij
+      exact ⟨rfl, List.inj_on_of_nodup_map (hndi i (List.mem_range.2 hi)) hw hw' heq⟩
+    · exfalso
+      haveI : Std.Symm (Function.onFun List.Disjoint fun i =>
+          (BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner).map (cm i)) :=
+        ⟨fun _ _ h => h.symm⟩
+      exact hpd.forall (List.mem_range.2 hi) (List.mem_range.2 hj) hij
+        (List.mem_map_of_mem hw) (heq ▸ List.mem_map_of_mem hw')
+  -- the new configuration
+  obtain ⟨γ, hγc, hγp⟩ : ∃ γ : Role → Ordinal.{u},
+      (∀ i w, i < N → w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner →
+        γ (cm i w) = βs i w) ∧
+      (∀ x, (¬ ∃ i w, i < N ∧ w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner ∧
+        cm i w = x) → γ x = α x) := by
+    classical
+    refine ⟨fun x => if hx : ∃ q : Nat × BlkVar, q.1 < N ∧
+        q.2 ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner ∧ cm q.1 q.2 = x then
+        βs (Classical.choose hx).1 (Classical.choose hx).2 else α x, ?_, ?_⟩
+    · intro i w hi hw
+      have hx : ∃ q : Nat × BlkVar, q.1 < N ∧
+          q.2 ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner ∧
+          cm q.1 q.2 = cm i w := ⟨(i, w), hi, hw, rfl⟩
+      simp only [dif_pos hx]
+      obtain ⟨h1, h2, h3⟩ := Classical.choose_spec hx
+      obtain ⟨e1, e2⟩ := hinj _ _ _ _ h1 hi h2 hw h3
+      rw [e1, e2]
+    · intro x hx
+      simp only
+      rw [dif_neg]
+      rintro ⟨q, h1, h2, h3⟩
+      exact hx ⟨q.1, q.2, h1, h2, h3⟩
+  have hγpre : ∀ x ∈ prefixRoles H e, γ x = α x := by
+    intro x hx
+    refine hγp x ?_
+    rintro ⟨i, w, hi, hw, rfl⟩
+    exact hdisj _ hx _ (hcm_mem i w hi hw) rfl
+  have hfrn : ∀ w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner,
+      ((frameOf e).toFr w).map α = none := fun w hw => by rw [(hclD w hw).2]; rfl
+  have hcl_pw : ∀ i < N, (BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner).Pairwise
+      fun a b => βs i a < βs i b := by
+    intro i hi
+    refine chain_pairwise (D := posBlock (specialKey H e) (entrySel H e)) (fun xy hxy => ?_)
+      (hβs i hi).2.1
+    simp only [posBlock, freeBlock]
+    exact List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
+      (List.mem_append_right _ (List.mem_map_of_mem (f := fun xy => BaseAtom.lt xy.1 xy.2) hxy))))
+  have hlimD : ∀ w ∈ BlkVar.owner :: (specialKey H e).roles.map BlkVar.inner,
+      BaseAtom.lim w ∈ posBlock (specialKey H e) (entrySel H e) := by
+    intro w hw
+    simp only [posBlock, freeBlock]
+    refine List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _
+      (List.mem_append_left _ ?_)))
+    rcases List.mem_cons.1 hw with rfl | hw
+    · exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (List.mem_map_of_mem (f := BaseAtom.lim) hw)
+  have hpwH' : H'.roles.Pairwise fun x y => γ x < γ y := by
+    rw [hroles']
+    refine List.pairwise_append.2 ⟨?_, ?_, ?_⟩
+    · exact ((config_pairwise hα).sublist (List.takeWhile_prefix _).sublist).imp_of_mem
+        fun ha hb hab => by rw [hγpre _ ha, hγpre _ hb]; exact hab
+    · refine List.pairwise_flatMap.2 ⟨fun i hi => ?_, ?_⟩
+      · have hi' := List.mem_range.1 hi
+        exact List.pairwise_map.2 ((hcl_pw i hi').imp_of_mem fun ha hb hab => by
+          rw [hγc _ _ hi' ha, hγc _ _ hi' hb]; exact hab)
+      · refine (List.pairwise_lt_range (n := N)).imp_of_mem fun {i j} hi hj hij => ?_
+        intro x hx y hy
+        obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hx
+        obtain ⟨w', hw', rfl⟩ := List.mem_map.1 hy
+        have hi' := List.mem_range.1 hi
+        have hj' := List.mem_range.1 hj
+        rw [hγc _ _ hi' hw, hγc _ _ hj' hw']
+        exact hord i j hij hj' w (hclD w hw).1 (hfrn w hw) w' (hclD w' hw').1 (hfrn w' hw')
+    · intro x hx y hy
+      obtain ⟨i, hi, w, hw, rfl⟩ := mem_copies y hy
+      rw [hγpre x hx, hγc i w hi hw]
+      exact (hpre x hx).trans_lt ((hβs i hi).2.2 w (hclD w hw).1 (hfrn w hw)).1
+  have hstructH : ∀ a ∈ graph H', isStruct a = true → a.Holds I.toPrims γ := by
+    intro a ha hs
+    rcases hstruct a ha hs with ⟨haH, hvars⟩ | ⟨i, hi, a', ha', rfl⟩
+    · exact (BaseAtom.holds_congr _ a γ α fun v hv => hγpre v (hvars v hv)).2 (hα a haH)
+    · refine (baseAtom_holds_map' _ (cm i) γ a').2 ?_
+      refine (BaseAtom.holds_congr _ a' _ (βs i) fun w hw => ?_).2 ((hβs i hi).2.1 a' ha')
+      have hwD : w ∈ baseVars (posBlock (specialKey H e) (entrySel H e)) :=
+        List.mem_flatMap.2 ⟨a', ha', hw⟩
+      cases hfw : (frameOf e).toFr w with
+      | none => exact hγc i w hi (hcls w hwD hfw)
+      | some y =>
+        show γ (cm i w) = βs i w
+        rw [hcm i w y hfw, hγpre y (frame_pre w y hfw)]
+        exact ((hβs i hi).1 w (α y) (by simp [hfw])).symm
+  refine ⟨γ, fun a ha => ?_, hγpre, fun x hx hxp => ?_⟩
+  · rcases (mem_graph_iff H' a).1 ha with ⟨x, hx, rfl⟩ | ⟨i, x, y, hx, hy, rfl⟩ |
+      ⟨c, -, -, rfl⟩ | ⟨e', p', o, v, -, -, h1 | h1⟩
+    · show IsLim (γ x)
+      rw [hroles'] at hx
+      rcases List.mem_append.1 hx with hx | hx
+      · rw [hγpre x hx]; exact config_lim hα (prefixRoles_sub hx)
+      · obtain ⟨i, hi, w, hw, rfl⟩ := mem_copies _ hx
+        rw [hγc i w hi hw]
+        exact (hβs i hi).2.1 _ (hlimD w hw)
+    · show γ x < γ y
+      obtain ⟨hx1, rfl⟩ := List.getElem?_eq_some_iff.1 hx
+      obtain ⟨hy1, rfl⟩ := List.getElem?_eq_some_iff.1 hy
+      exact List.pairwise_iff_getElem.1 hpwH' i (i + 1) hx1 hy1 (Nat.lt_succ_self i)
+    · exact hstructH _ ha rfl
+    · subst h1; exact hstructH _ ha rfl
+    · subst h1; exact hstructH _ ha rfl
+  · rw [hroles'] at hx
+    rcases List.mem_append.1 hx with hx | hx
+    · exact absurd hx hxp
+    · obtain ⟨i, hi, w, hw, rfl⟩ := mem_copies _ hx
+      rw [hγc i w hi hw]
+      exact (hβs i hi).2.2 w (hclD w hw).1 (hfrn w hw)
 
 /-! ## §8.5: `D_{<n} ⇒ S_n` -/
 
