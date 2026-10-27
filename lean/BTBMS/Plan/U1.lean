@@ -1490,28 +1490,102 @@ theorem expandSpecial_of_stopData {E : Forest} {sd : StopData} (h : stopData E =
   rw [hgen]
   simp only [specialOut, hoe, hcol, hlastp, Hole.fill, specialZ, hlastc, Option.getD_some]
 
+/-- D1.6c (helper, item 9): `rootLayerAux` and `resolveAux` visit the same levels of a route. -/
+theorem rootLayerAux_of_resolveAux (q c : Nat) : ∀ (ρ : List (Nat × Nat)) (F : Forest)
+    (start layer fuel : Nat) (pre : List (Nat × Nat)) (o : ColAddr),
+    (∀ k (hk : k < ρ.length), ρ[k].1 + 1 = (skipLayers F k).cols.length) →
+    c + 1 = (skipLayers F ρ.length).cols.length → ρ.length + 2 ≤ fuel → start ≤ q →
+    ColAddr.resolveAux start pre ρ c q = some o →
+    ∃ k, o.path.length = pre.length + k ∧ rootLayerAux q fuel F start layer = some (layer + k, o.col)
+  | [], F, start, layer, fuel, pre, o, _, hc, hf, hq, hr => by
+    simp only [ColAddr.resolveAux] at hr
+    split_ifs at hr with h1
+    obtain rfl := (Option.some.inj hr).symm
+    obtain ⟨f, rfl⟩ : ∃ f, fuel = f + 1 := ⟨fuel - 1, by simp at hf; omega⟩
+    refine ⟨0, by simp, ?_⟩
+    simp only [List.length_nil, skipLayers] at hc
+    simp only [rootLayerAux]
+    rw [if_pos (by omega)]
+    simp
+  | (ck, ik) :: ρ, F, start, layer, fuel, pre, o, hρ, hc, hf, hq, hr => by
+    have h0 := hρ 0 (by simp)
+    simp only [List.getElem_cons_zero, skipLayers] at h0
+    obtain ⟨f, rfl⟩ : ∃ f, fuel = f + 1 := ⟨fuel - 1, by simp at hf; omega⟩
+    simp only [ColAddr.resolveAux] at hr
+    simp only [rootLayerAux]
+    split_ifs at hr with h1
+    · obtain rfl := (Option.some.inj hr).symm
+      refine ⟨0, by simp, ?_⟩
+      rw [if_pos (by omega)]
+      simp
+    · rw [if_neg (by omega)]
+      obtain ⟨k, hk1, hk2⟩ := rootLayerAux_of_resolveAux q c ρ (nextLayer F) (start + ck + 1)
+        (layer + 1) f (pre ++ [(ck, ik)]) o
+        (fun k hk => by
+          have := hρ (k + 1) (by simp; omega)
+          simpa [skipLayers] using this)
+        (by simpa [skipLayers] using hc) (by simp at hf; omega) (by omega) hr
+      refine ⟨k + 1, by simp at hk1; omega, ?_⟩
+      rw [show start + F.cols.length = start + ck + 1 by omega, hk2]
+      congr 2; omega
+
 /-- D1.6c: the reference's root search finds the paper's visible root. -/
 theorem rootLayer_of_resolve {E : Forest} {sd : StopData} {o : ColAddr} (h : stopData E = some sd)
     (ho : sd.col.resolve 0 sd.r = some o) : rootLayer E sd.r sd.depth = some (o.path.length, o.col) := by
-  sorry
+  obtain ⟨hcc, hd, -, -, hcont, -⟩ := stopData_core h
+  have hρ : ∀ k (hk : k < sd.col.path.length), sd.col.path[k].1 + 1 =
+      (skipLayers E k).cols.length := by
+    intro k hk
+    obtain ⟨col, p, a1, -, -, a4⟩ := hcont k (by omega)
+    rw [List.getElem?_eq_getElem hk, Option.some.injEq] at a4
+    rw [a4]
+    have : (skipLayers E k).cols ≠ [] := by intro h0; simp [h0] at a1
+    have := List.length_pos_of_ne_nil this
+    simp only; omega
+  obtain ⟨k, hk1, hk2⟩ := rootLayerAux_of_resolveAux sd.r sd.col.col sd.col.path E 0 0
+    (sd.depth + 2) [] o hρ (by rw [← hd]; exact hcc) (by omega) (Nat.zero_le _) ho
+  unfold rootLayer
+  rw [hk2]
+  simp at hk1
+  simp [hk1]
 
 /-- D1.6c: the reference's scan start is the paper's cursor. -/
 theorem rootAppendingStart_of_rootData {E : Forest} {sd : StopData} {rd : RootData}
     (hsd : stopData E = some sd) (hrd : rootData E = some rd) :
     rootAppendingStart ((E.colAt rd.col).getD []) sd.r (sd.Q ++ [(sd.r, Tree.empty)]) sd.t =
-      rd.cursor := by sorry
+      rd.cursor := by
+  obtain ⟨-, -, -, hnum, -, -, hcur, -⟩ := rootData_spec hsd hrd
+  rw [hcur, rootKeys, queryKeys, hnum, rootAppendingStart, List.dropLast_concat,
+    cursor_eq_scanCount]
 
 /-- D1.6c: `ascendReplace` at a nonnegative depth is `Hole.fill`. -/
 theorem ascendReplace_ofNat (r d k : Nat) (Z F : Forest) :
-    ascendReplace r d (some (k : Int)) Z F = Hole.fill ⟨F, k⟩ r d Z := by sorry
+    ascendReplace r d (some (k : Int)) Z F = Hole.fill ⟨F, k⟩ r d Z := rfl
 
 /-- D1.6c: the loops agree. -/
 theorem iterDown_eq_ordLoop (step : Nat → Forest → Forest) (n : Nat) (Z : Forest) :
-    iterDown step n Z = ordLoop step n Z := by sorry
+    iterDown step n Z = ordLoop step n Z := by
+  induction n generalizing Z with
+  | zero => rfl
+  | succ n ih => exact ih _
 
 /-- D1.6c: agreement on every input where the paper's route stops at a special step. -/
 theorem expand_eq_paperOp_special {E : Forest} {sd : StopData} (h : stopData E = some sd)
-    (hs : specialStop sd = true) (n : Nat) : expand E n = paperOp E n := by sorry
+    (hs : specialStop sd = true) (n : Nat) : expand E n = paperOp E n := by
+  obtain ⟨x, xs, hc⟩ := lastCol_of_stopData h
+  have hE : E.cols ≠ [] := by intro h0; simp [h0] at hc
+  have htl := tailLayer_of_stopData h
+  have hsp := isSpecial_of_stopData h
+  have hk' : stepKindBody E = some .special := (stepKind_special_iff E).mpr ⟨sd, h, hs⟩
+  have hsd' : stopDataBody E = some sd := h
+  simp only [paperOp, paperOpBody, hk', hsd']
+  rw [← expandSpecial_of_stopData h hs n]
+  unfold expand
+  split
+  · rename_i heq; exact absurd heq hE
+  · simp only [htl]
+    rw [if_neg (by omega)]
+    simp only [Int.toNat_natCast, hsp, hs, if_true]
 
 /-- D1.6c: agreement on every input where the paper's route stops at a non-special step with a
 visible root. -/
