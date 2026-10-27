@@ -326,15 +326,69 @@ theorem pack_below {u' L : Ordinal.{u}} (hu : IsLim u') (hL : L < u') (l : List 
 
 /-! ## D4.1b  Facts about admitted records -/
 
+/-- D4.1b helper: the hosts of a scan or descendant record: the source host is the anchor's
+`r`, the target host is its `t`. -/
+theorem anchor_hosts_D8 {E : Forest} (hE : IsStd E) {cap : Option (Closure.AdmCap E)} {i j : Nat}
+    {a b : EntryAddr} (hA : SrcRecord.AnchorAt E cap i j b)
+    (hsrc : SrcRecord.anchorSrc E cap i = some a) :
+    ∃ sd, Scan.stopData (Closure.anchor E cap) = some sd ∧ a.col.num 0 = sd.r ∧
+      b.col.num 0 = sd.t ∧ sd.r < sd.t := by
+  obtain ⟨sd, rd, -, hsd, hrd, hor, hreach, -⟩ := hA
+  obtain ⟨hres, hnum, -⟩ := Scan.rootData_path hsd hrd
+  have ha : a = ⟨rd.col, i⟩ := by
+    simp only [SrcRecord.anchorSrc, hrd, Option.map_some] at hsrc
+    exact (Option.some.inj hsrc).symm
+  have hj : j < sd.Q.length := by
+    obtain ⟨-, x, y, -, hy, -⟩ := hreach
+    have := List.getElem?_eq_some_iff.1 hy
+    simpa [Scan.queryKeys] using this.1
+  have ht : sd.t = sd.col.num 0 := (Scan.stopData_spec hsd).2.2.1
+  refine ⟨sd, hsd, by rw [ha]; exact hnum, ?_, ?_⟩
+  · cases cap with
+    | none =>
+      simp only [Closure.anchorOrigin, Option.some.injEq, Role.slot.injEq] at hor
+      rw [← hor, ht]
+    | some w =>
+      obtain ⟨hnt, -, hlen, -, hq⟩ := Closure.admCap_query (Closure.std_inL hE) w hsd
+      have := (hq j (hlen ▸ hj)).1
+      simp only [Closure.anchorOrigin] at hor
+      rw [hor, Option.some.injEq, Role.slot.injEq] at this
+      rw [this, hnt]
+  · rw [ht]; exact ColAddr.resolve_lt hres
+
 -- provides: U3, D4.1b (source host at most target host; equal exactly for repair records)
 theorem admitted_hosts {rk : SrcRecord} (h : rk.Admitted) :
     rk.a.col.num 0 ≤ rk.b.col.num 0 ∧
     (∀ ms, rk.kind = .repair ms → rk.a.col.num 0 = rk.b.col.num 0) ∧
     (∀ cap i j, (rk.kind = .scan cap i j ∨ rk.kind = .desc cap i j) →
-      rk.a.col.num 0 < rk.b.col.num 0) := by sorry
+      rk.a.col.num 0 < rk.b.col.num 0) := by
+  obtain ⟨hE, -, -, -, -, -, hk⟩ := h
+  have hrep : ∀ ms, rk.kind = .repair ms → rk.a.col.num 0 = rk.b.col.num 0 := by
+    intro ms hms
+    rw [hms] at hk
+    obtain ⟨-, ha, -⟩ := hk
+    rw [ha, Closure.moveAddr_num]
+  have hsc : ∀ cap i j, (rk.kind = .scan cap i j ∨ rk.kind = .desc cap i j) →
+      rk.a.col.num 0 < rk.b.col.num 0 := by
+    intro cap i j hkind
+    rcases hkind with hkind | hkind <;> rw [hkind] at hk
+    · obtain ⟨sd, -, h1, h2, h3⟩ := anchor_hosts_D8 hE hk.1 hk.2.1; omega
+    · obtain ⟨sd, -, h1, h2, h3⟩ := anchor_hosts_D8 hE hk.1 hk.2.1; omega
+  refine ⟨?_, hrep, hsc⟩
+  cases hkind : rk.kind with
+  | scan cap i j => exact (hsc cap i j (Or.inl hkind)).le
+  | desc cap i j => exact (hsc cap i j (Or.inr hkind)).le
+  | repair ms => exact (hrep ms hkind).le
 
 -- provides: U3, D4.1b (both marked heights are nonempty or the target is empty)
-theorem admitted_src_ne {rk : SrcRecord} (h : rk.Admitted) : rk.srcHeight ≠ Tree.empty := by sorry
+theorem admitted_src_ne {rk : SrcRecord} (h : rk.Admitted) : rk.srcHeight ≠ Tree.empty := by
+  intro he
+  have hlt : keyCmp rk.tgtKey rk.srcKey = .lt := h.2.2.2.2.2.1
+  rw [SrcRecord.srcKey, he] at hlt
+  simp only [keyCmp, relKey, Tree.empty, Tree.map, Tree.mapCols] at hlt
+  generalize rk.tgtKey = X at hlt
+  obtain ⟨cols⟩ := X
+  cases cols <;> simp [Tree.cmp, Tree.cmpCols] at hlt
 
 /-! ## L4.2  First differences: the classifier, κ-transfer, path transfer, cap legality -/
 
