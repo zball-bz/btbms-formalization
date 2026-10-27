@@ -517,12 +517,83 @@ noncomputable def fixAsg {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diag
     (F : V → Prop) (v : FixT D F → Carrier ν Q) (x : V) : Ordinal.{u} :=
   if h : x ∈ D.vars ∧ F x then (v ⟨x, h⟩).val else 0
 
+/-- N4.4 (helper): `fixAsg` on a fixed variable of `D`. -/
+theorem fixAsg_of_mem {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
+    (F : V → Prop) (v : FixT D F → Carrier ν Q) {x : V} (h : x ∈ D.vars ∧ F x) :
+    fixAsg D F v x = (v ⟨x, h⟩).val := dif_pos h
+
+/-- N4.4 (helper): `splitVar` on the distinguished variable. -/
+theorem splitVar_tgt {V : Type} (D : Diagram V) (F : V → Prop) (t : Option V) {k : Nat}
+    (tgt : Fin (k + 1)) {x : V} (h : some x = t) :
+    splitVar D F t tgt x = Sum.inl (Sum.inl tgt) := if_pos h
+
+/-- N4.4 (helper): `splitVar` on a fixed variable. -/
+theorem splitVar_fix {V : Type} (D : Diagram V) (F : V → Prop) (t : Option V) {k : Nat}
+    (tgt : Fin (k + 1)) {x : V} (ht : some x ≠ t) (h : x ∈ D.vars ∧ F x) :
+    splitVar D F t tgt x = Sum.inl (Sum.inr ⟨x, h⟩) := by
+  rw [splitVar, if_neg ht, dif_pos h]
+
+/-- N4.4 (helper): `splitVar` on a free variable. -/
+theorem splitVar_free {V : Type} (D : Diagram V) (F : V → Prop) (t : Option V) {k : Nat}
+    (tgt : Fin (k + 1)) {x : V} (h : x ∈ D.vars ∧ ¬ F x ∧ some x ≠ t) :
+    splitVar D F t tgt x = Sum.inr ⟨x, h⟩ := by
+  rw [splitVar, if_neg h.2.2, dif_neg (fun h' => h.2.1 h'.2), dif_pos h]
+
+/-- N4.4 (helper): `fixBelowFml` unfolded. -/
+theorem realize_fixBelowFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
+    (F : V → Prop) {k : Nat} (bd : Fin (k + 1)) (c : Fin (k + 1) → Carrier ν Q)
+    (v : FixT D F → Carrier ν Q) :
+    (fixBelowFml D F bd).Realize (Sum.elim c v) ↔ ∀ f, (v f).val < (c bd).val := by
+  rw [fixBelowFml, Formula.realize_iInf]
+  rfl
+
+/-- N4.4 (helper): `realFml` unfolded, before gluing the assignments. -/
+theorem realize_realFml_iff {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
+    (F : V → Prop) (t : Option V) {k : Nat} (tgt bd : Fin (k + 1)) (c : Fin (k + 1) → Carrier ν Q)
+    (v : FixT D F → Carrier ν Q) :
+    (realFml D F t tgt bd).Realize (Sum.elim c v) ↔
+      (∀ f, (v f).val < (c bd).val) ∧ ∃ i : FreeT D F t → Carrier ν Q,
+        (∀ r, (i r).val < (c bd).val) ∧
+          D.Holds Q (fun x => (Sum.elim (Sum.elim c v) i (splitVar D F t tgt x)).val) := by
+  rw [realFml, Formula.realize_inf, realize_fixBelowFml, Formula.realize_iExs]
+  simp only [Formula.realize_inf, Formula.realize_iInf, Formula.realize_relabel,
+    realize_diagramFml, realize_lt_var, Sum.elim_inl, Sum.elim_inr, Function.comp_apply]
+
 /-- N4.4: correctness of `realFml` (no distinguished variable). -/
 theorem realize_realFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
     (F : V → Prop) {k : Nat} (tgt bd : Fin (k + 1)) (c : Fin (k + 1) → Carrier ν Q)
     (v : FixT D F → Carrier ν Q) :
     (realFml D F none tgt bd).Realize (Sum.elim c v) ↔
-      D.RealizableBelow Q F (fixAsg D F v) (c bd).val := by sorry
+      D.RealizableBelow Q F (fixAsg D F v) (c bd).val := by
+  classical
+  rw [realize_realFml_iff]
+  constructor
+  · rintro ⟨hfix, i, hi, hD⟩
+    let g := Sum.elim (Sum.elim c v) i
+    refine ⟨fun x => if F x then fixAsg D F v x else (g (splitVar D F none tgt x)).val,
+      fun x hF => if_pos hF, fun x hx => ?_, ?_⟩
+    · by_cases hF : F x
+      · simp only [if_pos hF, fixAsg_of_mem D F v ⟨hx, hF⟩]
+        exact hfix _
+      · simp only [if_neg hF, g, splitVar_free D F none tgt ⟨hx, hF, by simp⟩]
+        exact hi _
+    · refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 hD
+      by_cases hF : F x
+      · simp only [if_pos hF, g, splitVar_fix D F none tgt (by simp) ⟨hx, hF⟩,
+          fixAsg_of_mem D F v ⟨hx, hF⟩]
+        rfl
+      · simp only [if_neg hF, g]
+  · rintro ⟨a, ha₁, ha₂, ha₃⟩
+    refine ⟨fun f => ?_, fun r => ⟨a r.1, (ha₂ r.1 r.2.1).trans (c bd).lt⟩,
+      fun r => ha₂ r.1 r.2.1, ?_⟩
+    · rw [show (v f).val = a f.1 from ((ha₁ f.1 f.2.2).trans (fixAsg_of_mem D F v f.2)).symm]
+      exact ha₂ f.1 f.2.1
+    · refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 ha₃
+      by_cases hF : F x
+      · rw [splitVar_fix D F none tgt (by simp) ⟨hx, hF⟩, ha₁ x hF, fixAsg_of_mem D F v ⟨hx, hF⟩]
+        rfl
+      · rw [splitVar_free D F none tgt ⟨hx, hF, by simp⟩]
+        rfl
 
 -- V-U4-4
 /-- N4.4: correctness of `realFml` with a distinguished variable `t ∉ F`, which is read at the
@@ -533,13 +604,96 @@ theorem realize_realFml_some {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} [Deci
     (htb : (c tgt).val < (c bd).val) :
     (realFml D F (some t) tgt bd).Realize (Sum.elim c v) ↔
       D.RealizableBelow Q (fun x => F x ∨ x = t)
-        (Function.update (fixAsg D F v) t (c tgt).val) (c bd).val := by sorry
+        (Function.update (fixAsg D F v) t (c tgt).val) (c bd).val := by
+  classical
+  have hne : ∀ {x : V}, x ≠ t → some x ≠ some t := fun h h' => h (Option.some_injective _ h')
+  rw [realize_realFml_iff]
+  constructor
+  · rintro ⟨hfix, i, hi, hD⟩
+    let g := Sum.elim (Sum.elim c v) i
+    let σ' := Function.update (fixAsg D F v) t (c tgt).val
+    have hg : ∀ x ∈ D.vars, (F x ∨ x = t) → (g (splitVar D F (some t) tgt x)).val = σ' x := by
+      intro x hx hF
+      by_cases hxt : x = t
+      · subst hxt
+        rw [splitVar_tgt D F _ tgt rfl]
+        simp only [σ', Function.update_self]
+        rfl
+      · have hF' : F x := hF.resolve_right hxt
+        rw [splitVar_fix D F _ tgt (hne hxt) ⟨hx, hF'⟩]
+        simp only [σ', Function.update_of_ne hxt, fixAsg_of_mem D F v ⟨hx, hF'⟩]
+        rfl
+    refine ⟨fun x => if F x ∨ x = t then σ' x else (g (splitVar D F (some t) tgt x)).val,
+      fun x hF => if_pos hF, fun x hx => ?_, ?_⟩
+    · by_cases hF : F x ∨ x = t
+      · simp only [if_pos hF]
+        rw [← hg x hx hF]
+        by_cases hxt : x = t
+        · subst hxt
+          rw [splitVar_tgt D F _ tgt rfl]
+          exact htb
+        · rw [splitVar_fix D F _ tgt (hne hxt) ⟨hx, hF.resolve_right hxt⟩]
+          exact hfix _
+      · simp only [if_neg hF]
+        rw [splitVar_free D F _ tgt ⟨hx, fun h => hF (Or.inl h), hne fun h => hF (Or.inr h)⟩]
+        exact hi _
+    · refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 hD
+      by_cases hF : F x ∨ x = t
+      · simp only [if_pos hF]
+        exact hg x hx hF
+      · simp only [if_neg hF]
+        rfl
+  · rintro ⟨a, ha₁, ha₂, ha₃⟩
+    refine ⟨fun f => ?_, fun r => ⟨a r.1, (ha₂ r.1 r.2.1).trans (c bd).lt⟩,
+      fun r => ha₂ r.1 r.2.1, ?_⟩
+    · have hft : f.1 ≠ t := fun h => ht (h ▸ f.2.2)
+      have h₁ := ha₁ f.1 (Or.inl f.2.2)
+      rw [Function.update_of_ne hft, fixAsg_of_mem D F v f.2] at h₁
+      rw [show (v f).val = a f.1 from h₁.symm]
+      exact ha₂ f.1 f.2.1
+    · refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 ha₃
+      by_cases hxt : x = t
+      · subst hxt
+        rw [splitVar_tgt D F _ tgt rfl, ha₁ x (Or.inr rfl), Function.update_self]
+        rfl
+      · by_cases hF : F x
+        · rw [splitVar_fix D F _ tgt (hne hxt) ⟨hx, hF⟩, ha₁ x (Or.inl hF),
+            Function.update_of_ne hxt, fixAsg_of_mem D F v ⟨hx, hF⟩]
+          rfl
+        · rw [splitVar_free D F _ tgt ⟨hx, hF, hne hxt⟩]
+          rfl
 
 /-- N4.4: correctness of `realTopFml`: realizable below the height `ν` of the structure. -/
 theorem realize_realTopFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
     (F : V → Prop) (c : Fin 1 → Carrier ν Q) (v : FixT D F → Carrier ν Q) :
     (realTopFml D F).Realize (Sum.elim c v) ↔ D.RealizableBelow Q F (fixAsg D F v) ν := by
-  sorry
+  classical
+  rw [realTopFml, Formula.realize_iExs]
+  simp only [Formula.realize_relabel, realize_diagramFml, Function.comp_apply]
+  constructor
+  · rintro ⟨i, hD⟩
+    let g := Sum.elim (Sum.elim c v) i
+    refine ⟨fun x => if F x then fixAsg D F v x else (g (splitVar D F none 0 x)).val,
+      fun x hF => if_pos hF, fun x hx => ?_, ?_⟩
+    · by_cases hF : F x
+      · simp only [if_pos hF, fixAsg_of_mem D F v ⟨hx, hF⟩]
+        exact (v _).lt
+      · simp only [if_neg hF]
+        exact (g _).lt
+    · refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 hD
+      by_cases hF : F x
+      · simp only [if_pos hF, g, splitVar_fix D F none 0 (by simp) ⟨hx, hF⟩,
+          fixAsg_of_mem D F v ⟨hx, hF⟩]
+        rfl
+      · simp only [if_neg hF, g]
+  · rintro ⟨a, ha₁, ha₂, ha₃⟩
+    refine ⟨fun r => ⟨a r.1, ha₂ r.1 r.2.1⟩, ?_⟩
+    refine (Diagram.holds_congr Q D _ _ fun x hx => ?_).1 ha₃
+    by_cases hF : F x
+    · rw [splitVar_fix D F none 0 (by simp) ⟨hx, hF⟩, ha₁ x hF, fixAsg_of_mem D F v ⟨hx, hF⟩]
+      rfl
+    · rw [splitVar_free D F none 0 ⟨hx, hF, by simp⟩]
+      rfl
 
 /-- N4.4: `θ_{D,F}(a, b)` (coordinates `0 = a`, `1 = b`): fixed values below `a` and a
 realization below `b` give a realization below `a`. -/
@@ -570,14 +724,56 @@ def TransportsD (Q : Prims.{u}) {V : Type} [DecidableEq V] (D : Diagram V) (F : 
 /-- N4.4: `θ` expresses `ReflectsD` (for `a ≤ b`). -/
 theorem realize_reflFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} (D : Diagram V)
     (F : V → Prop) (a b : Carrier ν Q) (hab : a.val ≤ b.val) :
-    (reflFml D F).Realize ![a, b] ↔ ReflectsD Q D F a.val b.val := by sorry
+    (reflFml D F).Realize ![a, b] ↔ ReflectsD Q D F a.val b.val := by
+  -- the hypothesis `a ≤ b` is not needed: both `realFml` conjuncts carry their own bounds
+  have _ := hab
+  rw [reflFml, Formula.realize_iAlls]
+  constructor
+  · intro h σ hσ hr
+    let i : FixT D F → Carrier ν Q := fun f => ⟨σ f.1, (hσ f.1 f.2.1 f.2.2).trans a.lt⟩
+    have hi : ∀ x ∈ D.vars, F x → fixAsg D F i x = σ x :=
+      fun x hx hF => fixAsg_of_mem D F i ⟨hx, hF⟩
+    have h' := h i
+    rw [Formula.realize_imp, Formula.realize_imp, realize_fixBelowFml, realize_realFml,
+      realize_realFml] at h'
+    exact (Diagram.realizableBelow_congr_fixed Q D F _ _ _ hi).1
+      (h' (fun f => hσ f.1 f.2.1 f.2.2) ((Diagram.realizableBelow_congr_fixed Q D F _ _ _ hi).2 hr))
+  · intro h i
+    rw [Formula.realize_imp, Formula.realize_imp, realize_fixBelowFml, realize_realFml,
+      realize_realFml]
+    intro hfix hr
+    exact h (fixAsg D F i) (fun x hx hF => by rw [fixAsg_of_mem D F i ⟨hx, hF⟩]; exact hfix _) hr
 
 /-- N4.4: `τ` expresses `TransportsD` (for `t ∉ F` and `a < b < c`; for `t ∈ F` the property
 `TransportsD` is vacuous and is not needed). -/
 theorem realize_transFml {ν : Ordinal.{u}} {Q : Prims.{u}} {V : Type} [DecidableEq V]
     (D : Diagram V) (F : V → Prop) (t : V) (ht : ¬ F t) (c b a : Carrier ν Q)
     (hab : a.val < b.val) (hbc : b.val < c.val) :
-    (transFml D F t).Realize ![c, b, a] ↔ TransportsD Q D F t c.val b.val a.val := by sorry
+    (transFml D F t).Realize ![c, b, a] ↔ TransportsD Q D F t c.val b.val a.val := by
+  rw [transFml, Formula.realize_iAlls]
+  constructor
+  · intro h _ σ hσ hr
+    let i : FixT D F → Carrier ν Q := fun f => ⟨σ f.1, (hσ f.1 f.2.1 f.2.2).trans a.lt⟩
+    have hi : ∀ s : Ordinal.{u}, ∀ x ∈ D.vars, (F x ∨ x = t) →
+        Function.update (fixAsg D F i) t s x = Function.update σ t s x := by
+      intro s x hx hF
+      by_cases hxt : x = t
+      · subst hxt
+        rw [Function.update_self, Function.update_self]
+      · rw [Function.update_of_ne hxt, Function.update_of_ne hxt]
+        exact fixAsg_of_mem D F i ⟨hx, hF.resolve_right hxt⟩
+    have h' := h i
+    rw [Formula.realize_imp, Formula.realize_imp, realize_fixBelowFml,
+      realize_realFml_some D F t ht 1 0 _ _ hbc, realize_realFml_some D F t ht 2 1 _ _ hab] at h'
+    exact (Diagram.realizableBelow_congr_fixed Q D _ _ _ _ (hi a.val)).1
+      (h' (fun f => hσ f.1 f.2.1 f.2.2)
+        ((Diagram.realizableBelow_congr_fixed Q D _ _ _ _ (hi b.val)).2 hr))
+  · intro h i
+    rw [Formula.realize_imp, Formula.realize_imp, realize_fixBelowFml,
+      realize_realFml_some D F t ht 1 0 _ _ hbc, realize_realFml_some D F t ht 2 1 _ _ hab]
+    intro hfix hr
+    exact h ht (fixAsg D F i)
+      (fun x hx hF => by rw [fixAsg_of_mem D F i ⟨hx, hF⟩]; exact hfix _) hr
 
 /-! ## N4.5: the recursive definition of `Elem` and `Edge` -/
 
