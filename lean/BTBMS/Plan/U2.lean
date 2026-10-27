@@ -22176,13 +22176,532 @@ theorem respEdge_phase_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j 
       respEdge S.A (activeKeys_D7 S.A a) a W x) :=
   ⟨fun h => respEdge_phase_D7 S hj hp hT h, fun h => respEdge_fixed_D7 S hp hT h⟩
 
+/-- D-G010.4 (F7): an admissible capping of the root's key list: its actual keys, or its actual
+keys capped at an entry `u ≥ c_A`. -/
+def RootCap_F7 (S : OrdStep) (ks : List (WithTop Key)) : Prop :=
+  ks = actualKeys S.A S.rd.col ∨
+    ∃ u, S.rd.cursor ≤ u ∧ u < (actualKeys S.A S.rd.col).length ∧
+      ks = (actualKeys S.A S.rd.col).take u ++ [⊤]
+
+-- F7 (helper): the root's key lists are `κ`-fixed
+theorem rootCap_kappa_F7 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks)
+    (φ : Nat) : kappaQ S.sd.r S.d φ ks = ks := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  have hfix := kappaQ_fix_D7 S.sd.r S.d φ S.A (o := S.rd.col) (by omega)
+  rcases hks with rfl | ⟨u, -, -, rfl⟩
+  · exact hfix.1
+  · exact hfix.2 u
+
+-- F7 (helper): scans of a `κ`-fixed list do not see `κ`
+theorem rootCap_cursor_F7 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks)
+    (φ : Nat) (W : List (WithTop Key)) :
+    cursor ks (kappaQ S.sd.r S.d φ W) = cursor ks W := by
+  have := cursor_map (kappaQry_strictMono S.sd.r S.d φ) ks W
+  have h2 := rootCap_kappa_F7 S hks φ
+  unfold kappaQ at this h2
+  rw [h2] at this
+  exact this
+
+-- F7 (helper): the query part of the stopping column's keys
+theorem sdcol_keys_take_F7 (S : OrdStep) :
+    (actualKeys S.A S.sd.col).take S.m = (queryKeys S.sd).map (↑) := by
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  simp only [actualKeys, hcol, Option.getD_some, List.map_append, queryKeys, List.map_map, ← ht]
+  rw [List.take_left' (by simp [OrdStep.m])]
+  rfl
+
+-- F7 (helper): the root's actual keys are its root keys
+theorem rdcol_keys_F7 (S : OrdStep) :
+    actualKeys S.A S.rd.col = (rootKeys S.A S.rd).map (↑) := by
+  simp only [actualKeys, rootKeys, List.map_map]
+  rfl
+
+-- F7 (helper): the root cursor is the scan of the root's keys against the old complete query
+theorem rdcursor_eq_F7 (S : OrdStep) :
+    S.rd.cursor = cursor (actualKeys S.A S.rd.col) S.termZ := by
+  obtain ⟨-, -, -, -, -, -, hcur, -⟩ := rootData_spec S.hsd S.hrd
+  unfold OrdStep.termZ cutQuery
+  rw [cursor_nu, sdcol_keys_take_F7, rdcol_keys_F7, cursor_map WithTop.coe_strictMono, hcur]
+
+-- F7 (helper): the complete query is `⊤`-free
+theorem termZ_ne_top_F7 (S : OrdStep) : ∀ w ∈ S.termZ, w ≠ ⊤ :=
+  ne_top_of_mem_cutQuery_D7 _ _ _
+
+-- F7 (helper): `dropWhile` of an all-true list is empty
+theorem dropWhile_all_F7 {β : Type} (p : β → Bool) :
+    ∀ (l : List β), (∀ y ∈ l, p y = true) → l.dropWhile p = []
+  | [], _ => rfl
+  | x :: xs, h => by
+    simp only [List.dropWhile, h x (by simp)]
+    exact dropWhile_all_F7 p xs (fun y hy => h y (by simp [hy]))
+
+-- F7 (helper): a `⊤` appended to a `⊤`-free list deletes everything
+theorem nu_append_top_F7 (l : List (WithTop Key)) (hl : ∀ w ∈ l, w ≠ ⊤) :
+    nu (l ++ [⊤]) = [⊤] := by
+  rw [nu_append_singleton, nuStep]
+  have hall : ∀ y ∈ (nu l).reverse, decide (y < ⊤) = true := by
+    intro y hy
+    rw [List.mem_reverse] at hy
+    have := hl y ((nu_sublist l).subset hy)
+    simpa [lt_top_iff_ne_top] using this
+  rw [dropWhile_all_F7 _ _ hall]
+  rfl
+
+-- F7 (helper): every `⊤`-free list is below `[⊤]`
+theorem lt_top_singleton_F7 (W : List (WithTop Key)) (hW : ∀ w ∈ W, w ≠ ⊤) : W < [⊤] := by
+  cases W with
+  | nil => exact List.nil_lt_cons _ _
+  | cons w ws =>
+    have : w < ⊤ := lt_top_iff_ne_top.mpr (hW w (by simp))
+    exact List.Lex.rel this
+
+-- L-G010.7 (F7): the head hypotheses of `head_cursor` for an admissible root capping
+theorem rootCap_headHyp_F7 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks) :
+    S.rd.cursor ≤ ks.length ∧ cutQuery ks S.rd.cursor ≤ S.termZ ∧
+      (S.rd.cursor < ks.length → S.termZ < cutQuery ks (S.rd.cursor + 1)) := by
+  have hcur := rdcursor_eq_F7 S
+  have hZn : Noninc S.termZ := cutQuery_noninc _ _
+  obtain ⟨h1, h2⟩ := cursor_spec (actualKeys S.A S.rd.col) S.termZ hZn
+  rw [← hcur] at h1 h2
+  have hle := cursor_le_length (actualKeys S.A S.rd.col) S.termZ
+  rw [← hcur] at hle
+  rcases hks with rfl | ⟨u, hu1, hu2, rfl⟩
+  · exact ⟨hle, h1, h2⟩
+  · have hlen : ((actualKeys S.A S.rd.col).take u ++ [⊤]).length = u + 1 := by
+      simp only [List.length_append, List.length_take, List.length_singleton]; omega
+    refine ⟨by omega, ?_, fun _ => ?_⟩
+    · have : cutQuery ((actualKeys S.A S.rd.col).take u ++ [⊤]) S.rd.cursor =
+          cutQuery (actualKeys S.A S.rd.col) S.rd.cursor := by
+        unfold cutQuery
+        rw [List.take_append_of_le_length (by simp; omega), List.take_take, Nat.min_eq_left hu1]
+      rw [this]; exact h1
+    · rcases Nat.eq_or_lt_of_le hu1 with heq | hlt
+      · subst heq
+        unfold cutQuery
+        rw [List.take_of_length_le (by rw [hlen]), nu_append_top_F7]
+        · exact lt_top_singleton_F7 _ (termZ_ne_top_F7 S)
+        · intro w hw
+          have := List.mem_of_mem_take hw
+          simp only [actualKeys, List.mem_map] at this
+          obtain ⟨x, -, rfl⟩ := this
+          exact WithTop.coe_ne_top
+      · have : cutQuery ((actualKeys S.A S.rd.col).take u ++ [⊤]) (S.rd.cursor + 1) =
+            cutQuery (actualKeys S.A S.rd.col) (S.rd.cursor + 1) := by
+          unfold cutQuery
+          rw [List.take_append_of_le_length (by simp; omega), List.take_take,
+            Nat.min_eq_left (by omega)]
+        rw [this]; exact h2 (by omega)
+
+-- L-G010.8 (F7): below the complete query every admissible root capping scans like the root,
+-- and stops at or before `c_A`
+theorem rootCap_low_F7 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks)
+    {W : List (WithTop Key)} (hW : Noninc W) (hT : ∀ w ∈ W, w ≠ ⊤) (hlow : W < S.termZ) :
+    cursor ks W = cursor (actualKeys S.A S.rd.col) W ∧
+      cursor (actualKeys S.A S.rd.col) W ≤ S.rd.cursor := by
+  have hcur := rdcursor_eq_F7 S
+  have hZn : Noninc S.termZ := cutQuery_noninc _ _
+  have hle : cursor (actualKeys S.A S.rd.col) W ≤ S.rd.cursor := by
+    rw [hcur]; exact cursor_mono _ hW hZn hlow.le
+  refine ⟨?_, hle⟩
+  rcases hks with rfl | ⟨u, hu1, hu2, rfl⟩
+  · rfl
+  · obtain ⟨-, -, h2⟩ := rootCap_headHyp_F7 S (Or.inl rfl)
+    have hlt : W < cutQuery (actualKeys S.A S.rd.col) (u + 1) :=
+      lt_of_lt_of_le (lt_of_lt_of_le hlow (le_of_lt (h2 (by omega))))
+        (cutQuery_mono _ (by omega))
+    exact ((cursor_cappedAt _ W u hu2 hW hT hlt).2).symm
+
+
+-- F7 (helper): the number of the head of layer `h ≥ 1` is `s_h`
+theorem num_headCol_F7 (S : OrdStep) {h : Nat} (hh : 1 ≤ h) : (S.headCol h).num 0 = S.s h := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  rw [num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inl rfl) hh (phaseCol_headCol S h), hrnum]
+  simp [phaseOff, isQMat_rdcol, OrdStep.s, OrdStep.d]
+
+-- F7 (helper): the head `⟨[], 0⟩` is on the stack of the kernel hole, and contains it exactly
+-- when the root contains the stopping column (through the restored image of that entry)
+theorem kerHole_head_F7 (S : OrdStep) {kh : ColAddr} (hkh : kerCol S.sd S.rd S.sd.col = some kh) :
+    kh.OnStack ⟨[], 0⟩ ∧ (⟨[], 0⟩ : ColAddr).container kh =
+      (S.rd.col.container S.sd.col).map (fun e => ⟨⟨[], 0⟩, S.m + (e.idx - S.rd.cursor)⟩) := by
+  obtain ⟨hres, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  have hsd_rd : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  refine ⟨(onStack_kerCol_tail S hkh hsdq _).mpr ⟨S.rd.col, hsd_rd, by rw [hrnum],
+    isQMat_rdcol S, kerCol_rdcol S⟩, ?_⟩
+  rw [container_kerCol S hkh (kerCol_rdcol S) hsdq]
+  simp
+
+-- L-G010.5 (F7, the stack part): the heads `s_1, …, s_φ` are on the stack of the copy `c` of a
+-- phase pair; below layer `j` a head contains `c` exactly when the root contains the stopping
+-- column, and at layer `j` (root-tail template) exactly when the root contains `a`, through the
+-- restored image of the same entry
+theorem head_stack_F7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {h : Nat} (hh1 : 1 ≤ h) (hh : h ≤ φ) :
+    c.resolve 0 (S.s h) = some (S.headCol h) ∧
+      (h < j → (S.headCol h).container c = (S.rd.col.container S.sd.col).map
+        (fun e => ⟨S.headCol h, S.m + (e.idx - S.rd.cursor)⟩)) ∧
+      (h = j → IsTmplCol S.A S.sd S.rd a ∧ isQMat S.sd a = false ∧
+        (S.headCol h).container c = (S.rd.col.container a).map
+          (fun e => ⟨S.headCol h, S.m + (e.idx - S.rd.cursor)⟩)) := by
+  obtain ⟨hres, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  obtain ⟨hkh0, hkhc⟩ := kerHole_head_F7 S hkh
+  -- the copy as a placement of `b₀`
+  obtain ⟨b₀, hcdef, hφj, hjcase⟩ : ∃ b₀, c = underCol S.sd.col ((underCol kh)^[j - 1] b₀) ∧
+      φ ≤ j ∧ (h = j → IsTmplCol S.A S.sd S.rd a ∧ isQMat S.sd a = false ∧
+        kerCol S.sd S.rd a = some b₀) := by
+    rcases hp with ⟨ha, hc, rfl⟩ | ⟨rfl, hc, rfl⟩
+    · obtain ⟨b₀, hb₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+      refine ⟨b₀, ?_, by unfold phaseOff; split_ifs <;> omega, fun hhj => ⟨ha, ?_, hb₀⟩⟩
+      · rw [phaseCol_eq_iterate S hkh hb₀] at hc; exact (Option.some.inj hc).symm
+      · cases hq : isQMat S.sd a
+        · rfl
+        · simp only [phaseOff, hq, if_true] at hh; omega
+    · refine ⟨⟨[], 0⟩, ?_, by omega, fun hhj => by omega⟩
+      rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S)] at hc; exact (Option.some.inj hc).symm
+  have hhj : h ≤ j := by omega
+  have hsplit : (underCol kh)^[j - 1] b₀ = (underCol kh)^[h - 1] ((underCol kh)^[j - h] b₀) := by
+    rw [← Function.iterate_add_apply]
+    congr 1
+    omega
+  have hhead := headCol_eq S hkh h
+  -- `Z = G^{j−h} b₀` has the head on its stack; its containment by the head
+  have hZ : ((underCol kh)^[j - h] b₀).OnStack ⟨[], 0⟩ ∧
+      (h < j → (⟨[], 0⟩ : ColAddr).container ((underCol kh)^[j - h] b₀) =
+        (S.rd.col.container S.sd.col).map (fun e => ⟨⟨[], 0⟩, S.m + (e.idx - S.rd.cursor)⟩)) ∧
+      (h = j → (⟨[], 0⟩ : ColAddr).container ((underCol kh)^[j - h] b₀) =
+        (S.rd.col.container a).map (fun e => ⟨⟨[], 0⟩, S.m + (e.idx - S.rd.cursor)⟩)) := by
+    rcases Nat.eq_or_lt_of_le hhj with heq | hlt
+    · obtain ⟨ha, haq, hb₀⟩ := hjcase heq
+      rw [heq, Nat.sub_self, Function.iterate_zero_apply]
+      refine ⟨(onStack_kerCol_tail S hb₀ haq _).mpr ⟨S.rd.col, onStack_rdcol S hb₀ haq ha.2.2.1,
+        by rw [hrnum], isQMat_rdcol S, kerCol_rdcol S⟩, fun h' => by omega, fun _ => ?_⟩
+      rw [container_kerCol S hb₀ (kerCol_rdcol S) haq]
+      simp
+    · obtain ⟨k, hk⟩ : ∃ k, j - h = k + 1 := ⟨j - h - 1, by omega⟩
+      rw [hk, Function.iterate_succ_apply']
+      refine ⟨(onStack_underCol kh _ _).mpr (Or.inl hkh0), fun _ => ?_, fun h' => by omega⟩
+      rw [container_underCol_of_onStack hkh0, hkhc]
+  have hst : c.OnStack (S.headCol h) := by
+    rw [hcdef, hhead, hsplit]
+    exact (onStack_underCol _ _ _).mpr (Or.inr ⟨_, iterate_underCol_onStack kh (h - 1) hZ.1, rfl⟩)
+  have hcont : (S.headCol h).container c =
+      ((⟨[], 0⟩ : ColAddr).container ((underCol kh)^[j - h] b₀)).map
+        (fun e => ⟨S.headCol h, e.idx⟩) := by
+    rw [hcdef, hhead, hsplit, container_underCol, iterate_underCol_container, Option.map_map]
+    rfl
+  refine ⟨(ColAddr.resolve_spec 0 _ _ _).mpr ⟨hst, num_headCol_F7 S hh1⟩, fun hlt => ?_,
+    fun heq => ?_⟩
+  · rw [hcont, hZ.2.1 hlt, Option.map_map]; rfl
+  · obtain ⟨ha, haq, -⟩ := hjcase heq
+    refine ⟨ha, haq, ?_⟩
+    rw [hcont, hZ.2.2 heq, Option.map_map]; rfl
+
+
+-- L-G010.5 (F7, the content part): the head of layer `h` holds the phase-`(h−1)` copy of the
+-- query, then the restored root suffix: parents `R[c_A:]`, keys those of `R[c_A:]` except
+-- possibly the last (a continuation, owner case)
+theorem head_content_F7 (S : OrdStep) {h : Nat} (hh : 1 ≤ h ∧ h ≤ S.n) :
+    parents S.B (S.headCol h) =
+        ((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((h - 1) * S.d)) ++
+          (parents S.A S.rd.col).drop S.rd.cursor ∧
+      (actualKeys S.B (S.headCol h)).take S.m =
+        kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ∧
+      ((actualKeys S.B (S.headCol h)).drop S.m).length =
+        ((actualKeys S.A S.rd.col).drop S.rd.cursor).length ∧
+      ∀ v, ¬ (S.rd.owner = true ∧ v + 1 = ((actualKeys S.A S.rd.col).drop S.rd.cursor).length) →
+        ((actualKeys S.B (S.headCol h)).drop S.m)[v]? =
+          ((actualKeys S.A S.rd.col).drop S.rd.cursor)[v]? := by
+  obtain ⟨-, -, -, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨hmB, hparB, hkeyB⟩ := headQuery_prefix_D7 S hh (phaseCol_headCol S h)
+  obtain ⟨col, hBcol, hlen, -, hrest⟩ :=
+    colAt_head S.inL S.kind S.hsd S.hrd S.out hh (phaseCol_headCol S h)
+  have hm : S.sd.Q.length = S.m := rfl
+  have hU : unconsumed S.A S.rd = ((S.A.colAt S.rd.col).getD []).drop S.rd.cursor := rfl
+  have hnum := num_headCol_F7 S hh.1
+  have hBpar : parents S.B (S.headCol h) = col.map Prod.fst := by simp [parents, hBcol]
+  have hBkeys : actualKeys S.B (S.headCol h) =
+      col.map (fun x => ((relKey (S.s h) x.2 : Key) : WithTop Key)) := by
+    simp [actualKeys, hBcol, hnum]
+  have hUlen : ((actualKeys S.A S.rd.col).drop S.rd.cursor).length =
+      (unconsumed S.A S.rd).length := by
+    rw [hU]; simp [actualKeys]
+  -- the restored entries
+  have hent : ∀ v, v < (unconsumed S.A S.rd).length → ∃ x y, (unconsumed S.A S.rd)[v]? = some x ∧
+      col[S.m + v]? = some y ∧ y.1 = x.1 ∧
+      (¬ (S.rd.owner = true ∧ v + 1 = (unconsumed S.A S.rd).length) → y.2 = shift S.sd.r (h * S.d) x.2) := by
+    intro v hv
+    obtain ⟨y, hy, hy1, hy2⟩ := hrest v _ (List.getElem?_eq_getElem hv)
+    exact ⟨_, y, List.getElem?_eq_getElem hv, hy, hy1, fun hn => by rw [hy2 hn]; rfl⟩
+  have hdropLen : (col.drop S.m).length = (unconsumed S.A S.rd).length := by
+    rw [List.length_drop, hlen, hm]; omega
+  refine ⟨?_, hkeyB, ?_, ?_⟩
+  · have hdrop : (parents S.B (S.headCol h)).drop S.m = (parents S.A S.rd.col).drop S.rd.cursor := by
+      apply List.ext_getElem?
+      intro v
+      rw [hBpar, ← List.map_drop, List.getElem?_map, List.getElem?_drop]
+      have hpd : (parents S.A S.rd.col).drop S.rd.cursor = (unconsumed S.A S.rd).map Prod.fst := by
+        rw [hU]; simp [parents, List.map_drop]
+      rw [hpd, List.getElem?_map]
+      by_cases hv : v < (unconsumed S.A S.rd).length
+      · obtain ⟨x, y, hx, hy, hxy, -⟩ := hent v hv
+        rw [hx, hy]; simp [hxy]
+      · rw [List.getElem?_eq_none (by omega), List.getElem?_eq_none (by omega)]
+    rw [← List.take_append_drop S.m (parents S.B (S.headCol h)), hparB, hdrop]
+  · rw [hBkeys, ← List.map_drop, List.length_map, hdropLen, hUlen]
+  · intro v hn
+    rw [hUlen] at hn
+    rw [hBkeys, ← List.map_drop, List.getElem?_map, List.getElem?_drop]
+    have hkd : (actualKeys S.A S.rd.col).drop S.rd.cursor =
+        (unconsumed S.A S.rd).map (fun x => ((relKey S.sd.r x.2 : Key) : WithTop Key)) := by
+      rw [hU]; simp [actualKeys, List.map_drop, hrnum]
+    rw [hkd, List.getElem?_map]
+    by_cases hv : v < (unconsumed S.A S.rd).length
+    · obtain ⟨x, y, hx, hy, -, hy2⟩ := hent v hv
+      rw [hx, hy]
+      simp only [Option.map_some, Option.some.injEq, WithTop.coe_inj]
+      rw [hy2 hn]
+      have : S.s h = S.sd.r + h * S.d := rfl
+      rw [this, relKey_shift S.sd.r S.d h S.sd.r le_rfl, kappa_fix S.sd.r S.d h S.sd.r le_rfl]
+    · rw [List.getElem?_eq_none (by omega), List.getElem?_eq_none (by omega)]; rfl
+
+
+-- F7 (helper): a container entry of a column of `E` exists
+theorem container_idx_lt_F7 {E : Forest} {o a : ColAddr} {e : EntryAddr} (ha : a ∈ E.colAddrs)
+    (he : o.container a = some e) : e.idx < (actualKeys E o).length := by
+  have hc := (ColAddr.container_spec _ _ _).mp he
+  have hmem := mem_entryAddrs_of_contains ha hc.2
+  have hent := (Tree.mem_entryAddrs_iff _ _).mp hmem
+  unfold Tree.entryAt at hent
+  rw [hc.1] at hent
+  rw [length_actualKeys]
+  cases hco : E.colAt o with
+  | none => rw [hco] at hent; cases hent
+  | some col =>
+    rw [hco] at hent
+    simp only [Option.bind_some, Option.getD_some] at hent ⊢
+    exact (List.getElem?_eq_some_iff.mp (Option.get_mem hent)).1
+
+-- L-G010.5 (F7, keys of a head): uncapped (body case) and capped at a restored entry
+theorem head_keys_F7 (S : OrdStep) {h : Nat} (hh : 1 ≤ h ∧ h ≤ S.n) :
+    (S.rd.owner = false → actualKeys S.B (S.headCol h) =
+      kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+        (actualKeys S.A S.rd.col).drop S.rd.cursor) ∧
+    ∀ u, S.rd.cursor ≤ u → u < (actualKeys S.A S.rd.col).length →
+      (actualKeys S.B (S.headCol h)).take (S.m + (u - S.rd.cursor)) ++ [⊤] =
+        kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+          ((actualKeys S.A S.rd.col).take u ++ [⊤]).drop S.rd.cursor := by
+  obtain ⟨-, hkeyB, hlenB, hentB⟩ := head_content_F7 S hh
+  refine ⟨fun hown => ?_, fun u hu1 hu2 => ?_⟩
+  · rw [← List.take_append_drop S.m (actualKeys S.B (S.headCol h)), hkeyB]
+    congr 1
+    apply List.ext_getElem?
+    intro v
+    exact hentB v (by rw [hown]; simp)
+  · rw [List.take_add, hkeyB, List.append_assoc]
+    congr 1
+    rw [List.drop_append_of_le_length (by simp; omega), List.drop_take]
+    congr 1
+    apply List.ext_getElem?
+    intro v
+    rw [List.getElem?_take, List.getElem?_take]
+    split_ifs with hv
+    · exact hentB v (by simp; omega)
+    · rfl
+
+-- L-G010.5 (F7; `activeKeys_head`): at a head `s_h`, `1 ≤ h ≤ φ`, the copy's capped keys are the
+-- phase-`(h−1)` query keys followed by an admissible root capping from `c_A` on (the capping of
+-- `a`'s root at `h = φ`), and the parents are the shifted query parents, then `R[c_A:]`
+theorem activeKeys_head_F7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {h : Nat} (hh1 : 1 ≤ h) (hh : h ≤ φ) :
+    ∃ ks, c.resolve 0 (S.s h) = some (S.headCol h) ∧ RootCap_F7 S ks ∧
+      (h = φ → ks = activeKeys_D7 S.A a S.rd.col) ∧
+      activeKeys_D7 S.B c (S.headCol h) =
+        kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++ ks.drop S.rd.cursor ∧
+      parents S.B (S.headCol h) =
+        ((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((h - 1) * S.d)) ++
+          (parents S.A S.rd.col).drop S.rd.cursor := by
+  obtain ⟨hres, -, -, hpre, -, hown, hlast⟩ := rootData_path S.hsd S.hrd
+  have hφj : φ ≤ j := by
+    rcases hp with ⟨-, -, rfl⟩ | ⟨-, -, rfl⟩
+    · unfold phaseOff; split_ifs <;> omega
+    · omega
+  have hhn : 1 ≤ h ∧ h ≤ S.n := ⟨hh1, by omega⟩
+  obtain ⟨hst, hlt, heq⟩ := head_stack_F7 S hj hp hh1 hh
+  obtain ⟨hparB, -⟩ := head_content_F7 S hhn
+  obtain ⟨hbody, hcap⟩ := head_keys_F7 S hhn
+  have hlenR : (actualKeys S.A S.rd.col).length = ((S.A.colAt S.rd.col).getD []).length :=
+    length_actualKeys _ _
+  -- the capped form of an entry `u ≥ c_A`
+  have hcapped : ∀ e : EntryAddr, S.rd.cursor ≤ e.idx → e.idx < (actualKeys S.A S.rd.col).length →
+      (S.headCol h).container c = some ⟨S.headCol h, S.m + (e.idx - S.rd.cursor)⟩ →
+      activeKeys_D7 S.B c (S.headCol h) =
+        kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+          ((actualKeys S.A S.rd.col).take e.idx ++ [⊤]).drop S.rd.cursor := by
+    intro e h1 h2 hce
+    simp only [activeKeys_D7, hce]
+    exact hcap e.idx h1 h2
+  have hbody' : S.rd.owner = false → (S.headCol h).container c = none →
+      activeKeys_D7 S.B c (S.headCol h) =
+        kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ++
+          (actualKeys S.A S.rd.col).drop S.rd.cursor := by
+    intro ho hce
+    simp only [activeKeys_D7, hce]
+    exact hbody ho
+  rcases Nat.lt_or_ge h j with hhj | hhj
+  · -- below layer `j`: the head contains `c` iff the root contains the stopping column
+    have hce := hlt hhj
+    -- at `h = φ` the pair is Q-material or the head pair: `R` contains `a` as it contains `sd.col`
+    have hRa : h = φ → S.rd.col.container a = S.rd.col.container S.sd.col := by
+      intro hhφ
+      rcases hp with ⟨ha, hc, rfl⟩ | ⟨rfl, -, -⟩
+      · have haq : isQMat S.sd a = true := by
+          cases hq : isQMat S.sd a
+          · simp only [phaseOff, hq, Bool.false_eq_true, if_false] at hhφ; omega
+          · rfl
+        obtain ⟨a₀, ha₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+        rw [qmat_underCol_F7 S haq ha₀]
+        exact container_underCol_of_onStack ((ColAddr.resolve_spec 0 _ _ _).mp hres).1 a₀
+      · rfl
+    cases hRs : S.rd.col.container S.sd.col with
+    | none =>
+      have ho : S.rd.owner = false := by
+        cases h' : S.rd.owner
+        · rfl
+        · have := hown.mp h'; rw [hRs] at this; cases this
+      rw [hRs, Option.map_none] at hce
+      refine ⟨actualKeys S.A S.rd.col, hst, Or.inl rfl, fun hhφ => ?_, hbody' ho hce, hparB⟩
+      simp only [activeKeys_D7, hRa hhφ, hRs]
+    | some e =>
+      rw [hRs, Option.map_some] at hce
+      have hl := hlast e hRs
+      unfold Packet.rootLenOf at hl
+      have ho : S.rd.owner = true := hown.mpr (by rw [hRs]; rfl)
+      have hkd := S.kernelDefined ho
+      have hcA : S.rd.cursor < (actualKeys S.A S.rd.col).length := by
+        unfold unconsumed rootCol at hkd
+        rw [hlenR]
+        by_contra hcon
+        exact hkd (List.drop_eq_nil_of_le (by omega))
+      refine ⟨(actualKeys S.A S.rd.col).take e.idx ++ [⊤], hst,
+        Or.inr ⟨e.idx, by omega, by omega, rfl⟩, fun hhφ => ?_,
+        hcapped e (by omega) (by omega) hce, hparB⟩
+      simp only [activeKeys_D7, hRa hhφ, hRs]
+  · -- at layer `j`: a root-tail template, contained by the head iff by the root
+    have hhj' : h = j := by omega
+    obtain ⟨ha, haq, hce⟩ := heq hhj'
+    obtain ⟨a₀, ha₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+    obtain ⟨suf, hsuf, hcases⟩ := kerCol_tail_spec S ha₀ haq
+    have hφ : h = φ := by
+      rcases hp with ⟨-, -, rfl⟩ | ⟨rfl, -, -⟩
+      · simp only [phaseOff, haq, Bool.false_eq_true, if_false]; omega
+      · exact absurd ha.2.1 (by simp)
+    cases hRa : S.rd.col.container a with
+    | none =>
+      have ho : S.rd.owner = false := by
+        rcases hcases with ⟨rfl, hc, -⟩ | ⟨-, -, ho, -⟩ | ⟨e, rest, rfl, -, -⟩ | ⟨-, -, -, -, -, ho, -⟩
+        · exfalso; apply ha.2.2.1
+          show (⟨a.path, a.col⟩ : ColAddr) = ⟨S.rd.col.path, S.rd.col.col⟩
+          rw [hsuf, hc, List.append_nil]
+        · exact ho
+        · exfalso
+          have : S.rd.col.container a = some ⟨S.rd.col, e⟩ :=
+            (ColAddr.container_spec _ _ _).mpr ⟨rfl, ⟨rest, by simp [EntryAddr.heightPath, hsuf]⟩⟩
+          rw [hRa] at this; cases this
+        · exact ho
+      rw [hRa, Option.map_none] at hce
+      refine ⟨actualKeys S.A S.rd.col, hst, Or.inl rfl, fun _ => ?_, hbody' ho hce, hparB⟩
+      simp only [activeKeys_D7, hRa]
+    | some e =>
+      rw [hRa, Option.map_some] at hce
+      have hcA : S.rd.cursor ≤ e.idx := by
+        obtain ⟨he1, t, ht⟩ := (ColAddr.container_spec _ _ _).mp hRa
+        rw [EntryAddr.heightPath, he1, List.append_assoc, hsuf] at ht
+        have ht' := List.append_cancel_left ht
+        rcases hcases with ⟨rfl, -, -⟩ | ⟨rfl, -, -, -⟩ | ⟨e', rest, rfl, he', -⟩ |
+            ⟨ci, e', rest, rfl, hci, -, -⟩
+        · simp at ht'
+        · simp at ht'
+        · simp only [List.singleton_append, List.cons.injEq, Prod.mk.injEq, true_and] at ht'
+          omega
+        · simp only [List.singleton_append, List.cons.injEq, Prod.mk.injEq] at ht'
+          omega
+      have hlt' := container_idx_lt_F7 ha.1 hRa
+      refine ⟨(actualKeys S.A S.rd.col).take e.idx ++ [⊤], hst,
+        Or.inr ⟨e.idx, hcA, hlt', rfl⟩, fun _ => ?_, hcapped e hcA hlt' hce, hparB⟩
+      simp only [activeKeys_D7, hRa]
+
+
+-- F7 (helper): `κ_j` preserves and reflects `≤` of queries
+theorem kappaQ_le_iff_F7 (r d j : Nat) (W Z : List (WithTop Key)) :
+    kappaQ r d j W ≤ kappaQ r d j Z ↔ W ≤ Z := by
+  rw [← not_lt, ← not_lt, kappaQ_lt_iff]
+
+-- F7 (helper): the query part of the stopping column has `m` keys
+theorem length_sdcol_take_F7 (S : OrdStep) : ((actualKeys S.A S.sd.col).take S.m).length = S.m := by
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  rw [List.length_take, length_actualKeys, hcol]
+  simp [OrdStep.m]
+
+-- F7 (helper): `head_cursor` at a head of layer `h ≥ 1` with an admissible root capping, at the
+-- query `κ_{h−1}(W')`
+theorem head_scan_F7 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks) (h : Nat)
+    {W' : List (WithTop Key)} (hW' : Noninc W') :
+    (W' < S.termZ → cursor (kappaQ S.sd.r S.d h ((actualKeys S.A S.sd.col).take S.m) ++
+        ks.drop S.rd.cursor) (kappaQ S.sd.r S.d h W') < S.m) ∧
+    (S.termZ ≤ W' → S.rd.cursor ≤ cursor ks W' ∧
+      cursor (kappaQ S.sd.r S.d h ((actualKeys S.A S.sd.col).take S.m) ++ ks.drop S.rd.cursor)
+        (kappaQ S.sd.r S.d h W') = S.m + (cursor ks W' - S.rd.cursor)) := by
+  obtain ⟨hc, h1, h2⟩ := rootCap_headHyp_F7 S hks
+  have hfix := rootCap_kappa_F7 S hks h
+  have hnu : nu (kappaQ S.sd.r S.d h ((actualKeys S.A S.sd.col).take S.m)) =
+      kappaQ S.sd.r S.d h S.termZ := by
+    unfold kappaQ OrdStep.termZ cutQuery
+    rw [nu_map (kappaQry_strictMono _ _ _)]
+  have hcq : ∀ k, cutQuery ks k = kappaQ S.sd.r S.d h (cutQuery ks k) := by
+    intro k
+    conv_lhs => rw [← hfix]
+    unfold kappaQ
+    rw [cutQuery_map (kappaQry_strictMono _ _ _)]
+  have H := head_cursor (V := kappaQ S.sd.r S.d h W')
+    (kappaQ S.sd.r S.d h ((actualKeys S.A S.sd.col).take S.m)) ks hc
+    (by rw [hnu, hcq, kappaQ_le_iff_F7]; exact h1)
+    (fun hlt => by rw [hnu, hcq, kappaQ_lt_iff]; exact h2 hlt)
+    (kappaQ_noninc _ _ _ hW')
+  have hlen : (kappaQ S.sd.r S.d h ((actualKeys S.A S.sd.col).take S.m)).length = S.m := by
+    unfold kappaQ; rw [List.length_map, length_sdcol_take_F7]
+  refine ⟨fun hlow => ?_, fun hhigh => ?_⟩
+  · have := H.1 (by rw [hnu, kappaQ_lt_iff]; exact hlow)
+    rwa [hlen] at this
+  · have := H.2 (by rw [hnu, kappaQ_le_iff_F7]; exact hhigh)
+    rw [rootCap_cursor_F7 S hks, hlen] at this
+    exact this
+
 -- L-G010.14 (D7; T3.2q step 2, high case, txt:390-391): a high scan at the head `s_φ` returns the
 -- old root response at `W`
 theorem respEdge_head_high_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
     (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
-    (hT : ∀ w ∈ W, w ≠ ⊤) (hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W) :
+    (_hT : ∀ w ∈ W, w ≠ ⊤) (hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W) :
     respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s φ) =
-      respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r := by sorry
+      respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r := by
+  obtain ⟨ks, hst, hRC, hkseq, hkeys, hpar⟩ := activeKeys_head_F7 S hj hp hφ le_rfl
+  obtain ⟨hRa, -⟩ := phasePair_root_D7 S hp
+  have hks := hkseq rfl
+  have hV : kappaQ S.sd.r S.d φ W = kappaQ S.sd.r S.d (φ - 1) (kappaQ S.sd.r S.d 1 W) := by
+    rw [kappaQ_add, show φ - 1 + 1 = φ by omega]
+  obtain ⟨hge, hcur⟩ := (head_scan_F7 S hRC (φ - 1) (kappaQ_noninc _ _ 1 hW)).2 hhigh
+  rw [rootCap_cursor_F7 S hRC] at hge hcur
+  unfold respEdge
+  rw [hst, hRa]
+  simp only [Option.bind_some]
+  rw [resp_eq_parents, resp_eq_parents, hkeys, hV, hcur, hpar, ← hks]
+  have hlm : (((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((φ - 1) * S.d))).length =
+      S.m := by
+    have := length_sdcol_take_F7 S
+    rw [List.length_take] at this
+    rw [List.length_map, List.length_take, length_parents_F7, this]
+  rw [List.getElem?_append_right (by omega), hlm, Nat.add_sub_cancel_left, List.getElem?_drop,
+    Nat.add_sub_cancel' hge]
 
 -- L-G010.14 corollary (D7): the old root response lies below `r`
 theorem respEdge_root_lt_D7 (S : OrdStep) {j φ : Nat} (_hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
