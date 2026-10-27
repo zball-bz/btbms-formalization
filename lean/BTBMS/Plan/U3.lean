@@ -8032,12 +8032,63 @@ def tagOf : Name → Nat
 def freshTag (ns : List Name) : Nat := (ns.map tagOf).foldr max 0 + 1
 
 -- provides: U3, D7.2c
-theorem freshTag_fresh (ns : List Name) (r : Role) : Name.role (freshTag ns) r ∉ ns := by sorry
+theorem freshTag_fresh (ns : List Name) (r : Role) : Name.role (freshTag ns) r ∉ ns := by
+  intro h
+  have hle : ∀ (l : List Nat) (x : Nat), x ∈ l → x ≤ l.foldr max 0 := by
+    intro l
+    induction l with
+    | nil => simp
+    | cons y l ih =>
+      intro x hx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact le_max_left _ _
+      · exact (ih x hx).trans (le_max_right _ _)
+  have := hle (ns.map tagOf) (tagOf (Name.role (freshTag ns) r)) (List.mem_map_of_mem h)
+  simp only [tagOf, freshTag] at this
+  omega
 
 /-! ## L7.3  Factorization -/
 
 -- L7.3: the spine's `factorization` (SCR1 applied at integration: hypothesis `ha` added);
 -- the former local workaround `factorization_mem` is removed.
+
+-- provides: U3, L7.3 (factorization; hypothesis `ha` added by SCR1 of U3, applied at integration)
+-- Moved here from `Plan/Spine.lean` (brief rule 5; name and statement unchanged): the proof uses
+-- N3.1 `pack_below`; nothing between the spine and this point uses it.
+theorem factorization {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
+    (ha : pk.rk.a ∈ pk.rk.F.entryAddrs) {L : Ordinal.{u}} (hL : L < pk.asg pk.owner) :
+    ∃ Ls, L ≤ Ls ∧ Ls < pk.asg pk.owner ∧ (∀ x ∈ pk.lowNames, pk.asg x < Ls) ∧
+      (BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+          (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner) →
+        pk.TargetAbove P L) := by
+  obtain ⟨-, -, -, -, hj, -, hlow⟩ := hv
+  -- the owner is a limit: `Lim (U_a)` is an atom of `Γ(F)`
+  have hslot : Role.slot pk.rk.a ∈ pk.rk.F.roles := by
+    rw [Tree.entryAddrs, List.mem_filterMap] at ha
+    obtain ⟨x, hx, hxa⟩ := ha
+    rcases x with c | e
+    · cases hxa
+    · cases hxa; exact hx
+  have hlim : IsLim (pk.asg pk.owner) := by
+    have hat : BaseAtom.lim (Role.slot pk.rk.a) ∈ graph pk.rk.F := by
+      unfold graph
+      simp only [List.mem_append]
+      exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hslot)))
+    have hmem : Atom.base (BaseAtom.map pk.srcChart (BaseAtom.lim (Role.slot pk.rk.a))) ∈
+        pk.joint := by
+      unfold SourcePacket.joint Diagram.ofBase
+      simp only [List.mem_append]
+      exact Or.inl (Or.inr (List.mem_map_of_mem (List.mem_map_of_mem hat)))
+    exact hj _ hmem
+  obtain ⟨Ls, hLs, hLsu, hlowLs⟩ := pack_below hlim hL (pk.lowNames.map pk.asg)
+    (fun x hx => by
+      obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
+      exact hlow y hy)
+  refine ⟨Ls, hLs, hLsu, fun x hx => hlowLs _ (List.mem_map_of_mem hx), ?_⟩
+  rintro ⟨β, h1, h2, h3, h4⟩
+  refine ⟨β, fun w x hw => h1 w _ (by simp only [hw]; rfl), fun w hw hn => ?_, h3, h4⟩
+  have hb := h2 w hw (by simp only [hn]; rfl)
+  exact ⟨lt_of_le_of_lt hLs hb, fun x hx => (hlowLs _ (List.mem_map_of_mem hx)).trans hb⟩
 
 -- provides: U3, L7.3b (the converse direction: a target block gives a realization of the
 -- positive block above the floor)
@@ -8192,7 +8243,7 @@ theorem readmit_repair {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Adm
 
 -- SCR2 applied at integration: the bridge holds by `rfl`
 theorem ScanSetup.valid_iff_def (S : ScanSetup.{u}) (P : Prims.{u}) :
-    S.Valid P ↔ S.ValidDef P := by sorry
+    S.Valid P ↔ S.ValidDef P := Iff.rfl
 
 /-! ## L7.6a  The explicit packet at a scan state and the fitting extension -/
 
@@ -8572,7 +8623,30 @@ theorem special_graph {H : Forest} (hL : Scan.InL H) (hk : Scan.stepKind H = som
 -- entry `j`'s height.
 theorem scanRecord_tgtHeight {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hj : j < S.sd.Q.length) :
-    (S.scanRecord i j).tgtHeight = ((S.sd.Q[j]?).map Prod.snd).getD Tree.empty := by sorry
+    (S.scanRecord i j).tgtHeight = ((S.sd.Q[j]?).map Prod.snd).getD Tree.empty := by
+  obtain ⟨⟨hstd, -, -, hsd, -, -, -⟩, -⟩ := hS
+  simp only [SrcRecord.tgtHeight, ScanSetup.scanRecord]
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  simp only [ScanSetup.H] at hsd
+  revert hsd
+  generalize S.cap = cap
+  intro hsd
+  cases cap with
+  | none =>
+    simp only [Closure.anchorOrigin]
+    have hcol := (Scan.stopData_spec hsd).1
+    simp only [Closure.anchor] at hcol
+    simp only [Tree.heightAt, Tree.entryAt, hcol, Option.bind_some,
+      List.getElem?_append_left hj, hQj, Option.map_some]
+  | some w =>
+    obtain ⟨-, -, hlen, -, hq⟩ := Closure.admCap_query (Closure.std_inL hstd) w hsd
+    obtain ⟨ho, hQ⟩ := hq j (hlen ▸ hj)
+    simp only [Closure.anchorOrigin, ho]
+    cases hc : S.E.colAt w.col with
+    | none => rw [hc] at hQ; simp [hQj] at hQ
+    | some col =>
+      rw [hc, Option.getD_some] at hQ
+      simp only [Tree.heightAt, Tree.entryAt, hc, Option.bind_some, ← hQ]
 
 -- provides: U3, L7.6b (requested by U5 R26, target advance txt:1160-1162): a positive block of query
 -- entry `j` above `L ≥ L_j` at the fitted frame extends a fitting by entry `j`.

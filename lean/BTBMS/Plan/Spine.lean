@@ -1854,13 +1854,8 @@ def TargetAbove (P : Prims.{u}) (L : Ordinal.{u}) : Prop :=
 
 end SourcePacket
 
--- provides: U3, L7.3 (factorization; hypothesis `ha` added by SCR1 of U3, applied at integration)
-theorem factorization {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
-    (ha : pk.rk.a ∈ pk.rk.F.entryAddrs) {L : Ordinal.{u}} (hL : L < pk.asg pk.owner) :
-    ∃ Ls, L ≤ Ls ∧ Ls < pk.asg pk.owner ∧ (∀ x ∈ pk.lowNames, pk.asg x < Ls) ∧
-      (BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel)
-          (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner) →
-        pk.TargetAbove P L) := by sorry
+-- provides: U3, L7.3 (factorization): moved to `Plan/U3.lean` (§L7.3), after N3.1 `pack_below`,
+-- which its proof uses (brief rule 5; name and statement unchanged; nothing in between uses it).
 
 -- SCR2 (U3), applied at integration: moved from `U3.lean`; owner U3.
 /-- D6.1b: the totalized anchor origin `χ` (identity for `cap = none`). -/
