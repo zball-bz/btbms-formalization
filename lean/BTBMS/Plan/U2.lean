@@ -4715,6 +4715,39 @@ theorem moves_violate {E : Forest} (w : AdmCap E) :
     simp [this, List.getElem?_eq_getElem (show w.moves[idx].j < col.length by omega)]
 
 
+theorem moveAddr_snoc (ms : List Move) (m : Move) (b : EntryAddr) :
+    moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (moveAddr ms b) := by
+  simp [moveAddr, moveAddrBody, List.foldl_append]
+
+theorem fwdIdx_j (m : Move) (hij : m.i < m.j) : m.fwdIdx m.j = m.i := by
+  unfold Move.fwdIdx; rw [if_pos le_rfl]; omega
+
+theorem heightPath_mapEntry (g : Nat → Nat) (m : Move) (e : EntryAddr) :
+    (m.mapEntry g e).heightPath = m.mapPath g e.heightPath := by
+  by_cases h : e.col.path = m.col.path ∧ e.col.col = m.col.col
+  · have hc : e.col = m.col := by
+      rcases e with ⟨⟨_, _⟩, _⟩; rcases m with ⟨⟨_, _⟩, _, _⟩; simp only at h ⊢; rw [h.1, h.2]
+    have hme : m.mapEntry g e = ⟨m.col, g e.idx⟩ := by
+      unfold Move.mapEntry; dsimp only
+      rw [h.1, mapPath_off _ _ _ (fun e D he => by have := congrArg List.length he; simp at this)]
+      rw [if_pos (by rw [h.2]), ← hc]
+    rw [hme]
+    simp only [EntryAddr.heightPath]
+    rw [hc]
+    have := mapPath_through g m e.idx []
+    rw [this]
+  · have hme : (m.mapEntry g e).col = ⟨m.mapPath g e.col.path, e.col.col⟩ := mapEntry_col g m e
+    have hidx : (m.mapEntry g e).idx = e.idx := by
+      unfold Move.mapEntry; dsimp only
+      split_ifs with h'
+      · exfalso; apply h
+        have := congrArg ColAddr.path h'; have h2 := congrArg ColAddr.col h'
+        simp only at this h2
+        exact ⟨(mapPath_eq_colPath_iff g m _).1 this, h2⟩
+      · rfl
+    simp only [EntryAddr.heightPath, hme, hidx]
+    exact (mapPath_snoc g m _ _ h).symm
+
 -- provides: U2, D3.1e (requested by U3 R18): address form of L3.1h — each prefix of the repair
 -- is the literal cap of `E` at the relocated column.
 theorem applyMoves_litCap_addr {E : Forest} (hH : CondH E) (w : AdmCap E)
@@ -4727,7 +4760,58 @@ theorem applyMoves_litCap_addr {E : Forest} (hH : CondH E) (w : AdmCap E)
           w.col.path.drop b.heightPath.length, w.col.col⟩ w.cut w.par ∧
       ((E.colAt ⟨(moveAddr (w.moves.take q) b).heightPath ++
           w.col.path.drop b.heightPath.length, w.col.col⟩).getD []).take w.cut =
-        ((E.colAt w.col).getD []).take w.cut := by sorry
+        ((E.colAt w.col).getD []).take w.cut := by
+  intro q
+  induction q with
+  | zero =>
+    intro _
+    have hc : (⟨(moveAddr (w.moves.take 0) b).heightPath ++ w.col.path.drop b.heightPath.length,
+        w.col.col⟩ : ColAddr) = w.col := by
+      simp only [List.take_zero]
+      show (⟨b.heightPath ++ w.col.path.drop b.heightPath.length, w.col.col⟩ : ColAddr) = w.col
+      obtain ⟨S, hS⟩ := hb
+      rw [show w.col.path.drop b.heightPath.length = S by rw [← hS]; simp, hS]
+    rw [hc]
+    exact ⟨w.upward, rfl, rfl⟩
+  | succ q ih =>
+    intro hq
+    obtain ⟨hup, heq, htk⟩ := ih (by omega)
+    set bq := moveAddr (w.moves.take q) b with hbq
+    set S := w.col.path.drop b.heightPath.length
+    set m := w.moves[q]
+    have hm : MoveOK (litCap E ⟨bq.heightPath ++ S, w.col.col⟩ w.cut w.par) m := by
+      have := w.movesValid q (by omega)
+      rw [heq] at this; exact this
+    obtain ⟨rest, hrest, hup', hmove, htk'⟩ := litCap_move_step hH hup hm
+    have htake : w.moves.take (q + 1) = w.moves.take q ++ [m] := (List.take_concat_get' _ _ _).symm
+    -- the move lies at `bq` or at one of its containers
+    have hno := hout q (by omega)
+    simp only at hrest
+    obtain ⟨T, hT⟩ : ∃ T, bq.heightPath = m.col.path ++ (m.col.col, m.j) :: T := by
+      have h1 : bq.heightPath <+: m.col.path ++ (m.col.col, m.j) :: rest := ⟨S, hrest⟩
+      have h2 : m.col.path ++ [(m.col.col, m.j)] <+: m.col.path ++ (m.col.col, m.j) :: rest :=
+        ⟨rest, by simp⟩
+      rcases List.prefix_or_prefix_of_prefix h1 h2 with h | h
+      · obtain ⟨U, hU⟩ := h
+        rcases List.eq_nil_or_concat' U with rfl | ⟨U', u, rfl⟩
+        · exact ⟨[], by simpa using hU⟩
+        · exfalso; apply hno
+          rw [← List.append_assoc] at hU
+          obtain ⟨hU1, -⟩ := List.append_inj' hU rfl
+          exact ⟨U', hU1⟩
+      · obtain ⟨T, hTT⟩ := h; exact ⟨T, by rw [← hTT]; simp⟩
+    have hrestT : rest = T ++ S := by
+      rw [hT] at hrest; simpa using hrest.symm
+    have hij : m.i < m.j := by obtain ⟨_, _, _, _, _, hij, _⟩ := hm; exact hij
+    have hb1 : (moveAddr (w.moves.take (q + 1)) b).heightPath =
+        m.col.path ++ (m.col.col, m.i) :: T := by
+      rw [htake, moveAddr_snoc, heightPath_mapEntry, ← hbq, hT, mapPath_through, fwdIdx_j m hij]
+    have hc1 : (⟨(moveAddr (w.moves.take (q + 1)) b).heightPath ++ S, w.col.col⟩ : ColAddr) =
+        ⟨m.col.path ++ (m.col.col, m.i) :: rest, w.col.col⟩ := by
+      rw [hb1, hrestT]; simp
+    rw [hc1, htake, applyMoves_snoc, heq]
+    exact ⟨hup', hmove, htk'.trans htk⟩
+
 
 theorem num_mapPath (g : Nat → Nat) (m : Move) (π : List (Nat × Nat)) (c b : Nat) :
     ColAddr.num b ⟨m.mapPath g π, c⟩ = ColAddr.num b ⟨π, c⟩ := by
@@ -4751,10 +4835,6 @@ theorem moveAddr_num (ms : List Move) (b : EntryAddr) :
     rw [← moveAddr_eq_body, ih, mapEntry_num]
 
 
-theorem moveAddr_snoc (ms : List Move) (m : Move) (b : EntryAddr) :
-    moveAddr (ms ++ [m]) b = m.mapEntry m.fwdIdx (moveAddr ms b) := by
-  simp [moveAddr, moveAddrBody, List.foldl_append]
-
 theorem repairList_append {K : Forest} {b : EntryAddr} {ms : List Move} {m : Move}
     (h : RepairList K b (ms ++ [m])) :
     RepairList K b ms ∧ RepairStepOK (applyMoves K ms) (moveAddr ms b) m := by
@@ -4765,9 +4845,6 @@ theorem repairList_append {K : Forest} {b : EntryAddr} {ms : List Move} {m : Mov
   · have := h ms.length (by simp)
     rw [List.take_left, List.getElem_append_right (by omega)] at this
     simpa using this
-
-theorem fwdIdx_j (m : Move) (hij : m.i < m.j) : m.fwdIdx m.j = m.i := by
-  unfold Move.fwdIdx; rw [if_pos le_rfl]; omega
 
 theorem heightAt_repairStep {K : Forest} {b : EntryAddr} {m : Move} (h : RepairStepOK K b m) :
     (applyMove K m).heightAt (m.mapEntry m.fwdIdx b) = K.heightAt b := by
