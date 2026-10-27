@@ -1,0 +1,1537 @@
+                       BTBMS and finite Mahlo reflection
+                       An independent, self-contained reconstruction
+
+
+
+
+                                     27 October 2026
+
+
+Contents
+Scope and proof architecture                                            2
+
+1. Syntax, order, and the fundamental operation                         2
+
+2. Finite scan facts                                                    4
+
+3. Closure, literal caps, and cofinality                                6
+
+4. The finite source information needed later                          14
+
+5. A hierarchy with explicit reflection certificates                   16
+
+6. Configurations and their initial realizations                       20
+
+7. Joint source packets                                                22
+
+8. Strict sources and semantic descent                                 25
+
+9. Deriving the full well-order                                        31
+
+10. Supplementary finite checks and their limits                       32
+
+
+
+
+                                             1
+Scope and proof architecture
+We work in ZFC and assume that for every natural number n there is an n-Mahlo cardinal. The
+intended conclusion is that the entire standard BTBMS order is a well-order. No well-foundedness of
+the syntax is used in any induction below.
+There are three different kinds of induction. The finite calculus uses induction on finite syntax, column
+numbers, and finite generation witnesses. The semantic construction uses induction on the finite size
+of a target height. Inside one step of the latter induction, a counterexample is minimized by a pair of
+actual ordinals, not by the BTBMS order. Keeping these inductions separate is essential.
+An occurrence is a node of a particular syntax tree. Different occurrences can have the same printed
+column number. Copying creates new occurrences; changing an address does not change the identity
+of a retained occurrence.
+The proof is organized around four obligations:
+   1. The fundamental operations preserve the finite conditions needed by the scans.
+   2. A smaller standard expression is bounded by an approximant of any larger admissible expression.
+   3. Every seed has a finite ordinal configuration.
+   4. Every fundamental operation transports a configuration to one with smaller maximum.
+The last section derives well-ordering from these four obligations. Bounded computational checks,
+described separately at the end, are not used in the mathematical arguments.
+
+
+1. Syntax, order, and the fundamental operation
+1.1 Finite syntax and visible columns
+A forest is a finite list of columns. A column is a finite list of entries (p, H), where p ∈ N and H is a
+forest. All syntax trees are finite. The empty forest ∅ differs from the one-column forest () whose
+only column is empty.
+Entries are ordered first by p, then by H. Columns and forests are ordered lexicographically, with
+a proper prefix smaller. This defines a computable linear order by recursion on the two finite trees
+being compared. It does not assert that this linear order is well-founded.
+The outer forest starts at column number 0. A height attached to column a starts at a + 1. Within
+each forest successive columns have successive numbers. When a height is entered, its containing
+columns remain visible; earlier columns of its own forest become visible as they are passed. On leaving
+a height its private columns cease to be visible. Thus a number on the visible stack denotes a unique
+occurrence.
+We use the following conditions.
+   • V: an entry in column c has a visible parent p < c.
+   • I: every column of a nonempty height attached to a is nonempty, and its first parent is at least
+     a.
+   • H: the entries of every column are nonincreasing.
+For a host a, the relative key ha (H) replaces every parent in the whole height by
+
+                                               (0, p),
+                                              (
+                                                             p < a,
+                                      p 7−→
+                                               (1, p − a),   p ≥ a.
+
+                                                    2
+The same threshold a is used throughout this height, including all its descendants. The replacement
+is strictly increasing, so it preserves and reflects order.
+Let Tr,d add d to every parent at least r, at every depth. Let Ar,d,ℓ,Z do the same, except that it
+replaces the last column at depth ℓ on the last-column, last-entry route by the forest Z. The inserted
+forest is not shifted. At depth zero the formula is
+
+                                    Ar,d,0,Z (F ) = Tr,d (F [: −1]) ⌢ Z.
+
+At positive depth only the last entry of the last column is followed recursively; other heights are
+shifted without replacement. This specifies the operation even when Z is empty.
+
+1.2 The two branches
+The empty forest has no operation. If E ends in an empty outer column, E[n] deletes that column
+for every n ∈ N.
+Otherwise follow last columns and last entries until the first empty height. The stopping column has
+the form
+                                            Q ⌢ [(r, ∅)].
+Write t for its column number and ℓ for its depth. The forests along the route are E0 = E, . . . , Eℓ ,
+and
+                                                     ℓ
+                                               t=          |Ei | − 1.
+                                                     X
+
+                                                     i=0
+
+The step is special when ℓ > 0, Q is empty, and r is the direct owner of the stopping forest. If its
+containing column is
+                                     P ⌢ [(p, C ⌢ [[(a, ∅)]])],
+replace it by
+                                                                    1, P = ∅,
+                                                                    (
+                                P   ⌢
+                                        [(p, C)]
+                                               n+ϵ
+                                                     ,         ϵ=
+                                                                    0, P ̸= ∅.
+All strict containers are retained and truncated after their active entries.
+In all other cases the step is ordinary. Locate the visible occurrence r in a forest F at depth j
+and index i. Put d = t − r > 0. Scan the root heights, normalized by hr , against the heights of Q,
+normalized by ht . Both cursors start at zero. At keys x, y, advance the source cursor when x ≤ y and
+the query cursor when x ≥ y. Stop when either list ends. Let U be the unconsumed root suffix.
+Starting with Z = ∅, perform the following loop for k = n, n − 1, . . . , 1.
+   • The new head consists of Tr,(k−1)d (Q) followed by the entries of U . For an entry (p, H) of U ,
+     keep its outer parent p and replace its height by Tr,kd (H).
+   • If i < |F | − 1, put Ar,kd,ℓ−j,Z (F [i + 1 :]) after the head.
+   • If i = |F | − 1, require U ̸= ∅. In its last restored height use Ar,kd,ℓ−j−1,Z instead of Tr,kd . The
+     resulting head is the entire new forest.
+   • Assign the resulting forest to Z.
+Finally set E[n] = A0,0,ℓ,Z (E). In particular the ordinary operation at zero deletes the entire stopping
+column, not only its last entry.
+
+
+
+                                                           3
+1.3 Standard expressions and finite words
+Let L0 = (). For m > 0, Lm has an empty outer column followed by a branch of m singleton entries.
+At column i the parent is i − 1; its height contains the next singleton, until the last height is empty.
+Define Std to be the expressions obtainable from these seeds by finitely many defined operations. A
+seed index and a finite list of parameters are a generation witness.
+The compact word of a forest is defined at depth e as follows. An empty column contributes (2e, 0, 0).
+The first entry (p, H) of a nonempty column contributes (2e, 1, p) followed by the word of H. Every
+later entry contributes (2e + 1, 0, p) followed by its height word. There are no closing symbols. Write
+w(E) for the word and µ(E) for its length.
+The word is injective: the depth coordinate identifies whether the next atom enters a child, continues
+a column, or starts a later column. The same observation proves that it preserves order. A child
+atom has larger depth coordinate than either kind of continuation outside that child; a continuation
+entry has larger depth coordinate than a new column. The empty-column and parent comparisons
+are exactly the other clauses of syntax order.
+A safe prefix retains an initial segment of this word and closes its containers. Since the first entry
+includes its column marker, this operation cannot create an empty internal column.
+
+
+2. Finite scan facts
+For a finite word W in a linear order, let ν(W ) be obtained by repeatedly deleting terminal letters
+strictly smaller than the next appended letter. Equal letters are retained. Thus ν(W ) is nonincreasing.
+For the relative height keys K0 , . . . , Km−1 of column c, put
+
+                               Bc (−1) = ∅,       Bc (i) = ν(K0 , . . . , Ki ).
+
+These boundaries strictly increase: an append either extends the reduced word or replaces its first
+removed letter by a larger letter.
+Scan boundary lemma. The final source cursor against a reduced query W is the unique i such
+that
+                                Bc (i − 1) ≤ W < Bc (i),
+or is m when Bc (m − 1) ≤ W . Reducing a query does not change the final source cursor.
+Proof. Deleting a source letter immediately followed by a larger letter does not change whether
+that prefix is exhausted against a nonincreasing query. Any query letter large enough to consume
+the larger one consumes the smaller one first; letters smaller than the larger one cannot exhaust the
+prefix. After reducing both nonincreasing lists, exhaustion is precisely lexicographic comparison, as
+is seen by cancelling equal initial letters and examining the first unequal pair or first ending. This
+proves the boundary formula. Deleting a query letter x immediately followed by a larger y does not
+change the source cursor after this two-letter block: every source letter consumed using x is also
+consumed using y. Repeating the deletion proves the last assertion. □
+From now on, queries indexing g and its paths are reduced (nonincreasing) words. Let gW (c) be the
+parent of the first unconsumed entry, undefined if the scan is exhausted. A gW -ancestor includes the
+starting vertex and the final vertex of its path. Condition V makes every nontrivial edge decrease the
+column number.
+
+
+
+                                                    4
+We add the condition
+                                                                       c − 1, i = 0,
+                                                                   (
+                           A:     pi is a gBc (i−1) -ancestor of
+                                                                       pi−1 , i > 0.
+
+All keys used in this definition are the actual relative keys of the explicit heights. Since every ancestor
+path decreases column numbers, A also implies pi ≤ pi−1 for i > 0. This parent monotonicity remains
+available for intermediate caps before H has been repaired.
+Path nesting lemma. Under V and A, if W ≤ Z, each gZ edge is a gW path with the same
+endpoints.
+Proof. Induct on the source column number, simultaneously in all scopes. If the Z cursor is i, the
+W cursor is some j ≤ i. If j = i there is nothing to prove. Otherwise prepend the edge to pj , and use
+the A paths from pk−1 to pk , for j < k ≤ i. Their queries are Bc (k − 1) > W . All their vertices are
+below c, so the induction hypothesis replaces their edges by gW paths. Their concatenation has the
+required endpoint. □
+An owner return consists of a height H attached to a and an entry (a, J) in a descendant column c.
+Require
+                                     S:     hc (J) < ha (H).
+Let L be the class satisfying V, I, H, A, and S.
+Barrier lemma. If the entry carrying H has index u, and the returning entry has index v, then
+
+                                              Bc (v) < Ba (u).
+
+More generally, at any complete cut of any column, including the cut after its last entry, every read
+of an active containing entry u by the cut’s ancestor path has query strictly below Ba (u).
+Proof. Use the following word observation. If D = ν(P ⌢ [K]), W is nonincreasing, W < D, and
+J < K, then ν(W ⌢ [J]) < D. All letters of D are at least K, so appending J cannot erase the first
+smaller decision or turn a proper prefix of D into a larger word.
+Fix D = Ba (u). Induct on a descendant column number and then on its entry index. A path
+witnessing a return to a either starts at a, or first reaches it by an edge z −→ a with a < z < c.
+In the latter case its query is below the selected boundary in z, which is below D by the induction
+hypothesis. In the former case the query is empty or is the boundary of a preceding return. The new
+height key is below ha (H) by S, so the word observation gives the new boundary below D. For an
+arbitrary cut the identical start/last-edge argument applies; no following entry is needed. □
+For use with changed heights, keys can be assigned independently of their explicit children. On the
+terminal containment route replace any selected last-entry key by a formal largest key ⊤, keeping its
+children. No entry query includes a changed last key.
+Capping lemma. On inputs satisfying V and S, A is equivalent to A in each such independently
+capped system. Under V, I, A, S every operation is defined.
+Proof. In the forward direction the barrier puts a query at or before the active entry. Raising that
+still-unconsumed key preserves its cursor and response. For the reverse direction induct on visible
+column number and entry index. On a capped path, a containing ancestor is reached from the start or
+through an edge at a smaller column. Those earlier entry assertions have already been uncapped. The
+proof of the barrier, using those assertions and S, puts this query below the actual active boundary.
+Its edge can therefore be uncapped too. This closes the induction.
+
+                                                      5
+Only the owner-root ordinary branch can be undefined. At its terminal return to r, with query Z,
+the barrier gives
+                                   Z < ν(Z ⌢ [∅]) < Br (u)
+for the active root entry u. The root scan therefore cannot be exhausted. □
+We record exact trace facts, which are stronger than equality of the returned parent.
+  1. A common strictly increasing map on source and query keys preserves every cursor pair.
+  2. If a nonempty source is not exhausted, replacing its last key by ⊤ preserves every cursor pair.
+  3. If two sources agree before entry u, and their keys at u have identical comparison signs against
+     every query key, then a run ending at or before u has exactly the same trace in both sources.
+For (1), the comparison sign determines the next pair of cursors. For (2), once the last source entry
+is reached, every remaining query key must be strictly smaller, since otherwise that entry would
+be consumed. For (3), the two runs have the same signs up to the first possible move past u; the
+stipulated run never makes that move. These arguments also cover the empty query.
+One way to verify the sign hypothesis in (3) is useful below. If two height words agree for more atoms
+than the length of a query height, their comparisons with that query height have the same strict sign.
+Their first disagreement is beyond the query’s possible decision. Owner normalization changes neither
+atom positions nor word lengths.
+
+
+3. Closure, literal caps, and cofinality
+3.1 A profile used only for finite repairs
+For an empty height set π(∅) = (−1, 0). For a nonempty height follow first-column, first-entry
+heights while they are nonempty. If there are d descents and the last first column begins with m
+maximal-parent entries, put π(H) = (d, m). Those m heights are empty by H. Require
+
+                                        P:       π(J) < π(H)
+
+for each owner return. Profiles are ordered lexicographically.
+A literal cap at a column and cut k keeps the first k entries, appends (p, ∅), and removes all later
+context. It is upward if it increases the next parent or appends at that column’s end.
+Profile and repair lemma. P implies S. Moreover, an upward cap of a V, I, H, P expression that
+satisfies V and I satisfies S. If it also has decorated A, finitely many same-parent moves turn it into
+an L cap with the same final parent and unchanged internal cap.
+Proof. The first entry of the first column of a height must point to its direct owner. Thus the
+first-entry branch, after normalization, is a pure tower. Different profiles decide key comparison at
+the first differing tower depth or terminal multiplicity; hence P implies S.
+For nonempty J, the greatest pointer-valid, I-legal upward literal cap is obtained by retaining this
+branch and appending one more maximal-parent empty entry to its terminal run. Call it Γ(J). No
+earlier parent can be increased, since it is already maximal. A change away from this branch loses
+before the indicated append. Consequently
+
+                              π(J) < π(H)     =⇒       hc (Γ(J)) ≤ ha (H).
+
+
+
+                                                   6
+In a changed owner return, the lower cap is at most Γ(J) whereas its containing height has increased.
+Therefore
+                               hc (J ′ ) ≤ hc (Γ(J)) ≤ ha (H) < ha (H ′ ).
+Unchanged lower heights and newly empty returns satisfy S as well. Capping can now be undone.
+Suppose a containing column violates H because its active last height C is larger than an earlier
+height with the same parent p. Move the entry carrying C from j to the first i with Hi < C, deleting
+entries i, . . . , j − 1. The old column has Hj ≤ Hi < C. The elementary interval fact
+
+                C caps X,     X≤Y <C             =⇒      C caps Y at the same internal cut
+
+follows by inspecting the first differing atom. It shows that the moved subtree is the same literal cap.
+In the decorated system the changed block is replaced by
+
+                       P ⌢ [(p, Ki ), . . . , (p, Kj−1 ), (p, ⊤)]   7−→   P ⌢ [(p, ⊤)].
+
+Every finite query has the same returned parent. The new outer entry’s own ancestor test is the
+old test of entry i, since it has the same parent p and preceding prefix. Earlier retained tests are
+protected by the barrier. Tests inside the moved height see the same external responses. Profile
+safety permits uncapping again. The earliest choice of i repairs this column; an outer move carries
+the already repaired internal cap unchanged. There are finitely many containing columns. □
+
+3.2 Structural closure
+Closure theorem. The class L is closed under safe prefixes and all fundamental operations. The
+operations preserve P when present. Every standard expression lies in L and satisfies P. Every defined
+operation on a nonempty V, I expression strictly decreases it.
+Proof: safe prefixes. We first isolate a word fact. If X < Y , a decrease of X first changes position
+α, and a decrease of Y first changes position β > α, then the new X is still smaller. Also, changing
+Y only after position |X| leaves X < Y unchanged. Both statements follow at the first comparison
+decision and hold under a common order embedding.
+In a shortened owner-return pair, the common global cut has position α in the lower height and δ + α
+in its proper container, where δ > 0. The word fact preserves S. If only the upper height is shortened,
+the complete lower occurrence ends before the cut, again giving the required length inequality. V, I,
+and H persist directly. Capping each affected active key before truncation preserves all retained A
+tests by the barrier; the established S permits uncapping afterward.
+Profiles cannot increase under a decrease of height. If an upper profile changes at a safe cut, its
+first-entry branch reaches the cut. All preceding forests and columns on that branch are singletons,
+since otherwise the final cut would occur after the complete branch. The remaining height is a pure
+tower ending in a shorter maximal-parent run. A positive-depth return loses a tower level, and a
+depth-zero return has empty height. This proves P.
+Proof: ordinary occurrence classes. Fix a positive ordinary step, put d = t − r, sj = r + jd, and
+τj = Tr,jd . Every output occurrence belongs to exactly one of the following classes:
+  1. original retained material, at phase zero;
+  2. a phase-j copy of a body column r < x < t, including all its closed side heights;
+  3. the query part of head sj , copied with phase j − 1;
+
+
+                                                        7
+   4. the root remainder in that head, whose outer parents are unchanged and whose heights have
+      phase j.
+This is an induction through the defining loop: the only non-pure copy follows its specified continuation
+hole; all its other children are pure shifts. The assertion therefore includes closed side heights whose
+printed numbers exceed t.
+For a key normalized at x ≥ r, define κj by adding jd to a false absolute field (0, p) exactly when
+p ≥ r, fixing the other fields. Then
+
+                              hx+jd (τj H) = κj (hx (H)),     κi κj = κi+j .
+
+These maps are order embeddings, commute with ν, and fix keys normalized at or below r.
+First-parent edges form a preorder forest: A makes each new column attach to an ancestor of its
+predecessor, so after leaving the subtree of r the visible predecessor chain cannot return to it. Since
+the stopping edge at the complete query is to r, path nesting shows that every body column lies in
+that subtree. It is nonempty and has first parent at least r.
+V now follows from matching shifts. The same observation proves I for copied body forests placed
+inside a new height. A nonempty query keeps its first-parent bound. For an empty internal query,
+the terminal parent r is strictly above the direct owner a, since equality would be special. The entire
+earlier root is restored and has first parent at least a; this verifies the remaining I case.
+Query parents are at least r, while restored outer parents are below r. Thus their junction respects
+H. Elsewhere increasing parent maps preserve H. A changed continuation has its first difference at
+the old terminal: its last parent r is replaced by a restored parent below r, or its entry or column
+ends. Later repetitions are after this decision. Thus every changed height is smaller than its complete
+prototype, proving H at active boundaries and strict decrease of the entire expression.
+Proof: all ordinary owner returns. A pure-copy upper height contains only copies of its old pairs.
+For a continuation upper height, distinguish its owner.
+If the owner is a fixed a < r, the entire copied interval lies in that same old height. A parent equals a
+after shifting exactly when it did before. Every return therefore has an old origin in that height.
+Otherwise the owner is a + jd with r ≤ a < t. Later body and restored-height phases k ≥ j + 1 have
+parents either below r or at least r + kd > a + jd. Restored outer parents are below r. In a later
+query phase, equality with this owner requires
+
+                                        p + (k − 1)d = a + jd.
+
+For k ≥ j + 2 this would give p < r, contradicting that it was shifted. Only the first following query
+can return; its phase is j and its origin is the closed old query inside the same upper height. The list
+of returns is therefore exhaustive.
+Transport an old pair by the common κj . For a fixed upper owner use the lower phase’s map; it fixes
+both upper keys. When both heights change, the lower first-change position precedes the upper by its
+positive containment offset. When only the upper changes, the whole lower occurrence ends before
+that change. The word fact proves S in every listed case. This argument uses no output A assertion.
+If an upper profile decreases while a new head remains, its first-entry branch reaches the old terminal.
+All intervening containers are singletons. The stopping column must consist of m ≥ 2 maximal-parent
+empty entries, with r = t − 1 and d = 1; otherwise its leading profile would be unchanged, or the
+
+
+                                                    8
+step would be special. Its profile changes from (h, m) to (h, m − 1). Owners before r − 1 have only
+their first chain return, which loses a level. The owner r − 1 sees restored returns of depth zero or
+empty height. The owner r and its copies see only the empty entries of the next query. This proves
+P; continuation heights with no head are safe prefixes.
+Proof: ordinary ancestor tests. Independently cap the continuation-dependent last keys in source
+and output. Let the assigned root keys be Ki , boundaries Bi , complete query Z, root cursor c, and
+m = |Q|. Capping preserves that actual cursor when the root is an owner. If c is not exhausted, then
+
+                                Bc−1 ≤ Z < Bc ,         ν(Z ⌢ [Kc ]) = Bc .
+
+To verify the second equality, write Bc = P ⌢ [Kc ]. The part removed from Bc−1 lies below Kc . Any
+reduced word between these two boundaries has prefix P and then letters below Kc ; appending Kc
+removes exactly that remainder. Iterating restores every later boundary.
+At head j, put Zj = κj−1 Z. A query V < Zj stops inside its query prefix. If V ≥ Zj and its old-root
+cursor is γ, its head cursor is
+                                          m + γ − c.
+This includes exhaustion. The root keys are fixed by every κj .
+For V = κj W , the high case κ1 W ≥ Z gives the old root response at W . In the low case, the head’s
+edge is a copy of the terminal edge at κ1 W < Z. Path nesting supplies the terminal-to-root path.
+Its proper vertices lie between r and t, so their copies lead to the previous head. Repeat; the head
+index decreases each time. The process reaches a high exit or the original root, and then the fixed old
+prefix. Exhaustion is preserved as well.
+It remains to check the starts and endpoints of each A test. Retained original entries have the same
+assigned fields. Body entries and entries in restored heights copy their source paths, using the head
+substitution at the root. An entry inside a query height can read its head only below that query
+entry’s complete boundary, by the old barrier; it therefore uses the pure query part, after which the
+same substitution applies. Query-prefix entries copy the old terminal tests. At the first restored entry,
+the old terminal’s last-entry test reaches r, and the next root edge supplies exactly its restored parent.
+At later restored entries the reset boundary is precisely the old root boundary, with both endpoints
+below r. Empty parts have no tests. These are the four occurrence classes already proved exhaustive.
+Decorated A follows, and S permits uncapping.
+Proof: special steps and seeds. In a special step each replacement height C is smaller than
+C ⌢ [[(a, ∅)]]. The equal new entries and their separate height scopes give V, I, H and strict decrease.
+Returns cannot cross sibling scopes. The same containment-offset word argument gives S. A changed
+first-entry profile must have singleton containers, empty P , and empty C; it is a pure tower shortened
+by one level and ending in n + 1 empty entries. Its returns lose one level or have empty height.
+Otherwise the profile is unchanged or the output is a safe prefix.
+Cap the changed final entry and its active ancestors. Its old assigned suffix is (p, ⊤); the new suffix
+consists of parent-p entries ending in (p, ⊤). Every finite query returns the same parent. The first
+new entry uses the old test; later ones use the reflexive start p. Internal copies see the same external
+responses. Uncapping gives A. Finally the seeds have direct-owner parents, singleton columns, reflexive
+ancestor tests, and strictly shorter return profiles. Induction on generation proves the theorem. □
+
+
+
+
+                                                    9
+3.3 Kernels and transfer of successful caps
+For an ordinary input H, let FH (X) be one copy of the expansion with its rightmost continuation
+hole filled by Tr,t−r (X). Let CH be the unchanged terminal context. Then
+
+                   H[q] = CH (FHq (∅)),       w(FH (X)) = P ⌢ Σ(w(X)),            |P | > 0,
+
+where Σ is a fixed letterwise order embedding (depth translation and parent shift).
+Word criterion. FH (Y ) > Y holds exactly when some iterate covers Y . Success is downward closed
+in Y . In the successful case every q with q|P | > |w(Y )| gives a strict cover. A full cut of a one-column
+local target succeeds.
+Proof. The iterates are the proper-prefix increasing words P Σ(P ) · · · Σq−1 (P ). If F (Y ) < Y < X,
+let i, j be the first decisions for these two inequalities. The first change from F (Y ) to F (X) is at
+|P | + j > j, so the comparison at min(i, j) still gives F (X) < X. Failure is upward closed. An
+iterate covering Y therefore implies success. Conversely compare Y with the infinite concatenation of
+these blocks. If its first disagreement were a larger letter, F (Y ) would still read the corresponding
+earlier agreeing letter there and would be smaller than Y . Otherwise a sufficiently long iterate strictly
+exceeds Y . Equality F (Y ) = Y is impossible by length. At a full one-column cut the first output
+column extends the complete target column. □
+We give an exact filling identity to avoid assumptions about rescanning. For a cap K ending at x
+with terminal prefix Q, root ρ and frozen actual cursor c, let fill(K, Y ) replace its whole terminal
+column by the complete suffix Y . Let rtρ,c (D) be the root forest suffix with entries before c deleted
+from its first column; retain that column even if empty. Let Q ⋄ X prepend Q to the first column of
+nonempty X. Both operation branches give
+
+                                  FK (Y ) = Q ⋄ Tρ,x−ρ rtρ,c (fill(K, Y )).                             (1)
+
+In the owner-root case the insertion is inside its last restored height. The inserted Y is shifted exactly
+once. No scan of the filled object occurs.
+When Q ̸= ∅, delete w([Q]) from both sides of a comparison beginning with Q; when Q is empty
+delete nothing. Write this deletion as ∂Q . Let e0 be ordinary forest encoding; let e1 encode the entries
+of the first column as continuation entries, omitting its marker when that column is empty. Then
+
+                                                                        0,   Q = ∅,
+                                                                    (
+                          ∂Q w(Q ⋄ X) = eϵ(Q) (X),         ϵ(Q) =                                       (2)
+                                                                        1,   Q ̸= ∅.
+
+Different prefixes must be deleted separately. Equal values of ϵ permit comparison of the resulting
+encodings.
+Cap completion lemma. Let B ∈ L satisfy P, and suppose cofinality already holds with target
+B. An ordinary upward cap K of B with V, I and decorated A has a defined successful kernel at its
+complete old local suffix.
+Proof. Profile safety and repair give an L cap K ′ . Cofinality and the word criterion give success there.
+Reverse one repair from entry i back to j > i in column b. Let Yi , Yj be the complete old suffixes at
+the unchanged internal cap. The interval fact gives common retained prefixes; since Hi ≥ Hj , it gives
+Yi ≥ Yj .
+If b < ρ, the root and hole are inside the unchanged moved subtree, so the kernels are identical and
+downward success applies. If b = ρ, all intervening old heights and the active cap have the same
+
+                                                     10
+strict sign against every query height: their common prefix contains that whole query height and its
+preceding entry atom. A query consuming entry i would consequently consume all intervening entries
+and the final active cap against that same key. This would exhaust the owner root. Hence the actual
+cursor is at most i, and exact trace fact (3) identifies both scans. If b > ρ, the root is unchanged, or
+only an owner’s last active key changes. Both scans leave that key unconsumed, and exact trace fact
+(2) identifies them after capping.
+In the latter two cases, completing Yi and Yj gives two safe truncations of B, the second properly
+extending the first. Root restriction and deletion of the common cursor prefix preserve this extension;
+in the case b = ρ, the bound c ≤ i prevents deletion of its deciding part. Identity (1), with the same
+Q, x, ρ, c, gives
+                                     FK (Yj ) > FK ′ (Yi ) > Yi ≥ Yj .
+Reverse the finite list of repairs. □
+Delayed-change lemma. Suppose w(FK (Y )) = P Σ(w(Y )) > w(Y ). Put N = µ(Y ) and p = |P | ≥ 1.
+Delete a common prefix of length a from this comparison, obtaining L > R. If R′ < R and L′ agrees
+with L at every position strictly before p + N − 1 − a, including existence of those letters, then L′ > R′ .
+Indeed p + N − 1 − a ≥ N − a = |R|. Thus L′ preserves every possible decision against R, so
+L′ ≥ R > R′ . The distinguished atom in applications is the inserted final atom of Y , at that displayed
+position. This verifies agreement lengths, not only parent-shift formulas.
+
+3.4 Cofinality, with the cursor and cancellation checks
+Cofinality theorem. If B ∈ Std, E ∈ L, and B < E, some n satisfies B ≤ E[n] < E. If E ends in a
+nonempty outer column, one can choose
+
+                                   1 ≤ n ≤ µ(B) + 1,        B < E[n].
+
+Proof. An empty last column is the least possible column, so deletion already covers B. In the
+other case, E[1] > B suffices, and E[1] = B is handled by the next, strictly larger approximant. If
+E[1] < B < E and the step is ordinary, E[1] retains every atom before the final atom of E. Hence
+E is an upward literal cap of B. Kernel success at the complete local suffix then gives the claimed
+bound by the word criterion.
+In a special step there is no I-legal height strictly between C and C ⌢ [[(a, ∅)]], since the added
+column is the least permitted internal column. The target must therefore have height C at the first
+changed entry. H bounds each of its remaining entries by (p, C). More repetitions than their finite
+number give a strict cover within the displayed bound.
+It remains to show kernel success for ordinary L caps of standard targets. Induct on a generation
+witness. A seed permits only full one-column upward cuts. A cap strictly before the end of a safe
+prefix of an already covered target also exceeds that target; a cap at its end is full. For a special
+output P ⌢ [(p, C)]m , a cap inside the first copy of C exceeds the old target: its increase at an existing
+column precedes the appended least column. A cap in a later copy would exceed the preceding equal
+height and violate H. A nonfull cut between equal entries would need a parent larger than p and also
+violate H. Earlier and full containing cuts have already been handled.
+Here is the ordinary induction step. Write Aj = A[j] for an ordinary operation with period d = t − r,
+and let the new target be An , n > 0. A tested cap H > An exceeding A is covered by the induction
+hypothesis. Thus assume An < H ≤ A. Nonfull cuts in unchanged material exceed A, and full
+
+
+                                                    11
+containing cuts are automatic. Every remaining cut is in a body column, a closed copied height, or a
+head. The occurrence classification in the closure proof exhausts these possibilities, including the
+final truncated copy.
+Write si = r + id, τi = Tr,id , and let ρ be the selected new root. We first justify projecting a new cut
+to an old cap. Undo the phase shift on its retained prefix. A proper current root ρ > si projects to
+ρ − id, and a current head root ρ = si projects to r. If the selected new root is the original r, stop its
+successful path at the current head si before projecting to r: from a current body, an edge either stays
+in the current phase or exits through that head or below r, and an exit below r cannot later reach r.
+The case r < ρ < si will be handled directly and requires no old cap. For the remaining endpoints
+below r, fix a phase i, and express its reduced query as V = κi W . At head h ≤ i put Wh = κi−h+1 W ,
+so V = κh−1 Wh . If Wh ≥ Z, the head’s restored suffix has exactly the old root cursor at W : all root
+keys are fixed by κ. If Wh < Z, path nesting makes its old terminal path reach r before any smaller
+column, so its copy reaches head h − 1. Deleting these finitely many detours gives precisely the old
+continuation to any endpoint below r.
+If the cut truncates a restored origin u ≥ c, use the old root through u with that key capped. Its
+cursor at Z is still c. A high exit is its exact old response. A low exit has W ≤ Wi < Z; at such
+queries both the full and truncated root have cursor at most c ≤ u and the same response. The
+later high exit has that response too, since both lists are κ-fixed. If the target is in a copied query
+height, its first head is the literal old truncated terminal field in phase i − 1, so that first edge projects
+directly; the same detour deletion applies afterward.
+Cap all strict active ancestors while making this argument. Retained tests are protected by the old
+complete-cut barriers. Thus the projected old cap K has V, I and decorated A. It is upward by the
+same parent increase or append. It is ordinary: a singleton direct-owner column at cut zero is least
+and cannot be an upward cap. The cap completion lemma gives its definedness and success. No
+output ancestor assertion has been assumed in obtaining this cap.
+Now compare the actual kernels. Let ρ be the new selected root and si = r + id.
+   • If ρ > si , root, scan and hole are pure phase-i copies, and
+                                              FH (τi X) = τi FK (X).
+     The complete new body suffix is τi W with W ≤ Y , where Y is its old complete suffix. Downward
+     success proves the claim.
+   • If ρ = si , a high scan has actual head cursor m + γ − c, where γ is the old actual root cursor. To
+     pass from assigned to actual keys, both containing-owner scans are first checked nonexhausting
+     and then capped using exact trace fact (2). The entire query part is consumed, and the
+     remaining root suffix, body and hole give the same conjugacy. A low scan restores a parent
+     at least r, whereas the next target parent is below r or absent: a cap at si cannot increase a
+     current-image parent at least si . It therefore wins at once.
+   • If r < ρ < si , a path reaching this previous-phase root must leave the current phase through a
+     low head. A high exit would fall below r. In comparisons of the fixed κi W with κh Z, h < i,
+     moving false fields of the latter lie in [sh , sh+1 ), below si , whereas moving false fields of the
+     former are at least si . Fixed false fields lie below r, and true fields follow all false fields. Thus
+     the sign is independent of h, unless decided by identical fixed fields or a common ending, which
+     also gives the same sign. Every reached positive head is low. At a proper previous root its next
+     parent on the terminal-to-root path is at least r; the same holds at a previous head. Capping
+     an unconsumed owner key does not change this actual response. It again beats the next target
+     parent below r or extends its ending.
+
+                                                     12
+For completeness the fixed-root cases ρ ≤ r require more than this response argument. If ρ < r,
+the old and new source fields agree except possibly at a containing owner’s last active key; both are
+nonexhausting there. Cap them, use their κi -fixed keys, and apply exact trace facts (2) and (1). Their
+actual source cursors agree. For ρ = r and a cut inside a restored origin u, the old projected key and
+the complete original key agree through more atoms than each terminal query height. The old owner
+scan ends at or before u. Exact trace fact (3) therefore identifies it with the full old-root scan. A
+possibly changed last active key in the new root is handled by fact (2). Direct body and query-height
+cuts need only this last-key argument. Let γ be the resulting common cursor.
+The elementary shift identity is
+                                          Tρ,x+id−ρ = τi Tρ,x−ρ .                                    (3)
+Below ρ both sides fix a parent. At or above ρ, the first image under the right side is at least x ≥ r,
+so the second shift adds id. Let θi undo τi on its image. We apply it only to remainders after their
+actual prefixes have been deleted.
+For a closed side target let YH = τi Y and QH = τi QK . Completing the old cut is a safe prefix of
+A ending before its terminal; completing the new cut extends this prefix into a later copy. Root
+restriction and deletion before γ preserve this proper extension, since an owner cursor retains the
+active origin. Both cancellations have the same ϵ(Q). Equations (1)–(3) give
+
+                  θi ∂QH w(FH (YH )) > ∂QK w(FK (Y )) > ∂QK w(Y ) = θi ∂QH w(YH ).
+
+This proves success in this case without the delayed-change lemma.
+For a direct body target, let Yx (D) be the entire suffix beginning at the old column x. A cut retaining
+the original terminal entry would be full at a one-column local target; exclude it. Then
+
+                           YK = Yx (A),    YH = τi Yx (An−i ),      QH = τi QK ,
+
+                                fill(K, YK ) = A,        fill(H, YH ) = An .
+Indeed the whole suffix restores its forest, and every strict container is its last-entry, last-column
+container. Induction upward restores the whole expression. The loop places exactly n − i remaining
+periods in the phase-i hole, including the case zero.
+After separate cancellation and undoing the phase, the four remainders are
+
+                        LK = eϵ (Tρ,x−ρ rtρ,γ (A)),      RK = ∂QK w(Yx (A)),
+                                                                                                     (4)
+                        LH = eϵ (Tρ,x−ρ rtρ,γ (An )), RH = ∂QK w(Yx (An−i )).
+
+Let w(FK (YK )) = P Σ(w(YK )), p = |P |, N = µ(YK ) and a = |w([QK ])|, with a = 0 for empty QK .
+The original terminal survives rooting: an earlier root retains its following forest and an owner cursor
+retains its active height. Its old position in LK is p + N − 1 − a ≥ |RK |. Since n > 0, A and An
+agree before this terminal; (4) preserves that agreement. On the right the retained prefix excludes
+the terminal, so strict decrease gives RH < RK , also when n − i = 0. The delayed-change lemma
+gives LH > RH . Restore the phase and the new prefix.
+It remains to examine cuts in head i. Put m = |Q|.
+A cut k < m, or k = m with closing parent ρ > si−1 , is a phase-(i − 1) cap at the old terminal. Its
+root and kernel are pure copies. Undoing that phase leaves a target beginning with Q and then a
+parent below r, or ending after Q; it is smaller than the old terminal, so downward success applies.
+
+
+                                                    13
+At k = m, ρ = si−1 , the cap retains i − 1 complete periods and the unexpanded terminal. Its preceding
+active root height is therefore complete. The actual reset scan leaves exactly U , and the defining loop
+gives
+                                    H[q] = A[i − 1 + q]      (q ≥ 0).
+Taking q = n − i + 1 reaches the target, hence yields kernel success. No smaller closing parent can be
+an upward cap: the actual complete-cut path first reaches si−1 and then returns the first restored
+parent pc , or is exhausted. The barrier permits capping without changing this response. Every smaller
+reachable endpoint is at most pc , whereas upwardness requires one greater than pc .
+Finally take k = m + v, 1 ≤ v ≤ |U |, and put w = c + v. A full owner-root head is a full one-column
+cut, already settled. In all remaining cases the retained restored heights are closed. Their actual keys
+are Kc , . . . , Kw−1 , and reset gives the query boundary Bw−1 . H forces the new parent ρ < r. Cap the
+old root after w entries by this same parent. Its final test has exactly the same reduced query and
+prefix below r; cap completion applies. The actual selected-root cursors agree: identical closed sources
+use query reduction; containing owners are first capped using the exact nonexhaustion check, and
+then use query reduction. Only the final source cursors, not all raw query cursors, are identified here.
+Write the old root column as R and its following forest as D. The old prefix is QK = R[: w]; the new
+one is the phase-(i − 1) query followed by the first v restored entries. Both are nonempty but can
+have different lengths. Their complete fillings are A, An . Removing these prefixes separately and
+undoing phase i gives
+
+                          LK = e1 (Tρ,r−ρ rtρ,γ (A)),   RK = e1 (rtr,w (A)),
+                                                                                                       (5)
+                          LH = e1 (Tρ,r−ρ rtρ,γ (An )), RH = e1 (rtr,w (An−i )).
+
+The mixed query prefix has been deleted before the inverse phase map is used. The original terminal
+survives: for an earlier root it lies in D, and for an owner root w < |R| leaves its active height. With
+a = |w([R[: w]])|, its left position is again p + N − 1 − a ≥ |RK |. The left words agree before it, while
+the right word strictly decreases. The delayed-change lemma proves success. Empty U gives no cuts
+in this last group.
+All cuts and selected-root positions have now been considered. This proves the ordinary induction
+step and hence the theorem. □
+
+
+4. The finite source information needed later
+A target is always a marked height B in one fixed original standard expression E. It need not itself
+be a standard expression in isolation. A current source is a marked height A′ in an admissible context
+truncated after that height. We admit precisely the following records.
+   1. A scan record names an ordinary input H, either E or an admissible upward cap of E, its
+      complete terminal query, its actual source index, and two closed retained heights A, B with
+      hr (A) > ht (B). The equation gZ (t) = r is asserted in H, not in E when these differ.
+   2. A descendant record retains this anchor, source entry, and pre-entry context, but replaces its
+      source height by an admissible A′ ≤ A.
+   3. A repair record has source and target at the same printed host. Outside the source height,
+      its context is obtained from the original target context by an explicit finite list of same-parent
+      moves and removal of later continuation. Each move records the old and new address, common
+      parent, retained later entry, and deleted closed blocks.
+
+
+
+                                                   14
+These are finite syntax records. They do not assume that any future target can be realized.
+First-difference lemma. If a recorded source is strictly larger than B in relative order, a first
+parent-field difference or an additional source entry at an existing target column supplies an ordinary
+upward cap of E with V, I, A, S. Its closing parent is on the target’s actual complete-cut chain.
+Proof. In a scan record the common relative prefix shifts internal numbers by t − r and fixes parents
+below r. A target false parent between r and t cannot occur in that common prefix: it would already
+be a relative difference. Thus common internal fields agree after the corresponding κ map; cap active
+keys while comparing the paths. A source endpoint at least r maps directly to its shifted endpoint.
+An exit below r sees the same fixed old fields. If the paths first reach r, t, the target internal-cut
+barrier puts its query below the boundary of its complete query member, hence below Z. Path nesting
+in H connects t to r at that query. The unchanged closed-prefix paths transfer it to E, and the fixed
+old continuation supplies the endpoint.
+For a descendant record, first raise the assigned external active keys to their anchor values and restore
+unread later entries. These keys increase because the current height and truncated context decreased.
+Current cut barriers preserve the path until it reaches the source host or exits below it. Only there
+identify the old external fields; the preceding argument then applies. No preservation of the anchor’s
+entire external query cursor is asserted.
+For a repair record, each capped outer move replaces a parent-p block ending in (p, ⊤) by (p, ⊤).
+Every external query has the same returned parent. Common internal fields and these responses
+transfer the path directly. Profile safety uncaps the target.
+The transferred parent increases the target parent or appends at that column. A changed first parent
+increases an I-legal one. A positive cut has at least two entries; a zero cut has parent strictly greater
+than the direct owner. Hence the cap is ordinary. Retained tests use the old cut barriers, and the
+new closing test uses the transferred complete-cut path. Profile safety gives S. □
+Source reduction lemma. These records have the following closure properties.
+   • Safe prefixes and actual operations confined to the marked source preserve its record type and
+     admissibility.
+   • Repair of a first-difference cap takes place outside its marked internal height. If the final old
+     target at its new address is Bgood , then Bgood ≥ B. Every positive output of the repaired cap
+     strictly above E has marked height B ′ > Bgood ≥ B and a repair record for the original B.
+   • If a proper child forest of the target ends first, a safe source truncation followed by one actual
+     operation gives a smaller source height still strictly above B.
+Proof. The first claim follows from structural closure; no prefix or external stack before the marked
+entry changes.
+For the second, the internal cap is a reindexed safe prefix of the current source, so H already holds
+internally. Repairs can move only its containing entry or a strict outer container. At one move let
+the old heights be Xj ≤ Xi < C, and let the marked old heights at their common internal address
+be B (q) , B (q+1) . The interval fact identifies the prefixes before that address. If B (q) > B (q+1) , their
+first differing atom would give Xj > Xi before either outer continuation is read. This also holds
+for proper-prefix comparisons, since an internal continuation atom has greater depth than an outer
+continuation atom. Thus
+                                       B = B (0) ≤ · · · ≤ B (m) = Bgood .                                 (6)
+The same internal cap is unchanged throughout. Every terminal-query height J is a complete earlier
+
+
+                                                     15
+child of this cap already present in the original B. If N counts internal ordinary and entry vertices,
+then
+                                          N (J) + 2 ≤ N (B),                                       (7)
+because its containing column and entry contribute two further vertices. This bound uses B, not
+Bgood .
+The actual operation replaces the terminal hole inside the marked height and retains that original
+marked entry. Earlier syntax agrees with E and later outer continuation is truncated. A resulting
+B ′ < Bgood would put the whole output below E; equality would give a safe prefix of E. An output
+above E must therefore have the stated strict inequality. Cofinality supplies a positive such output.
+For the third claim, truncate the source through the first entry of its extra column and clear that
+entry’s height. Let its parent be p and its direct child owner a. I gives p ≥ a. If p > a, the operation
+has empty query and an earlier root in that child forest; a positive output keeps the whole target
+child forest and adds a nonempty forest. If p = a, the special operation repeats the entry whose
+shortened height is exactly that target child forest. H bounds all following target entries by this entry,
+so sufficiently many repetitions decide a strict comparison. The direct child owner is internal to the
+marked source because this is a proper child difference. Thus the marked outer source entry remains,
+and closure and strict decrease give
+
+                                          ht (B) < hr (A′′ ) < hr (A′ ).
+
+If the whole target height ends first, it is already a proper source prefix and no such operation is
+needed. These cases exhaust first differences of finite syntax. □
+
+
+5. A hierarchy with explicit reflection certificates
+5.1 Construction and canonical hulls
+All coordinates below are limit ordinals greater than ω; abbreviate this by Lim(a). We repeatedly
+use the elementary fact
+                                v < u, Lim(u) =⇒ v + ω ≤ u.                                   (8)
+
+Use Kuratowski pairs and right-associated tuples. Fix the following finite family B of operations;
+r[a] = {z : ⟨a, z⟩ ∈ r} denotes a fibre:
+
+                                                                      dom(x),      x−1 ,
+                                                             [
+                           {x, y},   x \ y,     x × y,           x,
+                                {⟨u, v⟩ ∈ x2 : u ∈ v},         {⟨u, u⟩ : u ∈ x},
+                     {⟨u, z, v⟩ : z ∈ x, ⟨u, v⟩ ∈ y},        {⟨u, v, z⟩ : z ∈ x, ⟨u, v⟩ ∈ y},
+                        {x[z] : z ∈ y},      x[y],   ⟨x, y⟩,      ⟨x, y, z⟩,   {x, ⟨y, z⟩}.
+
+Each has a bounded graph: quantify over the input sets, the proposed value and their members, and
+check its defining equality in both directions.
+For transitive X, let X + = X ∪ {X} and define
+
+                           S(X) = X + ∪ {G(⃗x) : G ∈ B, ⃗x ∈ (X + )arity(G) }.
+
+This is transitive. Members of set-operation outputs lie in X + . Members of relation outputs are the
+listed pair or triple outputs. Members of a fibre-family output are listed fibre outputs. The supports
+
+                                                        16
+of pairs and triples are the listed pair and wrapper outputs. These cover every generator. The graph
+of S is bounded by its input and asserted output.
+Define
+                           J0 = ∅,    Jξ+1 = S(Jξ ),        Jλ =              (λ limit).
+                                                                   [
+                                                                         Jξ
+                                                                   ξ<λ
+
+At a nonzero limit, Jλ is transitive and B-closed.
+We spell out the coding facts needed for reflection. In a transitive closed level containing a whole set
+T , the displayed operations construct the truth table of each fixed formula over (T, ∈). Products give
+assignment sets; the restricted membership relation and diagonal give atomic tables; difference gives
+complements; insertion places variables in their required tuple positions; converse and domain give
+projections. An existential quantifier is a projection of its subformula table, and a universal quantifier
+is complement followed by projection and complement. Induction on the formula constructs all tables
+by finitely many operations.
+There is one bounded verifier for a supplied record of such tables, even when its finite formula code
+varies. The record includes the parse tree, powers of T , and every subformula table. Check each
+product and table equality in both directions, bound every assignment quantifier by the recorded
+assignment set, and require the distinguished assignment to be in the root table. Induction on the
+parse tree proves correctness and uniqueness. For a bounded formula and transitive T containing its
+parameters, its truth over T is absolute to the universe.
+The construction of S(T ) inside a larger closed level does not require collecting generator values by an
+unproved closure principle. For transitive T , finite truth-table operations form the incidence relations
+for unordered pairs and fibres. Their fibre families give
+
+                          PT = {{x, y} : x, y ∈ T },         FT = {r[a] : r, a ∈ T }.
+
+The same pair construction works on U = T ∪ (T × T ). Every member of a generator value on
+arguments from T belongs to
+
+                             BT = T ∪ (T × T ) ∪ (T × (T × T )) ∪ FT ∪ PU .
+
+For each generator form the bounded relation
+
+                                  {⟨⃗x, z⟩ : ⃗x ∈ T k , z ∈ BT , z ∈ G(⃗x)}.
+
+Taking its fibres over T k collects exactly the required values. Tuple bounds needed here are obtained
+by finitely many products and unions. Applying this to T + constructs S(T ) inside every transitive
+closed level containing T .
+For every nonzero limit λ,
+
+                             Ord ∩Jλ = rk(Jλ ) = λ,          |Jξ | ≤ max(ℵ0 , |ξ|).                      (9)
+
+For size use finite arities and continuity. For height, the first ω stages give the hereditarily finite sets.
+Induct in blocks of ω stages. Each generator increases rank by a finite amount, giving the upper
+bound in the next block. The ordinal part of the previous whole limit level is a fixed-formula subset
+of that level, so the table construction places it, and then every finite successor, in the next block.
+This gives the lower bound. Limits of blocks use unions.
+History and hull lemma. The map ξ 7→ Jξ is globally single-valued Σ1 . Its history through ξ
+belongs to Jξ+ω . There are compatible globally single-valued partial Σ1 Skolem functions on all Jλ
+
+                                                       17
+with Lim(λ). Their hulls are Σ1 elementary, monotone, continuous on increasing unions, and have
+size at most max(ℵ0 , |X|) when generated by X.
+Proof. A history is a function on ξ + 1 satisfying the displayed successor and union clauses. Its check
+is bounded, including both directions of every union equality. External recursion proves uniqueness.
+Decorate each stage with a well-order. At a successor place old elements first, then the old stage itself,
+then genuinely new generator values ordered by their least production code (generator index followed
+by its argument tuple in the old order). At limits take unions. Fixed finite lexicographic products
+of well-orders are well-orders, by successive minimization of coordinates. The bounded production
+checks and external induction give unique end-extending decorated histories.
+At a block boundary η = ωα, every shorter history already belongs to Jη . Thus the history below η
+and the order at η are fixed-formula relations over Jη : recover a stage or comparison by a checked
+shorter history. Their entries belong to Jη by finite coding closure. The truth-table construction
+places these relations in Jη+ω . Append the endpoint fields η, Jη and any prescribed finite continuation
+there. This block induction proves the budget for both histories. Existence of a boundedly checked
+history is their Σ1 definition.
+For any x, its predecessors in the decorated global order form a set Ix , obtained by restricting the
+order of an earlier stage containing x. End-extension makes it independent of that stage. If x ∈ Jλ ,
+the relevant history and restriction belong to Jλ by (8).
+For a code i of ∃y ϑ(y, p⃗) with bounded ϑ, let V (i, p⃗, q) check a witness y, a transitive bound T , and
+the supplied true tables for ϑ. This is one bounded predicate. Any witness in a closed limit level
+has such a record in that level, by choosing an earlier transitive stage containing its parameters and
+performing the finite construction. Choose the least valid record using
+
+                                   V (i, p⃗, q) ∧ ∀q ′ ∈ Iq ¬V (i, p⃗, q ′ ).
+
+Supplying the genuine decorated history makes this a Σ1 definition. All predecessors of a record
+belong to the same limit level as that record, so the definitions agree on every common domain
+of definition. Closing under these functions gives bounded elementarity by induction on bounded
+formulas and then Σ1 elementarity by the witness property. Countably many finitary functions closed
+in ω steps give the size bound; finite dependence gives monotonicity and continuity. □
+Condensation lemma. If H ≺Σ1 JC and Lim(C), its transitive collapse is Jδ for a limit ω < δ ≤ C.
+If u, Ju ∈ H, the collapse sends Ju to Jπ(u) .
+Proof. A symmetric-difference witness reflected into H makes its membership relation extensional. It
+is well-founded as a subrelation of membership. Its collapse N is closed under B, since the generators
+have bounded graphs and their existence reflects. Elementarity puts every finite ordinal and ω in H;
+successor closure shows that δ = Ord ∩N is a limit greater than ω.
+For ν < δ, its preimage is an ordinal because ordinalhood is bounded. A genuine history through this
+preimage is available in JC by (8). Reflect it into H, collapse it, and use bounded absoluteness and
+history uniqueness. Its endpoint is Jν . Hence Jδ ⊆ N . Conversely every preimage of x ∈ N belongs
+to some earlier stage, with history in JC . Reflect this existence statement and collapse it; then x ∈ Jν
+for some ν < δ. This proves equality. The inverse collapse increases ordinals, giving δ ≤ C. The same
+history argument proves the final clause. □
+
+
+
+
+                                                      18
+5.2 Control edges and complete certificates
+For a < b < C with all three limit coordinates, define
+
+                    R(C, b, a) ⇐⇒ HullJΣC1 (Ja ∪ {b}) ∩ Jb = Ja      and   Jb ≺Σ1 JC .                 (10)
+
+An edge implies Ja ≺ Jb : the hull contains the whole Jb by its canonical history, and for any whole set
+T in a Σ1 elementary hull, relativization of an arbitrary formula to T is bounded. Witness reflection
+gives H ∩ T ≺ T . Apply this to T = Jb .
+The edge remains true when its environment C is replaced by a limit D with b < D ≤ C. Canonical
+function compatibility gives the smaller hull as a subhull, while it still contains all generators. The
+trace remains exactly Ja , and Σ1 upward absoluteness gives the intermediate elementarity. It also
+remains true for C ≤ D when JC ≺Σ1 JD , since all canonical evaluations on old arguments then have
+the same domains and values.
+The control hull collapses to Jδ . It fixes Ja pointwise, and its intersection with b is a, so it sends b to
+a. In particular a < δ ≤ C.
+A finite diagram uses limit coordinates, strict inequalities, edges (10), Σ1 elementary pairs, and explicit
+shared variables. Its complete certificate includes its assignment, genuine histories, and checked
+true tables for every asserted relation. Auxiliary sets and labels are allowed only with separately
+established budgets.
+Certificate lemma. There is a bounded checker for complete certificates. Existence of a complete
+certificate is consequently Σ1 . A finite diagram of maximum v has a certificate in Jv+ω . For additional
+set parameters and auxiliary records, the same conclusion holds when they have that budget and the
+parameters used inside the top-level tables belong to Jv .
+Proof. Uniform Σ1 satisfaction in a genuine limit level L is
+
+                                    SatL
+                                       1 (i, p
+                                             ⃗) ⇐⇒ ∃q ∈ L V (i, p⃗, q).
+
+Canonical evaluations can likewise be expressed with their witnesses bounded by L. Membership in a
+hull is existence in L of a finite evaluation trace whose lines are generators or canonical evaluations
+on earlier lines. Finite packing in L proves that this formula is exactly hull membership.
+Thus two fixed first-order formulas express, for genuine levels A ⊆ B ⊆ L, both A ≺Σ1 B and the
+trace equation
+                              ∀x ∈ B [x ∈ HullLΣ1 (A ∪ {b}) ↔ x ∈ A].
+
+Their tables over the whole M = Jv can be constructed by finitely many generators. For a coordinate
+c < v, Jc and its history are in M by (8). The top level Jv is a tag for the ambient universe M , not an
+element of M : quantifiers over it become unrestricted quantifiers in the formula over M . Externally
+check v = Ord ∩M and all top-pin identifications. Neither v nor M is incorrectly used as an element
+parameter of that formula.
+The whole M , its history, all these tables and finite coordinate records belong to Jv+ω . A bounded
+checker verifies histories, both directions of table equalities, and truth at each distinguished assignment.
+Bounded auxiliary checks can be performed on the supplied sets externally. For a variable bounded-
+formula code choose a transitive stage containing its finitely many parameters inside the closed Jv+ω
+and use the same table verifier. Finite packing gives the claimed certificate. Conversely a passing
+record has genuine levels by history uniqueness and true assertions by table correctness. □
+
+
+                                                    19
+Capture and transport. If Ja ≺Σ1 Jb , fixed parameters lie in Ja , and a complete existence problem
+has a witness in Jb , it has a complete witness in Ja . Every coordinate in the captured record is below
+a by transitivity and (9).
+Under R(C, b, a), a complete problem with fixed parameters in Ja , distinguished parameter b, and
+witness in JC transports to that problem with distinguished parameter a. Reflect the whole record
+into the control hull and collapse it. Bounded checks remain true, certified whole levels collapse to
+their genuine levels, and shared variables remain shared. The resulting witness lies in Jδ ⊆ JC and
+can be captured into Jb , since its new parameters belong to Jb .
+This transports one existentially chosen joint record. It does not assert a pointwise transformation of
+an arbitrary supplied assignment into an arbitrary captured assignment.
+
+
+6. Configurations and their initial realizations
+6.1 The finite graph of an expression
+Read syntax depth first. Give each column occurrence an ordinary role Ac , and each entry e a slot Ue ,
+placed immediately before its height. On the visible stack each column p has ordinary representative
+O(p) = Ap and current representative P (p). Entering an entry at column p replaces P (p) by that
+entry’s slot; exiting restores the previous representative.
+An entry (p, H) in column c contributes
+
+                                 R(Ue , Ac , O(p)),        R(Ue , Ac , P (p)),                       (11)
+
+with duplicates omitted. Mark every role with Lim, order them strictly by reading order, and require
+JAc ≺Σ1 JAc+1 for consecutive columns in each individual forest. There is no elementary pair between
+distinct sibling height forests. Call this graph Γ(E). A configuration is an ordinal assignment satisfying
+its graph. The empty expression has the empty configuration.
+For an ordinary step use the roles R, T, N of root ordinary, stopping ordinary, and final control
+slot. Let Q now denote the roles strictly between T and N . From the interval (R, T ) remove every
+consumed root entry slot and its whole height; call the remainder K, and set
+
+                          D = {x : x < R} ∪ {R} ∪ K,             P = {x : x < T }.
+
+Every retained edge reads only D; every query edge reads only D ∪ {T } ∪ Q. Indeed a consumed root
+entry is closed (an owner’s active entry cannot be consumed), and its private roles have left the stack
+before later surviving entries. Removing sibling heights creates no ordinary pair between their forests.
+Occurrence-map identity. Begin with the old restriction to P and f0 (x) = x on D. At stage m + 1
+append a head h, a fresh query copy, and a fresh retained copy. The query map is
+
+                     qm+1 (T ) = h,   qm+1 |Q = fresh query copy,          qm+1 |D = fm .
+
+The retained map is
+
+               fm+1 (R) = h,    fm+1 |K = fresh retained copy,          fm+1 (x) = x (x < R).
+
+Use the query map for query edges, internal query pairs and the pair entering T , if present; use the
+retained map for retained edges and pairs. After n stages this is exactly Γ(E[n]).
+
+
+                                                      20
+Proof. Query syntax is shifted in the previous phase, retained syntax in the new phase. Stack entry
+and exit commute with these occurrence substitutions. The continuation is a rightmost forest hole and
+is inserted once without an additional shift. These facts identify every edge by induction on the loop.
+Ordinary pairs inside copied forests use their indicated map. A root-to-next-column pair uses the
+retained map. If T has a predecessor a in its own forest, the new entering pair is (fm (a), h), including
+an active-root hole; otherwise there is no such pair. Removing whole sibling heights introduces no
+other pair. The initial restriction is precisely parameter zero. □
+There is a different persistent map
+                                             ιm : P ,→ Γ(E[m])                                      (12)
+onto the original pre-stop occurrences. Appending a stage never changes these names. Generally ιm
+and fm differ; old labels must use ιm , never silently substitute fm .
+
+6.2 Mahlo initialization
+Let M0 be the inaccessible cardinals and let
+
+                             Mn+1 = {κ ∈ M0 : Mn ∩ κ is stationary in κ}.
+
+The axiom is ∀n ∈ ω ∃κ ∈ Mn .
+If λ is an uncountable cardinal and u > λ is a limit, then
+
+                                                  Jλ ≺Σ1 Ju .                                       (13)
+
+To prove this, put the parameters of a true Σ1 statement in a transitive Jξ with ξ < λ. Its hull in Ju
+has size at most max(ℵ0 , |ξ|) < λ. Condensation collapses it to Jη with |η| < λ, hence η < λ. The
+collapse fixes Jξ pointwise by membership induction. Its image witness therefore has the original
+parameters and belongs to Jλ . Bounded absoluteness gives the reverse implication.
+If λ is uncountable regular, there is a club Cλ,u ⊆ λ such that
+
+                                       a ∈ Cλ,u      =⇒      R(u, λ, a).                            (14)
+
+For r < λ let Hr = HullJΣu1 (Jr ∪ {λ}). Its size is below λ, so regularity gives f (r) < λ, f (r) > r,
+with Hr ∩ Jλ ⊆ Jf (r) . Take the limit ordinals a > ω closed under f . They are unbounded: iterate
+countably often above any prescribed bound, at each step exceeding f (s) for every s below the current
+bound; regularity keeps the supremum below λ. They are closed because every s below an increasing
+supremum lies below an earlier member. At such an a, continuity of levels and finitarity of the hull
+give
+                    HullJΣu1 (Ja ∪ {λ}) =            HullJΣu1 (Ja ∪ {λ}) ∩ Jλ = Ja .
+                                          [
+                                            Hr ,
+                                            r<a
+
+Together with (13), this proves (14).
+Seed lemma. Every Lm has a configuration.
+For m ≥ 1 its reading order is A0 , A1 , U1 , . . . , Am , Um . The required edges are
+
+                  R(U1 , A1 , A0 ),     R(Ui , Ai , Ai−1 ), R(Ui , Ai , Ui−1 )   (2 ≤ i ≤ m).
+
+The only additional outer pair is implied by the first edge. Choose am ∈ Mm−1 and um = am + ω.
+Descending from i = m to 2, stationarity selects
+
+                                           ai−1 ∈ Cai ,ui ∩ Mi−2 ,
+
+                                                      21
+and unboundedness selects ui−1 ∈ Cai ,ui above ai−1 . Finally choose a0 ∈ Ca1 ,u1 . Assign Ai = ai ,
+Ui = ui . The displayed inequalities and (14) verify every edge and reading-order inequality. For
+m = 0 assign its sole ordinary role ω · 2. □
+
+
+7. Joint source packets
+7.1 Names, frames, and certificates
+Every role has an immutable occurrence name and an instance tag. A chart injects the roles of one
+finite syntax graph into such names. Different charts overlap only on explicitly shared names. Each
+chart retains its own internal orders; distinct private names in different charts need not be ordered
+and may have equal ordinal values.
+For an entry e of F , let P (F, e) be the full graph restriction to roles strictly before its slot. This need
+not be admissible syntax: it can end at an ordinary role before that column’s first entry.
+A height’s frame consists of its physical host ρ and the ordinary and currently visible representatives
+of every externally visible column below it. Unused representatives are retained, since a later cap
+can read a larger parent. Include selectors for the two representatives of the outer entry’s parent. All
+frame coordinates are at most the host and precede the outer owner.
+For fixed target syntax B, a positive attached block consists of a new owner s, the complete internal
+graph of B interpreted at this frame, and both target head edges
+
+                                        R(s, ρ, po ),        R(s, ρ, pv ).                              (15)
+
+A free block omits only these heads. A floor L requires all new coordinates, including s, to exceed L.
+The syntax, host convention and frame selectors determine an independent bounded checker
+
+                                              CertB (z; ρ, ⃗c, L).
+
+It is defined before and independently of any source assertion. For a limit u (and frame below u),
+a positive realization with maximum v < u has a complete certificate in Jv+ω ⊆ Ju . Conversely a
+certificate in Ju has every recorded ordinal below u. Define the bounded failure predicate, with a
+supplied whole set U , by
+
+                            NoB (U ; ρ, ⃗c, L) ⇐⇒ ∀z ∈ U ¬ CertB (z; ρ, ⃗c, L).                         (16)
+
+A source packet for a finite record of Section 4 consists of:
+   1. the complete target-prefix chart P (E, b) for the original target B;
+   2. the complete source context graph, with source prefix P (F, a), physical host ρ, and outer owner
+      u;
+   3. a finite auxiliary diagram with already supplied certificates and bounded labels;
+   4. one assignment on all these names, agreeing on every specified overlap;
+   5. both target heads (15) at the same u, in addition to the source’s own heads;
+   6. one complete joint certificate wlow ∈ Ju for both prefixes and the auxiliary diagram, with every
+      component assignment checked against the corresponding projection of that one assignment.
+The two physical host roles share ρ. In a cross-host record the true external ordinary and visible roles
+below the source printed host agree. In a same-host repair record the entire external frame agrees
+
+
+                                                        22
+under the recorded surviving-role map. The owner u, its private height and the whole Ju are not part
+of the low certificate. In particular no certificate containing u is asserted to belong to Ju .
+To transport a joint record, quantify one assignment a : I → Ord on its finite name set. For every
+component chart ξ, require its certificate’s assignment to be exactly a ◦ ξ. Require every label’s
+host, owner and frame arguments to be those same named projections. These are bounded equalities.
+Capture or control collapse applied to the whole checked record preserves them. Separate realizations
+would not suffice.
+
+7.2 Fresh target variables and first-difference caps
+Factorization lemma. Given a packet and L < u, there is L∗ < u, L∗ ≥ L, such that every positive
+target certificate in Ju above L∗ is compatible with all unchanged low resources.
+Proof. By continuity choose β < u with wlow ∈ Jβ . Every component is a finite nested field of
+that record, hence belongs to Jβ by transitivity. Choose L∗ < u above β, the host, and every low
+coordinate, and at least L.
+Give the new target fresh private names, sharing only its prescribed frame. The old and new
+assignments agree on that entire intersection. Every old atom and label retains its old arguments;
+every new atom is checked by the target certificate. All needed cross-prefix order inequalities follow
+from the raised floor. There is no elementary pair across a height attachment or between sibling
+heights. This verifies all atoms of their union.
+If s > L∗ is the new owner, the old record belongs to Jβ ⊆ Js . Its genuine stage history can be
+supplied separately in Jβ+ω ⊆ Js . Finite packing gives the joint certificate in Ju . Thus failure of
+the resource-preserving conclusion implies NoB (Ju ; ρ, ⃗c, L∗ ). No parameter has been dropped from a
+predicate that still depends on it. □
+Joint cap lemma. At a first parent-field or existing-column-end difference hr (A) > ht (B), the finite
+cap from Section 4 has a joint realization with the old low resources. Its marked outer owner is the
+original u. If W, C are its stopping ordinary and closing slot values, then u < W < C. Its whole
+pre-stop graph, old resources, and genuine Ju with history have a joint certificate in JW . Any already
+true bounded label with checking data in Ju+ω can be included, in particular (16) at U = Ju .
+Proof. Equal initial relative syntax identifies the two internal stacks. A false parent is the same
+external parent below r; its two representatives agree by the packet. A true parent denotes the
+corresponding host or an already matched internal column. Entering matched entries installs matched
+visible representatives, and exiting restores them. Thus every internal edge and ordinary pair agrees.
+The last source entry supplies both head edges of the closing target entry; the finite first-difference
+lemma has separately established its actual ancestor legality.
+Use the original target prefix unchanged, use the source owner u for its marked slot, and use the
+corresponding source roles for the common internal prefix and closing entry. This is one specified
+union of existing assignments, agreeing on their overlap. Its new internal coordinates exceed u; no
+elementary pair crosses the attachment. The pre-stop finite graph has maximum v < W , so its
+certificate lies in Jv+ω ⊆ JW . Old low records lie in Ju , while the whole Ju and its history lie in
+Ju+ω ⊆ JW . A true label with that budget can be packed and checked there. Its budget proves
+availability of its checking data, not its truth; truth is a premise. □
+Joint repair lemma. Outer repairs preserve this joint realization, the marked host and owner, its
+full frame, and all retained names and values. Deleted blocks remain in the auxiliary diagram. The
+
+
+                                                  23
+repaired prefix before the marked owner has an injective chart into the old target prefix, with its
+original low budget.
+Proof. A move retains the later active entry and its slot s and removes only earlier same-parent
+closed entries. Its heads have the same physical host and parent representatives. Entry into its height
+therefore installs the same slot, so all internal edges see the same frame. Removed private roles have
+already left the stack. Deletion does not reorder surviving roles or introduce a pair between sibling
+forests. Restriction of the old assignment realizes the new main graph; the old assignment still realizes
+the removed auxiliary blocks. Every deleted coordinate precedes s ≤ u, so its graph certificate has
+budget below u. More directly, the deleted blocks already belong to the old target prefix certificate,
+which can be kept unchanged.
+Iterating records an explicit surviving-role injection. Moving an address does not identify the retained
+later slot with the old earlier slot. All low records can be repacked in Ju , placed in one Jβ with β < u,
+and the floor raised above β. Raising the floor preserves a true negative predicate (16). □
+These lemmas also verify packet admission after the reductions of Section 4. A source operation
+confined to its marked height retains its prefix and frame. A repaired positive cap output above E
+has height B ′ > B by (6) and the explicit same-host move record. The source prefix is the surviving
+restriction of the original target prefix, while the full latter remains auxiliary. Every subsidiary query
+height is a retained occurrence of E at the cap’s current address, and is also the same unchanged
+proper child of the original B for purposes of (7). The current occurrence and the original failure
+target are different fields of the record.
+
+7.3 Complete packets at a scan
+The following precise admission fact will be used in the semantic induction. Let H be a standard
+input or an admissible cap of an original standard E. Let P − be its whole graph before its stopping
+ordinary role. Supply:
+   • a transported chart of all of P − and old auxiliary data, with one certificate in Jρ ;
+   • a new stopping role of value ρ and a complete positive query, jointly realizing its edges and its
+     entering ordinary pair when present;
+   • a separate source bank through closed root entries A0 , . . . , Am−1 , with original values, whose
+     root is that same new role ρ and whose whole pre-root chart is shared with the transported
+     chart.
+All other bank names are fresh. In particular its root is not the transported reference occurrence of
+the old root, which lies below ρ.
+At raw scan state (i, j), retain the already fitted positive query entries of indices less than j with fresh
+names, complete syntax and unchanged full frame. Let Lj be their entire target-prefix maximum,
+with L0 = ρ, and let Cj be the corresponding original positive-prefix maximum. If
+
+                                          Lj < ui ,        Lj ≤ Cj ,                                   (17)
+
+and the target heads at source owner ui hold, then the next source-greater comparison has a complete
+source packet.
+To check this, the source prefix is the full bank restriction before ui , including its pre-root chart
+and all earlier closed entries. The target prefix is the entire transported P − , the new ordinary role,
+and all fitted earlier query entries. Its domain is exactly P (E, bj ) at the current cap address: every
+
+
+                                                      24
+query entry precedes the new closing entry, so all its earlier syntax is retained from E. This includes
+consumed root blocks and the entering ordinary pair, which cannot be omitted.
+The two assignments share the root value ρ and the whole fixed pre-root chart, and agree there; other
+private names are disjoint. All auxiliary labels retain their old arguments. There are no unlisted
+cross-chart pairs or orders. Every coordinate in this union is below ui by (17) and bank reading order.
+If v is their finite maximum, its graph certificate lies in Jv+ω ⊆ Jui . The old record in Jρ has the
+same budget. Reconstruct component certificates for the present prefixes and check their projections
+against the union assignment. This gives one joint low certificate. Transient certificates from previous
+fitting steps are not kept as old resources unless their budgets are separately established.
+A source-only advance adds one closed bank block to the prefix, below the next owner. A target
+advance adds a complete freshly named positive block above Lj . Its internal edges use only its frame
+and new roles; old edges read no new role. Exiting its height restores the stack. There is no pair to
+another sibling height. Thus the prefix assertion persists whenever the updated bounds (17) hold. The
+original positive query remains a separate candidate throughout, even if some of its numerical values
+are reused. This proves admission by induction on the actual finite scan trace, without assuming any
+new target exists.
+
+
+8. Strict sources and semantic descent
+8.1 The induction assertions
+Let N (B) count the ordinary and slot roles internal to B, excluding its outer owner. Define Sn as
+follows:
+      For every original standard target occurrence B with N (B) = n, every admitted finite
+      strict-source record hr (A) > ht (B), and every source packet realizing it at physical host ρ
+      and owner u with both target heads at u, each floor L < u admits a complete positive
+      target certificate in Ju above L, compatible with all unchanged low resources.
+All frames, charts, assignments and low budgets are quantified. Only the original target expression is
+required to be standard. Old bounded labels cannot read fresh target-private names, and their joint
+certificates must already lie in Ju .
+We prove, for each n,
+                            S<n     =⇒     W<n     =⇒     D<n    =⇒     Sn .                          (18)
+Here W<n fits a complete query, all of whose child heights have size below n, below its final unconsumed
+closed source owner. Its endpoint hypothesis is that the actual raw scan does not exhaust the source
+bank. The assertion D<n realizes ordinary successors below their old stopping ordinary value,
+transporting the specified original roles and labels. Its inputs are standard expressions and admissible
+caps of original standard expressions, with the query children and closed scan sources retained at
+their current original occurrences. It also applies to any admissible ordinary input with empty query;
+this case needs no source assertion or standard anchor.
+For a nonempty attached block with owner h, every private coordinate z satisfies
+
+                                              Jh ≺Σ1 Jz .                                             (19)
+
+The first child column’s first parent is the direct owner by V and I, so its visible-parent edge starts
+this path. Consecutive ordinary pairs traverse a forest. Each entry edge supplies elementarity from
+
+
+                                                   25
+its ordinary value to its slot. Its child’s first visible edge continues the path. Induction through the
+finite tree proves (19).
+We also need a two-candidate fact. Two realizations of the same free-block problem above the same
+floor admit a realization whose owner and maximum are no larger than the corresponding owners
+and maxima of either candidate. Choose X of smaller maximum, breaking ties by smaller owner. If
+its owner is already smaller, use X. Otherwise
+
+                                          hY < hX ≤ cX < cY .
+
+These inequalities force Y to be nonempty, so its owner path reaches cY . The certificate of X lies in
+JcX +ω ⊆ JcY . The frame and floor lie in JhY , and (19) gives JhY ≺Σ1 JcY . Capture the free existence
+problem there. Its new maximum is below hY , proving all bounds.
+The base S0 is direct. A strict source for an empty target is nonempty. Its first ordinary value b
+satisfies Ju ≺Σ1 Jb . After raising the floor by factorization, u itself witnesses in Jb the existence of a
+limit s > max(ω, L∗ ). Capture gives such an s < u. Restrict the two target heads from environment u
+to s. Its empty positive block has a certificate in Js+ω ⊆ Ju , and factorization supplies compatibility.
+
+8.2 Fitting a query: S<n ⇒ W<n
+Use the complete bank and prefix data of Section 7.3. Write source keys xi = hr (Ai ) and query keys
+yj = ht (Jj ), source owners ui , and source maxima Mi . Reading order gives
+
+                                            ui ≤ Mi < ui+1 .
+
+Keep the original positive query in a separate candidate chart. Maintain (17). It holds initially
+because L0 = C0 = ρ < u0 . All old reference and auxiliary data retain their certificate in Jρ .
+If xi < yj , advance only the source cursor. The fitted target prefix is unchanged, and Lj < ui ≤ Mi <
+ui+1 gives the next bound. The source advance has a next owner because the stipulated final cursor
+is unconsumed. No strict-source call is used.
+If xi > yj , let h, c0 be the owner and maximum of the original positive block for Jj . Its owner is
+above Cj ≥ Lj , so it is a candidate above the current floor. If c0 < ui , reuse its values on fresh
+names. Otherwise establish both target heads at ui before calling S. When h ≥ ui , restrict their
+environments. When h < ui ≤ c0 , the block is nonempty; (19) and intermediate Σ1 elementarity
+give Jh ≺Σ1 Jui , permitting their environments to increase. Section 7.3 now supplies the entire joint
+packet, including both prefixes. Apply SN (Jj ) , whose index is below n. It gives a complete block
+above Lj with maximum below ui ≤ c0 , preserving all old data. Advance only the target cursor. Both
+inequalities (17) persist.
+If xi = yj , equality of the full relative syntax identifies the same free problem wherever an external
+role is read. False parents read the shared genuine prefix below r; true parents read corresponding
+internal roles. Add unused full-frame fields to the source candidate without imposing new conditions.
+Apply the two-candidate fact to the source block and original positive target block. Its owner is no
+greater than the positive owner’s, so restricting the positive heads supplies both heads. Use fresh
+target names and advance both cursors. Its maximum is at most Mi < ui+1 and at most the original
+positive maximum Cj+1 . This also covers empty equal heights.
+The prefix and joint-certificate checks of Section 7.3 apply at every step. Each step decreases
+(m − i) + (q − j), so the scan terminates. Nonexhaustion of the bank forces exhaustion of the query;
+its final prefix maximum is below uc . The finite complete query and old data can be certified there.
+
+                                                    26
+For an empty query, c = 0 and the conclusion is simply ρ < u0 , without any packet call. This proves
+W<n .
+
+8.3 Ordinary descent: W<n ⇒ D<n
+Fix an allowed ordinary input and a supplied configuration. Use the role sets of Section 6.1 and write
+
+                            p = αR < W = αT < C = αN ,           R(C, W, p).                         (20)
+
+The final control edge supplies (20). Let an old bounded label Λ refer to named roles of P , auxiliary
+resources, and genuine whole levels at those role coordinates. It may not refer to a future query or
+copied role. Assume a single joint pre-stop certificate for this graph, resources and label in JW . The
+outside control value C is not included in a certificate claimed to belong to JC .
+Fix the pre-root roles at their original values. Any additional finite tuple already in Jp may also be
+fixed. All other data are existential variables with explicit sharing and budget conditions. Choose
+η < p above all fixed pre-root coordinates and stages containing the additional fixed parameters. Only
+nonfixed main and newly introduced reference coordinates will be required to exceed η; auxiliary
+charts keep their own conditions.
+Let Gm be the actual graph after m copy stages. Maintain a realization below W with latest root p,
+latest retained copy at exactly the original values α|K, and nonfixed main coordinates above η. Its
+graph, old resources and label have one joint certificate in JW . At zero this is the original restriction
+to P .
+At each stage add a fresh reference chart of the whole original P . It shares D with the latest
+main copy through fm and assigns those roles the original values. Its consumed blocks P \ D have
+fresh names and original values. This assignment agrees on every shared role. There is no order
+between independent private charts. Its certificate can be packed with the maintained graph and old
+label into one wold ∈ JW .
+Append temporarily the head W and the original positive query, reading the latest fm (D), including
+the entering ordinary pair. Its atoms hold by the occurrence-map identity and original values. Its
+finite maximum is below C, so it has a certificate in JC . The whole JW , its history and wold also
+have that budget by (8). Pack them in one checked temporary state.
+Express existence of this state with distinguished parameter t = W . Fixed parameters are exactly the
+pre-root data, chosen low tuple, η and finite codes. Include all chart equalities, the main and new
+reference inequalities η < x < t, all old auxiliary conditions and the genuine-level budget
+
+                                               wold ∈ Jt .                                           (21)
+
+Apply control transport under (20). The distinguished head becomes p, and all preceding nonfixed
+main and new reference coordinates become less than p, still above η. The whole old-state certificate
+now belongs to the genuine Jp . Capture the transported assertion into JW using JW ≺Σ1 JC . Its new
+fixed parameters, including p, belong to JW . We now have a positive query above p with maximum
+below W , and the transported main graph, reference chart and labels certified in Jp .
+The query must next fit before the restored K. If K is empty it already fits. If its first role v is
+ordinary, ordinary pairs along the remaining forest and entry edges along the terminal route give
+Jv ≺Σ1 JW . If its first role is an active owner, the owner path gives the same relation. In either
+case capture the entire transported existence problem into Jv . Its parameters belong there, and the
+condition (21) still certifies the old state in Jp .
+
+                                                   27
+The remaining case is that v = uc is a closed root owner at the scan’s final cursor. Restrict the
+original root bank to entries 0, . . . , c. This contains the entire actual scan trace and its unconsumed
+endpoint; all these entries are closed. Give it original values and a complete pre-root chart. Share
+only that fixed chart and the new head p with the transported data; other bank names are fresh. The
+transported reference occurrence of R remains a different role below p.
+The transported reference chart contains the entire old P , including the consumed blocks, and the
+positive query has its entering ordinary pair. Its joint old certificate is in Jp by (21). Thus every
+hypothesis of Section 7.3 and W<n is present. The original standard or current cap occurrences supply
+the finite scan records. Apply W<n to fit the complete query below v, changing only its fresh private
+variables. If the query is empty this is immediate and does not require a standard anchor, which
+proves the advertised extension to arbitrary admissible empty-query inputs.
+Now restore K at its original values, with fresh names and new root p. Its edges read only the fixed
+pre-root data, the new root, and this new retained copy. Query edges still read the transported
+preceding copy, exactly as qm+1 specifies. Its entering pair and all retained pairs have been checked.
+The union is therefore exactly Gm+1 .
+Old labels continue to read ιm+1 (P ), not the restored latest copy. Their certificate remains in Jp .
+Every actual graph coordinate is below W , so the new graph and old data have a joint certificate in
+JW . This proves the stage invariant and hence every finite positive operation. Zero uses restriction.
+In particular, for an original marked entry e strictly containing the stopping column, its host, owner
+and frame in the output are exactly the projections of the transported old record onto
+
+                                     ιk (h),    ιk (Ue ),    ιk ◦ j,                                 (22)
+
+where j is its complete original frame map. The syntactic operation retains all these original
+occurrences; new copies have fresh names. Shared-variable checks make these simultaneously the
+arguments of all transported labels and budgets. If the input root value is at most the old marked
+host value, its new host is below p, since it is a nonfixed old main role. If its prefix and failure data
+are before the root and belong to Jp , they can instead all be fixed. This proves D<n including its
+precise marker and label clauses.
+
+8.4 Special descent and its limited label clause
+Suppose a special step shortens C0 ⌢ [[(a, ∅)]] at entry e. Let s be its owner and W the removed last
+ordinary value. The final visible-parent edge gives Js ≺Σ1 JW .
+The owner s, its completed height prefix C0 , and its two outer heads form a positive block of maximum
+below W , certified in JW . Its external frame is below s. Choose a floor L < s above the retained
+main prefix, any fixed low coordinates, and stages containing the finitely many fixed auxiliary records.
+The displayed original block is a witness above L in JW . Capture its positive existence assertion into
+Js , quantifying its owner. This gives one fresh copy with all new coordinates between L and s and a
+certificate in Js .
+For each further copy raise L above the last maximum and a stage containing its certificate. Continuity
+at the limit s permits this finitely often. Make exactly n + ϵ copies. Their only shared data are their
+full external frame; the stack is restored on exit and no elementary pair joins sibling height forests.
+Their union is precisely the special output. Every coordinate is below s < W . Zero copies leave the
+prefix.
+
+
+
+                                                   28
+A joint label can be kept fixed here only if its certificate and parameters already belong to Js and
+it reads no newly inserted private role. In particular this does not permit fixing the whole Js as
+a parameter of capture into Js . Strict containing entries, their names and their frames remain
+unchanged.
+
+8.5 Strict sources: D<n ⇒ Sn
+Assume S<n and thus the established W<n , D<n . Suppose Sn fails. Choose a failure with least ordinal
+pair (ρ, u) in lexicographic order. This is legitimate in ZFC without a syntax well-order: one failure
+bounds a nonempty set of possible hosts; Separation yields a least host, and one failure there bounds
+a nonempty set of owners with a least member.
+The chosen failure includes its original E, B, finite source record, full joint packet and floor. Factor-
+ization supplies a stage β and raised floor L∗ such that
+                       wlow ∈ Jβ ,     β < L∗ < u,       NoB (Ju ; ρ, ⃗c, L∗ ) is true.               (23)
+The whole Ju is a parameter of the last assertion externally, not an element of its own low certificate.
+Follow the first difference of the complete relative keys of the strict source and target.
+Case 1: the whole target ends first. Its corresponding complete source prefix, with owner u
+and the supplied target heads, realizes the positive target above L∗ . If M is its maximum and z the
+first omitted source vertex, M < z and its certificate belongs to Jz . The owner path gives Ju ≺Σ1 Jz .
+Capture positive existence there, quantifying the owner and fixing only frame, floor, low records and
+their prefix projections, all in Ju . The resulting positive target certificate lies in Ju , contradicting
+(23).
+Case 2: a proper child forest ends first. Apply the source reduction lemma: truncate through
+the extra ordinary column and its first entry, clear that height, and take a suitable actual operation.
+Its root ordinary value is strictly above u, since its direct child owner is internal to the marked source.
+If ordinary, its query is empty and the unrestricted empty-query case of D<n applies. If special, use
+Section 8.4 and enough repetitions to exceed the finite target run. Both give an admissible smaller
+source A′′ > B with its same descendant or repair record.
+All original prefix, frame, floor and low records can be fixed: they lie in Ju , below the operation’s
+internal control. In the special case its local owner s is strictly above u; the retained marked owner
+and both head relations, as well as the required low records, have certificates in Js . This meets
+precisely the limited special label clause. The whole negative assertion at Ju is kept externally and is
+not a parameter of the next capture into Ju .
+Let W be the extra ordinary value from the truncation. The new complete source, including its own
+and target heads, has a joint certificate in JW , and the old owner path gives Ju ≺Σ1 JW . Capture
+this source existence problem into Ju , quantifying a new owner w > L∗ and fixing the full low record,
+its projections and stage β. Its witness has w < u. Since β < L∗ < w, the same low record lies in Jw .
+Its host and frame are unchanged, both sets of heads use this same new owner, and its finite source
+record is unchanged. It is an admitted packet at (ρ, w). Since Jw ⊆ Ju , (23) excludes every positive
+target certificate there at the same floor. This is a smaller failure, a contradiction.
+Case 3: a parent differs or an existing column ends first. The finite first-difference lemma
+gives an ordinary upward cap of the original E. The joint cap lemma realizes it with the original
+marked owner u and values u < W < C at its internal stop and closing slot. It also supplies a joint
+pre-stop certificate for the already true negative assertion in (23): its finite parameters lie in Ju , and
+its whole-level parameter, history and checking data lie in Ju+ω ⊆ JW .
+
+                                                    29
+Perform all required outer repairs. They preserve the marked owner, full frame and internal cap. Keep
+deleted blocks as low resources. Repack the complete low diagram in Ju , choose one new containing
+stage β < u, and raise L∗ if needed. A larger floor preserves the negative assertion. Let H be the
+repaired cap, at current marked address bm , while the original target address remains b0 .
+The internal cap is unchanged, so (6) gives Bgood ≥ B, and every terminal-query height J satisfies
+N (J) + 2 ≤ n by (7). Each such J is also a retained occurrence of the original standard E at the
+cap’s current address. These give exactly the smaller-size and original-standard hypotheses for D<n
+and its subsidiary scan calls. Cofinality gives a positive k with H[k] > E. Its height B ′ at the original
+marked entry satisfies B ′ > Bgood ≥ B.
+We now verify explicitly that semantic descent produces an admitted smaller failure for the same
+original E, B.
+Let e∗ be the retained marked entry. Let VS be its repaired source-prefix role set, ℓ : VS → PH− its
+inclusion in the actual pre-stop graph, and χ : VS → P (E, b0 ) its surviving-role chart. The input joint
+record identifies these projections. Their domains are not silently replaced by the old unrepaired
+prefix. The finite source context Fk is the actual output H[k] through the complete height B ′ at the
+original e∗ . Its prefix and external repair list are exactly the recorded ones.
+Use one assignment a on all named pre-stop and auxiliary roles. Let h name the marked host, a∗ its
+slot, and j0 its full frame map. The source and negative label share literally the fields
+
+                                               ah ,     aa∗ ,       (aj0 (v) )v .                      (24)
+
+Supply a whole set U and its history with U = Jaa∗ , and check
+
+                       NoB (U ; ah , (aj0 (v) )v , L∗ ),          wlow ∈ Jβ ,         β < L∗ < aa∗ .   (25)
+
+Every component certificate in wlow has its assignment checked against the appropriate projection of
+a. This whole higher record belongs to JW : the negative label is already true, its whole-level data
+have budget Ju+ω , and the pre-stop graph and low resources have the established budgets. Thus the
+labelled premise of D<n is actually met.
+The whole external frame survives every repair. A deleted block is a closed sibling, whose private roles
+have left the visible stack. Active ancestor slots and visible ordinary columns are retained. Entry into
+the retained later slot installs the same representative and exit restores the same saved one. Induction
+through the containers proves this also for unused external representatives.
+Let p be the actual root value of H.
+If p ≤ ρ, use the moving-parameter clause of D<n . Only its allowed pre-root data and finite codes are
+fixed; (24)–(25), including the whole level and failure predicate, travel in the joint check. Let the
+output assignment be a′ and put
+
+                                  ρ′ = a′h ,          u′ = a′a∗ ,          ⃗c′ = (a′j0 (v) )v .
+
+The marker identity (22) makes these precisely the actual host, owner and full frame of Fk , as well as
+the arguments of the transported label. Genuine histories identify its whole set as Ju′ , so
+
+                                                NoB (Ju′ ; ρ′ , ⃗c′ , L′∗ )                            (26)
+
+holds with the original finite target code B.
+
+
+                                                             30
+Here are all admission checks. Restriction of the actual output graph realizes Fk and its marked height
+B ′ > B. The target prefix retains domain P (E, b0 ), including deleted blocks as auxiliary names. Its
+source prefix is the actual ιk ◦ ℓ. If γ is the main output assignment, the transported sharing check is
+
+                                    γ(ιk (ℓ(v))) = a′χ(v)       (v ∈ VS ).
+
+Thus the prefixes agree on every required shared role, with their stated domains. The whole-frame
+argument verifies all external identifications. The target heads use u′ , ρ′ , ⃗c′ from (24); the source
+heads belong to the actual output graph. Finally (25) transports to
+                                      ′
+                                     wlow ∈ Jβ ′ ,        β ′ < L′∗ < u′ .
+
+Its component projection checks are still true, so it is the required single joint low certificate in Ju′ .
+All packet clauses hold, and (26) says it fails at that floor. The marked host is an old main role at or
+after the root; a positive stage puts it below p, and subsequent stages keep it there. Hence ρ′ < p ≤ ρ,
+a smaller host-owner pair.
+If p > ρ, the root lies strictly inside the marked height: every visible external parent has ordinary
+value at most ρ. Thus u < p. All marked prefixes, frame and low records are before the root and lie
+in Ju ; the whole Ju , its history and negative checking data lie in Ju+ω ⊆ Jp . They may therefore be
+fixed in D<n . The result realizes Fk with the original host ρ, owner u, full frame and both sets of
+heads, and has maximum below W . Together with its fixed low data it has a certificate in JW .
+Use the old internal path Ju ≺Σ1 JW for a second, distinct capture. Its fixed parameters are exactly
+
+                                 (E, b0 , B), Fk , χ, ρ, ⃗c, L∗ , wlow , β.
+
+They all belong to Ju . Quantify a new owner w > L∗ , the private coordinates of B ′ , and their
+complete certificate. Require the full source graph with its fixed prefix projections and both source
+and target heads at the same w. The whole Ju and the negative assertion are absent from this
+existence problem. The source just constructed at owner u witnesses it in JW .
+Capture gives L∗ < w < u. The finite syntax record and target code remain unchanged. The host
+and full frame were fixed, the two head clauses were checked at the new owner, and wlow ∈ Jβ ⊆ Jw
+supplies all joint low budgets. This is an admitted packet at (ρ, w). Externally restrict (23) from Ju
+to Jw ; it is still a failure at the same floor. Again the pair is smaller.
+Both root positions contradict minimality. Together with Cases 1 and 2, these exhaust every finite
+first difference. Thus Sn holds. Induction on n proves (18) at all finite sizes. The only minimal-
+counterexample argument used actual ordinal pairs after constructing a new packet in exactly the
+same admitted class. □
+
+
+9. Deriving the full well-order
+Theorem. ZFC plus the existence of an n-Mahlo cardinal for each n ∈ ω proves that (Std, <) is a
+well-order.
+Proof. Every seed has a configuration by Section 6.2. The completed induction gives ordinary descent
+for any standard input: choose n larger than the sizes of all its finitely many query heights. Section
+8.4 gives special descent. Deletion restricts a configuration and removes its largest role. Consequently,
+if a nonempty standard A has configuration α, every nonempty A[k] has a configuration γ such that
+
+                                             max γ < max α.                                           (27)
+
+                                                     31
+In the ordinary case the new maximum is below the old stopping ordinary; in the special case it is
+below the removed last ordinary; each is below the old maximum. Induction on a finite generation
+witness therefore configures every standard expression.
+Suppose an infinite descending standard sequence E0 > E1 > · · · existed. None of its terms is empty.
+Take a configuration of A0 = E0 with maximum θ. All subsequent choices can be made in the set
+
+                                      X = ω × Std × (θ + 1)<ω .
+
+A state (i, A, α) is eligible when A is standard, A ≥ Ei , and α is its correctly indexed configuration.
+From such a state, Ei+1 < A. Cofinality supplies k with A[k] ≥ Ei+1 . The output is nonempty and
+standard. By (27) it has a configuration with strictly smaller maximum, giving another eligible state
+in X.
+Choose a well-order of this set by Choice and recursively select its least eligible successor satisfying
+these requirements. Ordinary recursion on ω produces an infinite strictly descending sequence of
+ordinal maxima, impossible. Finally, a nonempty subset of the linear order Std without a least
+member would produce a descending sequence by the same set-sized choice recursion. Hence every
+nonempty subset has a least member. This proves the full well-order, not only an initial segment. □
+An explicit ordinal interpretation can now be recorded without choosing configurations canonically.
+Set σ(∅) = 0 and, for nonempty standard E, define
+
+                              σ(E) = min{max α + 1 : α realizes Γ(E)}.
+
+The class in braces is nonempty; choose one member to bound the minimum search and use Separation.
+Applying (27) to a minimizing configuration gives σ(E[k]) < σ(E), also when the output is empty.
+The interpretation is the expression’s own configuration minimum; it uses no covering expression.
+
+
+10. Supplementary finite checks and their limits
+The accompanying Python programs independently implement the recursive operation and the finite
+conditions. They are supplementary reproducibility material, not a formal verification of the proof.
+   • A breadth-first run generated 50,001 distinct states from seeds of depths zero through four, using
+     operation parameters zero through three and a size cutoff of 65 ordinary-plus-entry vertices. It
+     processed 20,719 states and made 82,876 operation calls, including four on the empty expression,
+     and checked the other 82,872 outputs for strict syntax decrease. All five admissibility conditions
+     and the profile condition passed on the processed states. The 29,282 queued states were not
+     included in that structural-condition count.
+   • The ordinary occurrence-map graph construction was compared with the directly parsed output
+     graph on 43,996 ordinary inputs at parameters zero, one and two, giving 131,988 actual graph
+     comparisons. The full loop visited all 50,001 generated states at those parameters (150,003
+     visits); its empty, deletion and special inputs were skipped.
+   • From a deterministic sample of 2,500 generated states, the cap check considered 350,387
+     candidate upward cuts. Exactly 77,604 satisfied all tested admissibility conditions (including
+     the additional profile test used by the implementation). Every such cap strictly covered its
+     target at parameter µ(B) + 1.
+These checks establish only their finite test results. They neither prove the universal finite lemmas nor
+check set-theoretic certificates, condensation, the minimal-counterexample argument, or the Mahlo
+axiom. The mathematical proof above is separate from those bounded computations.
+
+                                                   32
+

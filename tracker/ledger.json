@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "project": "BTBMS well-ordering from finite Mahlo reflection",
+    "paper": "paper/BTBMS_Independent_Reconstruction_20261027.pdf",
+    "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
+    "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
+    "root": "claude",
+    "phase": "P1 Review",
+    "phases": [
+      {"id": "P1", "name": "Review", "exit": "Two blind reviews merged; every finding confirmed, disputed or refuted by the other reviewer."},
+      {"id": "P2", "name": "Repair & simplify", "exit": "Every confirmed gap repaired and the repair checked by the other agent; simplified proof written. Gate G1: user signs off."},
+      {"id": "P3", "name": "Lean outline", "exit": "Lean definitions and main statement written; claim graph mapped to Lean declarations. Gate G2: user signs off; statements locked."},
+      {"id": "P4", "name": "Formalize", "exit": "Sorry count reaches zero; no new axioms; locked statements unchanged."},
+      {"id": "P5", "name": "Final verification", "exit": "Cold recheck and axiom audit pass; statement-fidelity review written. Gate G3: user signs off."}
+    ]
+  },
+  "tasks": [
+    {"id": "T-001", "phase": "P1", "owner": "claude", "status": "done", "title": "Set up repo, pinned reference fetch, tracker",
+     "evidence": ["tracker/ledger.json", "tracker/refresh.py", "scripts/fetch-reference.sh", "paper/paper.txt"]},
+    {"id": "T-002", "phase": "P1", "owner": "claude", "status": "doing", "title": "Blind review of the paper (Claude)",
+     "deliverable": "tracker/review/claude-review.md", "brief": "tracker/review/BRIEF.md"},
+    {"id": "T-003", "phase": "P1", "owner": "codex", "status": "doing", "title": "Blind review of the paper (Codex)",
+     "deliverable": "tracker/review/codex-review.md", "brief": "tracker/review/BRIEF.md"},
+    {"id": "T-004", "phase": "P1", "owner": "claude", "status": "todo", "title": "Merge reviews into claim inventory and gap register",
+     "deps": ["T-002", "T-003"]},
+    {"id": "T-005", "phase": "P1", "owner": "claude", "status": "todo", "title": "Blind cross-check: each single-reviewer finding goes to the other reviewer without the conclusion",
+     "deps": ["T-004"]},
+    {"id": "T-006", "phase": "P1", "owner": "codex", "status": "todo", "title": "Differential test harness: paper's E[n] (independent implementation) vs reference BTBM.ts",
+     "deps": ["T-003"]},
+    {"id": "T-007", "phase": "P1", "owner": "claude", "status": "todo", "title": "Reuse audit: kp-simplified-verification, dh-bms-wf-formal, 1Y-Well-Ordering-Lean"},
+    {"id": "T-008", "phase": "P1", "owner": "claude", "status": "todo", "title": "Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals"},
+    {"id": "T-009", "phase": "P2", "owner": "user", "status": "todo", "title": "Gate G1: sign off gap report and simplified proof",
+     "deps": ["T-005"]}
+  ],
+  "nodes": [],
+  "gaps": []
+}

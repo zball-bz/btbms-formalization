@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTBMS Formalization Board</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b2533;--muted:#5d6b7e;--line:#dde3ea;--accent:#2c5fd1;
+  --todo:#8792a2;--doing:#2c5fd1;--blocked:#c0392b;--review:#8a4fd0;--done:#1f8a55;
+  --fatal:#c0392b;--repairable:#b7791f;--exposition:#5d6b7e;--unknown:#8792a2}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#12161c;--card:#1b222b;--ink:#e4e9f0;--muted:#9aa6b6;--line:#2c3540;--accent:#7aa2ff;--todo:#7d8898;--doing:#7aa2ff;--review:#b48cf0;--done:#4cc489;--blocked:#ff7a6b;--fatal:#ff7a6b;--repairable:#e0a84a}}
+:root[data-theme=dark]{--bg:#12161c;--card:#1b222b;--ink:#e4e9f0;--muted:#9aa6b6;--line:#2c3540;--accent:#7aa2ff;--todo:#7d8898;--doing:#7aa2ff;--review:#b48cf0;--done:#4cc489;--blocked:#ff7a6b;--fatal:#ff7a6b;--repairable:#e0a84a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+.shell{max-width:1400px;margin:auto;padding:24px 16px}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em}
+.muted{color:var(--muted)}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.phases{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
+.phase{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 10px;font-size:12px}
+.phase.on{border-color:var(--accent);color:var(--accent);font-weight:600}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 18px}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.metric b{display:block;font-size:22px}.metric span{color:var(--muted);font-size:12px}
+nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+nav button{border:0;background:none;color:var(--muted);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;font:inherit}
+nav button[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.board{display:grid;grid-template-columns:repeat(5,minmax(210px,1fr));gap:12px;overflow-x:auto}
+.col h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;display:flex;gap:6px;align-items:center}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
+.card .id{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:20px;padding:0 7px;margin:4px 4px 0 0;color:var(--muted)}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.sev{font-weight:600}.empty{padding:28px;text-align:center;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:10px}
+.wrap{overflow-x:auto}
+@media (max-width:700px){.board{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <h1 id="title"></h1>
+  <div class="muted" id="sub"></div>
+  <div class="phases" id="phases"></div>
+  <div class="metrics" id="metrics"></div>
+  <nav role="tablist" id="tabs"></nav>
+  <section id="view"></section>
+</div>
+<script>
+const DATA = /*DATA*/null;
+const L = DATA.ledger, S = DATA.stats;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const statuses = ['todo','doing','blocked','review','done'];
+document.getElementById('title').textContent = L.meta.project;
+document.getElementById('sub').innerHTML = `Snapshot ${esc(S.generated)} · commit <span class="mono">${esc(S.head)}</span> · regenerate with <span class="mono">python3 tracker/refresh.py</span>`;
+const cur = L.meta.phase.split(' ')[0];
+document.getElementById('phases').innerHTML = L.meta.phases.map(p =>
+  `<div class="phase ${p.id===cur?'on':''}" title="${esc(p.exit)}">${esc(p.id)} ${esc(p.name)}</div>`).join('');
+const gapsOpen = L.gaps.filter(g => !['refuted','closed'].includes(g.status)).length;
+document.getElementById('metrics').innerHTML = [
+  [S.tasks.done + ' / ' + L.tasks.length, 'tasks done'],
+  [S.tasks.doing, 'in progress'],
+  [gapsOpen, 'open gaps'],
+  [L.gaps.filter(g => g.severity==='fatal' && g.status!=='refuted' && g.status!=='closed').length, 'open fatal gaps'],
+  [L.nodes.length, 'claims inventoried'],
+].map(([b,s]) => `<div class="metric"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
+const views = {
+  Board() {
+    return `<div class="board">${statuses.map(s => {
+      const ts = L.tasks.filter(t => t.status === s);
+      return `<div class="col"><h3><span class="dot" style="background:var(--${s})"></span>${s} <span class="muted">${ts.length}</span></h3>${
+        ts.map(t => `<div class="card"><div class="id">${esc(t.id)} · ${esc(t.phase)}</div><div>${esc(t.title)}</div>
+          <span class="tag">${esc(t.owner)}</span>${(t.deps||[]).map(d=>`<span class="tag">after ${esc(d)}</span>`).join('')}
+          ${t.deliverable?`<div class="mono muted">${esc(t.deliverable)}</div>`:''}</div>`).join('')}</div>`;
+    }).join('')}</div>`;
+  },
+  Gaps() {
+    if (!L.gaps.length) return `<div class="empty">No gaps recorded yet. Findings enter here after both blind reviews are merged (T-004).</div>`;
+    return `<div class="wrap"><table><tr><th>ID</th><th>Status</th><th>Severity</th><th>Location</th><th>Summary</th><th>Found / confirmed</th></tr>${
+      L.gaps.map(g => `<tr><td class="mono">${esc(g.id)}</td><td>${esc(g.status)}</td>
+        <td class="sev" style="color:var(--${esc(g.severity)})">${esc(g.severity)}</td><td class="mono">${esc(g.loc)}</td>
+        <td>${esc(g.summary)}</td><td>${esc((g.found_by||[]).join(', '))}${g.confirmed_by?.length?' / '+esc(g.confirmed_by.join(', ')):''}</td></tr>`).join('')}</table></div>`;
+  },
+  Claims() {
+    if (!L.nodes.length) return `<div class="empty">The claim inventory is built from the two reviews in T-004.</div>`;
+    return `<div class="wrap"><table><tr><th>ID</th><th>Kind</th><th>Location</th><th>Claim</th><th>Claude</th><th>Codex</th><th>Lean</th></tr>${
+      L.nodes.map(n => `<tr><td class="mono">${esc(n.id)}</td><td>${esc(n.kind)}</td><td class="mono">${esc(n.loc)}</td><td>${esc(n.title)}</td>
+        <td>${esc(n.review?.claude)}</td><td>${esc(n.review?.codex)}</td><td>${esc(n.lean?.status || '—')}</td></tr>`).join('')}</table></div>`;
+  },
+  Lean() {
+    return `<div class="empty">No Lean code yet. From P3 on, this view is computed from the sources: declarations per claim, sorry count, axiom audit, locked-statement fingerprints.</div>`;
+  },
+};
+const tabs = document.getElementById('tabs');
+function show(name) {
+  [...tabs.children].forEach(b => b.setAttribute('aria-selected', b.textContent === name));
+  document.getElementById('view').innerHTML = views[name]();
+  try { localStorage.setItem('tab', name); } catch (e) {}
+}
+Object.keys(views).forEach(n => { const b = document.createElement('button'); b.textContent = n; b.setAttribute('role','tab'); b.onclick = () => show(n); tabs.appendChild(b); });
+let start = 'Board'; try { start = localStorage.getItem('tab') || 'Board'; } catch (e) {}
+show(views[start] ? start : 'Board');
+</script>
+</body>
+</html>
