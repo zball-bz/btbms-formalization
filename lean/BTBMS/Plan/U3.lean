@@ -9592,12 +9592,253 @@ theorem scanPacket_admitted_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid
     · show (Scan.rootData S.H).map (fun rd => (⟨rd.col, i⟩ : EntryAddr)) = _
       rw [hrd]; rfl
 
+section ScanValid_E8
+
+/-- L7.6a helper: the representatives of `T`'s stack lie in `P⁻`. -/
+theorem stop_reps_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) {q : Nat}
+    {x v : Role} (h : S.sd.col.rep 0 q = some (x, v)) : x ∈ S.preStop ∧ v ∈ S.preStop := by
+  obtain ⟨he0, hpre0⟩ := stop_first_E8 hsd
+  have hq : q < S.sd.col.num 0 := (rep_isSome_iff _ _).1 (by rw [h]; rfl)
+  obtain ⟨hxP, hvP⟩ := rep_mem_prefix he0 h
+  rw [hpre0] at hxP hvP
+  have hne : x ≠ Role.ord S.sd.col ∧ v ≠ Role.ord S.sd.col := by
+    unfold ColAddr.rep at h
+    obtain ⟨o, ho, hov⟩ := Option.map_eq_some_iff.1 h
+    have hon := ColAddr.resolve_num ho
+    have hne : o ≠ S.sd.col := by rintro rfl; omega
+    simp only [Prod.mk.injEq] at hov
+    obtain ⟨rfl, rfl⟩ := hov
+    refine ⟨by simp [hne], ?_⟩
+    split <;> simp [hne]
+  refine ⟨?_, ?_⟩
+  · rcases List.mem_append.1 hxP with h | h
+    · exact h
+    · exact absurd (List.mem_singleton.1 h) hne.1
+  · rcases List.mem_append.1 hvP with h | h
+    · exact h
+    · exact absurd (List.mem_singleton.1 h) hne.2
+
+/-- L7.6a helper: on `P⁻`, `χ̂` lands in `P_E`, and the packet charts read the transported
+values. -/
+theorem scan_pre_val_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P)
+    (β : Role → Ordinal.{u}) {y : Role} (hy : y ∈ S.preStop) :
+    S.chi y ∈ S.PE ∧ S.pkTgtChart (S.chi y) = S.ePre (S.chi y) ∧
+    S.pkAsg β (S.ePre (S.chi y)) = S.asg (S.ePre (S.chi y)) ∧
+    S.fitVal β y = S.asg (S.ePre (S.chi y)) := by
+  obtain ⟨⟨-, hInL, -, hsd, -, -, -⟩, -⟩ := hS
+  obtain ⟨post, hroles, -⟩ := stop_roles_E8 hsd
+  have hnd := Tree.roles_nodup S.H
+  rw [hroles, List.nodup_append, List.nodup_cons] at hnd
+  have hPq : y ∉ S.queryRoles := fun h =>
+    hnd.2.2 _ hy _ (List.mem_cons_of_mem _ (List.mem_append_left _ h)) rfl
+  have hPT : y ≠ Role.ord S.sd.col := fun h => hnd.2.2 _ hy _ List.mem_cons_self h
+  obtain ⟨T', hT', -, hpre'⟩ := Closure.anchorOrigin_prefix hInL hsd
+  obtain ⟨y', hy', hyPE, -⟩ := hpre' y hy
+  have hchi : S.chi y = y' := by simp [ScanSetup.chi, anchorD, hy']
+  have hy'PE : y' ∈ S.PE := by
+    simp only [ScanSetup.PE, ScanSetup.TE, ScanSetup.chi, anchorD, hT', Option.getD_some]
+    exact hyPE
+  rw [hchi]
+  refine ⟨hy'PE, by simp only [ScanSetup.pkTgtChart, if_pos hy'PE], ?_, ?_⟩
+  · exact pkAsg_used_E8 S β (by
+      simp only [ScanSetup.usedNames, List.mem_append]
+      exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hy'PE))))
+  · simp only [ScanSetup.fitVal, if_neg hPq, ScanSetup.baseVal, if_neg hPT, hy',
+      Option.map_some, Option.getD_some]
+
+/-- L7.6a helper: `T_E` and `R` are both read as `ρ`. -/
+theorem scan_hosts_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) :
+    S.pkTgtChart S.TE = S.stopNm ∧ S.pkSrcChart S.R = S.stopNm := by
+  refine ⟨?_, ?_⟩
+  · have hnot : S.TE ∉ S.PE := by
+      intro h
+      have := List.all_eq_true.1 List.all_takeWhile _ h
+      simp at this
+    simp only [ScanSetup.pkTgtChart, if_neg hnot, if_true]
+  · have hnot : S.R ∉ S.preRoot := by
+      intro h
+      have := List.all_eq_true.1 List.all_takeWhile _ h
+      simp at this
+    simp only [ScanSetup.pkSrcChart, if_neg hnot, if_true]
+
+/-- L7.6a step 6 (Valid clause 3): both host roles are named `ρ`. -/
+theorem scan_valid3_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    (S.scanPacket i j β).tgtChart (.ord (S.scanPacket i j β).rk.b.col) =
+      (S.scanPacket i j β).host := by
+  obtain ⟨hb, hTE, -, -, -⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨h1, h2⟩ := scan_hosts_E8 S hS
+  show S.pkTgtChart (.ord (S.scanRecord i j).b.col) = S.pkSrcChart (.ord S.rd.col)
+  rw [hb]
+  rw [hTE] at h1
+  rw [h1]
+  exact h2.symm
+
+/-- L7.6a step 9 (Valid clause 5): both target heads at the source owner. -/
+theorem scan_valid6_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hheads : S.HeadsAt P j i β) :
+    ∃ o v, (S.scanPacket i j β).tgtFrame.reps[(S.scanPacket i j β).rk.tgtSel]? = some (o, v) ∧
+      P.Edge ((S.scanPacket i j β).asg (S.scanPacket i j β).owner)
+        ((S.scanPacket i j β).asg (S.scanPacket i j β).host) ((S.scanPacket i j β).asg o) ∧
+      P.Edge ((S.scanPacket i j β).asg (S.scanPacket i j β).owner)
+        ((S.scanPacket i j β).asg (S.scanPacket i j β).host) ((S.scanPacket i j β).asg v) := by
+  have hS' := hS
+  obtain ⟨⟨-, -, -, hsd, -, -, -⟩, -⟩ := hS'
+  have hj := (reach_idx_E8 hij).2
+  obtain ⟨hb, -, hnum, hentE, hrep⟩ := scan_target_E8 S hS (i := i) hj
+  have hown := scan_owner_E8 S hS hij β
+  obtain ⟨p, o, v, hp, hov, he1, he2⟩ := hheads
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  have hsel : (S.scanPacket i j β).rk.tgtSel = p := by
+    show (((S.scanRecord i j).E.entryAt (S.scanRecord i j).b).map Prod.fst).getD 0 = p
+    rw [hb]
+    rw [hQj] at hp
+    simp only [Option.map_some, Option.some.injEq] at hp
+    simp [ScanSetup.scanRecord, hentE, hp]
+  have hov' : S.sd.col.rep 0 p = some (o, v) := by
+    simpa [frameOf, reps0_getElem?] using hov
+  have hp' : p < S.sd.col.num 0 := (rep_isSome_iff _ _).1 (by rw [hov']; rfl)
+  have hc := hrep p hp'
+  rw [hov'] at hc
+  obtain ⟨hoP, hvP⟩ := stop_reps_E8 hsd hov'
+  obtain ⟨-, ho1, ho2, ho3⟩ := scan_pre_val_E8 S hS β hoP
+  obtain ⟨-, hv1, hv2, hv3⟩ := scan_pre_val_E8 S hS β hvP
+  have hhost : (S.scanPacket i j β).asg (S.scanPacket i j β).host = S.asg S.stopNm := by
+    show S.pkAsg β (S.pkSrcChart (.ord S.rd.col)) = _
+    have := (scan_hosts_E8 S hS).2
+    simp only [ScanSetup.R] at this
+    rw [this]
+    exact pkAsg_used_E8 S β (by simp [ScanSetup.usedNames])
+  refine ⟨S.pkTgtChart (S.chi o), S.pkTgtChart (S.chi v), ?_, ?_, ?_⟩
+  · show ((frameOf (S.scanRecord i j).b).map S.pkTgtChart).reps[(S.scanPacket i j β).rk.tgtSel]? = _
+    rw [hsel, hb]
+    simp [Frame.map, frameOf, List.getElem?_map, reps0_getElem?, ← hc]
+  · rw [hown, hhost]
+    show P.Edge _ _ (S.pkAsg β (S.pkTgtChart (S.chi o)))
+    rw [ho1, ho2, ← ho3]; exact he1
+  · rw [hown, hhost]
+    show P.Edge _ _ (S.pkAsg β (S.pkTgtChart (S.chi v)))
+    rw [hv1, hv2, ← hv3]; exact he2
+
+/-- L7.6a helper: the representatives of a stack are not the column itself. -/
+theorem rep_ne_self_E8 {c : ColAddr} {q : Nat} {x v : Role} (h : c.rep 0 q = some (x, v)) :
+    x ≠ Role.ord c ∧ v ≠ Role.ord c := by
+  have hq : q < c.num 0 := (rep_isSome_iff _ _).1 (by rw [h]; rfl)
+  unfold ColAddr.rep at h
+  obtain ⟨o, ho, hov⟩ := Option.map_eq_some_iff.1 h
+  have hon := ColAddr.resolve_num ho
+  have hne : o ≠ c := by rintro rfl; omega
+  simp only [Prod.mk.injEq] at hov
+  obtain ⟨rfl, rfl⟩ := hov
+  refine ⟨by simp [hne], ?_⟩
+  split <;> simp [hne]
+
+/-- L7.6a helper: `R` is followed by the slot of the first root entry. -/
+theorem root_first_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    (hrd : Scan.rootData S.H = some S.rd) (hlen : 0 < rootLenOf S.H S.rd) :
+    (⟨S.rd.col, 0⟩ : EntryAddr) ∈ S.H.entryAddrs ∧
+    prefixRoles S.H ⟨S.rd.col, 0⟩ = S.preRoot ++ [S.R] := by
+  obtain ⟨-, -, -, -, -, hmem, -, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  obtain ⟨A, B, hr⟩ := roles_col_decomp hcolR
+  have hR : S.preRoot = A := rolesBefore_of_decomp_E8 hr
+  rcases hc : colR with _ | ⟨c0, ct⟩
+  · simp [rootLenOf, hcolR, hc] at hlen
+  · refine ⟨(Tree.mem_entryAddrs_iff _ _).2 (by simp [Tree.entryAt, hcolR, hc]), ?_⟩
+    rw [hR]
+    refine rolesBefore_of_decomp_E8 (rest := Tree.rolesF (S.rd.col.path ++ [(S.rd.col.col, 0)])
+      c0.2 ++ (Tree.rolesCol S.rd.col.path S.rd.col.col 1 ct ++ B)) ?_
+    rw [hr, hc]
+    simp [Tree.rolesCol, ScanSetup.R]
+
+/-- L7.6a step 7 (Valid clause 4): the source frame below `r` is the target frame. -/
+theorem scan_valid4_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    (S.scanPacket i j β).srcFrame.reps.take ((S.scanPacket i j β).rk.a.col.num 0) =
+      (S.scanPacket i j β).tgtFrame.reps.take ((S.scanPacket i j β).rk.a.col.num 0) := by
+  have hS' := hS
+  obtain ⟨⟨-, -, -, hsd, hrd, hcurlt, -⟩, -⟩ := hS'
+  obtain ⟨hb, -, -, -, hrep⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨hres, -, -, hrnum, hrt, -, -, -⟩ := Scan.rootData_spec hsd hrd
+  have ht := (Scan.stopData_spec hsd).2.2.1
+  have hlen : 0 < rootLenOf S.H S.rd := by
+    simp only [ScanSetup.rootLen] at hcurlt; omega
+  obtain ⟨he0R, hpre0R⟩ := root_first_E8 hsd hrd hlen
+  have hvis : S.sd.col.resolve 0 (S.rd.col.num 0) = some S.rd.col := by rw [hrnum]; exact hres
+  show ((frameOf ⟨S.rd.col, i⟩).map S.pkSrcChart).reps.take (S.rd.col.num 0) =
+    ((frameOf (S.scanRecord i j).b).map S.pkTgtChart).reps.take (S.rd.col.num 0)
+  rw [hb]
+  apply List.ext_getElem?
+  intro q
+  simp only [Frame.map, frameOf, List.getElem?_take, List.getElem?_map, reps0_getElem?]
+  split_ifs with hq
+  · have h1 := rep_visible S.sd.col S.rd.col hvis q hq
+    have h2 := hrep q (by omega)
+    rw [h1, ← h2]
+    cases h : S.sd.col.rep 0 q with
+    | none => rfl
+    | some xv =>
+      obtain ⟨x, v⟩ := xv
+      have hR : S.rd.col.rep 0 q = some (x, v) := by rw [h1]; exact h
+      obtain ⟨hxP, hvP⟩ := rep_mem_prefix he0R hR
+      rw [hpre0R] at hxP hvP
+      obtain ⟨hxR, hvR⟩ := rep_ne_self_E8 hR
+      have hxR' : x ∈ S.preRoot := by
+        rcases List.mem_append.1 hxP with h | h
+        · exact h
+        · exact absurd (List.mem_singleton.1 h) hxR
+      have hvR' : v ∈ S.preRoot := by
+        rcases List.mem_append.1 hvP with h | h
+        · exact h
+        · exact absurd (List.mem_singleton.1 h) hvR
+      obtain ⟨hxS, hvS⟩ := stop_reps_E8 hsd h
+      have hx := (scan_pre_val_E8 S hS β hxS).2.1
+      have hv := (scan_pre_val_E8 S hS β hvS).2.1
+      simp only [Option.map_some, ScanSetup.pkSrcChart, if_pos hxR', if_pos hvR', hx, hv]
+  · rfl
+
+/-- L7.6a step 5 (Valid clause 1): the target chart is injective on `P(E, b)`. -/
+theorem scan_valid1_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    Set.InjOn (S.scanPacket i j β).tgtChart
+      {x | x ∈ prefixRoles (S.scanPacket i j β).rk.E (S.scanPacket i j β).rk.b} := by
+  sorry
+
+/-- L7.6a step 5 (Valid clause 2): the source chart is injective on `Γ(F)`. -/
+theorem scan_valid2_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    (β : Role → Ordinal.{u}) :
+    Set.InjOn (S.scanPacket i j β).srcChart {x | x ∈ (S.scanPacket i j β).rk.F.roles} := by
+  sorry
+
+/-- L7.6a step 8 (Valid clause 4 of the paper, the joint diagram): `prefixGraph E b` through the
+target chart, `Γ(F)` through the source chart, and the auxiliary diagram hold at `pkAsg β`. -/
+theorem scan_valid5_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) :
+    (S.scanPacket i j β).joint.Holds P (S.scanPacket i j β).asg := by
+  sorry
+
+/-- L7.6a step 10 (Valid clause 6): the low certificate lies below the owner `u_i`. -/
+theorem scan_valid7_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (h17a : S.Lmax j β < S.ownerVal i) :
+    ∀ x ∈ (S.scanPacket i j β).lowNames,
+      (S.scanPacket i j β).asg x < (S.scanPacket i j β).asg (S.scanPacket i j β).owner := by
+  sorry
+
+end ScanValid_E8
+
 /-- L7.6a steps 4–10: the scan packet is valid. -/
 theorem scanPacket_valid_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
     {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
     (hheads : S.HeadsAt P j i β) : (S.scanPacket i j β).Valid P := by
-  sorry
+  have hj := (reach_idx_E8 hij).2
+  exact ⟨scan_valid1_E8 S hS hj β, scan_valid2_E8 S hS hij β, scan_valid3_E8 S hS hj β,
+    scan_valid4_E8 S hS hj β, scan_valid5_E8 S hS hij hfit, scan_valid6_E8 S hS hij hheads,
+    scan_valid7_E8 S hS hij h17a⟩
 
 end ScanPacket_E8
 
