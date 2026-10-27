@@ -972,19 +972,9 @@ theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAd
 
 /-! ## §c.5 (cont.) Scan lemmas (U1: D2.1, L2.1, L2.2; the G-006 predicates are U1-internal) -/
 
--- provides: U1, D2.1 (boundaries strictly increase)
-theorem cutQuery_lt_succ {α : Type} [LinearOrder α] (ks : List α) {k : Nat} (hk : k < ks.length) :
-    cutQuery ks k < cutQuery ks (k + 1) := by sorry
-
--- provides: U1, L2.1 (scan boundary lemma, reduced query)
-theorem cursor_spec {α : Type} [LinearOrder α] (ks W : List α)
-    (hW : W.Pairwise fun x y => y ≤ x) :
-    cutQuery ks (cursor ks W) ≤ W ∧
-      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by sorry
-
--- provides: U1, L2.1 (reducing a query does not change the final source cursor)
-theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
-    cursor ks (nu W) = cursor ks W := by sorry
+-- provides: U1, D2.1 / L2.1: `cutQuery_lt_succ`, `cursor_spec` and `cursor_nu` moved to
+-- `Plan/U1.lean` (section `Words`), after the ν and cursor lemmas their proofs need (brief rule 5;
+-- names and statements unchanged; nothing in between uses them).
 
 -- provides: U1, L2.2 (path nesting)
 theorem path_nesting {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks) (c : ColAddr)

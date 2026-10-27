@@ -1084,27 +1084,109 @@ def nuStep (acc : List α) (x : α) : List α :=
 theorem nu_eq_foldl (l : List α) : nu l = l.foldl nuStep [] := rfl
 
 /-- D2.1a. -/
-theorem nu_append_singleton (l : List α) (x : α) : nu (l ++ [x]) = nuStep (nu l) x := by sorry
+theorem nu_append_singleton (l : List α) (x : α) : nu (l ++ [x]) = nuStep (nu l) x := by
+  rw [nu_eq_foldl, nu_eq_foldl, List.foldl_append]; rfl
 
-/-- D2.1a: `ν(W)` is nonincreasing (txt:159). -/
-theorem nu_noninc (l : List α) : Noninc (nu l) := by sorry
+omit [LinearOrder α] in
+/-- D2.1a helper: every letter of `l.takeWhile p` satisfies `p`. -/
+theorem mem_takeWhile_imp_of {p : α → Bool} :
+    ∀ {l : List α} {y : α}, y ∈ l.takeWhile p → p y = true
+  | [], _, h => by simp at h
+  | a :: l, y, h => by
+    rw [List.takeWhile_cons] at h
+    split at h
+    · rcases List.mem_cons.1 h with rfl | h
+      · assumption
+      · exact mem_takeWhile_imp_of h
+    · simp at h
 
-/-- D2.1a: a nonincreasing word is reduced. -/
-theorem nu_of_noninc {l : List α} (h : Noninc l) : nu l = l := by sorry
+omit [LinearOrder α] in
+/-- D2.1a helper: `l.takeWhile p = l` when every letter satisfies `p`. -/
+theorem takeWhile_eq_self_of {p : α → Bool} {l : List α} (h : ∀ a ∈ l, p a = true) :
+    l.takeWhile p = l := by
+  simpa using List.takeWhile_append_of_pos (l₂ := []) h
 
-/-- D2.1a. -/
-theorem nu_append_nu (l m : List α) : nu (nu l ++ m) = nu (l ++ m) := by sorry
+/-- D2.1a helper: on a nonincreasing word, deleting the terminal letters `< x` keeps exactly the
+letters `≥ x`. -/
+theorem reverse_dropWhile_reverse {acc : List α} (h : Noninc acc) (x : α) :
+    (acc.reverse.dropWhile fun y => decide (y < x)).reverse =
+      acc.takeWhile fun y => decide (x ≤ y) := by
+  induction acc with
+  | nil => rfl
+  | cons a rest ih =>
+    rw [Noninc, List.pairwise_cons] at h
+    obtain ⟨ha, hrest⟩ := h
+    rw [List.reverse_cons, List.dropWhile_append, List.takeWhile_cons]
+    by_cases hxa : x ≤ a
+    · have hna : ¬ a < x := not_lt.2 hxa
+      rw [if_pos (decide_eq_true hxa)]
+      split
+      · rename_i hemp
+        have h0 : rest.takeWhile (fun y => decide (x ≤ y)) = [] := by
+          rw [← ih hrest]; simpa using hemp
+        rw [h0]; simp [hna]
+      · rw [List.reverse_append, ih hrest]; rfl
+    · have hax : a < x := lt_of_not_ge hxa
+      have hall : ∀ b ∈ rest.reverse, decide (b < x) = true := by
+        intro b hb
+        exact decide_eq_true (lt_of_le_of_lt (ha b (List.mem_reverse.1 hb)) hax)
+      have hd : (rest.reverse.dropWhile fun y => decide (y < x)) = [] := by
+        simpa using List.dropWhile_append_of_pos (l₂ := []) hall
+      simp [hd, hax, hxa]
 
 /-- D2.1a: on a nonincreasing word, a step keeps the letters `≥ x` and appends `x`. -/
 theorem nuStep_eq_takeWhile {acc : List α} (h : Noninc acc) (x : α) :
-    nuStep acc x = acc.takeWhile (fun y => decide (x ≤ y)) ++ [x] := by sorry
+    nuStep acc x = acc.takeWhile (fun y => decide (x ≤ y)) ++ [x] := by
+  rw [nuStep, reverse_dropWhile_reverse h]
+
+/-- D2.1a: `ν(W)` is nonincreasing (txt:159). -/
+theorem nu_noninc (l : List α) : Noninc (nu l) := by
+  induction l using List.reverseRecOn with
+  | nil => exact List.Pairwise.nil
+  | append_singleton l x ih =>
+    rw [nu_append_singleton, nuStep_eq_takeWhile ih, Noninc, List.pairwise_append]
+    refine ⟨ih.sublist (List.takeWhile_sublist _), List.pairwise_singleton _ _, ?_⟩
+    intro a ha b hb
+    rw [List.mem_singleton] at hb
+    subst hb
+    simpa using mem_takeWhile_imp_of ha
+
+/-- D2.1a: a nonincreasing word is reduced. -/
+theorem nu_of_noninc {l : List α} (h : Noninc l) : nu l = l := by
+  induction l using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton l x ih =>
+    rw [Noninc, List.pairwise_append] at h
+    obtain ⟨h1, -, h3⟩ := h
+    rw [nu_append_singleton, ih h1, nuStep_eq_takeWhile h1,
+      takeWhile_eq_self_of fun a ha => decide_eq_true (h3 a ha x (List.mem_singleton_self x))]
+
+/-- D2.1a. -/
+theorem nu_append_nu (l m : List α) : nu (nu l ++ m) = nu (l ++ m) := by
+  induction m using List.reverseRecOn with
+  | nil => simp [nu_of_noninc (nu_noninc l)]
+  | append_singleton m x ih =>
+    rw [← List.append_assoc, ← List.append_assoc, nu_append_singleton, nu_append_singleton, ih]
 
 /-- D2.1a (txt:163-164): an append strictly increases a reduced word. -/
-theorem lt_nuStep {acc : List α} (h : Noninc acc) (x : α) : acc < nuStep acc x := by sorry
+theorem lt_nuStep {acc : List α} (h : Noninc acc) (x : α) : acc < nuStep acc x := by
+  rw [nuStep_eq_takeWhile h]
+  conv_lhs => rw [← List.takeWhile_append_dropWhile (p := fun y => decide (x ≤ y)) (l := acc)]
+  apply List.append_left_lt
+  cases hd : acc.dropWhile (fun y => decide (x ≤ y)) with
+  | nil => exact List.nil_lt_cons _ _
+  | cons d D =>
+    have := List.head_dropWhile_not (fun y => decide (x ≤ y)) (l := acc) (by simp [hd])
+    simp only [hd, List.head_cons, decide_eq_false_iff_not, not_le] at this
+    exact List.cons_lt_cons_iff.2 (Or.inl this)
 
 /-- D2.1a: every letter of `nuStep acc x` is at least `x`. -/
 theorem le_of_mem_nuStep {acc : List α} (h : Noninc acc) {x y : α} (hy : y ∈ nuStep acc x) :
-    x ≤ y := by sorry
+    x ≤ y := by
+  rw [nuStep_eq_takeWhile h, List.mem_append] at hy
+  rcases hy with hy | hy
+  · simpa using mem_takeWhile_imp_of hy
+  · rw [List.mem_singleton] at hy; exact hy ▸ le_refl x
 
 theorem cutQuery_zero (ks : List α) : cutQuery ks 0 = [] := rfl
 
@@ -1112,51 +1194,147 @@ theorem boundary_eq_cutQuery (ks : List α) (i : Nat) : boundary ks i = cutQuery
 
 /-- D2.1a. -/
 theorem cutQuery_succ {ks : List α} {k : Nat} (hk : k < ks.length) :
-    cutQuery ks (k + 1) = nuStep (cutQuery ks k) ks[k] := by sorry
+    cutQuery ks (k + 1) = nuStep (cutQuery ks k) ks[k] := by
+  rw [cutQuery, ← List.take_append_getElem hk, nu_append_singleton]; rfl
 
 theorem cutQuery_noninc (ks : List α) (k : Nat) : Noninc (cutQuery ks k) := nu_noninc _
 
+-- provides: U1, D2.1 (boundaries strictly increase). Moved here from `Plan/Spine.lean` (brief
+-- rule 5): its proof needs `cutQuery_succ` and `lt_nuStep`; nothing in between uses it.
+theorem cutQuery_lt_succ {α : Type} [LinearOrder α] (ks : List α) {k : Nat} (hk : k < ks.length) :
+    cutQuery ks k < cutQuery ks (k + 1) := by
+  rw [cutQuery_succ hk]; exact lt_nuStep (cutQuery_noninc ks k) _
+
 /-- D2.1 (with `cutQuery_lt_succ`): boundaries strictly increase up to the full cut. -/
 theorem cutQuery_strictMono {ks : List α} {j k : Nat} (hjk : j < k) (hk : k ≤ ks.length) :
-    cutQuery ks j < cutQuery ks k := by sorry
+    cutQuery ks j < cutQuery ks k := by
+  induction k with
+  | zero => omega
+  | succ k ih =>
+    rcases Nat.lt_succ_iff_lt_or_eq.1 hjk with h | h
+    · exact lt_trans (ih h (by omega)) (cutQuery_lt_succ ks (by omega))
+    · subst h; exact cutQuery_lt_succ ks (by omega)
+
+/-- D2.1 helper: a cut beyond the column is the full cut. -/
+theorem cutQuery_eq_min (ks : List α) (k : Nat) : cutQuery ks k = cutQuery ks (min k ks.length) := by
+  unfold cutQuery
+  rcases le_total k ks.length with h | h
+  · rw [Nat.min_eq_left h]
+  · rw [Nat.min_eq_right h, List.take_of_length_le h, List.take_length]
 
 /-- D2.1: boundaries are monotone (constant beyond the full cut). -/
 theorem cutQuery_mono (ks : List α) {j k : Nat} (hjk : j ≤ k) : cutQuery ks j ≤ cutQuery ks k := by
-  sorry
+  rw [cutQuery_eq_min ks j, cutQuery_eq_min ks k]
+  rcases Nat.lt_or_eq_of_le (min_le_min_right ks.length hjk) with h | h
+  · exact le_of_lt (cutQuery_strictMono h (Nat.min_le_right _ _))
+  · rw [h]
 
 theorem boundary_ne_nil {ks : List α} {i : Nat} (hi : i < ks.length) : boundary ks i ≠ [] := by
-  sorry
+  rw [boundary_eq_cutQuery, cutQuery_succ hi, nuStep]; simp
+
+/-- D2.1a helper: a step commutes with a strictly increasing map. -/
+theorem nuStep_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (acc : List α)
+    (x : α) : nuStep (acc.map f) (f x) = (nuStep acc x).map f := by
+  unfold nuStep
+  rw [← List.map_reverse, List.dropWhile_map, ← List.map_reverse, List.map_append]
+  have : ((fun y => decide (y < f x)) ∘ f) = fun y => decide (y < x) := by
+    funext y; simp [hf.lt_iff_lt]
+  rw [this]; rfl
 
 -- U1-verify: changed (new declarations)
 /-- D2.1a: `ν` commutes with a strictly increasing map (used for the maps `κ_j` of txt:331-333
 and for the coercion `Key → WithTop Key`). -/
 theorem nu_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (l : List α) :
-    nu (l.map f) = (nu l).map f := by sorry
+    nu (l.map f) = (nu l).map f := by
+  induction l using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton l x ih =>
+    rw [List.map_append, List.map_singleton, nu_append_singleton, nu_append_singleton, ih,
+      nuStep_map hf]
 
 /-- D2.1a: cut queries commute with a strictly increasing map. -/
 theorem cutQuery_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (ks : List α)
-    (k : Nat) : cutQuery (ks.map f) k = (cutQuery ks k).map f := by sorry
+    (k : Nat) : cutQuery (ks.map f) k = (cutQuery ks k).map f := by
+  rw [cutQuery, cutQuery, ← List.map_take, nu_map hf]
 
 /-- D2.1a: boundaries commute with a strictly increasing map. -/
 theorem boundary_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (ks : List α)
-    (i : Nat) : boundary (ks.map f) i = (boundary ks i).map f := by sorry
+    (i : Nat) : boundary (ks.map f) i = (boundary ks i).map f := by
+  rw [boundary, boundary, ← List.map_take, nu_map hf]
+
+/-- L2.3b helper: if every letter of `D` is above `J` and `W < D`, then the letters of `W` up
+to the first one below `J`, followed by `J`, are still below `D`. -/
+theorem takeWhile_append_lt {J : α} : ∀ {W D : List α}, (∀ d ∈ D, J < d) → W < D →
+    W.takeWhile (fun y => decide (J ≤ y)) ++ [J] < D
+  | [], D, hD, h => by
+    cases D with
+    | nil => exact absurd h (lt_irrefl _)
+    | cons d D => exact List.cons_lt_cons_iff.2 (Or.inl (hD d List.mem_cons_self))
+  | w :: W, D, hD, h => by
+    cases D with
+    | nil => exact absurd h (List.not_lt_nil _)
+    | cons d D =>
+      rw [List.takeWhile_cons]
+      by_cases hJw : J ≤ w
+      · rw [if_pos (decide_eq_true hJw), List.cons_append]
+        rcases List.cons_lt_cons_iff.1 h with h' | ⟨rfl, h'⟩
+        · exact List.cons_lt_cons_iff.2 (Or.inl h')
+        · exact List.cons_lt_cons_iff.2 (Or.inr ⟨rfl,
+            takeWhile_append_lt (fun d hd => hD d (List.mem_cons_of_mem _ hd)) h'⟩)
+      · rw [if_neg (by simpa using hJw), List.nil_append]
+        exact List.cons_lt_cons_iff.2 (Or.inl (hD d List.mem_cons_self))
 
 /-- L2.3b (word observation, txt:211-213): if `D = ν(P ⌢ [K])`, `W` is nonincreasing, `W < D`
 and `J < K`, then `ν(W ⌢ [J]) < D`. -/
 theorem nu_append_lt {P W : List α} {K J : α} (hW : Noninc W) (hWD : W < nu (P ++ [K]))
-    (hJK : J < K) : nu (W ++ [J]) < nu (P ++ [K]) := by sorry
+    (hJK : J < K) : nu (W ++ [J]) < nu (P ++ [K]) := by
+  rw [nu_append_singleton, nu_of_noninc hW, nuStep_eq_takeWhile hW]
+  refine takeWhile_append_lt (fun d hd => lt_of_lt_of_le hJK ?_) hWD
+  rw [nu_append_singleton] at hd
+  exact le_of_mem_nuStep (nu_noninc P) hd
 
 /-- L2.3b, boundary form: `W(c,k) < B_a(u)` and `K_k < K_u` give `B_c(k) < B_a(u)`. -/
 theorem boundary_lt_of_cut {ksc ksa : List α} {k u : Nat} (hk : k < ksc.length)
     (hu : u < ksa.length) (hW : cutQuery ksc k < boundary ksa u) (hK : ksc[k] < ksa[u]) :
-    boundary ksc k < boundary ksa u := by sorry
+    boundary ksc k < boundary ksa u := by
+  have e1 : boundary ksc k = nu (cutQuery ksc k ++ [ksc[k]]) := by
+    rw [boundary, ← List.take_append_getElem hk, cutQuery, nu_append_nu]
+  have e2 : boundary ksa u = nu (ksa.take u ++ [ksa[u]]) := by
+    rw [boundary, ← List.take_append_getElem hu]
+  rw [e1, e2]
+  rw [e2] at hW
+  exact nu_append_lt (cutQuery_noninc ksc k) hW hK
 
 /-- L2.1a: the source cursor never exceeds the source length. -/
-theorem cursor_le_length (src qry : List α) : cursor src qry ≤ src.length := by sorry
+theorem cursor_le_length (src qry : List α) : cursor src qry ≤ src.length := by
+  fun_induction cursor src qry with
+  | case1 => simp
+  | case2 => simp
+  | case3 x xs y ys h ih => simp only [List.length_cons]; omega
+  | case4 xs y ys h ih => simp only [List.length_cons]; omega
+  | case5 x xs y ys h1 h2 ih => exact ih
 
 /-- L2.1a: the run on a source prefix is the run on the whole source, stopped at its end. -/
 theorem cursor_take (src qry : List α) (k : Nat) :
-    cursor (src.take k) qry = min k (cursor src qry) := by sorry
+    cursor (src.take k) qry = min k (cursor src qry) := by
+  induction src, qry using cursor.induct generalizing k with
+  | case1 qry => simp [cursor]
+  | case2 x xs => cases k <;> simp [cursor]
+  | case3 x xs y ys h ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k => simp only [List.take_succ_cons, cursor, if_pos h, ih]; omega
+  | case4 xs y ys h ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k => simp only [List.take_succ_cons, cursor, lt_irrefl, if_false, if_true, ih]; omega
+  | case5 x xs y ys h1 h2 ih =>
+    cases k with
+    | zero => simp [cursor]
+    | succ k =>
+      have := ih (k + 1)
+      simp only [List.take_succ_cons] at this
+      simp only [List.take_succ_cons, cursor, if_neg h1, if_neg h2, this]
 
 /-- L2.1a: the final query cursor of the raw scan (same recursion as `cursor`). -/
 def qcursor : List α → List α → Nat
@@ -1168,82 +1346,536 @@ def qcursor : List α → List α → Nat
     else qcursor (x :: xs) ys + 1
 termination_by xs ys => xs.length + ys.length
 
-theorem qcursor_le_length (src qry : List α) : qcursor src qry ≤ qry.length := by sorry
+theorem qcursor_le_length (src qry : List α) : qcursor src qry ≤ qry.length := by
+  fun_induction qcursor src qry with
+  | case1 => simp
+  | case2 => simp
+  | case3 x xs y ys h ih => exact ih
+  | case4 xs y ys h ih => simp only [List.length_cons]; omega
+  | case5 x xs y ys h1 h2 ih => simp only [List.length_cons]; omega
 
 /-- L2.1a: a run that exhausts `src` continues on `src'` from the query position it reached. -/
 theorem cursor_append_of_exhausted {src qry : List α} (src' : List α)
     (h : cursor src qry = src.length) :
     cursor (src ++ src') qry = src.length + cursor src' (qry.drop (qcursor src qry)) ∧
       qcursor (src ++ src') qry = qcursor src qry + qcursor src' (qry.drop (qcursor src qry)) := by
-  sorry
+  induction src, qry using cursor.induct with
+  | case1 qry => simp [qcursor]
+  | case2 x xs => simp [cursor] at h
+  | case3 x xs y ys hxy ih =>
+    simp only [cursor, if_pos hxy, List.length_cons] at h
+    obtain ⟨h1, h2⟩ := ih (by omega)
+    simp only [List.cons_append, cursor, qcursor, if_pos hxy, List.length_cons, h1, h2]
+    exact ⟨by omega, trivial⟩
+  | case4 xs y ys hyy ih =>
+    simp only [cursor, lt_irrefl, if_false, if_true, List.length_cons] at h
+    obtain ⟨h1, h2⟩ := ih (by omega)
+    simp only [List.cons_append, cursor, qcursor, lt_irrefl, if_false, if_true, List.length_cons,
+      h1, h2, List.drop_succ_cons]
+    exact ⟨by omega, by omega⟩
+  | case5 x xs y ys h1 h2 ih =>
+    simp only [cursor, if_neg h1, if_neg h2] at h
+    obtain ⟨h3, h4⟩ := ih h
+    simp only [List.cons_append] at h3 h4
+    simp only [List.cons_append, cursor, qcursor, if_neg h1, if_neg h2, List.drop_succ_cons]
+    exact ⟨h3, by omega⟩
 
 /-- L2.1a: a run that stops inside `src` (its query is exhausted) ignores what follows. -/
 theorem cursor_append_of_lt {src qry : List α} (src' : List α) (h : cursor src qry < src.length) :
-    cursor (src ++ src') qry = cursor src qry := by sorry
+    cursor (src ++ src') qry = cursor src qry := by
+  induction src, qry using cursor.induct with
+  | case1 qry => simp at h
+  | case2 x xs => simp [cursor]
+  | case3 x xs y ys hxy ih =>
+    simp only [cursor, if_pos hxy, List.length_cons] at h
+    simp only [List.cons_append, cursor, if_pos hxy, ih (by omega)]
+  | case4 xs y ys hyy ih =>
+    simp only [cursor, lt_irrefl, if_false, if_true, List.length_cons] at h
+    simp only [List.cons_append, cursor, lt_irrefl, if_false, if_true, ih (by omega)]
+  | case5 x xs y ys h1 h2 ih =>
+    simp only [cursor, if_neg h1, if_neg h2] at h
+    have := ih h
+    simp only [List.cons_append] at this
+    simp only [List.cons_append, cursor, if_neg h1, if_neg h2, this]
+
+/-- L2.1a helper: a one-letter source above every query letter is never consumed. -/
+theorem cursor_singleton_of_lt (x : α) : ∀ (V : List α), (∀ v ∈ V, v < x) → cursor [x] V = 0
+  | [], _ => by simp [cursor]
+  | v :: V, h => by
+    have hv : v < x := h v List.mem_cons_self
+    rw [cursor, if_neg (not_lt.2 hv.le), if_neg (ne_of_gt hv)]
+    exact cursor_singleton_of_lt x V fun w hw => h w (List.mem_cons_of_mem _ hw)
 
 /-- L2.1a: a one-letter source against a nonincreasing query `y :: V`. -/
 theorem cursor_singleton_cons (x y : α) (V : List α) (hV : Noninc (y :: V)) :
     (x < y → cursor [x] (y :: V) = 1 ∧ qcursor [x] (y :: V) = 0) ∧
       (x = y → cursor [x] (y :: V) = 1 ∧ qcursor [x] (y :: V) = 1) ∧
-      (y < x → cursor [x] (y :: V) = 0) := by sorry
+      (y < x → cursor [x] (y :: V) = 0) := by
+  refine ⟨fun h => ?_, fun h => ?_, fun h => ?_⟩
+  · simp [cursor, qcursor, h]
+  · subst h; simp [cursor, qcursor]
+  · rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+    rw [Noninc, List.pairwise_cons] at hV
+    exact cursor_singleton_of_lt x V fun v hv => lt_of_le_of_lt (hV.1 v hv) h
 
-theorem cursor_nil_right (src : List α) : cursor src [] = 0 := by sorry
+theorem cursor_nil_right (src : List α) : cursor src [] = 0 := by
+  cases src <;> simp [cursor]
+
+/-- L2.1b helper: `ν(l)` is a sublist of `l`. -/
+theorem nu_sublist (l : List α) : (nu l).Sublist l := by
+  induction l using List.reverseRecOn with
+  | nil => exact List.Sublist.slnil
+  | append_singleton l x ih =>
+    rw [nu_append_singleton, nuStep_eq_takeWhile (nu_noninc l)]
+    exact ((List.takeWhile_sublist _).trans ih).append (List.Sublist.refl _)
+
+/-- L2.1b helper: a letter at least every later letter is kept by `ν`. -/
+theorem nu_cons_of_le {x : α} {xs : List α} (h : ∀ z ∈ xs, z ≤ x) : nu (x :: xs) = x :: nu xs := by
+  induction xs using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton xs w ih =>
+    have ih' := ih fun z hz => h z (List.mem_append_left _ hz)
+    have hw : w ≤ x := h w (List.mem_append_right _ (List.mem_singleton_self w))
+    have hn : Noninc (x :: nu xs) := ih' ▸ nu_noninc (x :: xs)
+    rw [← List.cons_append, nu_append_singleton, ih', nuStep_eq_takeWhile hn, List.takeWhile_cons,
+      if_pos (decide_eq_true hw), nu_append_singleton, nuStep_eq_takeWhile (nu_noninc xs),
+      List.cons_append]
+
+/-- L2.1b helper: a letter below some later letter is deleted by `ν`. -/
+theorem nu_cons_of_lt {x : α} {xs : List α} (h : ∃ z ∈ xs, x < z) : nu (x :: xs) = nu xs := by
+  induction xs using List.reverseRecOn with
+  | nil => simp at h
+  | append_singleton xs w ih =>
+    rw [← List.cons_append, nu_append_singleton, nu_append_singleton]
+    by_cases h' : ∃ z ∈ xs, x < z
+    · rw [ih h']
+    · push Not at h'
+      obtain ⟨z, hz, hxz⟩ := h
+      have hxw : x < w := by
+        rcases List.mem_append.1 hz with hz | hz
+        · exact absurd (h' z hz) (not_le.2 hxz)
+        · rw [List.mem_singleton] at hz; exact hz ▸ hxz
+      rw [nu_cons_of_le h', nuStep_eq_takeWhile (nu_cons_of_le h' ▸ nu_noninc (x :: xs)),
+        nuStep_eq_takeWhile (nu_noninc xs), List.takeWhile_cons,
+        if_neg (by simpa using hxw)]
+      cases hn : nu xs with
+      | nil => rfl
+      | cons a rest =>
+        have ha : a ≤ x := h' a ((nu_sublist xs).subset (hn ▸ List.mem_cons_self))
+        rw [List.takeWhile_cons, if_neg (by simpa using lt_of_le_of_lt ha hxw)]
+
+/-- L2.1b helper: the first letter of `ν(x :: xs)` is a maximum of `x :: xs`. -/
+theorem nu_head (x : α) (xs : List α) :
+    ∃ m rest, nu (x :: xs) = m :: rest ∧ x ≤ m ∧ ∀ z ∈ xs, z ≤ m := by
+  induction xs generalizing x with
+  | nil => exact ⟨x, [], rfl, le_refl x, by simp⟩
+  | cons w ws ih =>
+    by_cases hall : ∀ z ∈ w :: ws, z ≤ x
+    · exact ⟨x, _, nu_cons_of_le hall, le_refl x, hall⟩
+    · push Not at hall
+      obtain ⟨m, rest, hm, hwm, hws⟩ := ih w
+      obtain ⟨z, hz, hxz⟩ := hall
+      have hzm : ∀ z ∈ w :: ws, z ≤ m := by
+        intro z hz
+        rcases List.mem_cons.1 hz with rfl | hz
+        · exact hwm
+        · exact hws z hz
+      exact ⟨m, rest, (nu_cons_of_lt ⟨z, hz, hxz⟩).trans hm, (hxz.trans_le (hzm z hz)).le, hzm⟩
+
+/-- L2.1b helper: a list whose first letter is below `m` is below every list starting with `m`. -/
+theorem lt_cons_of_head_lt {l : List α} {m : α} (rest : List α) (h : ∀ a ∈ l.head?, a < m) :
+    l < m :: rest := by
+  cases l with
+  | nil => exact List.nil_lt_cons _ _
+  | cons a l => exact List.cons_lt_cons_iff.2 (Or.inl (h a rfl))
+
+/-- L2.1b helper: the empty list is least. -/
+theorem nil_le_list (l : List α) : ([] : List α) ≤ l := by
+  cases l with
+  | nil => exact le_refl _
+  | cons a l => exact le_of_lt (List.nil_lt_cons _ _)
+
+/-- L2.1b helper: `≤` under a common first letter. -/
+theorem cons_le_cons_iff' (a : α) (l l' : List α) : a :: l ≤ a :: l' ↔ l ≤ l' := by
+  rw [le_iff_lt_or_eq, le_iff_lt_or_eq, List.cons_lt_cons_iff, List.cons.injEq]
+  simp
 
 /-- L2.1b (txt:170-173): against a nonincreasing query, exhaustion is lexicographic comparison
 of the reduced source. -/
 theorem cursor_eq_length_iff (src : List α) {W : List α} (hW : Noninc W) :
-    cursor src W = src.length ↔ nu src ≤ W := by sorry
+    cursor src W = src.length ↔ nu src ≤ W := by
+  induction src, W using cursor.induct with
+  | case1 W => exact iff_of_true (by simp [cursor]) (nil_le_list W)
+  | case2 x xs =>
+    obtain ⟨m, rest, hm, -⟩ := nu_head x xs
+    rw [hm, cursor]
+    exact iff_of_false (by simp) (not_le.2 (List.nil_lt_cons _ _))
+  | case3 x xs y ys hxy ih =>
+    rw [cursor, if_pos hxy, List.length_cons, Nat.add_right_cancel_iff, ih hW]
+    by_cases hall : ∀ z ∈ xs, z ≤ x
+    · rw [nu_cons_of_le hall]
+      refine iff_of_true (le_of_lt (lt_cons_of_head_lt _ fun a ha => ?_))
+        (le_of_lt (List.cons_lt_cons_iff.2 (Or.inl hxy)))
+      have ha' : a ∈ nu xs := List.mem_of_mem_head? ha
+      exact lt_of_le_of_lt (hall a ((nu_sublist xs).subset ha')) hxy
+    · push Not at hall
+      rw [nu_cons_of_lt hall]
+  | case4 xs y ys hyy ih =>
+    have hys : Noninc ys := (List.pairwise_cons.1 hW).2
+    rw [cursor, if_neg hyy, if_pos rfl, List.length_cons, Nat.add_right_cancel_iff, ih hys]
+    by_cases hall : ∀ z ∈ xs, z ≤ y
+    · rw [nu_cons_of_le hall, cons_le_cons_iff']
+    · push Not at hall
+      obtain ⟨z, hz, hyz⟩ := hall
+      rw [nu_cons_of_lt ⟨z, hz, hyz⟩]
+      obtain ⟨w, ws, rfl⟩ : ∃ w ws, xs = w :: ws := List.exists_cons_of_ne_nil (List.ne_nil_of_mem hz)
+      obtain ⟨m, rest, hm, hwm, hws⟩ := nu_head w ws
+      have hym : y < m := by
+        rcases List.mem_cons.1 hz with rfl | hz
+        · exact lt_of_lt_of_le hyz hwm
+        · exact lt_of_lt_of_le hyz (hws z hz)
+      rw [hm]
+      refine iff_of_false (not_le.2 (lt_cons_of_head_lt _ fun a ha => ?_))
+        (not_le.2 (List.cons_lt_cons_iff.2 (Or.inl hym)))
+      exact lt_of_le_of_lt ((List.pairwise_cons.1 hW).1 a (List.mem_of_mem_head? ha)) hym
+  | case5 x xs y ys h1 h2 ih =>
+    have hys : Noninc ys := (List.pairwise_cons.1 hW).2
+    have hyx : y < x := lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2)
+    rw [cursor, if_neg h1, if_neg h2, ih hys]
+    obtain ⟨m, rest, hm, hxm, -⟩ := nu_head x xs
+    have hym : y < m := lt_of_lt_of_le hyx hxm
+    rw [hm]
+    refine iff_of_false (not_le.2 (lt_cons_of_head_lt _ fun a ha => ?_))
+      (not_le.2 (List.cons_lt_cons_iff.2 (Or.inl hym)))
+    exact lt_of_le_of_lt ((List.pairwise_cons.1 hW).1 a (List.mem_of_mem_head? ha)) hym
+
+-- provides: U1, L2.1 (scan boundary lemma, reduced query). Moved here from `Plan/Spine.lean`
+-- (brief rule 5): its proof needs `cursor_take` and `cursor_eq_length_iff`; nothing in between
+-- uses it.
+theorem cursor_spec {α : Type} [LinearOrder α] (ks W : List α)
+    (hW : W.Pairwise fun x y => y ≤ x) :
+    cutQuery ks (cursor ks W) ≤ W ∧
+      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by
+  have hc := cursor_le_length ks W
+  refine ⟨?_, fun hlt => ?_⟩
+  · have h1 : cursor (ks.take (cursor ks W)) W = (ks.take (cursor ks W)).length := by
+      rw [cursor_take, min_self, List.length_take, Nat.min_eq_left hc]
+    exact (cursor_eq_length_iff _ hW).1 h1
+  · have h1 : cursor (ks.take (cursor ks W + 1)) W ≠ (ks.take (cursor ks W + 1)).length := by
+      rw [cursor_take, List.length_take, Nat.min_eq_left hlt]; omega
+    exact not_le.1 fun h => h1 ((cursor_eq_length_iff _ hW).2 h)
 
 /-- L2.1 ("the unique i", txt:165-167). -/
 theorem cursor_unique {ks W : List α} (hW : Noninc W) {i : Nat} (hi : i ≤ ks.length)
     (hlo : cutQuery ks i ≤ W) (hhi : i < ks.length → W < cutQuery ks (i + 1)) :
-    cursor ks W = i := by sorry
+    cursor ks W = i := by
+  obtain ⟨h1, h2⟩ := cursor_spec ks W hW
+  have hc := cursor_le_length ks W
+  rcases lt_trichotomy i (cursor ks W) with h | h | h
+  · exact absurd (lt_of_lt_of_le (hhi (by omega)) ((cutQuery_mono ks h).trans h1)) (lt_irrefl W)
+  · exact h.symm
+  · exact absurd (lt_of_lt_of_le (h2 (by omega)) ((cutQuery_mono ks h).trans hlo)) (lt_irrefl W)
 
 /-- L2.1: a query strictly below `B(v)` stops the scan at or before `v`. -/
 theorem cursor_le_of_lt_cutQuery {ks W : List α} (hW : Noninc W) {v : Nat} (hv : v < ks.length)
-    (h : W < cutQuery ks (v + 1)) : cursor ks W ≤ v := by sorry
+    (h : W < cutQuery ks (v + 1)) : cursor ks W ≤ v := by
+  by_contra hc
+  exact lt_irrefl W (lt_of_lt_of_le h
+    ((cutQuery_mono ks (by omega : v + 1 ≤ cursor ks W)).trans (cursor_spec ks W hW).1))
 
 /-- L2.1: a query at least `B(v-1)` reaches `v`. -/
 theorem le_cursor_of_cutQuery_le {ks W : List α} (hW : Noninc W) {v : Nat} (hv : v ≤ ks.length)
-    (h : cutQuery ks v ≤ W) : v ≤ cursor ks W := by sorry
+    (h : cutQuery ks v ≤ W) : v ≤ cursor ks W := by
+  have h1 : cursor (ks.take v) W = (ks.take v).length := (cursor_eq_length_iff _ hW).2 h
+  rw [cursor_take, List.length_take, Nat.min_eq_left hv] at h1
+  omega
 
 /-- L2.1: the final source cursor is monotone in reduced queries (used by L2.2). -/
 theorem cursor_mono (ks : List α) {W Z : List α} (hW : Noninc W) (hZ : Noninc Z) (h : W ≤ Z) :
-    cursor ks W ≤ cursor ks Z := by sorry
+    cursor ks W ≤ cursor ks Z := by
+  by_contra hc
+  have hZl : cursor ks Z < ks.length := by have := cursor_le_length ks W; omega
+  exact lt_irrefl Z (lt_of_lt_of_le ((cursor_spec ks Z hZ).2 hZl)
+    (((cutQuery_mono ks (by omega : cursor ks Z + 1 ≤ cursor ks W)).trans
+      (cursor_spec ks W hW).1).trans h))
 
 /-- L2.1c (txt:174-176): deleting a query letter immediately followed by a larger one does not
 change the final source cursor. -/
 theorem cursor_delete (src A B : List α) {x y : α} (hxy : x < y) :
-    cursor src (A ++ x :: y :: B) = cursor src (A ++ y :: B) := by sorry
+    cursor src (A ++ x :: y :: B) = cursor src (A ++ y :: B) := by
+  induction A generalizing src with
+  | nil =>
+    induction src with
+    | nil => simp [cursor]
+    | cons s ss ih =>
+      simp only [List.nil_append] at ih ⊢
+      rcases lt_trichotomy s x with h | h | h
+      · conv_lhs => rw [cursor, if_pos h]
+        conv_rhs => rw [cursor, if_pos (lt_trans h hxy)]
+        rw [ih]
+      · subst h
+        conv_lhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        conv_rhs => rw [cursor, if_pos hxy]
+      · conv_lhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+  | cons a A ih =>
+    induction src with
+    | nil => simp [cursor]
+    | cons s ss ihs =>
+      simp only [List.cons_append] at ihs ⊢
+      rcases lt_trichotomy s a with h | h | h
+      · conv_lhs => rw [cursor, if_pos h]
+        conv_rhs => rw [cursor, if_pos h]
+        rw [ihs]
+      · subst h
+        conv_lhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        conv_rhs => rw [cursor, if_neg (lt_irrefl _), if_pos rfl]
+        rw [ih]
+      · conv_lhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+        conv_rhs => rw [cursor, if_neg (not_lt.2 h.le), if_neg (ne_of_gt h)]
+        rw [ih]
+
+/-- L2.1c helper: deleting the terminal letters `< y` before `y` does not change the cursor. -/
+theorem cursor_reduce_before (src : List α) (y : α) (C : List α) (acc : List α) :
+    cursor src ((acc.reverse.dropWhile fun z => decide (z < y)).reverse ++ y :: C) =
+      cursor src (acc ++ y :: C) := by
+  induction acc using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton acc d ih =>
+    rw [List.reverse_append, List.reverse_singleton, List.singleton_append, List.dropWhile_cons]
+    by_cases hd : d < y
+    · rw [if_pos (decide_eq_true hd), ih, List.append_assoc, List.singleton_append,
+        cursor_delete src acc C hd]
+    · rw [if_neg (by simpa using hd), List.reverse_cons, List.reverse_reverse, List.append_assoc,
+        List.singleton_append]
+
+-- provides: U1, L2.1 (reducing a query does not change the final source cursor). Moved here from
+-- `Plan/Spine.lean` (brief rule 5): its proof needs `cursor_delete`; nothing in between uses it.
+theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
+    cursor ks (nu W) = cursor ks W := by
+  suffices h : ∀ C, cursor ks (nu W ++ C) = cursor ks (W ++ C) by simpa using h []
+  induction W using List.reverseRecOn with
+  | nil => intro C; rfl
+  | append_singleton W y ih =>
+    intro C
+    rw [nu_append_singleton, nuStep, List.append_assoc, List.singleton_append,
+      cursor_reduce_before, ih, List.append_assoc, List.singleton_append]
+
+/-- L2.5a helper: the final state of a run started at `(i, j)`. -/
+theorem traceFrom_getLast (src qry : List α) (i j : Nat) :
+    (traceFrom i j src qry).getLast? = some (i + cursor src qry, j + qcursor src qry) := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry => simp [traceFrom, cursor, qcursor]
+  | case2 x xs => simp [traceFrom, cursor, qcursor]
+  | case3 x xs y ys h ih =>
+    rw [traceFrom, if_pos h, List.getLast?_cons, ih, cursor, if_pos h, qcursor, if_pos h]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq, and_true]; omega
+  | case4 xs y ys h ih =>
+    rw [traceFrom, if_neg h, if_pos rfl, List.getLast?_cons, ih, cursor, if_neg h, if_pos rfl,
+      qcursor, if_neg h, if_pos rfl]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq]; omega
+  | case5 x xs y ys h1 h2 ih =>
+    rw [traceFrom, if_neg h1, if_neg h2, List.getLast?_cons, ih, cursor, if_neg h1, if_neg h2,
+      qcursor, if_neg h1, if_neg h2]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq, true_and]; omega
 
 /-- L2.5a: the final state of the trace is `(cursor, qcursor)`. -/
 theorem trace_last (src qry : List α) :
-    (trace src qry).getLast? = some (cursor src qry, qcursor src qry) := by sorry
+    (trace src qry).getLast? = some (cursor src qry, qcursor src qry) := by
+  have := traceFrom_getLast src qry 0 0
+  simpa [trace] using this
 
 /-- L2.5a: equal traces have equal final source cursors. -/
 theorem cursor_eq_of_trace_eq {src₁ src₂ qry₁ qry₂ : List α}
-    (h : trace src₁ qry₁ = trace src₂ qry₂) : cursor src₁ qry₁ = cursor src₂ qry₂ := by sorry
+    (h : trace src₁ qry₁ = trace src₂ qry₂) : cursor src₁ qry₁ = cursor src₂ qry₂ := by
+  have := trace_last src₁ qry₁
+  rw [h, trace_last] at this
+  exact (Prod.mk.inj (Option.some.inj this)).1.symm
+
+/-- L2.5a helper: every state of a run started at `(i, j)` lies between the start and the final
+state, coordinatewise. -/
+theorem mem_traceFrom (src qry : List α) (i j : Nat) {s : Nat × Nat}
+    (hs : s ∈ traceFrom i j src qry) :
+    i ≤ s.1 ∧ s.1 ≤ i + cursor src qry ∧ j ≤ s.2 ∧ s.2 ≤ j + qcursor src qry := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry =>
+    simp only [traceFrom, List.mem_singleton] at hs; subst hs; simp
+  | case2 x xs =>
+    simp only [traceFrom, List.mem_singleton] at hs; subst hs; simp
+  | case3 x xs y ys h ih =>
+    rw [traceFrom, if_pos h, List.mem_cons] at hs
+    rw [cursor, if_pos h, qcursor, if_pos h]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih (i + 1) j hs; omega
+  | case4 xs y ys h ih =>
+    rw [traceFrom, if_neg h, if_pos rfl, List.mem_cons] at hs
+    rw [cursor, if_neg h, if_pos rfl, qcursor, if_neg h, if_pos rfl]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih (i + 1) (j + 1) hs; omega
+  | case5 x xs y ys h1 h2 ih =>
+    rw [traceFrom, if_neg h1, if_neg h2, List.mem_cons] at hs
+    rw [cursor, if_neg h1, if_neg h2, qcursor, if_neg h1, if_neg h2]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih i (j + 1) hs; omega
 
 -- U1-verify: changed (new declaration)
 /-- L2.5a: no state of a run has a source cursor beyond the final one (used in the proof of
 `trace_agree`). -/
 theorem trace_fst_le_cursor (src qry : List α) {i j : Nat} (h : (i, j) ∈ trace src qry) :
-    i ≤ cursor src qry := by sorry
+    i ≤ cursor src qry := by
+  simpa using (mem_traceFrom src qry 0 0 h).2.1
+
+/-- L2.5 helper: `trace_map` from an arbitrary start state. -/
+theorem traceFrom_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f)
+    (src qry : List α) (i j : Nat) :
+    traceFrom i j (src.map f) (qry.map f) = traceFrom i j src qry := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry => simp [traceFrom]
+  | case2 x xs => simp [traceFrom]
+  | case3 x xs y ys h ih =>
+    have := ih (i + 1) j
+    simp only [List.map_cons] at this
+    simp only [List.map_cons, traceFrom, if_pos (hf.lt_iff_lt.2 h), if_pos h, this]
+  | case4 xs y ys h ih =>
+    have := ih (i + 1) (j + 1)
+    simp only [List.map_cons, traceFrom, lt_irrefl, if_false, if_true, this]
+  | case5 x xs y ys h1 h2 ih =>
+    have := ih i (j + 1)
+    simp only [List.map_cons] at this
+    simp only [List.map_cons, traceFrom, if_neg (mt hf.lt_iff_lt.1 h1), if_neg (hf.injective.ne h2),
+      if_neg h1, if_neg h2, this]
 
 /-- L2.5 (1) (`trace_map`†, txt:238): a common strictly increasing map preserves every cursor
 pair. -/
 theorem trace_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (src qry : List α) :
-    trace (src.map f) (qry.map f) = trace src qry := by sorry
+    trace (src.map f) (qry.map f) = trace src qry := traceFrom_map hf src qry 0 0
 
 /-- L2.5 (1), cursor form. -/
 theorem cursor_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (src qry : List α) :
-    cursor (src.map f) (qry.map f) = cursor src qry := by sorry
+    cursor (src.map f) (qry.map f) = cursor src qry := by
+  have h1 := trace_last (src.map f) (qry.map f)
+  rw [trace_map hf, trace_last] at h1
+  exact (Prod.mk.inj (Option.some.inj h1)).1.symm
+
+/-- L2.5 helper: a one-letter source that is never consumed can be raised to `⊤`. -/
+theorem traceFrom_singleton_top {β : Type} [LinearOrder β] [OrderTop β] (s : β) :
+    ∀ (qry : List β) (i j : Nat), cursor [s] qry = 0 →
+      traceFrom i j [⊤] qry = traceFrom i j [s] qry
+  | [], i, j, _ => by simp [traceFrom]
+  | y :: ys, i, j, h => by
+    have h1 : ¬ s < y := fun hc => by rw [cursor, if_pos hc] at h; simp at h
+    have h2 : ¬ s = y := fun hc => by rw [cursor, if_neg h1, if_pos hc] at h; simp at h
+    rw [cursor, if_neg h1, if_neg h2] at h
+    have hys : y < s := lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2)
+    have h3 : ¬ (⊤ : β) < y := not_lt.2 le_top
+    have h4 : ¬ (⊤ : β) = y := fun hc => by
+      rw [← hc] at hys; exact absurd hys (not_lt.2 le_top)
+    conv_lhs => rw [traceFrom, if_neg h3, if_neg h4]
+    conv_rhs => rw [traceFrom, if_neg h1, if_neg h2]
+    rw [traceFrom_singleton_top s ys i (j + 1) h]
+
+/-- L2.5 helper: `trace_cap_top` for a source `A ⌢ [s]` and an arbitrary start state. -/
+theorem traceFrom_cap_top {β : Type} [LinearOrder β] [OrderTop β] (s : β) (A : List β) :
+    ∀ (qry : List β) (i j : Nat), cursor (A ++ [s]) qry < A.length + 1 →
+      traceFrom i j (A ++ [⊤]) qry = traceFrom i j (A ++ [s]) qry := by
+  induction A with
+  | nil =>
+    intro qry i j h
+    simp only [List.nil_append, List.length_nil, Nat.zero_add, Nat.lt_one_iff] at h ⊢
+    exact traceFrom_singleton_top s qry i j h
+  | cons a A ih =>
+    intro qry
+    induction qry with
+    | nil => intro i j _; simp [traceFrom]
+    | cons y ys ihq =>
+      intro i j h
+      simp only [List.cons_append, List.length_cons] at h ihq ⊢
+      by_cases h1 : a < y
+      · rw [cursor, if_pos h1] at h
+        rw [traceFrom, traceFrom, if_pos h1, if_pos h1, ih (y :: ys) (i + 1) j (by omega)]
+      · by_cases h2 : a = y
+        · subst h2
+          rw [cursor, if_neg h1, if_pos rfl] at h
+          rw [traceFrom, traceFrom, if_neg h1, if_pos rfl, if_neg h1, if_pos rfl,
+            ih ys (i + 1) (j + 1) (by omega)]
+        · rw [cursor, if_neg h1, if_neg h2] at h
+          rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h1, if_neg h2, ihq i (j + 1) h]
 
 /-- L2.5 (2) (`trace_cap_top`†, txt:239, 242-244): if a nonempty source is not exhausted,
 replacing its last key by `⊤` preserves every cursor pair. -/
 theorem trace_cap_top {β : Type} [LinearOrder β] [OrderTop β] {src qry : List β} (hne : src ≠ [])
     (hnx : cursor src qry < src.length) : trace (src.dropLast ++ [⊤]) qry = trace src qry := by
-  sorry
+  have hsrc := List.dropLast_append_getLast hne
+  have hlen : src.length = src.dropLast.length + 1 := by
+    conv_lhs => rw [← hsrc]
+    simp
+  rw [← hsrc] at hnx
+  unfold trace
+  conv_rhs => rw [← hsrc]
+  exact traceFrom_cap_top _ _ qry 0 0 (by rw [← hlen]; rwa [hsrc] at hnx ⊢)
+
+/-- L2.5 helper: `trace_agree` from an arbitrary start state, with the sign hypothesis phrased
+through `getElem?`. -/
+theorem traceFrom_agree (u : Nat) : ∀ (src₁ src₂ qry : List α) (i j : Nat),
+    src₁.take u = src₂.take u →
+    (∃ x₁ x₂, src₁[u]? = some x₁ ∧ src₂[u]? = some x₂ ∧ ∀ y ∈ qry, compare x₁ y = compare x₂ y) →
+    cursor src₁ qry ≤ u → traceFrom i j src₁ qry = traceFrom i j src₂ qry := by
+  induction u with
+  | zero =>
+    intro src₁ src₂ qry i j _ hsign hrun
+    obtain ⟨x₁, x₂, h₁, h₂, hs⟩ := hsign
+    obtain ⟨S₁, rfl⟩ : ∃ S₁, src₁ = x₁ :: S₁ := by
+      cases src₁ with
+      | nil => simp at h₁
+      | cons a S₁ => simp at h₁; exact ⟨S₁, by rw [h₁]⟩
+    obtain ⟨S₂, rfl⟩ : ∃ S₂, src₂ = x₂ :: S₂ := by
+      cases src₂ with
+      | nil => simp at h₂
+      | cons a S₂ => simp at h₂; exact ⟨S₂, by rw [h₂]⟩
+    induction qry generalizing i j with
+    | nil => simp [traceFrom]
+    | cons y ys ihq =>
+      have hy := hs y List.mem_cons_self
+      have h1 : ¬ x₁ < y := fun hc => by rw [cursor, if_pos hc] at hrun; omega
+      have h2 : ¬ x₁ = y := fun hc => by rw [cursor, if_neg h1, if_pos hc] at hrun; omega
+      have hgt : compare x₁ y = .gt :=
+        compare_gt_iff_gt.2 (lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2))
+      have hgt' : y < x₂ := compare_gt_iff_gt.1 (hy ▸ hgt)
+      have h3 : ¬ x₂ < y := not_lt.2 hgt'.le
+      have h4 : ¬ x₂ = y := ne_of_gt hgt'
+      rw [cursor, if_neg h1, if_neg h2] at hrun
+      rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h3, if_neg h4,
+        ihq i (j + 1) (fun z hz => hs z (List.mem_cons_of_mem _ hz)) hrun]
+  | succ u ih =>
+    intro src₁ src₂ qry i j hpre hsign hrun
+    obtain ⟨x₁, x₂, h₁, h₂, hs⟩ := hsign
+    cases src₁ with
+    | nil => simp at h₁
+    | cons a S₁ =>
+    cases src₂ with
+    | nil => simp at h₂
+    | cons b S₂ =>
+    simp only [List.take_succ_cons, List.cons.injEq] at hpre
+    obtain ⟨rfl, hpre⟩ := hpre
+    simp only [List.getElem?_cons_succ] at h₁ h₂
+    induction qry generalizing i j with
+    | nil => simp [traceFrom]
+    | cons y ys ihq =>
+      by_cases h1 : a < y
+      · rw [cursor, if_pos h1] at hrun
+        rw [traceFrom, traceFrom, if_pos h1, if_pos h1,
+          ih S₁ S₂ (y :: ys) (i + 1) j hpre ⟨x₁, x₂, h₁, h₂, hs⟩ (by omega)]
+      · by_cases h2 : a = y
+        · subst h2
+          rw [cursor, if_neg h1, if_pos rfl] at hrun
+          rw [traceFrom, traceFrom, if_neg h1, if_pos rfl, if_neg h1, if_pos rfl,
+            ih S₁ S₂ ys (i + 1) (j + 1) hpre
+              ⟨x₁, x₂, h₁, h₂, fun z hz => hs z (List.mem_cons_of_mem _ hz)⟩ (by omega)]
+        · rw [cursor, if_neg h1, if_neg h2] at hrun
+          rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h1, if_neg h2,
+            ihq i (j + 1) (fun z hz => hs z (List.mem_cons_of_mem _ hz)) hrun]
 
 /-- L2.5 (3) (`trace_agree`†, txt:240-241, 244-245): sources agreeing before `u`, with keys at `u`
 of identical signs against every query key, have the same trace for a run ending at or before
@@ -1251,12 +1883,28 @@ of identical signs against every query key, have the same trace for a run ending
 theorem trace_agree {src₁ src₂ qry : List α} {u : Nat} (hpre : src₁.take u = src₂.take u)
     (hu₁ : u < src₁.length) (hu₂ : u < src₂.length)
     (hsign : ∀ y ∈ qry, compare src₁[u] y = compare src₂[u] y) (hrun : cursor src₁ qry ≤ u) :
-    trace src₁ qry = trace src₂ qry := by sorry
+    trace src₁ qry = trace src₂ qry :=
+  traceFrom_agree u src₁ src₂ qry 0 0 hpre
+    ⟨src₁[u], src₂[u], List.getElem?_eq_getElem hu₁, List.getElem?_eq_getElem hu₂, hsign⟩ hrun
 
 end Words
 
 /-- L2.5b (`cursor_eq_scanCount`†): the generic cursor at `Key` is the locked `scanCount`. -/
-theorem cursor_eq_scanCount (xs ys : List Key) : scanCount xs ys = cursor xs ys := by sorry
+theorem cursor_eq_scanCount (xs ys : List Key) : scanCount xs ys = cursor xs ys := by
+  induction xs, ys using cursor.induct with
+  | case1 ys => simp [scanCount, cursor]
+  | case2 x xs => simp [scanCount, cursor]
+  | case3 x xs y ys h ih =>
+    have hc : keyCmp x y = .lt := h
+    rw [scanCount, cursor, if_pos h, ← ih, hc]
+  | case4 xs y ys h ih =>
+    have hc : keyCmp y y = .eq := Tree.cmp_self keyLabelCmp y
+    rw [scanCount, cursor, if_neg h, if_pos rfl, ← ih, hc]
+  | case5 x xs y ys h1 h2 ih =>
+    have hc : keyCmp x y = .gt := by
+      rw [← Key.compare_eq_keyCmp]
+      exact compare_gt_iff_gt.2 (lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2))
+    rw [scanCount, cursor, if_neg h1, if_neg h2, ← ih, hc]
 
 /-! ## N1.2, C1.8a, C1.8, D1.9 — compact words and safe prefixes -/
 
@@ -1388,7 +2036,48 @@ thresholds are arbitrary. -/
 theorem sign_of_agreement (r t : Nat) {A₁ A₂ J : Forest} (hlen : mu J < mu A₁)
     (hagree : (word A₁).take (mu J + 1) = (word A₂).take (mu J + 1)) :
     keyCmp (relKey r A₁) (relKey t J) = keyCmp (relKey r A₂) (relKey t J) ∧
-      keyCmp (relKey r A₁) (relKey t J) ≠ .eq := by sorry
+      keyCmp (relKey r A₁) (relKey t J) ≠ .eq := by
+  -- generic words of keys (labels `Bool × Nat`), in terms of the compact word
+  have hg : ∀ (a : Nat) (A : Forest), (gword (relKey a A) : List (GAtom (Bool × Nat))) =
+      (word A).map (GAtom.map (relLabel a) ∘ toGAtom) := by
+    intro a A
+    rw [relKey_eq_map, gword_map, gword_eq_map_word, List.map_map]
+  -- the same words read over `Lex (Bool × Nat)`, whose `Tree.cmp compare` is `keyCmp`
+  let X₁ : List (GAtom (Lex (Bool × Nat))) := gword (relKey r A₁ : Tree (Lex (Bool × Nat)))
+  let X₂ : List (GAtom (Lex (Bool × Nat))) := gword (relKey r A₂ : Tree (Lex (Bool × Nat)))
+  let Y : List (GAtom (Lex (Bool × Nat))) := gword (relKey t J : Tree (Lex (Bool × Nat)))
+  have hY : Y.length = mu J := by
+    change (gword (relKey t J) : List (GAtom (Bool × Nat))).length = mu J
+    rw [hg, List.length_map]; rfl
+  have hX₁ : X₁.length = mu A₁ := by
+    change (gword (relKey r A₁) : List (GAtom (Bool × Nat))).length = mu A₁
+    rw [hg, List.length_map]; rfl
+  have htake : X₁.take (Y.length + 1) = X₂.take (Y.length + 1) := by
+    rw [hY]
+    change (gword (relKey r A₁) : List (GAtom (Bool × Nat))).take (mu J + 1) =
+      (gword (relKey r A₂) : List (GAtom (Bool × Nat))).take (mu J + 1)
+    rw [hg, hg, ← List.map_take, ← List.map_take, hagree]
+  obtain ⟨hlt, hne₁, hne₂⟩ := list_lt_of_take_eq (by rw [hY, hX₁]; exact hlen) htake
+  have hlt₁ : X₁ < Y ↔ keyCmp (relKey r A₁) (relKey t J) = .lt :=
+    gword_lt_iff (α := Lex (Bool × Nat)) _ _
+  have hlt₂ : X₂ < Y ↔ keyCmp (relKey r A₂) (relKey t J) = .lt :=
+    gword_lt_iff (α := Lex (Bool × Nat)) _ _
+  have heq₁ : keyCmp (relKey r A₁) (relKey t J) ≠ .eq := fun h =>
+    hne₁ (congrArg (gword (α := Lex (Bool × Nat))) (Tree.eq_of_cmp_eq keyLabelCmp h))
+  have heq₂ : keyCmp (relKey r A₂) (relKey t J) ≠ .eq := fun h =>
+    hne₂ (congrArg (gword (α := Lex (Bool × Nat))) (Tree.eq_of_cmp_eq keyLabelCmp h))
+  refine ⟨?_, heq₁⟩
+  have hiff := hlt₁.symm.trans (hlt.trans hlt₂)
+  revert heq₁ heq₂ hiff
+  cases keyCmp (relKey r A₁) (relKey t J) <;> cases keyCmp (relKey r A₂) (relKey t J) <;> simp
+
+/-- L2.5c helper: the coercion into `WithTop` preserves `compare`. -/
+theorem compare_coe_withTop {β : Type} [LinearOrder β] (a b : β) :
+    compare (a : WithTop β) (b : WithTop β) = compare a b := by
+  rcases lt_trichotomy a b with h | h | h
+  · rw [compare_lt_iff_lt.2 h, compare_lt_iff_lt.2 (WithTop.coe_lt_coe.2 h)]
+  · subst h; rw [compare_eq_iff_eq.2 rfl, compare_eq_iff_eq.2 rfl]
+  · rw [compare_gt_iff_gt.2 h, compare_gt_iff_gt.2 (WithTop.coe_lt_coe.2 h)]
 
 -- U1-verify: changed (new declaration)
 /-- L2.5c, key-system form: the sign hypothesis `hsign` of `trace_agree` at `α = WithTop Key`,
@@ -1396,7 +2085,9 @@ for one query key. -/
 theorem sign_of_agreement_compare (r t : Nat) {A₁ A₂ J : Forest} (hlen : mu J < mu A₁)
     (hagree : (word A₁).take (mu J + 1) = (word A₂).take (mu J + 1)) :
     compare ((relKey r A₁ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) =
-      compare ((relKey r A₂ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) := by sorry
+      compare ((relKey r A₂ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) := by
+  rw [compare_coe_withTop, compare_coe_withTop, Key.compare_eq_keyCmp, Key.compare_eq_keyCmp]
+  exact (sign_of_agreement r t hlen hagree).1
 
 /-! ## D1.5a — shifts and the continuation hole (S-6) -/
 
@@ -1798,46 +2489,115 @@ def respEdge (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) (
   (c.resolve 0 x).bind fun o => resp E ks o W
 
 theorem edge_iff (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) (x p : Nat) :
-    Edge E ks c W x p ↔ respEdge E ks c W x = some p := by sorry
+    Edge E ks c W x p ↔ respEdge E ks c W x = some p := by
+  unfold Edge respEdge
+  rw [Option.bind_eq_some_iff]
 
 /-- D2.2a: `resp` in terms of the cursor. -/
 theorem resp_eq_some {E : Forest} {ks : KeySys} {o : ColAddr} {W : List (WithTop Key)} {p : Nat} :
-    resp E ks o W = some p ↔ ∃ H, ((E.colAt o).getD [])[cursor (ks o) W]? = some (p, H) := by sorry
+    resp E ks o W = some p ↔ ∃ H, ((E.colAt o).getD [])[cursor (ks o) W]? = some (p, H) := by
+  unfold resp
+  constructor
+  · intro h
+    obtain ⟨⟨q, H⟩, h1, h2⟩ := Option.map_eq_some_iff.1 h
+    exact ⟨H, by rw [h1, show q = p from h2]⟩
+  · rintro ⟨H, h⟩
+    rw [h]; rfl
 
 /-- D2.2a: the number of keys is the number of entries, for actual and capped systems. -/
 theorem length_actualKeys (E : Forest) (c : ColAddr) :
-    (actualKeys E c).length = ((E.colAt c).getD []).length := by sorry
+    (actualKeys E c).length = ((E.colAt c).getD []).length := by
+  simp [actualKeys]
 
 theorem length_capKeys (E : Forest) (sel : List ColAddr) (c : ColAddr) :
-    (capKeys E sel c).length = ((E.colAt c).getD []).length := by sorry
+    (capKeys E sel c).length = ((E.colAt c).getD []).length := by
+  rw [← length_actualKeys E c]
+  simp only [capKeys]
+  split_ifs
+  · rcases List.eq_nil_or_concat (actualKeys E c) with h | ⟨L, b, h⟩
+    · simp [h]
+    · simp [h]
+  · rfl
+
+-- Moved here from the D1.3a section below (brief rule 5; statement unchanged): `edge_lt` and
+-- `cutStart_lt` use it, and nothing in between uses it.
+/-- D2.2a: parents of a column, entrywise. -/
+theorem parents_getElem? (E : Forest) (c : ColAddr) (k : Nat) :
+    (parents E c)[k]? = (E.entryAt ⟨c, k⟩).map Prod.fst := by
+  unfold parents Tree.entryAt
+  cases E.colAt c <;> simp
+
+/-- D2.2a helper: under V the parent of an entry of column `o` is below `o`'s number. -/
+theorem parent_lt_num_of_condV {E : Forest} (hV : CondV E) {o : ColAddr} {k p : Nat} {H : Forest}
+    (he : E.entryAt ⟨o, k⟩ = some (p, H)) : p < o.num 0 := by
+  have hmem : (⟨o, k⟩ : EntryAddr) ∈ E.entryAddrs :=
+    (Tree.mem_entryAddrs_iff E _).2 (by rw [he]; rfl)
+  exact ((ColAddr.resolve_isSome_iff 0 o p).1 (hV _ hmem p H he)).2
 
 /-- D2.2a (txt:179-180): under V every edge decreases the column number. -/
 theorem edge_lt {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr} {W : List (WithTop Key)}
-    {x p : Nat} (h : Edge E ks c W x p) : p < x := by sorry
+    {x p : Nat} (h : Edge E ks c W x p) : p < x := by
+  obtain ⟨o, ho, hr⟩ := h
+  obtain ⟨H, hH⟩ := resp_eq_some.1 hr
+  cases hcol : E.colAt o with
+  | none => rw [hcol] at hH; simp at hH
+  | some col =>
+    rw [hcol, Option.getD_some] at hH
+    have he : E.entryAt ⟨o, cursor (ks o) W⟩ = some (p, H) := by
+      simp [Tree.entryAt, hcol, hH]
+    rw [← ColAddr.resolve_num ho]
+    exact parent_lt_num_of_condV hV he
 
 /-- D2.2a: paths decrease. -/
 theorem path_le {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr} {W : List (WithTop Key)}
-    {x y : Nat} (h : Path E ks c W x y) : y ≤ x := by sorry
+    {x y : Nat} (h : Path E ks c W x y) : y ≤ x := by
+  induction h with
+  | refl => exact le_refl _
+  | tail _ he ih => exact le_trans (edge_lt hV he).le ih
 
 /-- D2.2a: the test starts strictly below the tested column. -/
 theorem cutStart_lt {E : Forest} (hV : CondV E) {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
-    (hk : k ≤ (parents E c).length) (hpos : 0 < c.num 0) : cutStart E c k < c.num 0 := by sorry
+    (hk : k ≤ (parents E c).length) (hpos : 0 < c.num 0) : cutStart E c k < c.num 0 := by
+  unfold cutStart
+  split
+  · omega
+  · have hlt : k - 1 < (parents E c).length := by omega
+    obtain ⟨p, hp⟩ : ∃ p, (parents E c)[k - 1]? = some p := ⟨_, List.getElem?_eq_getElem hlt⟩
+    rw [hp, Option.getD_some]
+    rw [parents_getElem?] at hp
+    obtain ⟨⟨q, H⟩, he, rfl⟩ := Option.map_eq_some_iff.1 hp
+    exact parent_lt_num_of_condV hV he
 
 /-- D2.2a (stack restriction): edges from numbers below `x₀` depend only on the stack below
 `x₀`. -/
 theorem edge_congr_stack {E : Forest} {ks : KeySys} {c c' : ColAddr} {W : List (WithTop Key)}
     {x₀ x p : Nat} (hst : ∀ q < x₀, c.resolve 0 q = c'.resolve 0 q) (hx : x < x₀) :
-    Edge E ks c W x p ↔ Edge E ks c' W x p := by sorry
+    Edge E ks c W x p ↔ Edge E ks c' W x p := by
+  unfold Edge; rw [hst x hx]
 
 /-- D2.2a (stack restriction for paths, codex-crosscheck-1 Q2). -/
 theorem path_congr_stack {E : Forest} (hV : CondV E) {ks : KeySys} {c c' : ColAddr}
     {W : List (WithTop Key)} {x₀ x y : Nat} (hst : ∀ q < x₀, c.resolve 0 q = c'.resolve 0 q)
-    (hx : x < x₀) : Path E ks c W x y ↔ Path E ks c' W x y := by sorry
+    (hx : x < x₀) : Path E ks c W x y ↔ Path E ks c' W x y := by
+  have key : ∀ {c c' : ColAddr}, (∀ q < x₀, c.resolve 0 q = c'.resolve 0 q) → ∀ {x : Nat},
+      x < x₀ → Path E ks c W x y → Path E ks c' W x y := by
+    intro c c' hst x hx h
+    revert hx
+    induction h using Relation.ReflTransGen.head_induction_on with
+    | refl => intro _; exact Relation.ReflTransGen.refl
+    | head he _ ih =>
+      intro hx
+      exact Relation.ReflTransGen.head ((edge_congr_stack hst hx).1 he)
+        (ih (lt_trans (edge_lt hV he) hx))
+  exact ⟨key hst hx, key (fun q hq => (hst q hq).symm) hx⟩
 
 /-- D2.2a (txt:191-193): A implies parent monotonicity, in every key system. -/
 theorem parents_antitone {E : Forest} (hV : CondV E) {ks : KeySys} (hA : CondAK E ks)
     {c : ColAddr} (hc : c ∈ E.colAddrs) {i p q : Nat} (hi : (parents E c)[i + 1]? = some p)
-    (hq : (parents E c)[i]? = some q) : p ≤ q := by sorry
+    (hq : (parents E c)[i]? = some q) : p ≤ q := by
+  have := hA c hc (i + 1) p hi
+  simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel, hq, Option.getD_some] at this
+  exact path_le hV this
 
 /-! ## D1.3a, D2.3a — the conditions in usable form -/
 
@@ -1846,9 +2606,7 @@ number is visible, `resolve_isSome_iff`). -/
 theorem condV_iff_lt (E : Forest) :
     CondV E ↔ ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → p < e.col.num 0 := by sorry
 
-/-- D2.2a: parents of a column, entrywise. -/
-theorem parents_getElem? (E : Forest) (c : ColAddr) (k : Nat) :
-    (parents E c)[k]? = (E.entryAt ⟨c, k⟩).map Prod.fst := by sorry
+-- D2.2a `parents_getElem?` moved up, before `edge_lt` (brief rule 5).
 
 /-- D2.3a: an owner return is a contained column whose entry's parent resolves to the owner
 column (definitional unfolding with `Contains`). -/
@@ -1859,7 +2617,8 @@ theorem isOwnerReturn_iff (E : Forest) (e₀ e : EntryAddr) :
 /-- D2.3a: an entry of a contained column whose parent is the host number is an owner return. -/
 theorem isOwnerReturn_of_parent {E : Forest} {e₀ : EntryAddr} {c : ColAddr} {k : Nat} {J : Forest}
     (hc : e₀.Contains c) (hk : E.entryAt ⟨c, k⟩ = some (e₀.col.num 0, J)) :
-    IsOwnerReturn E e₀ ⟨c, k⟩ := by sorry
+    IsOwnerReturn E e₀ ⟨c, k⟩ :=
+  ⟨hc, e₀.col.num 0, J, hk, EntryAddr.resolve_host hc⟩
 
 /-! ## L2.2a — the path-nesting induction (G-006) -/
 
@@ -2784,7 +3543,18 @@ to `⊤`. -/
 theorem cursor_cappedAt (ks W : List (WithTop Key)) (u : Nat) (hu : u < ks.length)
     (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤)
     (hlt : W < cutQuery ks (u + 1)) :
-    cursor ks W ≤ u ∧ cursor ks W = cursor (ks.take u ++ [⊤]) W := by sorry
+    cursor ks W ≤ u ∧ cursor ks W = cursor (ks.take u ++ [⊤]) W := by
+  have hc : cursor ks W ≤ u := cursor_le_of_lt_cutQuery hW hu hlt
+  refine ⟨hc, ?_⟩
+  have h1 : cursor (ks.take (u + 1)) W = cursor ks W := by rw [cursor_take]; omega
+  have hsplit : ks.take (u + 1) = ks.take u ++ [ks[u]] := (List.take_append_getElem hu).symm
+  have hne : ks.take (u + 1) ≠ [] := by
+    rw [hsplit]; exact List.append_ne_nil_of_right_ne_nil _ (by simp)
+  have hlen : (ks.take (u + 1)).length = u + 1 := by rw [List.length_take]; omega
+  have hdl : (ks.take (u + 1)).dropLast = ks.take u := by rw [hsplit, List.dropLast_concat]
+  have h2 := cursor_eq_of_trace_eq (trace_cap_top hne (by rw [h1, hlen]; omega))
+  rw [hdl] at h2
+  rw [h2, h1]
 
 /-- L2.3c (requested by U3 R8): the cut barrier read at a containing column on the cut chain. -/
 theorem cut_barrier_read {E : Forest} (hE : InL E) {c : ColAddr} (hc : c ∈ E.colAddrs)
@@ -2792,6 +3562,88 @@ theorem cut_barrier_read {E : Forest} (hE : InL E) {c : ColAddr} (hc : c ∈ E.c
     (hy : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y)
     {o : ColAddr} (ho : c.resolve 0 y = some o) {e : EntryAddr} (he : o.container c = some e) :
     cutQuery (actualKeys E c) k < cutQuery (actualKeys E o) (e.idx + 1) := by sorry
+
+/-- L2.5d helper: a run starts at its start state. -/
+theorem traceFrom_head? {α : Type} [LinearOrder α] (src qry : List α) (i j : Nat) :
+    (traceFrom i j src qry).head? = some (i, j) := by
+  cases src <;> cases qry <;> simp [traceFrom]
+
+/-- L2.5d helper: a run that stops with source cursor inside the source has used up its query. -/
+theorem qcursor_eq_length_of_lt {α : Type} [LinearOrder α] {src qry : List α}
+    (h : cursor src qry < src.length) : qcursor src qry = qry.length := by
+  induction src, qry using cursor.induct with
+  | case1 qry => simp at h
+  | case2 x xs => simp [qcursor]
+  | case3 x xs y ys hxy ih =>
+    rw [cursor, if_pos hxy, List.length_cons] at h
+    rw [qcursor, if_pos hxy, ih (by omega)]
+  | case4 xs y ys hyy ih =>
+    rw [cursor, if_neg hyy, if_pos rfl, List.length_cons] at h
+    rw [qcursor, if_neg hyy, if_pos rfl, ih (by omega), List.length_cons]
+  | case5 x xs y ys h1 h2 ih =>
+    rw [cursor, if_neg h1, if_neg h2] at h
+    rw [qcursor, if_neg h1, if_neg h2, ih h, List.length_cons]
+
+/-- L2.5d helper: consecutive states of a run started after the source prefix `A` and the query
+prefix `B` follow the three comparison rules. -/
+theorem traceFrom_step {α : Type} [LinearOrder α] (A B src qry : List α) :
+    ∀ k s s', (traceFrom A.length B.length src qry)[k]? = some s →
+      (traceFrom A.length B.length src qry)[k + 1]? = some s' →
+      ∃ x y, (A ++ src)[s.1]? = some x ∧ (B ++ qry)[s.2]? = some y ∧
+        ((x < y ∧ s' = (s.1 + 1, s.2)) ∨ (x = y ∧ s' = (s.1 + 1, s.2 + 1)) ∨
+          (y < x ∧ s' = (s.1, s.2 + 1))) := by
+  induction src, qry using cursor.induct generalizing A B with
+  | case1 qry => intro k s s' _ h'; simp [traceFrom] at h'
+  | case2 x xs => intro k s s' _ h'; simp [traceFrom] at h'
+  | case3 x xs y ys hxy ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_pos hxy] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨x, y, by simp, by simp, Or.inl ⟨hxy, rfl⟩⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih (A ++ [x]) B k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
+  | case4 xs y ys hyy ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_neg hyy, if_pos rfl] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨y, y, by simp, by simp, Or.inr (Or.inl ⟨rfl, rfl⟩)⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih (A ++ [y]) (B ++ [y]) k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
+  | case5 x xs y ys h1 h2 ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_neg h1, if_neg h2] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨x, y, by simp, by simp,
+        Or.inr (Or.inr ⟨lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2), rfl⟩)⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih A (B ++ [y]) k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
 
 /-- L2.5d (requested by U5 R15): the trace of the raw scan starts at `(0,0)`, moves by the three
 comparison rules, stays within the cursors, and ends at `(cursor, j)` with `j = |qry|` when the
@@ -2804,7 +3656,12 @@ theorem trace_spec {α : Type} [LinearOrder α] (src qry : List α) :
           (y < x ∧ s' = (s.1, s.2 + 1)))) ∧
     (∀ s ∈ trace src qry, s.1 ≤ cursor src qry ∧ s.2 ≤ qry.length) ∧
     ∃ j, (trace src qry).getLast? = some (cursor src qry, j) ∧
-      (cursor src qry < src.length → j = qry.length) := by sorry
+      (cursor src qry < src.length → j = qry.length) := by
+  refine ⟨traceFrom_head? src qry 0 0, fun k s s' h h' => ?_, fun s hs => ?_,
+    qcursor src qry, trace_last src qry, qcursor_eq_length_of_lt⟩
+  · simpa using traceFrom_step [] [] src qry k s s' h h'
+  · have := mem_traceFrom src qry 0 0 hs
+    exact ⟨by simpa using this.2.1, by have := qcursor_le_length src qry; omega⟩
 
 end Scan
 
