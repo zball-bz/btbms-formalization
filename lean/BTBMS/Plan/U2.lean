@@ -1598,6 +1598,52 @@ theorem kerCol_tail_spec (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x
   · rw [if_neg hR] at hx
     cases hx
 
+-- G9 (helper): root-tail columns through a root-level step are in the template
+theorem kerCol_isSome_cons (S : OrdStep) {o : ColAddr} (hoq : isQMat S.sd o = false) {ci e : Nat}
+    {rest : List (Nat × Nat)} (hp : o.path = S.rd.col.path ++ (ci, e) :: rest)
+    (hc : (ci = S.rd.col.col ∧ S.rd.cursor ≤ e) ∨ (S.rd.col.col < ci ∧ S.rd.owner = false)) :
+    (kerCol S.sd S.rd o).isSome := by
+  obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+  unfold kerCol
+  simp only [hoq, hp, List.take_left, List.drop_left, Bool.false_eq_true, if_false, if_true, hidx]
+  rcases hc with h | h
+  · rw [if_pos h]; rfl
+  · rw [if_neg (by omega), if_pos h]; rfl
+
+-- G9 (helper): root-level columns from the root on are in the template
+theorem kerCol_isSome_nil (S : OrdStep) {o : ColAddr} (hoq : isQMat S.sd o = false)
+    (hp : o.path = S.rd.col.path)
+    (hc : o.col = S.rd.col.col ∨ (S.rd.col.col < o.col ∧ S.rd.owner = false)) :
+    (kerCol S.sd S.rd o).isSome := by
+  obtain ⟨-, -, hidx, -⟩ := rootData_spec S.hsd S.hrd
+  unfold kerCol
+  simp only [hoq, hp, List.take_length, List.drop_length, Bool.false_eq_true, if_false, if_true, hidx]
+  rcases hc with h | h
+  · rw [if_pos h]; rfl
+  · rw [if_neg (by omega), if_pos h]; rfl
+
+-- G9 (helper): Q-material is closed under extending the address path
+theorem isQMat_of_prefix (sd : StopData) {o x : ColAddr} (ho : isQMat sd o = true)
+    (hpre : o.path <+: x.path) : isQMat sd x = true := by
+  obtain ⟨t, ht⟩ := hpre
+  unfold isQMat at ho ⊢
+  cases hd : o.path.drop sd.col.path.length with
+  | nil => simp [hd] at ho
+  | cons p rest =>
+    have hlen : sd.col.path.length < o.path.length := by
+      by_contra hc
+      rw [List.drop_eq_nil_of_le (by omega)] at hd
+      cases hd
+    rw [← ht, List.take_append_of_le_length hlen.le, List.drop_append_of_le_length hlen.le, hd]
+    rw [hd] at ho
+    exact ho
+
+-- G9 (helper): a stack column's path is a prefix of the column's path
+theorem onStack_prefix {x o : ColAddr} (ho : x.OnStack o) : o.path <+: x.path := by
+  rcases ho with ⟨k, -, -, -, hp, -⟩ | ⟨hp, -⟩
+  · rw [hp]; exact List.take_prefix _ _
+  · rw [hp]
+
 -- G9.4s4: on root-tail material `kerCol` is a stack isomorphism onto the kernel output, with
 -- `num (kerCol o) = num o − r`, and it carries containment
 theorem onStack_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
@@ -1608,7 +1654,64 @@ theorem onStack_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.r
 -- G9.4s4b: every stack column with number `≥ r` of root-tail material is root-tail material
 theorem kerCol_of_onStack_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (hxq : isQMat S.sd x = false) {o : ColAddr} (ho : x.OnStack o) (hr : S.sd.r ≤ o.num 0) :
-    (kerCol S.sd S.rd o).isSome ∧ isQMat S.sd o = false := by sorry
+    (kerCol S.sd S.rd o).isSome ∧ isQMat S.sd o = false := by
+  obtain ⟨-, -, hidx, hrnum, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨suf, hpath, hcases⟩ := kerCol_tail_spec S hx hxq
+  have hoq : isQMat S.sd o = false := by
+    cases h : isQMat S.sd o
+    · rfl
+    · have := isQMat_of_prefix S.sd h (onStack_prefix ho)
+      rw [this] at hxq
+      cases hxq
+  refine ⟨?_, hoq⟩
+  have hnot : ¬ S.rd.col.OnStack o := fun h => by
+    have := ColAddr.num_lt_of_onStack 0 h
+    omega
+  rcases ho with ⟨k, ck, ik, hk, hop, hoc⟩ | ⟨hop, hoc⟩
+  · by_cases hkR : k < S.rd.col.path.length
+    · exfalso
+      apply hnot
+      refine Or.inl ⟨k, ck, ik, ?_, ?_, hoc⟩
+      · rw [hpath, List.getElem?_append_left hkR] at hk; exact hk
+      · rw [hop, hpath, List.take_append_of_le_length hkR.le]
+    · rw [not_lt] at hkR
+      obtain ⟨j, hj⟩ : ∃ j, k = S.rd.col.path.length + j := ⟨k - S.rd.col.path.length, by omega⟩
+      rw [hpath, hj, List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk
+      rw [hpath, hj, List.take_length_add_append] at hop
+      cases j with
+      | zero =>
+        simp only [List.take_zero, List.append_nil] at hop
+        -- `o` sits at the root's level, at most at the column `ck` of `x`'s first step
+        rcases Nat.lt_trichotomy o.col S.rd.col.col with hlt | heq | hgt
+        · exact absurd (Or.inr ⟨hop, hlt⟩) hnot
+        · exact kerCol_isSome_nil S hoq hop (Or.inl heq)
+        · refine kerCol_isSome_nil S hoq hop (Or.inr ⟨hgt, ?_⟩)
+          rcases hcases with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨e, rest, rfl, -, -⟩ | ⟨ci, e, rest, rfl, -, hown, -⟩
+          · simp at hk
+          · simp at hk
+          · simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hk
+            omega
+          · exact hown
+      | succ j =>
+        rcases hcases with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨e, rest, rfl, he, -⟩ | ⟨ci, e, rest, rfl, hci, hown, -⟩
+        · simp at hk
+        · simp at hk
+        · simp only [List.take_succ_cons] at hop
+          exact kerCol_isSome_cons S hoq hop (Or.inl ⟨rfl, he⟩)
+        · simp only [List.take_succ_cons] at hop
+          exact kerCol_isSome_cons S hoq hop (Or.inr ⟨hci, hown⟩)
+  · rw [hpath] at hop
+    rcases hcases with ⟨rfl, hxc, -⟩ | ⟨rfl, hxc, hown, -⟩ | ⟨e, rest, rfl, he, -⟩ |
+        ⟨ci, e, rest, rfl, hci, hown, -⟩
+    · simp only [List.append_nil] at hop
+      exact absurd (Or.inr ⟨hop, by omega⟩) hnot
+    · simp only [List.append_nil] at hop
+      rcases Nat.lt_trichotomy o.col S.rd.col.col with hlt | heq | hgt
+      · exact absurd (Or.inr ⟨hop, hlt⟩) hnot
+      · exact kerCol_isSome_nil S hoq hop (Or.inl heq)
+      · exact kerCol_isSome_nil S hoq hop (Or.inr ⟨hgt, hown⟩)
+    · exact kerCol_isSome_cons S hoq hop (Or.inl ⟨rfl, he⟩)
+    · exact kerCol_isSome_cons S hoq hop (Or.inr ⟨hci, hown⟩)
 
 theorem num_kerCol_tail (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
     (hxq : isQMat S.sd x = false) : x'.num 0 + S.sd.r = x.num 0 := by
