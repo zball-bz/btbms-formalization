@@ -625,34 +625,161 @@ def kappa (r t : Nat) : Bool × Nat → Bool × Nat
 
 -- provides: U3, L4.2a (`κ` is an order embedding of labels)
 theorem kappa_cmp {r t : Nat} (h : r ≤ t) (x y : Bool × Nat) :
-    keyLabelCmp (kappa r t x) (kappa r t y) = keyLabelCmp x y := by sorry
+    keyLabelCmp (kappa r t x) (kappa r t y) = keyLabelCmp x y := by
+  obtain ⟨bx, x⟩ := x; obtain ⟨b2, y⟩ := y
+  have key : ∀ x' y' : Nat, (x' < y' ↔ x < y) → (x' = y' ↔ x = y) →
+      compare x' y' = compare x y := by
+    intro x' y' h1 h2
+    rcases Nat.lt_trichotomy x y with hl | he | hg
+    · rw [Nat.compare_eq_lt.2 hl, Nat.compare_eq_lt.2 (h1.2 hl)]
+    · rw [Nat.compare_eq_eq.2 he, Nat.compare_eq_eq.2 (h2.2 he)]
+    · rw [Nat.compare_eq_gt.2 hg, Nat.compare_eq_gt.2 (by
+        rcases Nat.lt_trichotomy x' y' with a | a | a
+        · exact absurd (h1.1 a) (by omega)
+        · exact absurd (h2.1 a) (by omega)
+        · exact a)]
+  cases bx <;> cases b2 <;> simp only [kappa, keyLabelCmp] <;> (try split_ifs) <;>
+    simp only [] <;> (try rfl) <;> (congr 1; apply key <;> omega)
 
 -- provides: U3, L4.2a (an order embedding of labels is an order embedding of keys)
 theorem keyCmp_map {f : Bool × Nat → Bool × Nat} (hf : ∀ x y, keyLabelCmp (f x) (f y) = keyLabelCmp x y)
-    (K K' : Key) : keyCmp (K.map f) (K'.map f) = keyCmp K K' := by sorry
+    (K K' : Key) : keyCmp (K.map f) (K'.map f) = keyCmp K K' := Tree.cmp_map hf K K'
+
+mutual
+/-- L4.2a helper: if two relabellings agree, and agreement of labels determines the second label
+by `σ`, the second tree is the `σ`-relabelling of the first. -/
+theorem map_eq_map_D8 {α β γ : Type} {f : α → γ} {g : β → γ} {σ : α → β}
+    (hσ : ∀ a b, f a = g b → b = σ a) :
+    (X : Tree α) → (Y : Tree β) → X.map f = Y.map g → Y = X.map σ
+  | .node xs, .node ys, h => by
+    simp only [Tree.map] at h ⊢
+    rw [mapCols_eq_mapCols_D8 hσ xs ys (Tree.node.inj h)]
+theorem mapCols_eq_mapCols_D8 {α β γ : Type} {f : α → γ} {g : β → γ} {σ : α → β}
+    (hσ : ∀ a b, f a = g b → b = σ a) :
+    (xs : List (List (α × Tree α))) → (ys : List (List (β × Tree β))) →
+      Tree.mapCols f xs = Tree.mapCols g ys → ys = Tree.mapCols σ xs
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp [Tree.mapCols] at h
+  | _ :: _, [], h => by simp [Tree.mapCols] at h
+  | x :: xs, y :: ys, h => by
+    simp only [Tree.mapCols, List.cons.injEq] at h ⊢
+    exact ⟨mapCol_eq_mapCol_D8 hσ x y h.1, mapCols_eq_mapCols_D8 hσ xs ys h.2⟩
+theorem mapCol_eq_mapCol_D8 {α β γ : Type} {f : α → γ} {g : β → γ} {σ : α → β}
+    (hσ : ∀ a b, f a = g b → b = σ a) :
+    (xs : List (α × Tree α)) → (ys : List (β × Tree β)) →
+      Tree.mapCol f xs = Tree.mapCol g ys → ys = Tree.mapCol σ xs
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp [Tree.mapCol] at h
+  | _ :: _, [], h => by simp [Tree.mapCol] at h
+  | (p, hp) :: xs, (q, hq) :: ys, h => by
+    simp only [Tree.mapCol, List.cons.injEq, Prod.mk.injEq] at h ⊢
+    exact ⟨⟨hσ p q h.1.1, map_eq_map_D8 hσ hp hq h.1.2⟩, mapCol_eq_mapCol_D8 hσ xs ys h.2⟩
+end
 
 -- provides: U3, L4.2a (common relative syntax: κ carries source keys to target keys)
 theorem relKey_kappa {r t s : Nat} {X Y : Forest} (hrt : r ≤ t) (hrs : r ≤ s)
     (h : relKey r X = relKey t Y) : (relKey s X).map (kappa r t) = relKey (s + (t - r)) Y := by
-  sorry
+  have hY : Y = X.map (shiftVal r (t - r)) := by
+    refine map_eq_map_D8 (f := relLabel r) (g := relLabel t) ?_ X Y h
+    intro a b hab
+    simp only [relLabel, shiftVal] at hab ⊢
+    by_cases ha : a < r <;> by_cases hb : b < t <;>
+      simp [ha, hb, Nat.not_le.2, Nat.le_of_not_lt] at hab ⊢ <;> omega
+  subst hY
+  rw [relKey_eq_map, relKey_eq_map, Scan.treeMap_map, Scan.treeMap_map]
+  congr 1
+  funext p
+  simp only [Function.comp, relLabel, shiftVal]
+  by_cases hp : p < r
+  · have hps : p < s := by omega
+    have hps' : p < s + (t - r) := by omega
+    simp [hp, hps, hps', kappa, Nat.not_le.2 hp]
+  · by_cases hps : p < s
+    · have hps' : p + (t - r) < s + (t - r) := by omega
+      simp [hp, hps, hps', kappa, Nat.le_of_not_lt hp]
+    · have hps' : ¬ p + (t - r) < s + (t - r) := by omega
+      simp [hps, hps', kappa, Nat.le_of_not_lt hp]
+      omega
 
 -- provides: U3, L4.2a (κ fixes keys normalized at or below `r`)
 theorem relKey_kappa_low {r t s : Nat} (hsr : s ≤ r) (X : Forest) :
-    (relKey s X).map (kappa r t) = relKey s X := by sorry
+    (relKey s X).map (kappa r t) = relKey s X := by
+  rw [relKey_eq_map, Scan.treeMap_map]
+  congr 1
+  funext p
+  simp only [Function.comp, relLabel]
+  by_cases hp : p < s
+  · have hpr : p < r := by omega
+    simp [hp, kappa, hpr]
+  · simp [hp, kappa]
 
 /-- L4.2b: the key list of a column cut after entry `u` with key `u` raised to `⊤`. -/
 def cappedAt (ks : List (WithTop Key)) (u : Nat) : List (WithTop Key) := ks.take u ++ [⊤]
+
+/-- L4.2b helper: a source whose first letter is above every query letter is never consumed. -/
+theorem cursor_cons_of_lt_D8 {α : Type} [LinearOrder α] (x : α) (xs : List α) :
+    ∀ (V : List α), (∀ v ∈ V, v < x) → Scan.cursor (x :: xs) V = 0
+  | [], _ => by simp [Scan.cursor]
+  | v :: V, h => by
+    have hv : v < x := h v List.mem_cons_self
+    rw [Scan.cursor, if_neg (not_lt.2 hv.le), if_neg (ne_of_gt hv)]
+    exact cursor_cons_of_lt_D8 x xs V fun w hw => h w (List.mem_cons_of_mem _ hw)
+
+/-- L4.2b helper: a one-letter source that is never consumed is above every query letter. -/
+theorem lt_of_cursor_singleton_D8 {α : Type} [LinearOrder α] (x : α) :
+    ∀ (V : List α), Scan.cursor [x] V = 0 → ∀ v ∈ V, v < x
+  | [], _ => by simp
+  | v :: V, h => by
+    by_cases h1 : x < v
+    · rw [Scan.cursor, if_pos h1] at h; simp at h
+    by_cases h2 : x = v
+    · rw [Scan.cursor, if_neg h1, if_pos h2] at h; simp at h
+    rw [Scan.cursor, if_neg h1, if_neg h2] at h
+    intro w hw
+    rcases List.mem_cons.1 hw with rfl | hw
+    · exact lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2)
+    · exact lt_of_cursor_singleton_D8 x V h w hw
+
+/-- L4.2b helper: a `⊤`-terminated source is never scanned past its `⊤`. -/
+theorem cursor_append_top_le_D8 (blk W : List (WithTop Key)) (hW : ∀ y ∈ W, y ≠ ⊤) :
+    Scan.cursor (blk ++ [⊤]) W ≤ blk.length := by
+  rcases Nat.lt_or_ge (Scan.cursor blk W) blk.length with h | h
+  · rw [Scan.cursor_append_of_lt _ h]; exact h.le
+  · have he : Scan.cursor blk W = blk.length := le_antisymm (Scan.cursor_le_length _ _) h
+    rw [(Scan.cursor_append_of_exhausted [⊤] he).1, Scan.cursor_singleton_of_lt _ _
+      (fun v hv => WithTop.lt_top_iff_ne_top.2 (hW v (List.mem_of_mem_drop hv)))]
+    omega
 
 -- provides: U3, L4.2b (a capped same-parent block answers like one capped entry; txt:680-681)
 theorem capped_block_resp (pre blk : List (WithTop Key)) (ppre : List Nat) (p : Nat)
     (W : List (WithTop Key)) (hW : ∀ y ∈ W, y ≠ ⊤) (hlen : ppre.length = pre.length) :
     (ppre ++ List.replicate (blk.length + 1) p)[Scan.cursor (pre ++ blk ++ [⊤]) W]? =
-      (ppre ++ [p])[Scan.cursor (pre ++ [⊤]) W]? := by sorry
+      (ppre ++ [p])[Scan.cursor (pre ++ [⊤]) W]? := by
+  rcases Nat.lt_or_ge (Scan.cursor pre W) pre.length with h | h
+  · rw [List.append_assoc, Scan.cursor_append_of_lt _ h, Scan.cursor_append_of_lt _ h,
+      List.getElem?_append_left (by omega), List.getElem?_append_left (by omega)]
+  · have he : Scan.cursor pre W = pre.length := le_antisymm (Scan.cursor_le_length _ _) h
+    have hW' : ∀ y ∈ W.drop (Scan.qcursor pre W), y ≠ ⊤ := fun y hy => hW y (List.mem_of_mem_drop hy)
+    rw [List.append_assoc, (Scan.cursor_append_of_exhausted _ he).1,
+      (Scan.cursor_append_of_exhausted _ he).1,
+      Scan.cursor_singleton_of_lt _ _ (fun v hv => WithTop.lt_top_iff_ne_top.2 (hW' v hv))]
+    have hm := cursor_append_top_le_D8 blk _ hW'
+    rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega),
+      List.getElem?_replicate]
+    simp [hlen]; omega
 
 -- provides: U3, L4.2b (raising an unconsumed key and restoring later entries; txt:675-676)
 theorem cursor_raise (pre : List (WithTop Key)) (x x' : WithTop Key) (post W : List (WithTop Key))
     (hxx' : x ≤ x') (hc : Scan.cursor (pre ++ [x]) W ≤ pre.length) :
-    Scan.cursor (pre ++ x' :: post) W = Scan.cursor (pre ++ [x]) W := by sorry
+    Scan.cursor (pre ++ x' :: post) W = Scan.cursor (pre ++ [x]) W := by
+  rcases Nat.lt_or_ge (Scan.cursor pre W) pre.length with h | h
+  · rw [Scan.cursor_append_of_lt _ h, Scan.cursor_append_of_lt _ h]
+  · have he : Scan.cursor pre W = pre.length := le_antisymm (Scan.cursor_le_length _ _) h
+    rw [(Scan.cursor_append_of_exhausted _ he).1] at hc ⊢
+    rw [(Scan.cursor_append_of_exhausted _ he).1]
+    have h0 : Scan.cursor [x] (W.drop (Scan.qcursor pre W)) = 0 := by omega
+    rw [h0, cursor_cons_of_lt_D8 _ _ _ fun v hv =>
+      lt_of_lt_of_le (lt_of_cursor_singleton_D8 x _ h0 v hv) hxx']
 
 -- provides: U3, L4.2c (path transfer: the new parent is on the target's actual cut chain)
 theorem firstDiff_path {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p : Nat}
