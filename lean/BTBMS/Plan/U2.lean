@@ -1337,7 +1337,32 @@ theorem low_head_detour (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi
     (hreach : Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ)
       (cutStart (litCap S.B c k ρ) c k) (S.s h)) :
     Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) (S.s h)
-      (S.s (h - 1)) := by sorry
+      (S.s (h - 1)) := by
+  have hVA : CondV S.A := S.inL.1
+  obtain ⟨⟨q', hq', hedge⟩, hcopy⟩ := detour_copy S hi ha hq hc hup hKL hh hW' hV hlow
+  obtain ⟨_, q, hqget, hrq, hqt, hqr⟩ := term_detour S hW' hlow
+  rw [hqget, Option.some.injEq] at hq'
+  rw [← hq'] at hedge
+  -- every vertex `x ≥ r` of the old path from `q` is reached, shifted by `(h−1)d`, from `s_h`
+  have key : ∀ x, Path S.A (actualKeys S.A) S.sd.col W' q x → S.sd.r ≤ x →
+      Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) (S.s h)
+        (x + (h - 1) * S.d) := by
+    intro x hx
+    induction hx with
+    | refl => intro _; exact Relation.ReflTransGen.single hedge
+    | @tail b y hqb hby ih =>
+      intro hry
+      have hyb : y < b := edge_lt hVA hby
+      have hbq : b ≤ q := path_le hVA hqb
+      have hb : Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) (S.s h)
+          (b + (h - 1) * S.d) := ih (by omega)
+      have he := hcopy b y (by omega) (by omega) hby (hreach.trans hb)
+      have hsh : shiftVal S.sd.r ((h - 1) * S.d) y = y + (h - 1) * S.d := by
+        simp [shiftVal, hry]
+      rw [hsh] at he
+      exact hb.tail he
+  have := key S.sd.r hqr le_rfl
+  simpa [OrdStep.s] using this
 
 /-! ## G9.6, G9.7 — the cut query is `κ_φ W`; lowness is the same at every head -/
 
