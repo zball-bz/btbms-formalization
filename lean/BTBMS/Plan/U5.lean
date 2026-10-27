@@ -5568,6 +5568,34 @@ theorem failure_floor {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
   obtain ⟨Ls, h1, h2, h3, h4⟩ := factorization pk hv ha hL
   exact ⟨Ls, h1, h2, h3, fun hB => hf (h4 hB)⟩
 
+/-- L8.8b (helper): a tree is the node of its columns, for roles. -/
+theorem roles_node_cols_F4 {α : Type} (t : Tree α) : (Tree.node t.cols).roles = t.roles := by
+  cases t; rfl
+
+/-- L8.8b (helper): the roles of a forest with more than `m` columns: the roles of its first `m`
+columns, then the ordinary role of column `m`. -/
+theorem roles_take_F4 {α : Type} {t : Tree α} {m : Nat} (hm : m < t.cols.length) :
+    ∃ rest, t.roles = (Tree.node (t.cols.take m)).roles ++ .ord ⟨[], m⟩ :: rest := by
+  obtain ⟨cs⟩ := t
+  simp only [Tree.cols] at hm ⊢
+  have hcs : cs = cs.take m ++ (cs[m] :: cs.drop (m + 1)) := by
+    rw [← List.drop_eq_getElem_cons hm, List.take_append_drop]
+  refine ⟨Tree.rolesCol [] m 0 cs[m] ++ Tree.rolesCols [] (m + 1) (cs.drop (m + 1)), ?_⟩
+  conv_lhs => rw [hcs]
+  simp only [Tree.roles, Tree.rolesF]
+  rw [rolesCols_append]
+  simp [Tree.rolesCols, List.length_take, Nat.min_eq_left hm.le]
+
+/-- L8.8b (helper): the frame fields read by a free block of `h_a(B)` are visible below `a`. -/
+theorem freeBlock_ordcur_lt_F4 {a : Nat} {B : Forest} {w : BlkVar}
+    (hw : w ∈ baseVars (freeBlock (relKey a B))) {q : Nat} (hq : w = .ord q ∨ w = .cur q) :
+    q < a := by
+  have hw' : w ∈ baseVars (posBlock (relKey a B) (q + 1)) := by
+    simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hw
+  rcases posBlock_ordcur_D4 hw' hq with h | h
+  · exact h
+  · omega
+
 /-- L8.8b: Case 1, the whole target ends first: contradiction (txt:1357-1363). -/
 theorem case_wholeEnds (I : Interface.{u}) (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
     (hv : pk.Valid I.toPrims) {Ls : Ordinal.{u}} (hLs : Ls < pk.asg pk.owner)
@@ -5575,7 +5603,141 @@ theorem case_wholeEnds (I : Interface.{u}) (pk : SourcePacket.{u}) (hadm : pk.rk
     (h23 : ¬ BlockAbove I.toPrims (posBlock pk.rk.tgtKey pk.rk.tgtSel)
       (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner))
     (hfd : pk.rk.firstDiff = .wholeEnds) : False := by
-  sorry
+  have ha : pk.rk.a ∈ pk.rk.F.entryAddrs := hadm.2.2.1
+  obtain ⟨hV, hI, -⟩ := hadm.2.2.2.1
+  have hα := valid_src_config pk hv
+  have hlowu : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
+  obtain ⟨o, v, hov, heo, hev⟩ := hv.2.2.2.2.2.1
+  have hhost : pk.tgtFrame.host = pk.host := hv.2.2.1
+  have hreps : pk.srcFrame.reps.take (pk.rk.a.col.num 0) =
+      pk.tgtFrame.reps.take (pk.rk.a.col.num 0) := hv.2.2.2.1
+  obtain ⟨hpref, hlen⟩ := (firstDiff_spec hadm).1 hfd
+  have htake : pk.rk.tgtKey.cols = pk.rk.srcKey.cols.take pk.rk.tgtKey.cols.length :=
+    List.prefix_iff_eq_take.1 hpref
+  obtain ⟨hfsub, -⟩ := freeBlock_prefix htake
+  -- the roles of `F` around `a`
+  obtain ⟨rest, hsrc⟩ := roles_take_F4 hlen
+  rw [← htake, roles_node_cols_F4] at hsrc
+  have hsrcH : pk.rk.srcHeight.roles = pk.rk.srcKey.roles := (relKey_roles _ _).symm
+  obtain ⟨post, hroles, -⟩ := Tree.roles_entry ha
+  change pk.rk.F.roles = prefixRoles pk.rk.F pk.rk.a ++ .slot pk.rk.a ::
+    (pk.rk.srcHeight.roles.map (Role.under pk.rk.a.heightPath) ++ post) at hroles
+  rw [hsrcH, hsrc] at hroles
+  have hroles2 : pk.rk.F.roles = prefixRoles pk.rk.F pk.rk.a ++ .slot pk.rk.a ::
+      (pk.rk.tgtKey.roles.map (Role.under pk.rk.a.heightPath) ++
+        (Role.under pk.rk.a.heightPath (.ord ⟨[], pk.rk.tgtKey.cols.length⟩) ::
+          (rest.map (Role.under pk.rk.a.heightPath) ++ post))) := by
+    rw [hroles]; simp [List.map_append, List.append_assoc]
+  have hpw := config_pairwise hα
+  rw [hroles2] at hpw
+  obtain ⟨-, hpw1, -⟩ := List.pairwise_append.1 hpw
+  obtain ⟨hslot_lt, hpw2⟩ := List.pairwise_cons.1 hpw1
+  obtain ⟨-, -, hcross⟩ := List.pairwise_append.1 hpw2
+  have hzmem : Role.under pk.rk.a.heightPath (.ord ⟨[], pk.rk.tgtKey.cols.length⟩) ∈
+      pk.rk.F.roles := by rw [hroles2]; simp
+  have huz : pk.asg pk.owner < (pk.asg ∘ pk.srcChart)
+      (Role.under pk.rk.a.heightPath (.ord ⟨[], pk.rk.tgtKey.cols.length⟩)) :=
+    hslot_lt _ (by simp)
+  have hinner : ∀ r ∈ pk.rk.tgtKey.roles,
+      pk.asg pk.owner < (pk.asg ∘ pk.srcChart) (Role.under pk.rk.a.heightPath r) ∧
+      (pk.asg ∘ pk.srcChart) (Role.under pk.rk.a.heightPath r) < (pk.asg ∘ pk.srcChart)
+        (Role.under pk.rk.a.heightPath (.ord ⟨[], pk.rk.tgtKey.cols.length⟩)) := fun r hr =>
+    ⟨hslot_lt _ (List.mem_append_left _ (List.mem_map_of_mem hr)),
+      hcross _ (List.mem_map_of_mem hr) _ List.mem_cons_self⟩
+  have hzin : (Role.under pk.rk.a.heightPath
+      (.ord ⟨[], pk.rk.tgtKey.cols.length⟩)).inEntry pk.rk.a = true := by
+    simp [Role.inEntry, Role.under, Role.path]
+  have hel := owner_path_elem_config I hV hI hα ha hzmem hzin
+  -- the new variables of the target block are the owner and its internal roles
+  have hnew : ∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), pk.tgtFrame.toFr w = none →
+      w = .owner ∨ ∃ r ∈ pk.rk.tgtKey.roles, w = .inner r := by
+    intro w hw hn
+    rcases posBlock_vars _ _ w hw with rfl | rfl | ⟨q, hq⟩ | ⟨r, hr, rfl⟩
+    · simp [Frame.toFr] at hn
+    · exact Or.inl rfl
+    · exfalso
+      rcases posBlock_ordcur_D4 hw hq with h1 | h1
+      · obtain ⟨h2, h3⟩ := toFr_isSome_D4 pk.rk.b h1
+        rw [SourcePacket.tgtFrame, toFr_map, Option.map_eq_none_iff] at hn
+        rcases hq with rfl | rfl
+        · rw [hn] at h2; exact absurd h2 (by simp)
+        · rw [hn] at h3; exact absurd h3 (by simp)
+      · subst h1
+        rcases hq with rfl | rfl <;> simp [Frame.toFr, hov] at hn
+    · exact Or.inr ⟨r, hr, rfl⟩
+  -- the realization: frame values, and the source values elsewhere
+  let β : BlkVar → Ordinal.{u} := fun w =>
+    ((pk.tgtFrame.toFr w).map pk.asg).getD (pk.asg (pk.srcChart (blockMap pk.rk.a w)))
+  have hfbv : ∀ w ∈ baseVars (freeBlock pk.rk.tgtKey),
+      w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel) := by
+    intro w hw; simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]; exact Or.inl hw
+  have hfbs : ∀ w ∈ baseVars (freeBlock pk.rk.tgtKey), w ∈ baseVars (freeBlock pk.rk.srcKey) := by
+    intro w hw
+    obtain ⟨b', hb', hwb⟩ := List.mem_flatMap.1 hw
+    exact List.mem_flatMap.2 ⟨b', hfsub b' hb', hwb⟩
+  have hagree : ∀ w ∈ baseVars (freeBlock pk.rk.tgtKey),
+      β w = pk.asg (pk.srcChart (blockMap pk.rk.a w)) := by
+    intro w hw
+    rcases posBlock_vars _ pk.rk.tgtSel w (hfbv w hw) with rfl | rfl | ⟨q, hq⟩ | ⟨r, hr, rfl⟩
+    · show ((pk.tgtFrame.toFr .host).map pk.asg).getD _ = _
+      simp only [Frame.toFr, Option.map_some, Option.getD_some, hhost]; rfl
+    · rfl
+    · have hqa : q < pk.rk.a.col.num 0 := freeBlock_ordcur_lt_F4 (hfbs w hw) hq
+      obtain ⟨⟨o', v'⟩, hr'⟩ := Option.isSome_iff_exists.1 ((rep_isSome_iff _ q).2 hqa)
+      have hrq : pk.tgtFrame.reps[q]? = some (pk.srcChart o', pk.srcChart v') := by
+        have h1 := congrArg (·[q]?) hreps
+        simp only [List.getElem?_take, if_pos hqa] at h1
+        rw [← h1]
+        simp [SourcePacket.srcFrame, Frame.map, frameOf, List.getElem?_map, reps0_getElem?, hr']
+      rcases hq with rfl | rfl
+      · simp [β, Frame.toFr, hrq, blockMap, hr']
+      · simp [β, Frame.toFr, hrq, blockMap, hr']
+    · rfl
+  have hB : BlockAbove I.toPrims (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+      (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls ((pk.asg ∘ pk.srcChart)
+        (Role.under pk.rk.a.heightPath (.ord ⟨[], pk.rk.tgtKey.cols.length⟩))) := by
+    refine ⟨β, fun w y hy => by simp only [β, hy, Option.getD_some], fun w hw hn => ?_,
+      fun w hw => ?_, ?_⟩
+    · have hn' := Option.map_eq_none_iff.1 hn
+      have hβ : β w = pk.asg (pk.srcChart (blockMap pk.rk.a w)) := by
+        simp only [β, hn, Option.getD_none]
+      rw [hβ]
+      rcases hnew w hw hn' with rfl | ⟨r, hr, rfl⟩
+      · exact hLs
+      · exact hLs.trans (hinner r hr).1
+    · cases hf : pk.tgtFrame.toFr w with
+      | some x =>
+        have : β w = pk.asg x := by simp only [β, hf, Option.map_some, Option.getD_some]
+        rw [this]
+        exact ((hlow x (toFr_tgtFrame_low_D4 pk hadm hv hf)).trans hLs).trans huz
+      | none =>
+        have hβ : β w = pk.asg (pk.srcChart (blockMap pk.rk.a w)) := by
+          simp only [β, hf, Option.map_none, Option.getD_none]
+        rw [hβ]
+        rcases hnew w hw hf with rfl | ⟨r, hr, rfl⟩
+        · exact huz
+        · exact (hinner r hr).2
+    · intro a' ha'
+      unfold posBlock at ha'
+      rcases List.mem_append.1 ha' with ha' | ha'
+      · have hfg : ∀ a'' ∈ freeBlock (relKey (pk.rk.a.col.num 0)
+            (takeCols pk.rk.srcHeight pk.rk.srcHeight.cols.length)),
+            a''.map (blockMap pk.rk.a) ∈ graph pk.rk.F := freeBlock_graph ha hV _
+        rw [takeCols_length] at hfg
+        have h1 := (baseAtom_holds_map' _ _ _ _).1 (hα _ (hfg a' (hfsub a' ha')))
+        refine (BaseAtom.holds_congr _ a' _ _ fun w hw => ?_).2 h1
+        exact hagree w (List.mem_flatMap.2 ⟨a', ha', hw⟩)
+      · simp only [List.mem_cons, List.mem_nil_iff, or_false] at ha'
+        rcases ha' with rfl | rfl
+        · simp only [BaseAtom.Holds, β, Frame.toFr, hov, hhost, Option.map_some,
+            Option.map_none, Option.getD_some, Option.getD_none]
+          exact heo
+        · simp only [BaseAtom.Holds, β, Frame.toFr, hov, hhost, Option.map_some,
+            Option.map_none, Option.getD_some, Option.getD_none]
+          exact hev
+  refine h23 (blockAbove_capture I hel (hLs.trans_le le_rfl) (fun w _ y hy => ?_) hB)
+  obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+  exact hlowu x (toFr_tgtFrame_low_D4 pk hadm hv hx)
 
 /-- L8.8c: readmission by a second capture into `J_u` (txt:1375-1381, 1459-1470): a configured
 new source context `F'` of an admitted record for the same target, keeping the low prefix and
