@@ -2553,9 +2553,448 @@ theorem queryBlockMax_attained_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H =
     · obtain ⟨z, hz, hzv⟩ := List.mem_map.1 h
       exact ⟨z, List.mem_cons_of_mem _ hz, hzv.symm ▸ rfl⟩
 
+/-- L8.5 (helper): forests of a relabelled tree. -/
+theorem forestAt_map_D4 {α β : Type} (f : α → β) : ∀ (π : List (Nat × Nat)) (t : Tree α),
+    (t.map f).forestAt π = (t.forestAt π).map (Tree.map f)
+  | [], t => rfl
+  | (c, i) :: rest, ⟨cols⟩ => by
+    rw [Tree.forestAt_cons, Tree.forestAt_cons]
+    simp only [Tree.map, Tree.cols, Scan.treeMapCols_eq_map, List.getElem?_map]
+    cases h : cols[c]? with
+    | none => simp
+    | some col =>
+      simp only [Option.map_some, Option.bind_some, Scan.treeMapCol_eq_map, List.getElem?_map]
+      cases h' : col[i]? with
+      | none => simp
+      | some x => simp [forestAt_map_D4 f rest x.2]
+
+/-- L8.5 (helper): entries of a relabelled tree. -/
+theorem entryAt_map_D4 {α β : Type} (f : α → β) (t : Tree α) (e : EntryAddr) :
+    (t.map f).entryAt e = (t.entryAt e).map fun x => (f x.1, x.2.map f) := by
+  simp only [Tree.entryAt, Tree.colAt, forestAt_map_D4]
+  cases t.forestAt e.col.path with
+  | none => simp
+  | some g =>
+    obtain ⟨gc⟩ := g
+    simp only [Option.map_some, Option.bind_some, Tree.map, Tree.cols, Scan.treeMapCols_eq_map,
+      List.getElem?_map]
+    cases gc[e.col.col]? with
+    | none => simp
+    | some col => simp [Scan.treeMapCol_eq_map, List.getElem?_map]
+
+/-- L8.5 (helper): a false label `(false, q)` of `h_a(B)` has `q < a`. -/
+theorem relKey_false_lt_D4 {a : Nat} {B : Forest} {e : EntryAddr} {q : Nat} {h : Key}
+    (he : (relKey a B).entryAt e = some ((false, q), h)) : q < a := by
+  rw [relKey_eq_map, entryAt_map_D4] at he
+  obtain ⟨⟨p, h'⟩, -, hx⟩ := Option.map_eq_some_iff.1 he
+  simp only [relLabel, Prod.mk.injEq] at hx
+  split_ifs at hx with hp
+  · obtain ⟨⟨-, rfl⟩, -⟩ := hx; exact hp
+  · simp at hx
+
+/-- L8.5 (helper): the frame fields read by a positive block of `h_a(B)` are visible below `a`
+or the selector (false labels, D1.4). -/
+theorem posBlock_ordcur_D4 {a : Nat} {B : Forest} {sel : Nat} {w : BlkVar}
+    (hw : w ∈ baseVars (posBlock (relKey a B) sel)) {q : Nat} (hq : w = .ord q ∨ w = .cur q) :
+    q < a ∨ q = sel := by
+  simp only [baseVars, List.mem_flatMap] at hw
+  obtain ⟨b, hb, hwb⟩ := hw
+  simp only [posBlock, freeBlock, List.mem_append, List.mem_cons, List.mem_map,
+    List.mem_filterMap, List.mem_flatMap, List.not_mem_nil] at hb
+  have hno : ∀ x, (x = BlkVar.owner ∨ ∃ r, x = .inner r) → ¬ (x = .ord q ∨ x = .cur q) := by
+    rintro x (rfl | ⟨r, rfl⟩) (h | h) <;> cases h
+  rcases hb with ((((rfl | ⟨_, ⟨r, -, rfl⟩, rfl⟩) | ⟨xy, hxy, rfl⟩) | ⟨c, -, hca⟩) | ⟨e, -, hea⟩) |
+    rfl | rfl | hF
+  · simp only [BaseAtom.vars, List.mem_singleton] at hwb
+    exact absurd (hwb ▸ hq) (hno _ (Or.inl rfl))
+  · simp only [BaseAtom.vars, List.mem_singleton] at hwb
+    exact absurd (hwb ▸ hq) (hno _ (Or.inr ⟨r, rfl⟩))
+  · obtain ⟨h1, h2⟩ := List.of_mem_zip hxy
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl
+    · rcases List.mem_cons.1 h1 with h | h
+      · exact absurd hq (hno _ (Or.inl h))
+      · obtain ⟨r, -, hr⟩ := List.mem_map.1 h
+        exact absurd hq (hno _ (Or.inr ⟨r, hr.symm⟩))
+    · obtain ⟨r, -, hr⟩ := List.mem_map.1 h2
+      exact absurd hq (hno _ (Or.inr ⟨r, hr.symm⟩))
+  · split_ifs at hca
+    cases hca
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl <;> exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+  · cases hx : (relKey a B).entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x =>
+      obtain ⟨⟨bb, q'⟩, h⟩ := x
+      rw [hx] at hea
+      cases bb with
+      | false =>
+        have hlt := relKey_false_lt_D4 hx
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;>
+          simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+          rcases hwb with rfl | rfl | rfl
+        all_goals first
+          | exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+          | (rcases hq with h | h <;> cases h <;> exact Or.inl hlt)
+      | true =>
+        cases q' with
+        | zero =>
+          simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+          rcases hea with rfl | rfl <;>
+            simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+            rcases hwb with rfl | rfl | rfl
+          all_goals first
+            | exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+            | exact absurd hq (hno _ (Or.inl rfl))
+            | (rcases hq with h | h <;> cases h)
+        | succ v =>
+          simp only at hea
+          cases hr : e.col.rep 1 (v + 1) with
+          | none => rw [hr] at hea; simp at hea
+          | some ow =>
+            rw [hr] at hea
+            simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+            rcases hea with rfl | rfl <;>
+              simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+              rcases hwb with rfl | rfl | rfl <;> exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+  · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl | rfl
+    · exact absurd hq (hno _ (Or.inl rfl))
+    · rcases hq with h | h <;> cases h
+    · rcases hq with h | h <;> cases h; exact Or.inr rfl
+  · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl | rfl
+    · exact absurd hq (hno _ (Or.inl rfl))
+    · rcases hq with h | h <;> cases h
+    · rcases hq with h | h <;> cases h; exact Or.inr rfl
+  · exact hF.elim
+
+/-- L8.5 (helper): every atom of a positive block reads the host, the owner or an internal role. -/
+theorem posBlock_has_new_D4 (K : Key) (sel : Nat) : ∀ b ∈ posBlock K sel,
+    ∃ w ∈ b.vars, w = .host ∨ w = .owner ∨ ∃ r, w = .inner r := by
+  intro b hb
+  simp only [posBlock, freeBlock, List.mem_append, List.mem_cons, List.mem_map,
+    List.mem_filterMap, List.mem_flatMap, List.not_mem_nil] at hb
+  rcases hb with ((((rfl | ⟨_, ⟨r, -, rfl⟩, rfl⟩) | ⟨xy, hxy, rfl⟩) | ⟨c, -, hca⟩) | ⟨e, -, hea⟩) |
+    rfl | rfl | hF
+  · exact ⟨.owner, by simp [BaseAtom.vars], Or.inr (Or.inl rfl)⟩
+  · exact ⟨.inner r, by simp [BaseAtom.vars], Or.inr (Or.inr ⟨r, rfl⟩)⟩
+  · obtain ⟨-, h2⟩ := List.of_mem_zip hxy
+    obtain ⟨r, -, hr⟩ := List.mem_map.1 h2
+    exact ⟨xy.2, by simp [BaseAtom.vars], Or.inr (Or.inr ⟨r, hr.symm⟩)⟩
+  · split_ifs at hca
+    cases hca
+    exact ⟨.inner (.ord c), by simp [BaseAtom.vars], Or.inr (Or.inr ⟨_, rfl⟩)⟩
+  · have hme : ∀ c a', BaseAtom.edge (BlkVar.inner (.slot e)) c a' = b →
+        ∃ w ∈ b.vars, w = .host ∨ w = .owner ∨ ∃ r, w = .inner r := by
+      rintro c a' rfl; exact ⟨.inner (.slot e), by simp [BaseAtom.vars], Or.inr (Or.inr ⟨_, rfl⟩)⟩
+    cases hx : K.entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x =>
+      obtain ⟨⟨bb, q'⟩, h⟩ := x
+      rw [hx] at hea
+      cases bb with
+      | false =>
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;> exact hme _ _ rfl
+      | true =>
+        cases q' with
+        | zero =>
+          simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+          rcases hea with rfl | rfl <;> exact hme _ _ rfl
+        | succ v =>
+          simp only at hea
+          cases hr : e.col.rep 1 (v + 1) with
+          | none => rw [hr] at hea; simp at hea
+          | some ow =>
+            rw [hr] at hea
+            simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+            rcases hea with rfl | rfl <;> exact hme _ _ rfl
+  · exact ⟨.owner, by simp [BaseAtom.vars], Or.inr (Or.inl rfl)⟩
+  · exact ⟨.owner, by simp [BaseAtom.vars], Or.inr (Or.inl rfl)⟩
+  · exact hF.elim
+
+/-- L8.5 (helper): a realization of a free block puts the owner below every internal role. -/
+theorem freeBlock_owner_lt_D4 {P : Prims.{u}} {K : Key} {β : BlkVar → Ordinal.{u}}
+    (h : BaseHolds P (freeBlock K) β) {r : Role} (hr : r ∈ K.roles) : β .owner < β (.inner r) := by
+  have hpw := chain_pairwise (D := freeBlock K) (l := BlkVar.owner :: K.roles.map BlkVar.inner)
+    (fun xy hxy => by
+      simp only [freeBlock]
+      exact List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _
+        (List.mem_map_of_mem (f := fun xy => BaseAtom.lt xy.1 xy.2) hxy)))) h
+  exact List.rel_of_pairwise_cons hpw (List.mem_map_of_mem hr)
+
+/-- L8.5 (helper): the frame of entry `e` reads `A_{e.col}` and representatives of its stack. -/
+theorem toFr_frameOf_D4 {e : EntryAddr} {w : BlkVar} {x : Role}
+    (h : (frameOf e).toFr w = some x) :
+    x = .ord e.col ∨ ∃ ov ∈ e.col.reps0, x = ov.1 ∨ x = ov.2 := by
+  cases w with
+  | host => cases h; exact Or.inl rfl
+  | ord q =>
+    obtain ⟨ov, hov, rfl⟩ := Option.map_eq_some_iff.1 h
+    exact Or.inr ⟨ov, List.mem_of_getElem? hov, Or.inl rfl⟩
+  | cur q =>
+    obtain ⟨ov, hov, rfl⟩ := Option.map_eq_some_iff.1 h
+    exact Or.inr ⟨ov, List.mem_of_getElem? hov, Or.inr rfl⟩
+  | owner => cases h
+  | inner _ => cases h
+
+/-- L8.5 (helper): a frame field below the column number is present. -/
+theorem toFr_isSome_D4 (e : EntryAddr) {q : Nat} (hq : q < e.col.num 0) :
+    ((frameOf e).toFr (.ord q)).isSome ∧ ((frameOf e).toFr (.cur q)).isSome := by
+  have hs : (e.col.rep 0 q).isSome := by
+    simp only [ColAddr.rep, Option.isSome_map]
+    exact (ColAddr.resolve_isSome_iff 0 e.col q).2 ⟨Nat.zero_le _, hq⟩
+  simp only [Frame.toFr, frameOf, reps0_getElem?, Option.isSome_map]
+  exact ⟨hs, hs⟩
+
+/-- L8.5 (helper): `T` followed by the query is an `lt` chain of the query graph, hence strictly
+increasing at the original values (S4). -/
+theorem query_pairwise_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) :
+    (Role.ord S.sd.col :: S.queryRoles).Pairwise
+      fun a b => setupPosVal S a < setupPosVal S b := by
+  have hsd := hS.1.2.2.2.1
+  obtain ⟨post, hr, -⟩ := stop_roles_D4 hsd
+  have hr' : S.H.roles = S.preStop ++ (Role.ord S.sd.col :: S.queryRoles) ++
+      (Role.slot (Scan.closingSlot S.sd) :: post) := by rw [hr]; simp
+  refine chain_pairwise (D := S.queryGraph) (fun xy hxy => ?_) hS.2.2.2.1
+  have hlt := lt_chain_graph_D4 hr' xy hxy
+  obtain ⟨a, b⟩ := xy
+  obtain ⟨s, t, hst⟩ := mem_zip_tail_iff_D4.1 hxy
+  have hb : b ∈ S.queryRoles := by
+    cases s with
+    | nil => simp only [List.nil_append, List.cons.injEq] at hst; rw [hst.2]; simp
+    | cons z s =>
+      simp only [List.cons_append, List.cons.injEq] at hst
+      rw [hst.2]; simp
+  have ha : a = .ord S.sd.col ∨ a ∈ S.queryRoles := by
+    have : a ∈ Role.ord S.sd.col :: S.queryRoles := by rw [hst]; simp
+    simpa using this
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hlt, ?_⟩, ?_⟩
+  · simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+      decide_eq_true_eq, List.mem_append, List.mem_singleton]
+    refine ⟨?_, Or.inr hb⟩
+    rcases ha with rfl | ha
+    · exact Or.inl (Or.inr rfl)
+    · exact Or.inr ha
+  · simp only [BaseAtom.vars, List.any_cons, List.any_nil, Bool.or_false, Bool.or_eq_true,
+      decide_eq_true_eq, List.mem_cons]
+    exact Or.inr (Or.inr hb)
+
+/-- L8.5 (helper): `ρ` is below every original query value. -/
+theorem query_stop_lt_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {y : Role}
+    (hy : y ∈ S.queryRoles) : S.asg S.stopNm < S.asg (S.qNm y) := by
+  have h := List.rel_of_pairwise_cons (query_pairwise_D4 hS) hy
+  have hT := not_query_D4 hS.1.2.2.2.1 (x := .ord S.sd.col) (Or.inr rfl)
+  simpa [setupPosVal, ScanSetup.fitVal, hy, hT, ScanSetup.baseVal] using h
+
+/-- L8.5 (helper): original values of an earlier query entry are below those of a later one. -/
+theorem query_entry_lt_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S)
+    {x y : Role} {k l : Nat} (hx : x ∈ S.queryRoles) (hxk : x.inEntry ⟨S.sd.col, k⟩ = true)
+    (hy : y ∈ S.queryRoles) (hyl : y.inEntry ⟨S.sd.col, l⟩ = true) (hkl : k < l) :
+    S.asg (S.qNm x) < S.asg (S.qNm y) := by
+  obtain ⟨-, -, hQ⟩ := stop_roles_D4 hS.1.2.2.2.1
+  have hpw := (List.pairwise_cons.1 (query_pairwise_D4 hS)).2
+  rw [hQ] at hpw
+  have h := rolesCol_split_lt_D4 hpw (by rw [← hQ]; exact hx) hxk (by rw [← hQ]; exact hy) hyl hkl
+  simpa [setupPosVal, ScanSetup.fitVal, hx, hy] using h
+
+/-- L8.5 (helper): `C_j` is below every original value of query entry `j`. -/
+theorem Cmax_lt_entry_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {j : Nat}
+    {y : Role} (hy : y ∈ S.entryRoles j) : S.Cmax j < S.asg (S.qNm y) := by
+  obtain ⟨hyq, hyin⟩ := List.mem_filter.1 hy
+  refine foldr_max_lt_iff_D4.2 ⟨query_stop_lt_D4 hS hyq, fun z hz => ?_⟩
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+  obtain ⟨hxq, hxin⟩ := List.mem_filter.1 hx
+  simp only [List.any_eq_true, List.mem_range] at hxin
+  obtain ⟨k, hk, hxk⟩ := hxin
+  exact query_entry_lt_D4 hS hxq hxk hyq hyin hk
+
+/-- L8.5 (helper): fitted roles at `j + 1` are the fitted roles at `j` and the roles of entry `j`. -/
+theorem mem_fittedRoles_succ_D4 (S : ScanSetup.{u}) {j : Nat} {x : Role} :
+    x ∈ S.fittedRoles (j + 1) ↔ x ∈ S.fittedRoles j ∨ x ∈ S.entryRoles j := by
+  simp only [ScanSetup.fittedRoles, ScanSetup.entryRoles, List.mem_filter, List.any_eq_true,
+    List.mem_range]
+  constructor
+  · rintro ⟨hq, k, hk, hin⟩
+    rcases Nat.lt_succ_iff_lt_or_eq.1 hk with hk | rfl
+    · exact Or.inl ⟨hq, k, hk, hin⟩
+    · exact Or.inr ⟨hq, hin⟩
+  · rintro (⟨hq, k, hk, hin⟩ | ⟨hq, hin⟩)
+    · exact ⟨hq, k, by omega, hin⟩
+    · exact ⟨hq, j, by omega, hin⟩
+
+/-- L8.5 (helper): the internal roles of an entry, placed under its height path, are roles of
+the tree inside the entry. -/
+theorem under_mem_D4 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {Jh : Forest}
+    (hh : t.heightAt e = some Jh) {r : Role} (hr : r ∈ Jh.roles) :
+    Role.under e.heightPath r ∈ t.roles ∧ (Role.under e.heightPath r).inEntry e = true := by
+  obtain ⟨post, hroles, -⟩ := Tree.roles_entry he
+  rw [hh, Option.getD_some] at hroles
+  refine ⟨by rw [hroles]; exact List.mem_append_right _ (List.mem_cons_of_mem _
+    (List.mem_append_left _ (List.mem_map_of_mem hr))), (inEntry_iff _ _).2 (Or.inr ?_)⟩
+  rw [Role.path_under]; exact List.prefix_append _ _
+
+/-- L8.5 (helper): the positive candidate of query entry `j`: the fitted frame, and the original
+values (S4) on the new variables. -/
+noncomputable def posCand_D4 (S : ScanSetup.{u}) (j : Nat) (β : Role → Ordinal.{u}) (w : BlkVar) :
+    Ordinal.{u} :=
+  match (frameOf ⟨S.sd.col, j⟩).toFr w with
+  | some x => S.fitVal β x
+  | none => setupPosVal S (blockMap ⟨S.sd.col, j⟩ w)
+
+/-- L8.5 (helper): the positive candidate realizes the positive block of query entry `j`; its new
+variables are the owner and internal roles, read as roles of entry `j` with their original
+values (D7.1a, S4, L8.2c). -/
+theorem posCand_spec_D4 {P : Prims.{u}} {S : ScanSetup.{u}} (hS : SetupClauses P S) {j : Nat}
+    (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
+    BaseHolds P (posBlock (queryKey S j) (querySel S j)) (posCand_D4 S j β) ∧
+    (∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → posCand_D4 S j β w = S.fitVal β x) ∧
+    (∀ w ∈ baseVars (posBlock (queryKey S j) (querySel S j)),
+      (frameOf ⟨S.sd.col, j⟩).toFr w = none →
+      (w = .owner ∨ ∃ r ∈ (queryKey S j).roles, w = .inner r) ∧
+      blockMap ⟨S.sd.col, j⟩ w ∈ S.entryRoles j ∧
+      posCand_D4 S j β w = S.asg (S.qNm (blockMap ⟨S.sd.col, j⟩ w))) := by
+  have hsd := hS.1.2.2.2.1
+  have hV := hS.1.2.1.1
+  obtain ⟨-, -, ht, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨p, Jh, hq, hent, he⟩ := query_entry_D4 hsd hj
+  have hhgt : S.H.heightAt ⟨S.sd.col, j⟩ = some Jh := by simp [Tree.heightAt, hent]
+  have hK : queryKey S j = relKey (S.sd.col.num 0)
+      ((S.H.heightAt ⟨S.sd.col, j⟩).getD Tree.empty) := by
+    simp [queryKey, Scan.queryKeys, List.getElem?_map, hq, hhgt, ht]
+  have hsel : querySel S j = ((S.H.entryAt ⟨S.sd.col, j⟩).map Prod.fst).getD 0 := by
+    simp [querySel, hq, hent]
+  have hplt : p < S.sd.col.num 0 :=
+    ((ColAddr.resolve_isSome_iff 0 _ p).1 (hV _ he p Jh hent)).2
+  have hKr : (queryKey S j).roles = Jh.roles := by rw [hK, relKey_roles, hhgt]; rfl
+  have hentq : ∀ y ∈ S.entryRoles j, y ∈ S.queryRoles := fun y hy => (List.mem_filter.1 hy).1
+  have hinner : ∀ r ∈ Jh.roles, Role.under (EntryAddr.heightPath ⟨S.sd.col, j⟩) r ∈
+      S.entryRoles j := by
+    intro r hr
+    obtain ⟨h1, h2⟩ := under_mem_D4 he hhgt hr
+    exact List.mem_filter.2 ⟨(mem_queryRoles_iff_D4 hsd).2 ⟨h1, j, hj, h2⟩, h2⟩
+  have hsj := slot_entryRoles_D4 hsd hj
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := not_query_D4 hsd (Or.inr rfl)
+  have hfrq : ∀ w x, (frameOf ⟨S.sd.col, j⟩).toFr w = some x → x ∉ S.queryRoles := by
+    intro w x hx
+    rcases toFr_frameOf_D4 hx with rfl | ⟨ov, hov, rfl | rfl⟩
+    · exact hTq
+    · exact not_query_D4 hsd (Or.inl (reps0_preStop_D4 hsd hov).1)
+    · exact not_query_D4 hsd (Or.inl (reps0_preStop_D4 hsd hov).2)
+  have himg : ∀ w ∈ baseVars (posBlock (queryKey S j) (querySel S j)),
+      blockMap ⟨S.sd.col, j⟩ w ∈ S.preStop ∨ blockMap ⟨S.sd.col, j⟩ w = .ord S.sd.col ∨
+        blockMap ⟨S.sd.col, j⟩ w ∈ S.queryRoles := by
+    intro w hw
+    rcases posBlock_vars _ _ w hw with rfl | rfl | ⟨q, rfl | rfl⟩ | ⟨r, hr, rfl⟩
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inr (Or.inr (hentq _ hsj))
+    · simp only [blockMap]
+      cases hr : S.sd.col.rep 0 q with
+      | none => exact Or.inr (Or.inl rfl)
+      | some ov => exact Or.inl (rep_preStop_D4 hsd hr).1
+    · simp only [blockMap]
+      cases hr : S.sd.col.rep 0 q with
+      | none => exact Or.inr (Or.inl rfl)
+      | some ov => exact Or.inl (rep_preStop_D4 hsd hr).2
+    · exact Or.inr (Or.inr (hentq _ (hinner r (hKr ▸ hr))))
+  refine ⟨fun a ha => ?_, fun w x hx => by simp [posCand_D4, hx], fun w hw hn => ?_⟩
+  · have hg := posBlock_heads_graph he hV a (by rw [← hK, ← hsel]; exact ha)
+    have hqg : a.map (blockMap ⟨S.sd.col, j⟩) ∈ S.queryGraph := by
+      refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hg, List.all_eq_true.2 fun v hv => ?_⟩, ?_⟩
+      · rw [baseAtom_vars_map] at hv
+        obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hv
+        have := himg w (List.mem_flatMap.2 ⟨a, ha, hw⟩)
+        simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq]
+        tauto
+      · obtain ⟨w, hw, hw'⟩ := posBlock_has_new_D4 _ _ a ha
+        rw [baseAtom_vars_map]
+        refine List.any_eq_true.2 ⟨blockMap ⟨S.sd.col, j⟩ w, List.mem_map_of_mem hw, ?_⟩
+        simp only [decide_eq_true_eq, List.mem_cons]
+        rcases hw' with rfl | rfl | ⟨r, rfl⟩
+        · exact Or.inl rfl
+        · exact Or.inr (hentq _ hsj)
+        · have hw2 : BlkVar.inner r ∈ baseVars (posBlock (queryKey S j) (querySel S j)) :=
+            List.mem_flatMap.2 ⟨a, ha, hw⟩
+          obtain ⟨r', hr', h⟩ : ∃ r' ∈ (queryKey S j).roles, BlkVar.inner r = .inner r' := by
+            rcases posBlock_vars _ _ _ hw2 with h | h | ⟨q, h | h⟩ | h
+            · cases h
+            · cases h
+            · cases h
+            · cases h
+            · exact h
+          cases h
+          exact Or.inr (hentq _ (hinner r (hKr ▸ hr')))
+    have h4 := hS.2.2.2.1 _ hqg
+    rw [baseAtom_holds_map'] at h4
+    refine (BaseAtom.holds_congr P a _ _ fun w _ => ?_).1 h4
+    cases hx : (frameOf ⟨S.sd.col, j⟩).toFr w with
+    | none => simp [posCand_D4, hx]
+    | some x =>
+      simp only [Function.comp, posCand_D4, hx]
+      rw [blockMap_frame _ w x hx]
+      simp [setupPosVal, ScanSetup.fitVal, hfrq w x hx]
+  · have hw' : w ∈ baseVars (posBlock (relKey (S.sd.col.num 0)
+        ((S.H.heightAt ⟨S.sd.col, j⟩).getD Tree.empty)) (querySel S j)) := by rw [← hK]; exact hw
+    have hselp : querySel S j = p := by simp [querySel, hq]
+    rcases posBlock_vars _ _ w hw with rfl | rfl | ⟨q, hq' | hq'⟩ | ⟨r, hr, rfl⟩
+    · simp [Frame.toFr] at hn
+    · refine ⟨Or.inl rfl, hsj, ?_⟩
+      simp [posCand_D4, hn, blockMap, setupPosVal, ScanSetup.fitVal, hentq _ hsj]
+    · exfalso
+      have hlt : q < S.sd.col.num 0 := by
+        rcases posBlock_ordcur_D4 hw' (Or.inl hq') with h | h
+        · exact h
+        · rw [h, hselp]; exact hplt
+      subst hq'
+      have := (toFr_isSome_D4 ⟨S.sd.col, j⟩ hlt).1
+      rw [hn] at this; simp at this
+    · exfalso
+      have hlt : q < S.sd.col.num 0 := by
+        rcases posBlock_ordcur_D4 hw' (Or.inr hq') with h | h
+        · exact h
+        · rw [h, hselp]; exact hplt
+      subst hq'
+      have := (toFr_isSome_D4 ⟨S.sd.col, j⟩ hlt).2
+      rw [hn] at this; simp at this
+    · have hr' := hinner r (hKr ▸ hr)
+      refine ⟨Or.inr ⟨r, hr, rfl⟩, hr', ?_⟩
+      simp [posCand_D4, hn, blockMap, setupPosVal, ScanSetup.fitVal, hentq _ hr']
+
+/-- L8.5 (helper): `c_0` is at most `C_{j+1}`. -/
+theorem queryBlockMax_le_Cmax_D4 (S : ScanSetup.{u}) (j : Nat) :
+    queryBlockMax S j ≤ S.Cmax (j + 1) := by
+  refine foldr_max_le_iff_D4.2 ⟨zero_le, fun z hz => ?_⟩
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+  exact le_foldr_max_mem_D4 (List.mem_map_of_mem ((mem_fittedRoles_succ_D4 S).2 (Or.inr hx)))
+
 /-- L8.5b: the scan invariant (17) at state `(i, j)`. -/
 def ScanInv (P : Prims.{u}) (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordinal.{u}) : Prop :=
   S.Fitted P j β ∧ S.Lmax j β < S.ownerVal i ∧ S.Lmax j β ≤ S.Cmax j
+
+/-- L8.5 (helper): (17) at `j + 1` from (17) at `j` and bounds on the values of entry `j`. -/
+theorem inv_step_D4 {P : Prims.{u}} (S : ScanSetup.{u}) {i' j : Nat} {β β' : Role → Ordinal.{u}}
+    (hfit : S.Fitted P (j + 1) β') (hagree : ∀ x ∈ S.fittedRoles j, β' x = β x)
+    (h1 : S.Lmax j β < S.ownerVal i') (h2 : S.Lmax j β ≤ S.Cmax j)
+    (hlt : ∀ x ∈ S.entryRoles j, β' x < S.ownerVal i')
+    (hle : ∀ x ∈ S.entryRoles j, β' x ≤ S.Cmax (j + 1)) : ScanInv P S i' (j + 1) β' := by
+  have hold : ∀ x ∈ S.fittedRoles j, β' x ≤ S.Lmax j β := fun x hx => by
+    rw [hagree x hx]; exact le_foldr_max_mem_D4 (List.mem_map_of_mem hx)
+  have hC : S.Cmax j ≤ S.Cmax (j + 1) := by
+    refine foldr_max_le_iff_D4.2 ⟨le_foldr_max_init_D4 _ _, fun z hz => ?_⟩
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+    exact le_foldr_max_mem_D4 (List.mem_map_of_mem ((mem_fittedRoles_succ_D4 S).2 (Or.inl hx)))
+  refine ⟨hfit, foldr_max_lt_iff_D4.2 ⟨(le_foldr_max_init_D4 _ _).trans_lt h1, fun z hz => ?_⟩,
+    foldr_max_le_iff_D4.2 ⟨le_foldr_max_init_D4 _ _, fun z hz => ?_⟩⟩
+  · obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+    rcases (mem_fittedRoles_succ_D4 S).1 hx with hx | hx
+    · exact (hold x hx).trans_lt h1
+    · exact hlt x hx
+  · obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+    rcases (mem_fittedRoles_succ_D4 S).1 hx with hx | hx
+    · exact ((hold x hx).trans h2).trans hC
+    · exact hle x hx
 
 /-- L8.5b: (17) holds initially: `L_0 = C_0 = ρ < u_0` (txt:1220-1221). -/
 theorem scan_init {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S)
@@ -2625,7 +3064,44 @@ theorem scan_gt (I : Interface.{u}) {n : Nat} (hSn : ∀ m < n, SStrict I.toPrim
     {i j : Nat} {β : Role → Ordinal.{u}} (hinv : ScanInv I.toPrims S i j β)
     (hgt : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
     (hi : i ≤ S.rd.cursor) : ∃ β', ScanInv I.toPrims S i (j + 1) β' := by
-  sorry
+  have hS' := (valid_iff S).1 hS
+  have hsd := hS'.1.2.2.2.1
+  have hj : j < S.sd.Q.length := by
+    obtain ⟨-, x, y, -, hy, -⟩ := hgt
+    have := (List.getElem?_eq_some_iff.1 hy).1
+    simpa [Scan.queryKeys] using this
+  obtain ⟨hfit, h17a, h17b⟩ := hinv
+  have hcb : ∀ y ∈ S.entryRoles j, S.asg (S.qNm y) ≤ queryBlockMax S j := fun y hy =>
+    le_foldr_max_mem_D4 (List.mem_map_of_mem (f := fun x => S.asg (S.qNm x)) hy)
+  by_cases hc : queryBlockMax S j < S.ownerVal i
+  · -- reuse the positive block below `u_i`
+    obtain ⟨hhold, hfr, hnew⟩ := posCand_spec_D4 hS' hj β
+    obtain ⟨β', hfit', hagree, hent⟩ := fit_of_block S hS hj hfit (L := S.Lmax j β) le_rfl
+      (βb := posCand_D4 S j β) hfr (fun w hw hn => by
+        obtain ⟨-, hm, hv⟩ := hnew w hw hn
+        rw [hv]
+        exact h17b.trans_lt (Cmax_lt_entry_D4 hS' hm)) hhold
+    refine ⟨β', inv_step_D4 S hfit' hagree h17a h17b (fun x hx => ?_) (fun x hx => ?_)⟩
+    · obtain ⟨w, hw, hn, hx'⟩ := hent x hx
+      obtain ⟨-, hm, hv⟩ := hnew w hw hn
+      rw [hx', hv]
+      exact (hcb _ hm).trans_lt hc
+    · obtain ⟨w, hw, hn, hx'⟩ := hent x hx
+      obtain ⟨-, hm, hv⟩ := hnew w hw hn
+      rw [hx', hv]
+      exact (hcb _ hm).trans (queryBlockMax_le_Cmax_D4 S j)
+  · -- call `S_{N(J_j)}` on the scan packet
+    push Not at hc
+    have hheads := heads_at_owner I S hS' hj hi β hc h17a
+    obtain ⟨pk, hrk, hadm, hv, hown, hcont⟩ := scan_packet S hS hgt hfit h17a h17b hheads
+    have hsz : pk.rk.tgtHeight.size < n := by
+      rw [hrk, scanRecord_tgtHeight S hS hj]
+      obtain ⟨p, Jh, hq, -⟩ := query_entry_D4 hsd hj
+      simpa [hq] using hQ _ (List.mem_of_getElem? hq)
+    have hTA := hSn _ hsz pk hadm hv rfl (S.Lmax j β) (by rw [hown]; exact h17a)
+    obtain ⟨β', hfit', hagree, hent⟩ := hcont _ le_rfl hTA
+    exact ⟨β', inv_step_D4 S hfit' hagree h17a h17b (fun x hx => (hent x hx).2)
+      (fun x hx => ((hent x hx).2.le.trans hc).trans (queryBlockMax_le_Cmax_D4 S j))⟩
 
 /-- L8.5f: `x_i = y_j`: the two-candidate fact on the bank block and the positive block
 (txt:1235-1241). -/
