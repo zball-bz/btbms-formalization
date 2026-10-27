@@ -1246,6 +1246,382 @@ theorem kernel_conj {K K' : Forest} {sd sd' : StopData} {rd rd' : RootData} {r �
       show (replaceAt _ _ _ _ _).cols = (shift r δ (replaceAt _ _ _ _ _)).cols
       rw [hrep, hconj]
 
+/-! ### Helpers shared by T3.2i, T3.2l, T3.8: outputs as contexts, fill laws off the route -/
+
+/-- helper: an ordinary output is the context of the `n`-th kernel iterate (the kernel is
+defined whenever `n ≥ 1` and the output exists). -/
+theorem ker_expand_out {A A' : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hV : CondV A)
+    (hI : CondI A) (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) (hA' : expand A n = some A') :
+    A' = context A sd ((kernel A sd rd)^[n] Tree.empty) ∧ (1 ≤ n → KernelDefined A rd) := by
+  have hE : A ≠ Tree.empty := by
+    intro h; subst h
+    simp [stopData, stopDataBody, stopF, stopCols, Tree.empty] at hsd
+  by_cases hkd : KernelDefined A rd
+  · rw [expand_eq_iterate hE hV hI hk hsd hrd hkd] at hA'
+    exact ⟨(Option.some.inj hA').symm, fun _ => hkd⟩
+  · rcases Nat.eq_zero_or_pos n with rfl | hn
+    · rw [expand_zero_eq_context hE hV hI hk hsd] at hA'
+      exact ⟨(Option.some.inj hA').symm, fun h => absurd h (by omega)⟩
+    · have := (expand_none_iff hE hV hI hk hsd hrd n).2 ⟨hn, hkd⟩
+      rw [this] at hA'; cases hA'
+
+/-- helper: the path trichotomy (prefix, extension, divergence). -/
+theorem ker_path_cases : ∀ (σ π : List (Nat × Nat)),
+    σ <+: π ∨ (∃ x rest, σ = π ++ x :: rest) ∨
+      ∃ j, j < σ.length ∧ j < π.length ∧ σ.take j = π.take j ∧ σ[j]? ≠ π[j]?
+  | [], _ => Or.inl List.nil_prefix
+  | x :: σ, [] => Or.inr (Or.inl ⟨x, σ, rfl⟩)
+  | x :: σ, y :: π => by
+    by_cases hxy : x = y
+    · subst hxy
+      rcases ker_path_cases σ π with h | ⟨z, rest, h⟩ | ⟨j, h1, h2, h3, h4⟩
+      · exact Or.inl ((List.prefix_cons_inj x).2 h)
+      · exact Or.inr (Or.inl ⟨z, rest, by rw [h]; rfl⟩)
+      · refine Or.inr (Or.inr ⟨j + 1, by simp; omega, by simp; omega, ?_, by simpa using h4⟩)
+        simp [h3]
+    · exact Or.inr (Or.inr ⟨0, by simp, by simp, rfl, by simpa using hxy⟩)
+
+theorem ker_mapLast_getElem?_lt {β γ : Type} (f g : β → γ) :
+    ∀ {l : List β} {i : Nat}, i + 1 < l.length → (mapLast f g l)[i]? = l[i]?.map f
+  | [], _, h => by simp at h
+  | [_], _, h => by simp at h
+  | x :: y :: ys, 0, _ => by simp [mapLast]
+  | x :: y :: ys, i + 1, h => by
+    simp only [mapLast, List.getElem?_cons_succ]
+    exact ker_mapLast_getElem?_lt f g (l := y :: ys) (by simp at h ⊢; omega)
+
+theorem ker_mapLast_getElem?_ge {β γ : Type} (f g : β → γ) {l : List β} {i : Nat}
+    (h : l.length ≤ i) : (mapLast f g l)[i]? = none :=
+  List.getElem?_eq_none (by rw [ker_length_mapLast]; exact h)
+
+theorem ker_mapLast_getElem?_last {β γ : Type} (f g : β → γ) (l : List β) :
+    (mapLast f g l)[l.length - 1]? = l.getLast?.map g := by
+  rw [← ker_length_mapLast f g l, ← List.getLast?_eq_getElem?, ker_getLast?_mapLast]
+
+/-- helper: off the last step, an unshifted placement at depth `m + 1` leaves entries alone. -/
+theorem ker_replaceAt_step_other (Y : Forest) (m : Nat) {G : Forest} {col : Column}
+    (hc : G.cols.getLast? = some col) (c' e' : Nat)
+    (hne : (c', e') ≠ (G.cols.length - 1, col.length - 1)) :
+    ((replaceAt 0 0 Y (m + 1) G).cols[c']?).bind (·[e']?) = (G.cols[c']?).bind (·[e']?) := by
+  obtain ⟨cols⟩ := G
+  rw [ker_replaceAt_zero_succ]
+  simp only [Tree.cols] at hc hne ⊢
+  rcases Nat.lt_or_ge (c' + 1) cols.length with h1 | h1
+  · rw [ker_mapLast_getElem?_lt _ _ h1]
+    cases cols[c']? <;> rfl
+  · rcases Nat.lt_or_ge c' cols.length with h2 | h2
+    · have hc' : c' = cols.length - 1 := by omega
+      subst hc'
+      rw [ker_mapLast_getElem?_last, hc, ← List.getLast?_eq_getElem?, hc]
+      simp only [Option.map_some, Option.bind_some]
+      have he : e' ≠ col.length - 1 := fun h => hne (by rw [h])
+      rcases Nat.lt_or_ge (e' + 1) col.length with h3 | h3
+      · rw [ker_mapLast_getElem?_lt _ _ h3]; cases col[e']? <;> rfl
+      · rw [ker_mapLast_getElem?_ge _ _ (by omega), List.getElem?_eq_none (by omega)]
+    · rw [ker_mapLast_getElem?_ge _ _ h2, List.getElem?_eq_none h2]
+
+/-- helper: the step lookup of `forestAt`. -/
+theorem ker_forestAt_cons {α : Type} (T : Tree α) (c e : Nat) (rest : List (Nat × Nat)) :
+    T.forestAt ((c, e) :: rest) = ((T.cols[c]?).bind (·[e]?)).bind fun x => x.2.forestAt rest := by
+  simp only [Tree.forestAt]
+  cases (T.cols[c]?).bind (·[e]?) with
+  | none => rfl
+  | some x => rfl
+
+/-- helper (fill law off the route): a path that leaves the stopping route above the stopping
+forest reads the same forest in every context. -/
+theorem ker_context_forestAt_diverge {K : Forest} {sd : StopData} (hsd : stopData K = some sd)
+    (Y : Forest) {σ : List (Nat × Nat)} {j : Nat} (hj : j < sd.col.path.length)
+    (hjσ : j < σ.length) (htake : σ.take j = sd.col.path.take j)
+    (hne : σ[j]? ≠ sd.col.path[j]?) :
+    (context K sd Y).forestAt σ = K.forestAt σ := by
+  obtain ⟨-, hdep, -, hmem, -⟩ := stopData_spec hsd
+  obtain ⟨hpath, -⟩ := (Scan.mem_routeCols_iff K sd.col).1 hmem
+  obtain ⟨G0, hG0, hlast⟩ := hpath j hj
+  have hC := ker_context_forestAt hsd Y j (by omega) G0 hG0
+  rw [List.getElem?_eq_getElem hj] at hlast hne
+  unfold Tree.lastStep? at hlast
+  cases hgc : G0.cols.getLast? with
+  | none => rw [hgc] at hlast; simp at hlast
+  | some col =>
+    rw [hgc] at hlast
+    simp only [Option.bind_some] at hlast
+    split at hlast
+    · simp at hlast
+    · have hstep : sd.col.path[j] = (G0.cols.length - 1, col.length - 1) :=
+        (Option.some.inj hlast).symm
+      have hσ : σ = σ.take j ++ σ[j] :: σ.drop (j + 1) := by
+        rw [← List.drop_eq_getElem_cons hjσ, List.take_append_drop]
+      have hσj : σ[j]? = some σ[j] := List.getElem?_eq_getElem hjσ
+      rw [hσ, Tree.forestAt_append, Tree.forestAt_append, htake, hC, hG0, Option.bind_some,
+        Option.bind_some]
+      rcases hx : σ[j] with ⟨c', e'⟩
+      have hne' : (c', e') ≠ (G0.cols.length - 1, col.length - 1) := by
+        rw [← hstep, ← hx]; intro h; exact hne (by rw [hσj, h])
+      rw [ker_forestAt_cons, ker_forestAt_cons, show sd.depth - j = (sd.depth - j - 1) + 1 by omega,
+        ker_replaceAt_step_other Y _ hgc c' e' hne']
+
+/-- helper: the stopping forest of `K` and its last column. -/
+theorem ker_stopForest {K : Forest} {sd : StopData} (hsd : stopData K = some sd) :
+    ∃ G, K.forestAt sd.col.path = some G ∧ G.cols.length = sd.col.col + 1 ∧
+      G.cols[sd.col.col]? = some (sd.Q ++ [(sd.r, Tree.empty)]) := by
+  obtain ⟨hcol, -, -, hmem, -⟩ := stopData_spec hsd
+  obtain ⟨-, F, hF, hFlen⟩ := (Scan.mem_routeCols_iff K sd.col).1 hmem
+  refine ⟨F, hF, hFlen, ?_⟩
+  unfold Tree.colAt at hcol
+  rw [hF, Option.bind_some] at hcol
+  exact hcol
+
+/-- helper (fill law at the stopping forest): an entry of a column before the stopping column,
+or a query entry of the stopping column when the filling starts with `Q`, reads the same forest
+below it. -/
+theorem ker_context_forestAt_stop {K : Forest} {sd : StopData} (hsd : stopData K = some sd)
+    (Y : Forest) {c' e' : Nat} (rest : List (Nat × Nat))
+    (hce : c' < sd.col.col ∨
+      (c' = sd.col.col ∧ e' < sd.Q.length ∧ ∃ V cs, Y = Tree.node ((sd.Q ++ V) :: cs))) :
+    (context K sd Y).forestAt (sd.col.path ++ (c', e') :: rest) =
+      K.forestAt (sd.col.path ++ (c', e') :: rest) := by
+  obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+  obtain ⟨-, hdep, -⟩ := stopData_spec hsd
+  have hC := ker_context_forestAt hsd Y sd.depth le_rfl G (by rw [hdep, List.take_length]; exact hG)
+  rw [hdep, List.take_length, Nat.sub_self] at hC
+  rw [Tree.forestAt_append, Tree.forestAt_append, hC, hG, Option.bind_some, Option.bind_some,
+    ker_forestAt_cons, ker_forestAt_cons]
+  obtain ⟨cols⟩ := G
+  simp only [Tree.cols] at hGlen hGc
+  have hne : cols ≠ [] := by intro h; subst h; simp at hGlen
+  rw [ker_replaceAt_zero_zero Y cols hne]
+  simp only [Tree.cols]
+  rcases hce with h | ⟨rfl, he, V, cs, rfl⟩
+  · rw [List.getElem?_append_left (by simp; omega), List.getElem?_dropLast, if_pos (by omega)]
+  · rw [List.getElem?_append_right (by simp; omega), show sd.col.col - cols.dropLast.length = 0 by
+      simp; omega, hGc]
+    simp only [List.getElem?_cons_zero, Option.bind_some, List.getElem?_append_left he]
+
+/-- helper: under `∅` the query heights disappear. -/
+theorem ker_context_empty_forestAt_stop {K : Forest} {sd : StopData} (hsd : stopData K = some sd)
+    (e' : Nat) (rest : List (Nat × Nat)) :
+    (context K sd Tree.empty).forestAt (sd.col.path ++ (sd.col.col, e') :: rest) = none := by
+  obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+  obtain ⟨-, hdep, -⟩ := stopData_spec hsd
+  have hC := ker_context_forestAt hsd Tree.empty sd.depth le_rfl G
+    (by rw [hdep, List.take_length]; exact hG)
+  rw [hdep, List.take_length, Nat.sub_self] at hC
+  rw [Tree.forestAt_append, hC, Option.bind_some, ker_forestAt_cons]
+  obtain ⟨cols⟩ := G
+  simp only [Tree.cols] at hGlen hGc
+  have hne : cols ≠ [] := by intro h; subst h; simp at hGlen
+  rw [ker_replaceAt_zero_zero _ cols hne]
+  simp only [Tree.cols, Tree.empty, List.append_nil]
+  rw [List.getElem?_dropLast, if_neg (by omega)]
+  rfl
+
+/-- helper: the route of a forest reaches a given column at depth `k`. -/
+def KerRouteTo : Nat → Forest → Column → Prop
+  | 0, F, X => F.cols.getLast? = some X
+  | k + 1, F, X => ∃ col p H, F.cols.getLast? = some col ∧ col.getLast? = some (p, H) ∧
+      KerRouteTo k H X
+
+theorem ker_routeTo_route : ∀ (k : Nat) (F : Forest) (X : Column), KerRouteTo k F X → KerRoute k F
+  | 0, F, X, h => by
+    show F.cols ≠ []
+    intro h'; unfold KerRouteTo at h; rw [h'] at h; cases h
+  | k + 1, F, X, ⟨col, p, H, h1, h2, h3⟩ => ⟨col, p, H, h1, h2, ker_routeTo_route k H X h3⟩
+
+/-- helper: filling the end of a route with its own last column changes nothing. -/
+theorem ker_replaceAt_self :
+    ∀ (k : Nat) (F : Forest) (X : Column), KerRouteTo k F X →
+      replaceAt 0 0 (Tree.node [X]) k F = F
+  | 0, .node cols, X, h => by
+    have hne : cols ≠ [] := by intro h'; subst h'; cases h
+    rw [ker_replaceAt_zero_zero _ cols hne]
+    simp only [Tree.cols]
+    have hX : X = cols.getLast hne := by
+      unfold KerRouteTo at h; simp only [Tree.cols] at h
+      rw [List.getLast?_eq_some_getLast hne] at h; exact (Option.some.inj h).symm
+    rw [hX, List.dropLast_concat_getLast]
+  | k + 1, .node cols, X, ⟨col, p, H, h1, h2, h3⟩ => by
+    rw [ker_replaceAt_zero_succ]
+    simp only [Tree.cols] at h1
+    have hcol : mapLast id (fun x : Nat × Forest => (x.1, replaceAt 0 0 (Tree.node [X]) k x.2)) col
+        = col := by
+      have hne : col ≠ [] := by intro h'; subst h'; cases h2
+      rw [mapLast_eq, h2, List.map_id]
+      simp only [Option.map_some, Option.toList_some, ker_replaceAt_self k H X h3]
+      have : (p, H) = col.getLast hne := by
+        rw [List.getLast?_eq_some_getLast hne] at h2; exact (Option.some.inj h2).symm
+      rw [this, List.dropLast_concat_getLast]
+    have hne : cols ≠ [] := by intro h'; subst h'; cases h1
+    rw [mapLast_eq, h1, List.map_id]
+    simp only [Option.map_some, Option.toList_some, hcol]
+    have : col = cols.getLast hne := by
+      rw [List.getLast?_eq_some_getLast hne] at h1; exact (Option.some.inj h1).symm
+    rw [this, List.dropLast_concat_getLast]
+
+theorem ker_routeTo_drop (k : Nat) (cs : List Column) (X : Column) (i : Nat) (hi : i < cs.length)
+    (h : KerRouteTo k (Tree.node cs) X) : KerRouteTo k (Tree.node (cs.drop i)) X := by
+  cases k with
+  | zero =>
+    unfold KerRouteTo at h ⊢; simp only [Tree.cols] at h ⊢
+    rw [List.getLast?_drop, if_neg (by omega), h]
+  | succ k =>
+    obtain ⟨col, p, H, h1, h2, h3⟩ := h
+    refine ⟨col, p, H, ?_, h2, h3⟩
+    simp only [Tree.cols] at h1 ⊢
+    rw [List.getLast?_drop, if_neg (by omega), h1]
+
+/-- helper: along the stopping route the forest at depth `j` routes to the stopping column. -/
+theorem ker_routeTo_of_stop {E : Forest} {sd : StopData} (hsd : stopData E = some sd) :
+    ∀ j, j ≤ sd.depth →
+      ∃ G, E.forestAt (sd.col.path.take j) = some G ∧
+        KerRouteTo (sd.depth - j) G (sd.Q ++ [(sd.r, Tree.empty)]) := by
+  obtain ⟨-, hdep, -, hmem, -⟩ := stopData_spec hsd
+  obtain ⟨hpath, -⟩ := (Scan.mem_routeCols_iff E sd.col).1 hmem
+  obtain ⟨F, hF, hFlen, hFc⟩ := ker_stopForest hsd
+  suffices h : ∀ m j, j + m = sd.col.path.length →
+      ∃ G, E.forestAt (sd.col.path.take j) = some G ∧
+        KerRouteTo m G (sd.Q ++ [(sd.r, Tree.empty)]) by
+    intro j hj
+    exact h (sd.depth - j) j (by omega)
+  intro m
+  induction m with
+  | zero =>
+    intro j hj
+    refine ⟨F, ?_, ?_⟩
+    · rw [List.take_of_length_le (by omega)]; exact hF
+    · show F.cols.getLast? = _
+      rw [List.getLast?_eq_getElem?, hFlen, Nat.add_sub_cancel, hFc]
+  | succ m ih =>
+    intro j hj
+    obtain ⟨H, hH, hHr⟩ := ih (j + 1) (by omega)
+    obtain ⟨G, hG, hlast⟩ := hpath j (by omega)
+    refine ⟨G, hG, ?_⟩
+    have hj' : j < sd.col.path.length := by omega
+    rw [List.getElem?_eq_getElem hj'] at hlast
+    unfold Tree.lastStep? at hlast
+    cases hgc : G.cols.getLast? with
+    | none => rw [hgc] at hlast; simp at hlast
+    | some col =>
+      rw [hgc] at hlast
+      simp only [Option.bind_some] at hlast
+      split at hlast
+      · simp at hlast
+      · rename_i hne
+        have hstep : sd.col.path[j] = (G.cols.length - 1, col.length - 1) :=
+          (Option.some.inj hlast).symm
+        have hcol : col ≠ [] := by simpa using hne
+        obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 (List.getLast?_isSome.2 hcol)
+        obtain ⟨p, H'⟩ := x
+        rw [List.take_add_one, List.getElem?_eq_getElem hj', Option.toList_some,
+          Tree.forestAt_append, hG, Option.bind_some, hstep, ker_forestAt_lastStep hgc hx] at hH
+        cases hH
+        exact ⟨col, p, H, hgc, hx, hHr⟩
+
+/-- helper: a node is the node of its columns. -/
+theorem ker_node_cols {α : Type} (T : Tree α) : Tree.node T.cols = T := by cases T; rfl
+
+/-- helper: local suffixes of route columns are placements. For a column `a` whose forest lies
+on the stopping route, the local suffix of `K` routes to the stopping column, and the local
+suffix of `C_K(Y)` is that suffix with its stopping column replaced by `Y`. -/
+theorem ker_localSuffix_prefix {K : Forest} {sd : StopData} (hsd : stopData K = some sd)
+    {a : ColAddr} (hpre : a.path <+: sd.col.path) (ha : a ∈ K.colAddrs) :
+    KerRouteTo (sd.depth - a.path.length) (localSuffix K a) (sd.Q ++ [(sd.r, Tree.empty)]) ∧
+      ∀ Y, localSuffix (context K sd Y) a =
+        replaceAt 0 0 Y (sd.depth - a.path.length) (localSuffix K a) := by
+  obtain ⟨-, hdep, -⟩ := stopData_spec hsd
+  have hlen : a.path.length ≤ sd.depth := by rw [hdep]; exact hpre.length_le
+  have hpa : a.path = sd.col.path.take a.path.length := List.prefix_iff_eq_take.1 hpre
+  obtain ⟨G, hG, hR⟩ := ker_routeTo_of_stop hsd a.path.length hlen
+  rw [← hpa] at hG
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff K a).1 ha)
+  unfold Tree.colAt at hcol
+  rw [hG, Option.bind_some] at hcol
+  obtain ⟨cs⟩ := G
+  have hac : a.col < cs.length := by
+    by_contra h; simp only [Tree.cols] at hcol; rw [List.getElem?_eq_none (by omega)] at hcol
+    cases hcol
+  have hL : localSuffix K a = Tree.node (cs.drop a.col) := by
+    unfold localSuffix; rw [hG]; rfl
+  refine ⟨hL ▸ ker_routeTo_drop _ cs _ a.col hac hR, ?_⟩
+  intro Y
+  have hC := ker_context_forestAt hsd Y a.path.length hlen _ (by rw [← hpa]; exact hG)
+  rw [← hpa] at hC
+  unfold localSuffix
+  rw [hC, hG, Option.getD_some, Option.getD_some,
+    ker_replaceAt_split Y _ cs a.col hac, List.drop_append_of_le_length (by simp; omega),
+    List.drop_eq_nil_of_le (by simp), List.nil_append, ker_node_cols]
+  rfl
+
+/-- helper: comparison of columns after a common prefix. -/
+theorem ker_cmpCol_append_left :
+    ∀ (Q V W : Column), Tree.cmpCol compare (Q ++ V) (Q ++ W) = Tree.cmpCol compare V W
+  | [], _, _ => rfl
+  | (p, h) :: Q, V, W => by
+    simp only [List.cons_append, Tree.cmpCol]
+    rw [Tree.cmp_self compare h, ker_cmpCol_append_left Q V W]
+    rw [show compare p p = .eq from Nat.compare_eq_eq.2 rfl]
+    rfl
+
+/-- helper: the first column of a kernel output is `Q` followed by entries with parents `< r`. -/
+theorem ker_kernel_firstCol {K : Forest} {sd : StopData} {rd : RootData}
+    (hU : ∀ x ∈ unconsumed K rd, x.1 < sd.r) (X : Forest) :
+    ∃ V cs, kernel K sd rd X = Tree.node ((sd.Q ++ V) :: cs) ∧ ∀ v ∈ V.head?, v.1 < sd.r := by
+  unfold kernel
+  split
+  · refine ⟨_, [], rfl, ?_⟩
+    intro v hv
+    cases hU' : unconsumed K rd with
+    | nil => rw [hU'] at hv; simp [mapLast] at hv
+    | cons u us =>
+      rw [hU'] at hv
+      cases us with
+      | nil => simp [mapLast] at hv; rw [← hv]; exact hU u (by rw [hU']; simp)
+      | cons u' us' => simp [mapLast] at hv; rw [← hv]; exact hU u (by rw [hU']; simp)
+  · refine ⟨_, _, rfl, ?_⟩
+    intro v hv
+    cases hU' : unconsumed K rd with
+    | nil => rw [hU'] at hv; simp at hv
+    | cons u us => rw [hU'] at hv; simp at hv; rw [← hv]; exact hU u (by rw [hU']; simp)
+
+/-- helper: a kernel output is smaller than the stopping column it replaces. -/
+theorem ker_kernel_lt_stop {K : Forest} {sd : StopData} {rd : RootData}
+    (hU : ∀ x ∈ unconsumed K rd, x.1 < sd.r) (X : Forest) :
+    kernel K sd rd X < Tree.node [sd.Q ++ [(sd.r, Tree.empty)]] := by
+  obtain ⟨V, cs, hk, hV⟩ := ker_kernel_firstCol hU X
+  rw [hk]
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols]
+  rw [ker_cmpCol_append_left]
+  cases V with
+  | nil => rfl
+  | cons v vs =>
+    obtain ⟨p, h⟩ := v
+    have hp : p < sd.r := hV _ rfl
+    simp only [Tree.cmpCol]
+    rw [Nat.compare_eq_lt.2 hp]
+    rfl
+
+/-- helper: every kernel iterate is smaller than the stopping column. -/
+theorem ker_iterate_lt_stop {K : Forest} {sd : StopData} {rd : RootData}
+    (hU : ∀ x ∈ unconsumed K rd, x.1 < sd.r) (n : Nat) :
+    (kernel K sd rd)^[n] Tree.empty < Tree.node [sd.Q ++ [(sd.r, Tree.empty)]] := by
+  cases n with
+  | zero => exact Forest.empty_lt (by simp [Tree.empty])
+  | succ n =>
+    rw [Function.iterate_succ_apply']
+    exact ker_kernel_lt_stop hU _
+
+/-- helper: placing a smaller filling into the same route gives a smaller forest. -/
+theorem ker_replaceAt_lt {k : Nat} {L : Forest} (hL : KerRoute k L) {Y Y' : Forest}
+    (h : Y < Y') : replaceAt 0 0 Y k L < replaceAt 0 0 Y' k L := by
+  rw [← word_lt_iff]
+  unfold word
+  rw [ker_wordAt_replaceAt Y k L 0 hL, ker_wordAt_replaceAt Y' k L 0 hL,
+    ker_append_lt_append_iff, Nat.zero_add, show k = 0 + k by omega, wordAt_add, wordAt_add]
+  exact List.map_lt (fun x y hxy => depthShift_strictMono k hxy) ((word_lt_iff Y Y').2 h)
+
+
 /-! ## §T3.2 — closure -/
 
 /-- T3.2d: the word of a key (U1's generic word at labels `Bool ×ₗ Nat`); positions and length
@@ -1477,7 +1853,99 @@ theorem localSuffix_cont_le {A A' : Forest} {sd : StopData} {rd : RootData} {n :
     (hL : InL A) (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd)
     (hrd : rootData A = some rd) (hA' : expand A n = some A') (ha : IsTmplCol A sd rd a ∨ a = rd.col) :
     localSuffix A' a ≤ localSuffix A a ∧ (OnHoleRoute sd a ∨ a = rd.col ∧ rd.owner = true →
-      localSuffix A' a < localSuffix A a) := by sorry
+      localSuffix A' a < localSuffix A a) := by
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨hA'eq, -⟩ := ker_expand_out hV hI hk hsd hrd hA'
+  subst hA'eq
+  have hU := ker_unconsumed_lt hV hsd hrd
+  have hamem : a ∈ A.colAddrs := by
+    rcases ha with h | rfl
+    · exact h.1
+    · exact (rootData_spec hsd hrd).2.2.2.2.2.1
+  have hrdpre : rd.col.path <+: sd.col.path := (rootData_path hsd hrd).2.2.2.1
+  rcases ker_path_cases a.path sd.col.path with hpre | ⟨x, rest, hx⟩ | ⟨j, hj1, hj2, hj3, hj4⟩
+  · -- on the hole route: the hole is the last part of the local suffix
+    obtain ⟨hR, hY⟩ := ker_localSuffix_prefix hsd hpre hamem
+    have hlt : localSuffix (context A sd ((kernel A sd rd)^[n] Tree.empty)) a <
+        localSuffix A a := by
+      rw [hY]
+      conv_rhs => rw [← ker_replaceAt_self _ _ _ hR]
+      exact ker_replaceAt_lt (ker_routeTo_route _ _ _ hR) (ker_iterate_lt_stop hU n)
+    exact ⟨le_of_lt hlt, fun _ => hlt⟩
+  · -- below the stopping forest: unchanged, or deleted with the query (`n = 0`)
+    have hnot : ¬ (OnHoleRoute sd a ∨ a = rd.col ∧ rd.owner = true) := by
+      rintro (h | ⟨rfl, -⟩)
+      · have := h.length_le; rw [hx] at this; simp at this
+      · have := hrdpre.length_le; rw [hx] at this; simp at this
+    refine ⟨?_, fun h => absurd h hnot⟩
+    obtain ⟨c', e'⟩ := x
+    obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+    obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A a).1 hamem)
+    unfold Tree.colAt at hcol
+    rw [hx, Tree.forestAt_append, hG, Option.bind_some, ker_forestAt_cons] at hcol
+    cases hgc : G.cols[c']? with
+    | none => rw [hgc] at hcol; cases hcol
+    | some gc =>
+      rw [hgc, Option.bind_some] at hcol
+      have hc'lt : c' < sd.col.col + 1 := by
+        rw [← hGlen]; by_contra h; rw [List.getElem?_eq_none (by omega)] at hgc; cases hgc
+      have hequal : ∀ Y, (context A sd Y).forestAt a.path = A.forestAt a.path →
+          localSuffix (context A sd Y) a ≤ localSuffix A a := by
+        intro Y hY; unfold localSuffix; rw [hY]
+      rcases Nat.lt_or_ge c' sd.col.col with hlt | hge
+      · apply hequal
+        rw [hx]
+        exact ker_context_forestAt_stop hsd _ rest (Or.inl hlt)
+      · have hc' : c' = sd.col.col := by omega
+        subst hc'
+        rw [hGc] at hgc
+        cases hgc
+        have he : e' < sd.Q.length := by
+          rcases Nat.lt_or_ge e' sd.Q.length with h | h
+          · exact h
+          · exfalso
+            cases he' : (sd.Q ++ [(sd.r, Tree.empty)])[e']? with
+            | none => rw [he'] at hcol; cases hcol
+            | some y =>
+              rw [he', Option.bind_some] at hcol
+              have hy : y = (sd.r, Tree.empty) := by
+                rw [List.getElem?_append_right h] at he'
+                rcases Nat.lt_or_ge (e' - sd.Q.length) 1 with h1 | h1
+                · rw [show e' - sd.Q.length = 0 by omega] at he'
+                  simp at he'; exact he'.symm
+                · rw [List.getElem?_eq_none (by simp; omega)] at he'; cases he'
+              subst hy
+              cases rest with
+              | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at hcol
+              | cons z zs =>
+                obtain ⟨z1, z2⟩ := z
+                simp [ker_forestAt_cons, Tree.empty, Tree.cols] at hcol
+        cases n with
+        | zero =>
+          have hnone : (context A sd ((kernel A sd rd)^[0] Tree.empty)).forestAt a.path = none := by
+            rw [hx]; exact ker_context_empty_forestAt_stop hsd e' rest
+          have hle : localSuffix (context A sd ((kernel A sd rd)^[0] Tree.empty)) a = Tree.empty := by
+            unfold localSuffix; rw [hnone]; simp [Tree.empty, Tree.cols]
+          rw [hle]
+          by_cases h0 : localSuffix A a = Tree.empty
+          · rw [h0]
+          · exact le_of_lt (Forest.empty_lt h0)
+        | succ n =>
+          obtain ⟨V, cs, hker, -⟩ := ker_kernel_firstCol hU ((kernel A sd rd)^[n] Tree.empty)
+          apply hequal
+          rw [hx]
+          refine ker_context_forestAt_stop hsd _ rest (Or.inr ⟨rfl, he, V, cs, ?_⟩)
+          rw [Function.iterate_succ_apply', hker]
+  · -- leaves the stopping route above the stopping forest: unchanged
+    have hnot : ¬ (OnHoleRoute sd a ∨ a = rd.col ∧ rd.owner = true) := by
+      rintro (h | ⟨rfl, -⟩)
+      · exact hj4 (by rw [List.getElem?_eq_getElem hj1, List.getElem?_eq_getElem hj2,
+          h.getElem hj1])
+      · exact hj4 (by rw [List.getElem?_eq_getElem hj1, List.getElem?_eq_getElem hj2,
+          hrdpre.getElem hj1])
+    refine ⟨?_, fun h => absurd h hnot⟩
+    unfold localSuffix
+    rw [ker_context_forestAt_diverge hsd _ hj2 hj1 hj3 hj4]
 
 -- T3.2j (txt:337-340): every body column on the stopping column's stack lies in the subtree of
 -- `r`, is nonempty and has first parent at least `r`
