@@ -7115,7 +7115,7 @@
   },
   {
    "id": "G-009",
-   "status": "confirmed",
+   "status": "repaired",
    "severity": "unknown",
    "loc": "§3 txt:553-560",
    "summary": "Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour",
@@ -7129,7 +7129,9 @@
     "blueprint/INTEGRATION.md §2.2",
     "codex-blueprint-review.md BP-07"
    ],
-   "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written."
+   "detail": "Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written.",
+   "fix_by": "claude",
+   "repair": "Lean: prev_root_response (T3.8lo) proved from the G-009 invariant low_head_detour and 33 helpers (prove/B7, merged). Open: helper fullCut_container_end (full-cut exclusion, G9.6 step 2)."
   },
   {
    "id": "G-010",
