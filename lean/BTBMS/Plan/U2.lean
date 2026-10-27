@@ -1037,22 +1037,143 @@ theorem success_of_first {K Y : Forest} {sd : StopData} {rd : RootData}
     {u : Nat × Forest} {us : Column} (hU : unconsumed K rd = u :: us)
     (hbeat : ∀ x ∈ rest.head?, x.1 < u.1) : Success K Y := by sorry
 
+section D7Trees
+
+variable {α β γ : Type}
+
+mutual
+-- T3.8lm (D7, helper): relabelling twice is relabelling by the composite
+theorem map_map_D7 (f : α → β) (g : β → γ) (t : Tree α) :
+    Tree.map g (Tree.map f t) = Tree.map (g ∘ f) t :=
+  match t with
+  | .node a => by rw [Tree.map, Tree.map, Tree.map, mapCols_map_D7]
+
+theorem mapCols_map_D7 (f : α → β) (g : β → γ) (a : List (List (α × Tree α))) :
+    Tree.mapCols g (Tree.mapCols f a) = Tree.mapCols (g ∘ f) a :=
+  match a with
+  | [] => rfl
+  | x :: xs => by rw [Tree.mapCols, Tree.mapCols, Tree.mapCols, mapCol_map_D7, mapCols_map_D7]
+
+theorem mapCol_map_D7 (f : α → β) (g : β → γ) (a : List (α × Tree α)) :
+    Tree.mapCol g (Tree.mapCol f a) = Tree.mapCol (g ∘ f) a :=
+  match a with
+  | [] => rfl
+  | (p, h) :: es => by
+    rw [Tree.mapCol, Tree.mapCol, Tree.mapCol, map_map_D7, mapCol_map_D7]; rfl
+end
+
+mutual
+-- T3.8lm (D7, helper): two relabelled comparisons agree when they agree labelwise
+theorem cmp_map2_D7 {δ : Type} {c : δ → δ → Ordering} {f₁ g₁ : α → δ} {f₂ g₂ : β → δ}
+    (hf : ∀ x y, c (f₁ x) (f₂ y) = c (g₁ x) (g₂ y)) (s : Tree α) (t : Tree β) :
+    Tree.cmp c (Tree.map f₁ s) (Tree.map f₂ t) = Tree.cmp c (Tree.map g₁ s) (Tree.map g₂ t) :=
+  match s, t with
+  | .node a, .node b => by
+    rw [Tree.map, Tree.map, Tree.map, Tree.map, Tree.cmp, Tree.cmp]
+    exact cmpCols_map2_D7 hf a b
+
+theorem cmpCols_map2_D7 {δ : Type} {c : δ → δ → Ordering} {f₁ g₁ : α → δ} {f₂ g₂ : β → δ}
+    (hf : ∀ x y, c (f₁ x) (f₂ y) = c (g₁ x) (g₂ y)) (a : List (List (α × Tree α)))
+    (b : List (List (β × Tree β))) :
+    Tree.cmpCols c (Tree.mapCols f₁ a) (Tree.mapCols f₂ b) =
+      Tree.cmpCols c (Tree.mapCols g₁ a) (Tree.mapCols g₂ b) :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | x :: xs, y :: ys => by
+    rw [Tree.mapCols, Tree.mapCols, Tree.mapCols, Tree.mapCols, Tree.cmpCols, Tree.cmpCols,
+      cmpCol_map2_D7 hf x y, cmpCols_map2_D7 hf xs ys]
+
+theorem cmpCol_map2_D7 {δ : Type} {c : δ → δ → Ordering} {f₁ g₁ : α → δ} {f₂ g₂ : β → δ}
+    (hf : ∀ x y, c (f₁ x) (f₂ y) = c (g₁ x) (g₂ y)) (a : List (α × Tree α))
+    (b : List (β × Tree β)) :
+    Tree.cmpCol c (Tree.mapCol f₁ a) (Tree.mapCol f₂ b) =
+      Tree.cmpCol c (Tree.mapCol g₁ a) (Tree.mapCol g₂ b) :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | (p, h) :: es, (q, k) :: fs => by
+    rw [Tree.mapCol, Tree.mapCol, Tree.mapCol, Tree.mapCol, Tree.cmpCol, Tree.cmpCol, hf,
+      cmp_map2_D7 hf h k, cmpCol_map2_D7 hf es fs]
+end
+
+end D7Trees
+
+-- T3.8lm (D7, helper): the label comparison behind sign independence
+theorem kappaLabel_cmp_indep_D7 {r d φ h h' : Nat} (hh : h < φ) (hh' : h' < φ) (x : Bool × Nat)
+    (p : Nat) :
+    keyLabelCmp (kappaLabel r d φ x)
+        (kappaLabel r d h (if p < r + d then (false, p) else (true, p - (r + d)))) =
+      keyLabelCmp (kappaLabel r d φ x)
+        (kappaLabel r d h' (if p < r + d then (false, p) else (true, p - (r + d)))) := by
+  obtain ⟨b, q⟩ := x
+  have h1 : (h + 1) * d ≤ φ * d := Nat.mul_le_mul_right _ (by omega)
+  have h2 : (h' + 1) * d ≤ φ * d := Nat.mul_le_mul_right _ (by omega)
+  rw [Nat.succ_mul] at h1 h2
+  by_cases hp : p < r + d
+  · simp only [hp, if_true]
+    by_cases hpr : r ≤ p
+    · have ey : ∀ j, kappaLabel r d j (false, p) = (false, p + j * d) := fun j => by
+        simp [kappaLabel, hpr]
+      rw [ey, ey]
+      cases b
+      · by_cases hq : r ≤ q
+        · have ex : kappaLabel r d φ (false, q) = (false, q + φ * d) := by simp [kappaLabel, hq]
+          rw [ex]
+          have hb : compare false false = Ordering.eq := rfl
+          simp only [keyLabelCmp, hb, Ordering.eq_then]
+          rw [show compare (q + φ * d) (p + h * d) = .gt from compare_gt_iff_gt.mpr (by omega),
+            show compare (q + φ * d) (p + h' * d) = .gt from compare_gt_iff_gt.mpr (by omega)]
+        · have ex : kappaLabel r d φ (false, q) = (false, q) := by simp [kappaLabel, hq]
+          rw [ex]
+          have hb : compare false false = Ordering.eq := rfl
+          simp only [keyLabelCmp, hb, Ordering.eq_then]
+          rw [show compare q (p + h * d) = .lt from compare_lt_iff_lt.mpr (by omega),
+            show compare q (p + h' * d) = .lt from compare_lt_iff_lt.mpr (by omega)]
+      · have hb : compare true false = Ordering.gt := rfl
+        simp [kappaLabel, keyLabelCmp, hb]
+    · cases b <;> simp [kappaLabel, keyLabelCmp, hpr]
+  · simp only [hp, if_false]
+    simp [kappaLabel]
+
 -- T3.8lm (txt:555-559): sign independence of a fixed phase-`φ` key against the phase-`h` images
 -- of a key normalized at the old terminal `t = r + d`, for every `h < φ`
 theorem sign_indep {r d φ h h' : Nat} (hh : h < φ) (hh' : h' < φ) (w : Key) (J : Forest) :
     keyCmp (kappa r d φ w) (kappa r d h (relKey (r + d) J)) =
-      keyCmp (kappa r d φ w) (kappa r d h' (relKey (r + d) J)) := by sorry
+      keyCmp (kappa r d φ w) (kappa r d h' (relKey (r + d) J)) := by
+  unfold keyCmp kappa relKey
+  rw [map_map_D7, map_map_D7]
+  exact cmp_map2_D7 (fun x p => kappaLabel_cmp_indep_D7 hh hh' x p) w J
+
+
+-- T3.8lm (D7, helper): list comparisons against two relabellings agree when every pair does
+theorem list_lt_congr_D7 {β γ : Type} (E : γ → Key) (F G : β → Key)
+    (hFG : ∀ w J, keyCmp (E w) (F J) = keyCmp (E w) (G J)) :
+    ∀ (W : List γ) (Js : List β), W.map E < Js.map F ↔ W.map E < Js.map G
+  | [], [] => by simp
+  | [], _ :: _ => by simp [List.nil_lt_cons]
+  | _ :: _, [] => by simp
+  | w :: ws, J :: Js => by
+    have hlt : E w < F J ↔ E w < G J := by
+      rw [← compare_lt_iff_lt (a := E w) (b := F J), ← compare_lt_iff_lt (a := E w) (b := G J),
+        Key.compare_eq_keyCmp, Key.compare_eq_keyCmp, hFG]
+    have heq : E w = F J ↔ E w = G J := by
+      rw [← compare_eq_iff_eq (a := E w) (b := F J), ← compare_eq_iff_eq (a := E w) (b := G J),
+        Key.compare_eq_keyCmp, Key.compare_eq_keyCmp, hFG]
+    simp only [List.map_cons, List.cons_lt_cons_iff, hlt, heq, list_lt_congr_D7 E F G hFG ws Js]
 
 -- T3.8lm: the same for reduced queries (lists of keys), hence for "low/high" at every head
 theorem sign_indep_list {r d φ h h' : Nat} (hh : h < φ) (hh' : h' < φ) (W : List Key)
     (Js : List Forest) :
     (W.map (kappa r d φ) < (Js.map (relKey (r + d))).map (kappa r d h) ↔
-      W.map (kappa r d φ) < (Js.map (relKey (r + d))).map (kappa r d h')) := by sorry
+      W.map (kappa r d φ) < (Js.map (relKey (r + d))).map (kappa r d h')) := by
+  rw [List.map_map, List.map_map]
+  exact list_lt_congr_D7 _ _ _ (fun w J => sign_indep hh hh' w J) W Js
 
--- T3.8ln (txt:530, 549-551; moved here from after T3.8lo, used by G9.8a `phase_exit`): parents of phase-`φ` material are `< r` or `≥ s_φ`
-theorem phase_parent_dichotomy (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) {x : Nat × Forest}
-    (hx : x ∈ (S.B.colAt c).getD []) : x.1 < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ x.1 := by sorry
+-- T3.8ln (`phase_parent_dichotomy`) moved below, before G9.8a `phase_exit`, its first use (brief
+-- rule 5: its proof uses the G-009 context lemmas).
 
 /-! ## G-009 helpers for T3.8lo (from `blueprint/repairs/lean/G009.lean`)
 
@@ -4259,6 +4380,49 @@ theorem low_all_heads (S : OrdStep) {φ : Nat} (hφ : 1 ≤ φ) (W : List Key)
     at hlow ⊢
   exact (sign_indep_list (by omega) (by omega) W Js).mp hlow
 
+-- T3.2i (D7): the parents of a template copy are the shifted parents of its template column
+theorem parents_phaseCol_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
+    parents S.B c = (parents S.A a).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by
+  by_cases haq : isQMat S.sd a = true
+  · have hroute : ¬ OnHoleRoute S.sd a := fun h => by
+      have := isQMat_of_short S.sd h.length_le
+      rw [haq] at this
+      cases this
+    have hB := colAt_phaseCol S.inL S.kind S.hsd S.hrd S.out hi ha hroute hc
+    simp only [parents, hB]
+    cases S.A.colAt a with
+    | none => simp
+    | some col => simp [mapCol_eq_map, OrdStep.d]
+  · have haq' : isQMat S.sd a = false := by simpa using haq
+    have hφ : phaseOff S.sd i a = i := by simp [phaseOff, haq']
+    obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := i) hi.2 ha haq'
+    have hcopy : S.copyCol i a = c := by
+      simp only [OrdStep.copyCol, if_neg (show i ≠ 0 by omega), hc, Option.getD_some]
+    rw [hcopy] at hZ
+    have hctx : parents (context S.A S.sd Z) a = parents S.A a := by
+      cases hce : a.container S.sd.col with
+      | none =>
+        simp only [parents]
+        rw [colAt_context_of_not_route S.hsd Z ha.1 ha.2.1 (sdcol_container_none S ha.1 haq') hce]
+      | some e => exact (colAt_context_onStack S.hsd Z (onStack_of_container hce)).1
+    rw [hφ, ← hctx]
+    simp only [parents, hZ]
+    cases (context S.A S.sd Z).colAt a with
+    | none => simp
+    | some col => simp [mapCol_eq_map]
+
+-- T3.8ln (txt:530, 549-551; moved here, before its first use G9.8a `phase_exit`): parents of
+-- phase-`φ` material are `< r` or `≥ s_φ`
+theorem phase_parent_dichotomy (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) {x : Nat × Forest}
+    (hx : x ∈ (S.B.colAt c).getD []) : x.1 < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ x.1 := by
+  have hmem : x.1 ∈ parents S.B c := List.mem_map_of_mem hx
+  rw [parents_phaseCol_D7 S hi ha hc] at hmem
+  obtain ⟨p, -, hp⟩ := List.mem_map.mp hmem
+  rw [← hp]
+  exact shiftVal_dich _ _ _
+
 /-! ## G9.8 — the derivation of T3.8lo -/
 
 -- G9.8a: the cut path of `K` starts at or above `s_φ` and passes through `s_φ` on its way to a
@@ -4493,7 +4657,45 @@ theorem root_prev (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 �
     (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
     (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
     (hρ1 : S.sd.r < ρ) (hρ2 : ρ < S.s (phaseOff S.sd i a)) :
-    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
+    Success (litCap S.B c k ρ) (localSuffix S.B c) := by
+  have hsd := stopData_litCap hup
+  have hBI : CondI S.B := condI_ord S.inL S.kind S.out
+  have hord := litCap_ordinary hBI hup hKL.1 hKL.2.1
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hord)
+  obtain ⟨u, us, hU, hru⟩ := prev_root_response S hi ha hq hc hup hKL hend hρ1 hρ2 hrd
+  -- the target suffix: the cut query, then the rest of `c`'s column
+  obtain ⟨colB, hcolB⟩ : ∃ col, S.B.colAt c = some col := by
+    unfold IsUpward at hup
+    cases h : S.B.colAt c with
+    | none => rw [h] at hup; exact hup.elim
+    | some col => exact ⟨col, rfl⟩
+  obtain ⟨F, hF, hFc⟩ : ∃ F, S.B.forestAt c.path = some F ∧ F.cols[c.col]? = some colB := by
+    unfold Tree.colAt at hcolB
+    cases h : S.B.forestAt c.path with
+    | none => rw [h] at hcolB; cases hcolB
+    | some F => rw [h] at hcolB; exact ⟨F, rfl, hcolB⟩
+  have hY : localSuffix S.B c =
+      .node ((((S.B.colAt c).getD []).take k ++ colB.drop k) :: F.cols.drop (c.col + 1)) := by
+    unfold localSuffix
+    rw [hF, Option.getD_some, hcolB, Option.getD_some, List.take_append_drop,
+      List.drop_eq_getElem_cons (List.getElem?_eq_some_iff.mp hFc).1]
+    congr 2
+    exact (List.getElem?_eq_some_iff.mp hFc).2
+  refine success_of_first hsd hrd (fun _ => by rw [hU]; exact List.cons_ne_nil _ _) hY hU ?_
+  intro x hx
+  rw [List.head?_drop] at hx
+  have hx' : colB[k]? = some x := hx
+  have hxmem : x ∈ (S.B.colAt c).getD [] := by
+    rw [hcolB, Option.getD_some]
+    exact List.mem_of_getElem? hx'
+  have hxρ : x.1 < ρ := by
+    unfold IsUpward at hup
+    rw [hcolB] at hup
+    simp only [hx'] at hup
+    exact hup
+  rcases phase_parent_dichotomy S hi ha hc hxmem with h | h
+  · omega
+  · omega
 
 -- T3.8lq (txt:564-571): fixed roots `ρ ≤ r`: the actual source cursors agree.
 -- VERIFY-U2 (F3): the owner flags need not agree (`ρ = r`, cut in a restored origin: the old
@@ -4602,11 +4804,6 @@ theorem condAK_litCap_D7 {E : Forest} (hL : InL E) {c : ColAddr} {k p : Nat}
   · exact litCap_retained_D7 hL hc hk hc' fun h1 h2 => h ⟨h1, h2⟩
 
 /-! ### Phase pairs: numbers, parents, cut queries, cut starts -/
-
--- T3.2i (D7): the parents of a template copy are the shifted parents of its template column
-theorem parents_phaseCol_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
-    parents S.B c = (parents S.A a).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by sorry
 
 -- L-G010.17 (D7): the query part of a head is the phase-`(i−1)` copy of the old terminal's
 theorem headQuery_prefix_D7 (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
