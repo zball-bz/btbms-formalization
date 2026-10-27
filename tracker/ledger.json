@@ -270,6 +270,17 @@
    "deps": [
     "T-009"
    ]
+  },
+  {
+   "id": "T-019",
+   "phase": "P3",
+   "owner": "codex",
+   "status": "doing",
+   "title": "Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)",
+   "deps": [
+    "T-015"
+   ],
+   "deliverable": "tracker/review/codex-lock-review.md"
   }
  ],
  "nodes": [
