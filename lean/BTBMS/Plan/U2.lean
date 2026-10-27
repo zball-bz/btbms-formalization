@@ -6263,6 +6263,38 @@ theorem cutStart_phase_D7 (S : OrdStep) {φ : Nat} {a c : ColAddr} {k : Nat}
 
 /-! ### The decorated head path (L-G010.10) -/
 
+-- L-G010.4 (D7; T3.2q step 1, txt:524-530): phase-`φ` material is copied edge by edge, and the
+-- fixed region below `r` is shared, for every `⊤`-free query
+theorem respEdge_phase_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) (x : Nat) :
+    (S.sd.r < x → respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (x + φ * S.d) =
+      (respEdge S.A (activeKeys_D7 S.A a) a W x).map (shiftVal S.sd.r (φ * S.d))) ∧
+    (x < S.sd.r → respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x =
+      respEdge S.A (activeKeys_D7 S.A a) a W x) := by sorry
+
+-- L-G010.14 (D7; T3.2q step 2, high case, txt:390-391): a high scan at the head `s_φ` returns the
+-- old root response at `W`
+theorem respEdge_head_high_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W) :
+    respEdge S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s φ) =
+      respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r := by sorry
+
+-- L-G010.14 corollary (D7): the old root response lies below `r`
+theorem respEdge_root_lt_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} {p : Nat}
+    (he : respEdge S.A (activeKeys_D7 S.A a) a W S.sd.r = some p) : p < S.sd.r :=
+  edge_lt S.inL.1 ((edge_iff _ _ _ _ _ _).mpr he)
+
+-- L-G010.15 (D7; T3.2q steps 2-3, low case, txt:391-394, 527-530): below the complete query the
+-- detours through the heads are deleted: a path from `s_φ` to an end below `r` is an old path
+-- from `r`
+theorem path_head_low_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hlow : kappaQ S.sd.r S.d 1 W < S.termZ) {y : Nat} (hy : y < S.sd.r)
+    (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) (S.s φ) y) :
+    Path S.A (activeKeys_D7 S.A a) a W S.sd.r y := by sorry
+
 -- L-G010.10 (D7; T3.2q.3, G-010): paths in the system capped at the active containers of the
 -- copy `c` project to paths in the system capped at the active containers of `a`, for every
 -- reduced `⊤`-free query, from every start outside `[r, s_φ)` to every end outside `(r, s_φ)`
@@ -6271,7 +6303,84 @@ theorem head_path_active_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S
     {W : List (WithTop Key)} (hW : Noninc W) (hT : ∀ w ∈ W, w ≠ ⊤)
     {x y : Nat} (hx : x < S.sd.r ∨ S.s φ ≤ x) (hy : y ≤ S.sd.r ∨ S.s φ ≤ y)
     (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x y) :
-    Path S.A (activeKeys_D7 S.A a) a W (S.proj φ x) (S.proj φ y) := by sorry
+    Path S.A (activeKeys_D7 S.A a) a W (S.proj φ x) (S.proj φ y) := by
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hd : 1 ≤ S.d := by simp only [OrdStep.d, period]; omega
+  have hφd : 1 ≤ φ * S.d := Nat.one_le_iff_ne_zero.mpr (Nat.mul_ne_zero (by omega) (by omega))
+  have hsφ : S.s φ = S.sd.r + φ * S.d := rfl
+  -- the projection on the three regions
+  have hproj_lt : ∀ z, z ≤ S.sd.r → S.proj φ z = z := by
+    intro z hz
+    unfold OrdStep.proj
+    rw [if_neg (by omega)]
+    by_cases h : z = S.s φ
+    · omega
+    · rw [if_neg h]
+  have hproj_s : S.proj φ (S.s φ) = S.sd.r := by
+    unfold OrdStep.proj; rw [if_neg (lt_irrefl _), if_pos rfl]
+  have hproj_gt : ∀ z, S.sd.r < z → S.proj φ (z + φ * S.d) = z := by
+    intro z hz
+    unfold OrdStep.proj; rw [if_pos (by omega)]; omega
+  have hproj_τ : ∀ z, S.proj φ (shiftVal S.sd.r (φ * S.d) z) = z := by
+    intro z
+    unfold shiftVal
+    by_cases hz : S.sd.r ≤ z
+    · rw [if_pos hz]
+      rcases Nat.eq_or_lt_of_le hz with h | h
+      · rw [← h, ← hsφ, hproj_s]
+      · exact hproj_gt z h
+    · rw [if_neg hz]; exact hproj_lt z (by omega)
+  -- the end projects to itself when it is at most `r`
+  revert hx
+  induction hpath using Relation.ReflTransGen.head_induction_on with
+  | refl => intro _; exact Relation.ReflTransGen.refl
+  | @head x x' hxx' hx'y ih =>
+    intro hx
+    have hx'x : x' < x := edge_lt hVB hxx'
+    have hyx' : y ≤ x' := path_le hVB hx'y
+    rw [edge_iff] at hxx'
+    rcases hx with hxr | hsx
+    · -- below `r`: the same edge
+      have he := (respEdge_phase_active_D7 S hj hp hT x).2 hxr
+      rw [he] at hxx'
+      rw [hproj_lt x hxr.le]
+      have := ih (Or.inl (by omega))
+      rw [hproj_lt x' (by omega)] at this
+      exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') this
+    · rcases Nat.eq_or_lt_of_le hsx with hxs | hxs
+      · -- at the head `s_φ`
+        subst hxs
+        rw [hproj_s]
+        have hyr : y ≤ S.sd.r := by
+          rcases hy with h | h
+          · exact h
+          · omega
+        rw [hproj_lt y hyr]
+        rcases Nat.eq_or_lt_of_le hyr with hyr' | hyr'
+        · rw [hyr']; exact Relation.ReflTransGen.refl
+        · by_cases hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W
+          · have he := respEdge_head_high_D7 S hj hp hφ hW hT hhigh
+            rw [he] at hxx'
+            have hx'r := respEdge_root_lt_D7 S hj hp hφ hxx'
+            have := ih (Or.inl hx'r)
+            rw [hproj_lt x' hx'r.le, hproj_lt y hyr] at this
+            exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') this
+          · exact path_head_low_D7 S hj hp hφ hW hT (lt_of_not_ge hhigh) hyr'
+              (Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hxx') hx'y)
+      · -- above `s_φ`: the shifted copy of an old edge
+        obtain ⟨z, rfl⟩ : ∃ z, x = z + φ * S.d := ⟨x - φ * S.d, by omega⟩
+        have hzr : S.sd.r < z := by omega
+        have he := (respEdge_phase_active_D7 S hj hp hT z).1 hzr
+        rw [he] at hxx'
+        obtain ⟨z', hz', rfl⟩ := Option.map_eq_some_iff.mp hxx'
+        rw [hproj_gt z hzr]
+        have := ih (by
+          rcases shiftVal_dich S.sd.r (φ * S.d) z' with h | h
+          · exact Or.inl h
+          · exact Or.inr h)
+        rw [hproj_τ] at this
+        exact Relation.ReflTransGen.head ((edge_iff _ _ _ _ _ _).mpr hz') this
 
 -- L-G010.19/20 (D7): the final test of a pure phase-`φ` cut projects to the old final test
 theorem phase_finalTest_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
