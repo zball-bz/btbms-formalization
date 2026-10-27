@@ -8648,6 +8648,236 @@ theorem scanRecord_tgtHeight {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P
       rw [hc, Option.getD_some] at hQ
       simp only [Tree.heightAt, Tree.entryAt, hc, Option.bind_some, ← hQ]
 
+section FitBlock_E8
+
+/-- L7.6b helper: a role lies in at most one entry of a column. -/
+theorem inEntry_unique_E8 {x : Role} {c : ColAddr} {j k : Nat}
+    (hj : x.inEntry ⟨c, j⟩ = true) (hk : x.inEntry ⟨c, k⟩ = true) : j = k := by
+  rcases (inEntry_iff _ _).1 hj with rfl | hj <;> rcases (inEntry_iff _ _).1 hk with h | hk
+  · cases h; rfl
+  · have := hk.length_le; simp [EntryAddr.heightPath, Role.path] at this
+  · cases h; have := hj.length_le; simp [EntryAddr.heightPath, Role.path] at this
+  · have := Tree.prefix_step_eq hj hk
+    simp only [Prod.mk.injEq] at this
+    exact this.2
+
+/-- L7.6b helper: `relRole` undoes `Role.under`. -/
+theorem relRole_under_E8 (pfx : List (Nat × Nat)) (r : Role) :
+    relRole pfx (Role.under pfx r) = r := by
+  cases r <;> simp [relRole, Role.under]
+
+/-- L7.6b helper: a role of `t` inside the height of `e` is a role of that height placed under
+`e`'s height path (as `Tree.mem_under_of_inEntry`, G-012). -/
+theorem mem_under_of_inEntry_E8 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) {x : Role}
+    (hx : x ∈ t.roles) (hpath : e.heightPath <+: x.path) :
+    x ∈ ((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) := by
+  obtain ⟨h, hh⟩ : ∃ h, t.heightAt e = some h := by
+    have h1 := (Tree.mem_entryAddrs_iff _ _).mp he
+    cases hE : t.entryAt e with
+    | none => simp [hE] at h1
+    | some v => exact ⟨v.2, by simp [Tree.heightAt, hE]⟩
+  rw [hh, Option.getD_some, List.mem_map]
+  obtain ⟨π', hπ'⟩ := hpath
+  have hcol : ∀ d : ColAddr, d.path = e.heightPath ++ π' →
+      t.colAt d = h.colAt ⟨π', d.col⟩ := by
+    intro d hd
+    unfold Tree.colAt
+    rw [hd, Tree.forestAt_append, Tree.forestAt_heightPath, hh]
+    rfl
+  cases x with
+  | ord d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.ord ⟨π', d.col⟩, ?_, ?_⟩
+    · have hx' := (Tree.mem_roles_iff _ _).mp hx
+      rw [Tree.mem_roles_iff]
+      simp only at hx' ⊢
+      rwa [hcol d hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+  | slot d =>
+    simp only [Role.path] at hπ'
+    refine ⟨.slot ⟨⟨π', d.col.col⟩, d.idx⟩, ?_, ?_⟩
+    · have hx' := (Tree.mem_roles_iff _ _).mp hx
+      rw [Tree.mem_roles_iff]
+      simp only at hx' ⊢
+      unfold Tree.entryAt at hx' ⊢
+      rwa [hcol d.col hπ'.symm] at hx'
+    · simp only [Role.under]
+      rw [hπ']
+
+/-- L7.6b helper: no role of the prefix `P(t, e)` lies inside `e` (as
+`Tree.not_inEntry_of_mem_prefix`, G-012). -/
+theorem not_inEntry_of_mem_prefix_E8 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs)
+    {y : Role} (hy : y ∈ prefixRoles t e) : y.inEntry e = false := by
+  obtain ⟨post, hroles, -⟩ := Tree.roles_entry he
+  have hnd := Tree.roles_nodup t
+  rw [hroles] at hnd
+  have hdis := List.disjoint_of_nodup_append hnd
+  have hyt : y ∈ t.roles := (List.takeWhile_sublist _).subset hy
+  by_contra hin
+  have hin' : y.inEntry e = true := by simpa using hin
+  have hne : y ≠ .slot e := by
+    rintro rfl
+    exact hdis hy (List.mem_cons_self ..)
+  have hpath : e.heightPath <+: y.path := by
+    simpa [Role.inEntry, hne, List.isPrefixOf_iff_prefix] using hin'
+  exact hdis hy (List.mem_cons_of_mem _
+    (List.mem_append_left _ (mem_under_of_inEntry_E8 he hyt hpath)))
+
+theorem takeWhile_ne_E8 {A B : List Role} {y : Role} (hy : y ∉ A) :
+    (A ++ y :: B).takeWhile (· != y) = A := by
+  induction A with
+  | nil => simp
+  | cons a A ih =>
+    have ha : a ≠ y := fun h => hy (h ▸ List.mem_cons_self)
+    simp only [List.cons_append, List.takeWhile_cons, bne_iff_ne, ne_eq, ha, not_false_eq_true,
+      if_true, ih (fun h => hy (List.mem_cons_of_mem _ h))]
+
+theorem dropWhile_ne_E8 {A B : List Role} {y : Role} (hy : y ∉ A) :
+    (A ++ y :: B).dropWhile (· != y) = y :: B := by
+  induction A with
+  | nil => simp
+  | cons a A ih =>
+    have ha : a ≠ y := fun h => hy (h ▸ List.mem_cons_self)
+    simp only [List.cons_append, List.dropWhile_cons, bne_iff_ne, ne_eq, ha, not_false_eq_true,
+      if_true, ih (fun h => hy (List.mem_cons_of_mem _ h))]
+
+theorem rolesBefore_of_decomp_E8 {E : Forest} {x : Role} {pre rest : List Role}
+    (hr : E.roles = pre ++ x :: rest) : rolesBefore E x = pre := by
+  have hnd := Tree.roles_nodup E
+  rw [hr, List.nodup_append] at hnd
+  have hne : x ∉ pre := fun hm => hnd.2.2 _ hm _ List.mem_cons_self rfl
+  unfold rolesBefore
+  rw [hr, takeWhile_ne_E8 hne]
+
+/-- L7.6b helper: the stopping column in reading order: `P⁻`, `T`, the query, the closing slot,
+later roles; the query is the `rolesCol` of `Q`. -/
+theorem stop_roles_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) :
+    ∃ post, S.H.roles = S.preStop ++ Role.ord S.sd.col ::
+      (S.queryRoles ++ Role.slot (Scan.closingSlot S.sd) :: post) ∧
+      S.queryRoles = Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q := by
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨pre, post, hr⟩ := roles_col_decomp hcol
+  have hrc : Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q ++ [(S.sd.r, Tree.empty)]) =
+      Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q ++ [Role.slot (Scan.closingSlot S.sd)] := by
+    rw [Tree.rolesCol_append]
+    simp [Tree.rolesCol, Scan.closingSlot, Tree.empty, Tree.rolesF, Tree.rolesCols]
+  have hr' : S.H.roles = pre ++ Role.ord S.sd.col ::
+      (Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q ++
+        Role.slot (Scan.closingSlot S.sd) :: post) := by
+    rw [hr, hrc]; simp
+  have hpre : S.preStop = pre := rolesBefore_of_decomp_E8 hr'
+  have hnd := Tree.roles_nodup S.H
+  rw [hr', List.nodup_append, List.nodup_cons, List.nodup_append] at hnd
+  have hTpre : Role.ord S.sd.col ∉ pre := fun hm => hnd.2.2 _ hm _ List.mem_cons_self rfl
+  have hNQ : Role.slot (Scan.closingSlot S.sd) ∉
+      Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q :=
+    fun hm => hnd.2.1.2.2.2 _ hm _ List.mem_cons_self rfl
+  have hQ : S.queryRoles = Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q := by
+    unfold ScanSetup.queryRoles
+    rw [hr', dropWhile_ne_E8 hTpre]
+    simp only [List.drop_succ_cons, List.drop_zero]
+    rw [takeWhile_ne_E8 hNQ]
+  refine ⟨post, ?_, hQ⟩
+  rw [hpre, hQ]; exact hr'
+
+/-- L7.6b helper: a false label `(false, q)` of `h_a(B)` has `q < a`. -/
+theorem relKey_false_lt_E8 {a : Nat} {B : Forest} {e : EntryAddr} {q : Nat} {h : Key}
+    (he : (relKey a B).entryAt e = some ((false, q), h)) : q < a := by
+  rw [relKey_eq_map, Tree.entryAt_map] at he
+  obtain ⟨⟨p, h'⟩, -, hx⟩ := Option.map_eq_some_iff.1 he
+  simp only [relLabel, Prod.mk.injEq] at hx
+  split_ifs at hx with hp
+  · obtain ⟨⟨-, rfl⟩, -⟩ := hx; exact hp
+  · simp at hx
+
+/-- L7.6b helper: the frame fields read by a positive block of `h_a(B)` are visible below `a`
+or the selector (false labels). -/
+theorem posBlock_ordcur_E8 {a : Nat} {B : Forest} {sel : Nat} {w : BlkVar}
+    (hw : w ∈ baseVars (posBlock (relKey a B) sel)) {q : Nat} (hq : w = .ord q ∨ w = .cur q) :
+    q < a ∨ q = sel := by
+  simp only [baseVars, List.mem_flatMap] at hw
+  obtain ⟨b, hb, hwb⟩ := hw
+  simp only [posBlock, freeBlock, List.mem_append, List.mem_cons, List.mem_map,
+    List.mem_filterMap, List.mem_flatMap, List.not_mem_nil] at hb
+  have hno : ∀ x, (x = BlkVar.owner ∨ ∃ r, x = .inner r) → ¬ (x = .ord q ∨ x = .cur q) := by
+    rintro x (rfl | ⟨r, rfl⟩) (h | h) <;> cases h
+  rcases hb with ((((rfl | ⟨_, ⟨r, -, rfl⟩, rfl⟩) | ⟨xy, hxy, rfl⟩) | ⟨c, -, hca⟩) | ⟨e, -, hea⟩) |
+    rfl | rfl | hF
+  · simp only [BaseAtom.vars, List.mem_singleton] at hwb
+    exact absurd (hwb ▸ hq) (hno _ (Or.inl rfl))
+  · simp only [BaseAtom.vars, List.mem_singleton] at hwb
+    exact absurd (hwb ▸ hq) (hno _ (Or.inr ⟨r, rfl⟩))
+  · obtain ⟨h1, h2⟩ := List.of_mem_zip hxy
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl
+    · rcases List.mem_cons.1 h1 with h | h
+      · exact absurd hq (hno _ (Or.inl h))
+      · obtain ⟨r, -, hr⟩ := List.mem_map.1 h
+        exact absurd hq (hno _ (Or.inr ⟨r, hr.symm⟩))
+    · obtain ⟨r, -, hr⟩ := List.mem_map.1 h2
+      exact absurd hq (hno _ (Or.inr ⟨r, hr.symm⟩))
+  · split_ifs at hca
+    cases hca
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl <;> exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+  · cases hx : (relKey a B).entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x =>
+      obtain ⟨⟨bb, q'⟩, h⟩ := x
+      rw [hx] at hea
+      cases bb with
+      | false =>
+        have hlt := relKey_false_lt_E8 hx
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        rcases hea with rfl | rfl <;>
+          simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+          rcases hwb with rfl | rfl | rfl
+        all_goals first
+          | exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+          | (rcases hq with h | h <;> cases h <;> exact Or.inl hlt)
+      | true =>
+        cases q' with
+        | zero =>
+          simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+          rcases hea with rfl | rfl <;>
+            simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+            rcases hwb with rfl | rfl | rfl
+          all_goals first
+            | exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+            | exact absurd hq (hno _ (Or.inl rfl))
+            | (rcases hq with h | h <;> cases h)
+        | succ v =>
+          simp only at hea
+          cases hr : e.col.rep 1 (v + 1) with
+          | none => rw [hr] at hea; simp at hea
+          | some ow =>
+            rw [hr] at hea
+            simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+            rcases hea with rfl | rfl <;>
+              simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb <;>
+              rcases hwb with rfl | rfl | rfl <;> exact absurd hq (hno _ (Or.inr ⟨_, rfl⟩))
+  · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl | rfl
+    · exact absurd hq (hno _ (Or.inl rfl))
+    · rcases hq with h | h <;> cases h
+    · rcases hq with h | h <;> cases h; exact Or.inr rfl
+  · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hwb
+    rcases hwb with rfl | rfl | rfl
+    · exact absurd hq (hno _ (Or.inl rfl))
+    · rcases hq with h | h <;> cases h
+    · rcases hq with h | h <;> cases h; exact Or.inr rfl
+  · exact hF.elim
+
+
+theorem nodup_getElem?_inj_E8 {β : Type} {l : List β} (h : l.Nodup) {i k : Nat} {x : β}
+    (h1 : l[i]? = some x) (h2 : l[k]? = some x) : i = k := by
+  obtain ⟨hi, hx1⟩ := List.getElem?_eq_some_iff.1 h1
+  obtain ⟨hk, hx2⟩ := List.getElem?_eq_some_iff.1 h2
+  exact (h.getElem_inj_iff (hi := hi) (hj := hk)).1 (hx1.trans hx2.symm)
+
+end FitBlock_E8
+
 -- provides: U3, L7.6b (requested by U5 R26, target advance txt:1160-1162): a positive block of query
 -- entry `j` above `L ≥ L_j` at the fitted frame extends a fitting by entry `j`.
 theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : Nat}
@@ -8662,7 +8892,377 @@ theorem fit_of_block {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {j : N
     ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
       ∀ x ∈ S.entryRoles j, ∃ w ∈ baseVars (posBlock (((Scan.queryKeys S.sd)[j]?).getD Tree.empty)
           (((S.sd.Q[j]?).map Prod.fst).getD 0)),
-        (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ β' x = βb w := by sorry
+        (frameOf ⟨S.sd.col, j⟩).toFr w = none ∧ β' x = βb w := by
+  obtain ⟨⟨-, hInL, -, hsd, -, -, -⟩, ⟨-, -, hPE⟩, -⟩ := hS
+  have hV : Scan.CondV S.H := hInL.1
+  obtain ⟨post, hroles, hQ⟩ := stop_roles_E8 hsd
+  obtain ⟨hcol, -, ht, -⟩ := Scan.stopData_spec hsd
+  set e : EntryAddr := ⟨S.sd.col, j⟩ with he_def
+  have hQj : S.sd.Q[j]? = some S.sd.Q[j] := List.getElem?_eq_getElem hj
+  have hent : S.H.entryAt e = some S.sd.Q[j] := by
+    simp [Tree.entryAt, e, hcol, List.getElem?_append_left hj, hQj]
+  have he : e ∈ S.H.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl)
+  have hB : S.H.heightAt e = some S.sd.Q[j].2 := by simp [Tree.heightAt, hent]
+  have hK : ((Scan.queryKeys S.sd)[j]?).getD Tree.empty =
+      relKey (e.col.num 0) ((S.H.heightAt e).getD Tree.empty) := by
+    simp [Scan.queryKeys, List.getElem?_map, hQj, hB, ht, e]
+  have hsel : ((S.sd.Q[j]?).map Prod.fst).getD 0 = ((S.H.entryAt e).map Prod.fst).getD 0 := by
+    simp [hQj, hent]
+  rw [hK, hsel] at hnew hholds ⊢
+  set K := relKey (e.col.num 0) ((S.H.heightAt e).getD Tree.empty) with hKdef
+  set p := ((S.H.entryAt e).map Prod.fst).getD 0 with hpdef
+  have hplt : p < e.col.num 0 := by
+    have h1 := hV e he S.sd.Q[j].1 S.sd.Q[j].2 hent
+    have h2 : p = S.sd.Q[j].1 := by simp [hpdef, hent]
+    rw [h2]
+    exact ((ColAddr.resolve_isSome_iff 0 _ _).1 h1).2
+  -- reading order around the stopping column
+  have hnd := Tree.roles_nodup S.H
+  have hnd' := hnd
+  rw [hroles, List.nodup_append, List.nodup_cons] at hnd'
+  have hTq : Role.ord S.sd.col ∉ S.queryRoles := fun h => hnd'.2.1.1 (List.mem_append_left _ h)
+  have hPq : ∀ x ∈ S.preStop, x ∉ S.queryRoles := fun x hx h =>
+    hnd'.2.2 _ hx _ (List.mem_cons_of_mem _ (List.mem_append_left _ h)) rfl
+  have hPT : ∀ x ∈ S.preStop, x ≠ Role.ord S.sd.col := fun x hx h =>
+    hnd'.2.2 _ hx _ List.mem_cons_self h
+  have hQ2 : S.queryRoles = Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) ++
+      Tree.rolesCol S.sd.col.path S.sd.col.col j (S.sd.Q.drop j) := by
+    rw [hQ]
+    conv_lhs => rw [← List.take_append_drop j S.sd.Q]
+    rw [Tree.rolesCol_append, List.length_take, Nat.min_eq_left hj.le, Nat.zero_add]
+  have hdrop : Tree.rolesCol S.sd.col.path S.sd.col.col j (S.sd.Q.drop j) = Role.slot e ::
+      (Tree.rolesF e.heightPath S.sd.Q[j].2 ++
+        Tree.rolesCol S.sd.col.path S.sd.col.col (j + 1) (S.sd.Q.drop (j + 1))) := by
+    rw [List.drop_eq_getElem_cons hj]
+    rfl
+  set A := Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) with hA
+  have hpre : prefixRoles S.H e = S.preStop ++ Role.ord S.sd.col :: A := by
+    have hr2 : S.H.roles = (S.preStop ++ Role.ord S.sd.col :: A) ++ Role.slot e ::
+        (Tree.rolesF e.heightPath S.sd.Q[j].2 ++
+          (Tree.rolesCol S.sd.col.path S.sd.col.col (j + 1) (S.sd.Q.drop (j + 1)) ++
+            Role.slot (Scan.closingSlot S.sd) :: post)) := by
+      rw [hroles, hQ2, hdrop]; simp
+    exact rolesBefore_of_decomp_E8 hr2
+  have hnotin : ∀ x ∈ prefixRoles S.H e, x.inEntry e = false := fun x hx =>
+    not_inEntry_of_mem_prefix_E8 he hx
+  have hsub : ∀ x, (x ∈ S.preStop ∨ x = Role.ord S.sd.col ∨ x ∈ S.fittedRoles j) →
+      x ∈ prefixRoles S.H e := by
+    rintro x (hx | rfl | hx)
+    · rw [hpre]; exact List.mem_append_left _ hx
+    · rw [hpre]; simp
+    · rw [hpre]
+      obtain ⟨hxq, hany⟩ := List.mem_filter.1 hx
+      obtain ⟨j', hj', hin⟩ := List.any_eq_true.1 hany
+      rw [List.mem_range] at hj'
+      refine List.mem_append_right _ (List.mem_cons_of_mem _ ?_)
+      rw [hQ2] at hxq
+      rcases List.mem_append.1 hxq with h | h
+      · exact h
+      · exfalso
+        obtain ⟨k, hk1, -, hk⟩ := Scan.rolesCol_inEntry _ _ _ j x h
+        have := inEntry_unique_E8 hin hk
+        omega
+  have hFR1 : ∀ x ∈ S.fittedRoles (j + 1), x ∈ S.fittedRoles j ∨ x ∈ S.entryRoles j := by
+    intro x hx
+    obtain ⟨hxq, hany⟩ := List.mem_filter.1 hx
+    obtain ⟨j', hj', hin⟩ := List.any_eq_true.1 hany
+    rw [List.mem_range] at hj'
+    rcases Nat.lt_or_ge j' j with h | h
+    · exact Or.inl (List.mem_filter.2 ⟨hxq, List.any_eq_true.2 ⟨j', List.mem_range.2 h, hin⟩⟩)
+    · have hjj : j' = j := by omega
+      exact Or.inr (List.mem_filter.2 ⟨hxq, hjj ▸ hin⟩)
+  have hdisj : ∀ x ∈ S.fittedRoles j, x ∉ S.entryRoles j := by
+    intro x hx hx'
+    obtain ⟨-, hany⟩ := List.mem_filter.1 hx
+    obtain ⟨j', hj', hin⟩ := List.any_eq_true.1 hany
+    have := inEntry_unique_E8 hin (List.mem_filter.1 hx').2
+    rw [List.mem_range] at hj'; omega
+  -- the extended fitting
+  set β' := S.extendFit j β βb with hβ'
+  have hβout : ∀ x, x ∉ S.entryRoles j → β' x = β x := by
+    intro x hx; simp only [hβ', ScanSetup.extendFit, if_neg hx]
+  have hslotq : Role.slot e ∈ S.queryRoles := by rw [hQ2, hdrop]; simp
+  have hslotE : Role.slot e ∈ S.entryRoles j :=
+    List.mem_filter.2 ⟨hslotq, by simp [Role.inEntry, e]⟩
+  have hβslot : β' (.slot e) = βb .owner := by
+    simp only [hβ', ScanSetup.extendFit, if_pos hslotE]
+    rw [if_pos rfl]
+  have hβin : ∀ x ∈ S.entryRoles j, x ≠ .slot e →
+      β' x = βb (.inner (relRole e.heightPath x)) := by
+    intro x hx hne
+    simp only [hβ', ScanSetup.extendFit, if_pos hx]
+    rw [if_neg (show ¬ (x = Role.slot ⟨S.sd.col, j⟩) from hne)]
+  have hblk : ∀ x ∈ S.entryRoles j, x ≠ .slot e → ∃ r ∈ K.roles, x = Role.under e.heightPath r := by
+    intro x hx hne
+    obtain ⟨hxq, hin⟩ := List.mem_filter.1 hx
+    have hxr : x ∈ S.H.roles := by rw [hroles]; simp [hxq]
+    have hpath : e.heightPath <+: x.path := by
+      rcases (inEntry_iff x e).1 hin with h | h
+      · exact absurd h hne
+      · exact h
+    obtain ⟨r, hr, rfl⟩ := List.mem_map.1 (mem_under_of_inEntry_E8 he hxr hpath)
+    exact ⟨r, by rw [hKdef, relKey_roles]; exact hr, rfl⟩
+  have hfree_sub : ∀ w ∈ baseVars (freeBlock K), w ∈ baseVars (posBlock K p) := by
+    intro w hw
+    simp only [posBlock, baseVars, List.flatMap_append, List.mem_append]
+    exact Or.inl hw
+  have hinner_mem : ∀ r ∈ K.roles, BlkVar.inner r ∈ baseVars (posBlock K p) := by
+    intro r hr
+    refine hfree_sub _ (List.mem_flatMap.2 ⟨BaseAtom.lim (.inner r), ?_, by simp [BaseAtom.vars]⟩)
+    simp only [freeBlock, List.mem_append, List.mem_cons, List.mem_map]
+    exact Or.inl (Or.inl (Or.inl (Or.inr ⟨_, ⟨r, hr, rfl⟩, rfl⟩)))
+  have howner_mem : BlkVar.owner ∈ baseVars (posBlock K p) :=
+    hfree_sub _ (List.mem_flatMap.2 ⟨BaseAtom.lim .owner, by simp [freeBlock], by
+      simp [BaseAtom.vars]⟩)
+  have hnewv : ∀ x ∈ S.entryRoles j, ∃ w ∈ baseVars (posBlock K p),
+      (frameOf e).toFr w = none ∧ β' x = βb w := by
+    intro x hx
+    by_cases hxs : x = .slot e
+    · subst hxs; exact ⟨.owner, howner_mem, rfl, hβslot⟩
+    · obtain ⟨r, hr, rfl⟩ := hblk x hx hxs
+      exact ⟨.inner r, hinner_mem r hr, rfl, by rw [hβin _ hx hxs, relRole_under_E8]⟩
+  -- the fitted values agree with the block on the variables it reads
+  have hcong : ∀ w ∈ baseVars (posBlock K p),
+      blockMap e w ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles (j + 1) →
+      S.fitVal β' (blockMap e w) = βb w := by
+    intro w hw hmem
+    cases hfw : (frameOf e).toFr w with
+    | some x0 =>
+      have hx0 : x0 ∈ prefixRoles S.H e := by
+        cases w with
+        | host =>
+          simp only [frameOf, Frame.toFr, Option.some.injEq] at hfw
+          subst hfw; exact (Tree.stack_mem_prefix he).1
+        | ord q =>
+          simp only [frameOf, Frame.toFr, reps0_getElem?] at hfw
+          obtain ⟨⟨o, v⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hfw
+          exact (rep_mem_prefix he hov).1
+        | cur q =>
+          simp only [frameOf, Frame.toFr, reps0_getElem?] at hfw
+          obtain ⟨⟨o, v⟩, hov, rfl⟩ := Option.map_eq_some_iff.1 hfw
+          exact (rep_mem_prefix he hov).2
+        | owner => cases hfw
+        | inner r => cases hfw
+      have hx0E : x0 ∉ S.entryRoles j := fun h => by
+        have := hnotin x0 hx0; rw [(List.mem_filter.1 h).2] at this; cases this
+      rw [blockMap_frame e w x0 hfw, hfr w x0 hfw]
+      simp only [ScanSetup.fitVal]
+      split_ifs
+      · rw [hβout x0 hx0E]
+      · rfl
+    | none =>
+      cases w with
+      | host => simp [frameOf, Frame.toFr] at hfw
+      | owner =>
+        show S.fitVal β' (.slot e) = _
+        unfold ScanSetup.fitVal
+        rw [if_pos hslotq]
+        exact hβslot
+      | inner r =>
+        simp only [blockMap] at hmem ⊢
+        have hin : (Role.under e.heightPath r).inEntry e = true := by
+          rw [inEntry_iff]; right; rw [Role.path_under]; exact List.prefix_append _ _
+        have hq : Role.under e.heightPath r ∈ S.entryRoles j := by
+          simp only [List.mem_append, List.mem_singleton] at hmem
+          rcases hmem with (h | h) | h
+          · exfalso; have := hnotin _ (hsub _ (Or.inl h)); rw [hin] at this; cases this
+          · exfalso; have := hnotin _ (hsub _ (Or.inr (Or.inl h))); rw [hin] at this; cases this
+          · rcases hFR1 _ h with h | h
+            · exfalso; have := hnotin _ (hsub _ (Or.inr (Or.inr h))); rw [hin] at this; cases this
+            · exact h
+        have hne : Role.under e.heightPath r ≠ .slot e := by
+          intro h
+          have h2 : (Role.under e.heightPath r).path.length = (Role.slot e).path.length := by
+            rw [h]
+          rw [Role.path_under] at h2
+          simp only [Role.path, EntryAddr.heightPath, List.length_append,
+            List.length_singleton] at h2
+          omega
+        simp only [ScanSetup.fitVal, if_pos (List.mem_filter.1 hq).1, hβin _ hq hne,
+          relRole_under_E8]
+      | ord q =>
+        exfalso
+        have hn : e.col.rep 0 q = none := by
+          simpa [frameOf, Frame.toFr, reps0_getElem?] using hfw
+        have hq' : ¬ q < e.col.num 0 := by
+          intro hlt
+          have := (rep_isSome_iff e.col q).2 hlt
+          rw [hn] at this; cases this
+        rcases posBlock_ordcur_E8 hw (Or.inl rfl) with h | h
+        · exact hq' h
+        · exact hq' (h ▸ hplt)
+      | cur q =>
+        exfalso
+        have hn : e.col.rep 0 q = none := by
+          simpa [frameOf, Frame.toFr, reps0_getElem?] using hfw
+        have hq' : ¬ q < e.col.num 0 := by
+          intro hlt
+          have := (rep_isSome_iff e.col q).2 hlt
+          rw [hn] at this; cases this
+        rcases posBlock_ordcur_E8 hw (Or.inr rfl) with h | h
+        · exact hq' h
+        · exact hq' (h ▸ hplt)
+  -- values outside the block are at most `L_j`
+  have hLmax : ∀ x, (x ∈ S.preStop ∨ x = Role.ord S.sd.col ∨ x ∈ S.fittedRoles j) →
+      S.fitVal β' x ≤ S.Lmax j β := by
+    obtain ⟨hL1, hL2⟩ := foldr_max_spec (L := S.asg S.stopNm) ((S.fittedRoles j).map β)
+    rintro x (hx | rfl | hx)
+    · have hxq := hPq x hx
+      simp only [ScanSetup.fitVal, if_neg hxq, ScanSetup.baseVal, if_neg (hPT x hx)]
+      obtain ⟨T', hT', -, hpre'⟩ := Closure.anchorOrigin_prefix hInL hsd
+      obtain ⟨y, hy, hyPE, -⟩ := hpre' x hx
+      rw [hy]
+      simp only [Option.map_some, Option.getD_some]
+      have hyPE' : y ∈ S.PE := by
+        simp only [ScanSetup.PE, ScanSetup.TE, ScanSetup.chi, anchorD, hT', Option.getD_some]
+        exact hyPE
+      exact (hPE y hyPE').le.trans hL1
+    · simp only [ScanSetup.fitVal, if_neg hTq, ScanSetup.baseVal, if_true]
+      exact hL1
+    · have hxq := (List.mem_filter.1 hx).1
+      simp only [ScanSetup.fitVal, if_pos hxq, hβout x (hdisj x hx)]
+      exact hL2 _ (List.mem_map_of_mem hx)
+  -- order atoms around entry `j`
+  obtain ⟨post', hroles', hpost'⟩ := Tree.roles_entry he
+  have hord_exit : ∀ i x y, S.H.roles[i]? = some x → S.H.roles[i + 1]? = some y →
+      x.inEntry e = true → y ∈ prefixRoles S.H e → False := by
+    intro i x y hx hy hxin hyp
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.1 hyp
+    have hkl : k < (prefixRoles S.H e).length := (List.getElem?_eq_some_iff.1 hk).1
+    have hk' : S.H.roles[k]? = some y := by
+      rw [hroles', List.getElem?_append_left hkl]; exact hk
+    have hki := nodup_getElem?_inj_E8 hnd hk' hy
+    have hix : (prefixRoles S.H e)[i]? = some x := by
+      rw [hroles', List.getElem?_append_left (by omega)] at hx; exact hx
+    have := hnotin x (List.mem_of_getElem? hix)
+    rw [hxin] at this; cases this
+  have hblock_lt : ∀ i x y, S.H.roles[i]? = some x → S.H.roles[i + 1]? = some y →
+      x.inEntry e = true → y.inEntry e = true →
+      ∃ w1 w2, BaseAtom.lt w1 w2 ∈ posBlock K p ∧ blockMap e w1 = x ∧ blockMap e w2 = y := by
+    intro i x y hx hy hxin hyin
+    set n := (prefixRoles S.H e).length
+    set rs : List BlkVar := K.roles.map BlkVar.inner
+    have hW : (BlkVar.owner :: rs).map (blockMap e) = Role.slot e ::
+        ((S.H.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) := by
+      simp only [List.map_cons, List.map_map, rs, hKdef, relKey_roles]
+      rfl
+    have hroles2 : S.H.roles = prefixRoles S.H e ++
+        ((BlkVar.owner :: rs).map (blockMap e) ++ post') := by
+      rw [hW, hroles']; simp
+    have hin : n ≤ i := by
+      by_contra hlt
+      have hix : (prefixRoles S.H e)[i]? = some x := by
+        rw [hroles2, List.getElem?_append_left (by omega)] at hx; exact hx
+      have := hnotin x (List.mem_of_getElem? hix)
+      rw [hxin] at this; cases this
+    have hlen : i + 1 < n + ((BlkVar.owner :: rs).map (blockMap e)).length := by
+      by_contra hge
+      rw [hroles2, List.getElem?_append_right (by omega), List.getElem?_append_right (by omega)]
+        at hy
+      have := hpost' y (List.mem_of_getElem? hy)
+      rw [hyin] at this; cases this
+    obtain ⟨k, rfl⟩ : ∃ k, i = n + k := ⟨i - n, by omega⟩
+    have hx' : ((BlkVar.owner :: rs).map (blockMap e))[k]? = some x := by
+      have h0 := hx
+      rw [hroles2, List.getElem?_append_right (by omega), List.getElem?_append_left (by omega)]
+        at h0
+      have hk : n + k - n = k := by omega
+      rwa [hk] at h0
+    have hy' : ((BlkVar.owner :: rs).map (blockMap e))[k + 1]? = some y := by
+      have h0 := hy
+      rw [hroles2, List.getElem?_append_right (by omega), List.getElem?_append_left (by omega)]
+        at h0
+      have hk : n + k + 1 - n = k + 1 := by omega
+      rwa [hk] at h0
+    clear hx hy
+    rw [List.getElem?_map] at hx' hy'
+    obtain ⟨w1, hw1, rfl⟩ := Option.map_eq_some_iff.1 hx'
+    obtain ⟨w2, hw2, rfl⟩ := Option.map_eq_some_iff.1 hy'
+    rw [List.getElem?_cons_succ] at hw2
+    refine ⟨w1, w2, ?_, rfl, rfl⟩
+    simp only [posBlock, freeBlock, List.mem_append]
+    refine Or.inl (Or.inl (Or.inl (Or.inr ?_)))
+    have hz : ((BlkVar.owner :: rs).zip rs)[k]? = some (w1, w2) :=
+      List.getElem?_zip_eq_some.2 ⟨hw1, hw2⟩
+    exact List.mem_map_of_mem (f := fun xy : BlkVar × BlkVar => BaseAtom.lt xy.1 xy.2)
+      (List.mem_of_getElem? hz)
+  refine ⟨β', fun a ha => ?_, fun x hx => hβout x (hdisj x hx), hnewv⟩
+  obtain ⟨haq, hall⟩ := List.mem_filter.1 ha
+  have hvars : ∀ v ∈ a.vars, v ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles (j + 1) := by
+    intro v hv; simpa using List.all_eq_true.1 hall v hv
+  have hag : a ∈ graph S.H := (List.mem_filter.1 (List.mem_filter.1 haq).1).1
+  by_cases hA : ∃ v ∈ a.vars, v ∈ S.entryRoles j
+  · obtain ⟨v0, hv0, hv0e⟩ := hA
+    rcases graph_atom_cases S.H a hag with ⟨i, x, y, rfl, hx, hy⟩ | ⟨z, hz, hown⟩
+    · -- an order atom
+      have hvx := hvars x (by simp [BaseAtom.vars])
+      have hvy := hvars y (by simp [BaseAtom.vars])
+      show S.fitVal β' x < S.fitVal β' y
+      by_cases hxE : x ∈ S.entryRoles j
+      · have hxin := (List.mem_filter.1 hxE).2
+        by_cases hyE : y ∈ S.entryRoles j
+        · obtain ⟨w1, w2, hw12, rfl, rfl⟩ := hblock_lt i x y hx hy hxin (List.mem_filter.1 hyE).2
+          have h12 := hholds _ hw12
+          have hw1 : w1 ∈ baseVars (posBlock K p) :=
+            List.mem_flatMap.2 ⟨_, hw12, by simp [BaseAtom.vars]⟩
+          have hw2 : w2 ∈ baseVars (posBlock K p) :=
+            List.mem_flatMap.2 ⟨_, hw12, by simp [BaseAtom.vars]⟩
+          rw [hcong w1 hw1 hvx, hcong w2 hw2 hvy]
+          exact h12
+        · exfalso
+          refine hord_exit i x y hx hy hxin (hsub y ?_)
+          simp only [List.mem_append, List.mem_singleton] at hvy
+          rcases hvy with (h | h) | h
+          · exact Or.inl h
+          · exact Or.inr (Or.inl h)
+          · rcases hFR1 y h with h | h
+            · exact Or.inr (Or.inr h)
+            · exact absurd h hyE
+      · have hyE : y ∈ S.entryRoles j := by
+          simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hv0
+          rcases hv0 with rfl | rfl
+          · exact absurd hv0e hxE
+          · exact hv0e
+        have hxs : x ∈ S.preStop ∨ x = Role.ord S.sd.col ∨ x ∈ S.fittedRoles j := by
+          simp only [List.mem_append, List.mem_singleton] at hvx
+          rcases hvx with (h | h) | h
+          · exact Or.inl h
+          · exact Or.inr (Or.inl h)
+          · rcases hFR1 x h with h | h
+            · exact Or.inr (Or.inr h)
+            · exact absurd h hxE
+        obtain ⟨w, hw, hwn, hwv⟩ := hnewv y hyE
+        have hyq := (List.mem_filter.1 hyE).1
+        have hfy : S.fitVal β' y = β' y := by simp only [ScanSetup.fitVal, if_pos hyq]
+        rw [hfy, hwv]
+        exact lt_of_le_of_lt ((hLmax x hxs).trans hL) (hnew w hw hwn)
+    · -- an owned atom
+      have hao : a ∈ ownedBy (graph S.H) z := List.mem_filter.2 ⟨hag, by simp [hown]⟩
+      have hzin : z.inEntry e = true := owned_inEntry hao hv0 e (List.mem_filter.1 hv0e).2
+      obtain ⟨a₀, ha₀, rfl⟩ := graph_owned_block_core he z ((inEntry_iff z e).1 hzin) _ hao
+      rw [BaseAtom.holds_map]
+      refine (amalg_baseAtom_congr P a₀ (fun w hw => ?_)).1 (hholds a₀ ha₀)
+      have hwD : w ∈ baseVars (posBlock K p) := List.mem_flatMap.2 ⟨a₀, ha₀, hw⟩
+      have hwm : blockMap e w ∈ S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles (j + 1) :=
+        hvars _ (by rw [baseAtom_vars_map]; exact List.mem_map_of_mem hw)
+      exact (hcong w hwD hwm).symm
+  · push Not at hA
+    have h1 : a ∈ restrictTo S.queryGraph (S.preStop ++ [Role.ord S.sd.col] ++ S.fittedRoles j) := by
+      refine List.mem_filter.2 ⟨haq, List.all_eq_true.2 fun v hv => ?_⟩
+      have := hvars v hv
+      simp only [List.mem_append, List.mem_singleton, decide_eq_true_eq] at this ⊢
+      rcases this with (h | h) | h
+      · exact Or.inl (Or.inl h)
+      · exact Or.inl (Or.inr h)
+      · rcases hFR1 v h with h | h
+        · exact Or.inr h
+        · exact absurd h (hA v hv)
+    refine (amalg_baseAtom_congr P a (fun v hv => ?_)).1 (hfit a h1)
+    simp only [ScanSetup.fitVal]
+    split_ifs
+    · exact (hβout v (hA v hv)).symm
+    · rfl
+
 
 /-- L4.3d (moved from U5 `Req.ChildData`; requested by U5 R29): the data of §8.5 Case 2
 (txt:1364-1368): a safe truncation `F₁` of the source context, a confined step of it, and the
