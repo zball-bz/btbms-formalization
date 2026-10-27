@@ -319,12 +319,274 @@ theorem entryAt_setAux (h : Tree α) (π : List (Nat × Nat)) (t : Tree α) (j i
     | none => rfl
     | some col => simp [List.getElem?_modify_eq]
 
+mutual
+/-- D1.2c helper: every role read under the prefix `π` has a path extending `π`. -/
+theorem rolesF_path_prefix : (π : List (Nat × Nat)) → (t : Tree α) → ∀ x ∈ rolesF π t, π <+: x.path
+  | π, .node cols => by
+    simp only [rolesF]
+    intro x hx
+    obtain ⟨c', -, -, h⟩ := rolesCols_mem π 0 cols x hx
+    rcases h with rfl | ⟨i', rfl⟩ | ⟨i', h⟩
+    · exact List.prefix_refl _
+    · exact List.prefix_refl _
+    · exact (List.prefix_append _ _).trans h
+/-- D1.2c helper: the roles of the columns `c, c+1, …`: column roles and slots at the level
+`π`, or roles below an entry of one of these columns. -/
+theorem rolesCols_mem : (π : List (Nat × Nat)) → (c : Nat) → (cs : List (List (α × Tree α))) →
+    ∀ x ∈ rolesCols π c cs, ∃ c', c ≤ c' ∧ c' < c + cs.length ∧
+      (x = .ord ⟨π, c'⟩ ∨ (∃ i', x = .slot ⟨⟨π, c'⟩, i'⟩) ∨ ∃ i', π ++ [(c', i')] <+: x.path)
+  | _, _, [] => by simp [rolesCols]
+  | π, c, col :: rest => by
+    simp only [rolesCols, List.mem_cons, List.mem_append]
+    rintro x (rfl | hx | hx)
+    · exact ⟨c, le_refl _, by simp, Or.inl rfl⟩
+    · obtain ⟨i', -, -, h⟩ := rolesCol_mem π c 0 col x hx
+      exact ⟨c, le_refl _, by simp,
+        h.elim (fun h => Or.inr (Or.inl ⟨i', h⟩)) (fun h => Or.inr (Or.inr ⟨i', h⟩))⟩
+    · obtain ⟨c', h1, h2, h⟩ := rolesCols_mem π (c + 1) rest x hx
+      exact ⟨c', by omega, by simp only [List.length_cons]; omega, h⟩
+/-- D1.2c helper: the roles of the entries `i, i+1, …` of column `c`: their slots, or roles
+below one of them. -/
+theorem rolesCol_mem : (π : List (Nat × Nat)) → (c i : Nat) → (es : List (α × Tree α)) →
+    ∀ x ∈ rolesCol π c i es, ∃ i', i ≤ i' ∧ i' < i + es.length ∧
+      (x = .slot ⟨⟨π, c⟩, i'⟩ ∨ π ++ [(c, i')] <+: x.path)
+  | _, _, _, [] => by simp [rolesCol]
+  | π, c, i, (_, h) :: rest => by
+    simp only [rolesCol, List.mem_cons, List.mem_append]
+    rintro x (rfl | hx | hx)
+    · exact ⟨i, le_refl _, by simp, Or.inl rfl⟩
+    · exact ⟨i, le_refl _, by simp, Or.inr (rolesF_path_prefix _ h x hx)⟩
+    · obtain ⟨i', h1, h2, h⟩ := rolesCol_mem π c (i + 1) rest x hx
+      exact ⟨i', by omega, by simp only [List.length_cons]; omega, h⟩
+end
+
+/-- D1.2c helper: `rolesCols` over an append. -/
+theorem rolesCols_append (π : List (Nat × Nat)) (c : Nat) (l₁ l₂ : List (List (α × Tree α))) :
+    rolesCols π c (l₁ ++ l₂) = rolesCols π c l₁ ++ rolesCols π (c + l₁.length) l₂ := by
+  induction l₁ generalizing c with
+  | nil => simp [rolesCols]
+  | cons col l ih =>
+    simp only [List.cons_append, rolesCols, ih, List.length_cons, List.append_assoc]
+    rw [show c + 1 + l.length = c + (l.length + 1) by omega]
+
+/-- D1.2c helper: `rolesCol` over an append. -/
+theorem rolesCol_append (π : List (Nat × Nat)) (c i : Nat) (l₁ l₂ : List (α × Tree α)) :
+    rolesCol π c i (l₁ ++ l₂) = rolesCol π c i l₁ ++ rolesCol π c (i + l₁.length) l₂ := by
+  induction l₁ generalizing i with
+  | nil => simp [rolesCol]
+  | cons x l ih =>
+    obtain ⟨q, h⟩ := x
+    simp only [List.cons_append, rolesCol, ih, List.length_cons, List.append_assoc]
+    rw [show i + 1 + l.length = i + (l.length + 1) by omega]
+
+/-- D1.2c helper: split a list at a present index. -/
+theorem exists_split_of_getElem? {β : Type} {l : List β} {n : Nat} {x : β} (h : l[n]? = some x) :
+    ∃ l₁ l₂, l = l₁ ++ x :: l₂ ∧ l₁.length = n := by
+  induction l generalizing n with
+  | nil => simp at h
+  | cons y ys ih =>
+    cases n with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      exact ⟨[], ys, by simp [h], rfl⟩
+    | succ n =>
+      simp only [List.getElem?_cons_succ] at h
+      obtain ⟨l₁, l₂, rfl, rfl⟩ := ih h
+      exact ⟨y :: l₁, l₂, rfl, rfl⟩
+
+/-- D1.2c helper: two one-step extensions of `π` that are prefixes of one list agree. -/
+theorem prefix_step_eq {π l : List (Nat × Nat)} {a b : Nat × Nat} (h₁ : π ++ [a] <+: l)
+    (h₂ : π ++ [b] <+: l) : a = b := by
+  have h := (List.prefix_of_prefix_length_le h₁ h₂ (by simp)).eq_of_length (by simp)
+  simpa using h
+
+/-- D1.2c helper: a one-step extension of `π` is not a prefix of `π`. -/
+theorem not_prefix_append_self {π : List (Nat × Nat)} {a : Nat × Nat} {l : List (Nat × Nat)}
+    (hl : l = π) : ¬ π ++ [a] <+: l := by
+  intro h; have := h.length_le; subst hl; simp at this
+
+/-- D1.2c helper: roles of later entries of column `c` do not lie below entry `i` of it. -/
+theorem not_prefix_of_mem_rolesCol_later {π : List (Nat × Nat)} {c i : Nat} {es : List (α × Tree α)}
+    {x : Role} (hx : x ∈ rolesCol π c (i + 1) es) : ¬ π ++ [(c, i)] <+: x.path := by
+  obtain ⟨i', h1, -, h⟩ := rolesCol_mem π c (i + 1) es x hx
+  rcases h with rfl | h
+  · exact not_prefix_append_self rfl
+  · intro h'; have := prefix_step_eq h h'; simp at this; omega
+
+/-- D1.2c helper: roles of later columns do not lie below an entry of column `c`. -/
+theorem not_prefix_of_mem_rolesCols_later {π : List (Nat × Nat)} {c i : Nat}
+    {cs : List (List (α × Tree α))} {x : Role} (hx : x ∈ rolesCols π (c + 1) cs) :
+    ¬ π ++ [(c, i)] <+: x.path := by
+  obtain ⟨c', h1, -, h⟩ := rolesCols_mem π (c + 1) cs x hx
+  rcases h with rfl | ⟨i', rfl⟩ | ⟨i', h⟩
+  · exact not_prefix_append_self rfl
+  · exact not_prefix_append_self rfl
+  · intro h'; have := prefix_step_eq h h'; simp at this; omega
+
+/-- D1.2c helper: roles of earlier entries of column `c` do not lie below entry `i` of it, and
+are not its slot. -/
+theorem not_mem_of_mem_rolesCol_earlier {π : List (Nat × Nat)} {c : Nat} {es : List (α × Tree α)}
+    {x : Role} (hx : x ∈ rolesCol π c 0 es) :
+    x ≠ .slot ⟨⟨π, c⟩, es.length⟩ ∧ ¬ π ++ [(c, es.length)] <+: x.path := by
+  obtain ⟨i', -, h2, h⟩ := rolesCol_mem π c 0 es x hx
+  rcases h with rfl | h
+  · exact ⟨by simp; omega, not_prefix_append_self rfl⟩
+  · refine ⟨fun h' => ?_, fun h' => ?_⟩
+    · subst h'; exact not_prefix_append_self rfl h
+    · have := prefix_step_eq h h'; simp at this; omega
+
+/-- D1.2c helper: roles of earlier columns do not lie below an entry of column `c`, and are not
+slots of column `c`. -/
+theorem not_mem_of_mem_rolesCols_earlier {π : List (Nat × Nat)} {cs : List (List (α × Tree α))}
+    {x : Role} (hx : x ∈ rolesCols π 0 cs) (i : Nat) :
+    x ≠ .slot ⟨⟨π, cs.length⟩, i⟩ ∧ ¬ π ++ [(cs.length, i)] <+: x.path := by
+  obtain ⟨c', -, h2, h⟩ := rolesCols_mem π 0 cs x hx
+  rcases h with rfl | ⟨i', rfl⟩ | ⟨i', h⟩
+  · exact ⟨by simp, not_prefix_append_self rfl⟩
+  · exact ⟨by simp; omega, not_prefix_append_self rfl⟩
+  · refine ⟨fun h' => ?_, fun h' => ?_⟩
+    · subst h'; exact not_prefix_append_self rfl h
+    · have := prefix_step_eq h h'; simp at this; omega
+
+/-- D1.2c helper: `inEntry` fails for a role that is not the slot and not below the height. -/
+theorem inEntry_eq_false {x : Role} {e : EntryAddr} (h₁ : x ≠ .slot e)
+    (h₂ : ¬ e.heightPath <+: x.path) : x.inEntry e = false := by
+  simp only [Role.inEntry, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+  exact ⟨h₁, by rw [Bool.eq_false_iff]; intro h; exact h₂ (List.isPrefixOf_iff_prefix.mp h)⟩
+
+/-- D1.2c helper (`truncAfter_roles` for an arbitrary prefix `π`, since `truncAux` descends with
+relative paths): the roles under `π` split at the slot of the target entry into the earlier
+roles `A`, the slot, the roles of its height and later roles `C` outside the entry; truncation
+keeps `A`, the slot and the height. -/
+theorem truncAux_roles_decomp : ∀ (ρ π : List (Nat × Nat)) (s : Tree α) (j i : Nat) (p : α)
+    (h : Tree α), s.entryAt ⟨⟨ρ, j⟩, i⟩ = some (p, h) →
+    ∃ A C, rolesF π s = A ++ .slot ⟨⟨π ++ ρ, j⟩, i⟩ :: (rolesF (π ++ ρ ++ [(j, i)]) h ++ C) ∧
+      .slot ⟨⟨π ++ ρ, j⟩, i⟩ ∉ A ∧ (∀ x ∈ C, x.inEntry ⟨⟨π ++ ρ, j⟩, i⟩ = false) ∧
+      rolesF π (truncAux ρ j i s) = A ++ .slot ⟨⟨π ++ ρ, j⟩, i⟩ :: rolesF (π ++ ρ ++ [(j, i)]) h
+  | [], π, .node cols, j, i, p, h, he => by
+    simp only [List.append_nil]
+    rw [entryAt_eq_bind] at he
+    simp only [forestAt, Option.bind_some, Tree.cols] at he
+    cases hc : cols[j]? with
+    | none => rw [hc] at he; simp at he
+    | some col =>
+      rw [hc, Option.bind_some] at he
+      obtain ⟨cols₁, cols₂, rfl, rfl⟩ := exists_split_of_getElem? hc
+      obtain ⟨es₁, es₂, rfl, rfl⟩ := exists_split_of_getElem? he
+      refine ⟨rolesCols π 0 cols₁ ++ .ord ⟨π, cols₁.length⟩ :: rolesCol π cols₁.length 0 es₁,
+        rolesCol π cols₁.length (es₁.length + 1) es₂ ++ rolesCols π (cols₁.length + 1) cols₂,
+        ?_, ?_, ?_, ?_⟩
+      · simp only [rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol, Nat.zero_add,
+          List.append_assoc, List.cons_append]
+      · intro hm
+        simp only [List.mem_append, List.mem_cons] at hm
+        rcases hm with hm | hm | hm
+        · exact (not_mem_of_mem_rolesCols_earlier hm _).1 rfl
+        · simp at hm
+        · exact (not_mem_of_mem_rolesCol_earlier hm).1 rfl
+      · intro x hx
+        simp only [List.mem_append] at hx
+        refine inEntry_eq_false ?_ ?_
+        · rintro rfl
+          rcases hx with hx | hx
+          · obtain ⟨i', h1, -, h⟩ := rolesCol_mem _ _ _ _ _ hx
+            rcases h with h | h
+            · simp at h; omega
+            · exact not_prefix_append_self rfl h
+          · obtain ⟨c', h1, -, h⟩ := rolesCols_mem _ _ _ _ hx
+            rcases h with h | ⟨i', h⟩ | ⟨i', h⟩
+            · simp at h
+            · simp at h; omega
+            · exact not_prefix_append_self rfl h
+        · simp only [EntryAddr.heightPath]
+          rcases hx with hx | hx
+          · exact not_prefix_of_mem_rolesCol_later hx
+          · exact not_prefix_of_mem_rolesCols_later hx
+      · simp [truncAux, rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol,
+          List.take_append, List.getD_eq_getElem?_getD, List.take_of_length_le]
+  | (c₀, i₀) :: ρ, π, .node cols, j, i, p, h, he => by
+    rw [entryAt_eq_bind, forestAt_cons] at he
+    simp only [Tree.cols] at he
+    cases hc : cols[c₀]? with
+    | none => rw [hc] at he; simp at he
+    | some col =>
+      rw [hc, Option.bind_some] at he
+      cases hi : col[i₀]? with
+      | none => rw [hi] at he; simp at he
+      | some x =>
+        obtain ⟨p₀, h₀⟩ := x
+        rw [hi, Option.bind_some] at he
+        replace he : h₀.entryAt ⟨⟨ρ, j⟩, i⟩ = some (p, h) := by rw [entryAt_eq_bind]; exact he
+        obtain ⟨A', C', hR, hA', hC', hT⟩ := truncAux_roles_decomp ρ (π ++ [(c₀, i₀)]) h₀ j i p h he
+        simp only [List.append_assoc, List.singleton_append] at hR hA' hC' hT
+        obtain ⟨cols₁, cols₂, rfl, rfl⟩ := exists_split_of_getElem? hc
+        obtain ⟨es₁, es₂, rfl, rfl⟩ := exists_split_of_getElem? hi
+        refine ⟨rolesCols π 0 cols₁ ++ .ord ⟨π, cols₁.length⟩ :: (rolesCol π cols₁.length 0 es₁ ++
+            .slot ⟨⟨π, cols₁.length⟩, es₁.length⟩ :: A'),
+          C' ++ (rolesCol π cols₁.length (es₁.length + 1) es₂ ++
+            rolesCols π (cols₁.length + 1) cols₂), ?_, ?_, ?_, ?_⟩
+        · simp only [rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol, Nat.zero_add,
+            List.append_assoc, List.cons_append]
+          rw [hR]
+          simp only [List.append_assoc, List.cons_append]
+        · have hpre : π ++ [(cols₁.length, es₁.length)] <+:
+              (Role.slot ⟨⟨π ++ (cols₁.length, es₁.length) :: ρ, j⟩, i⟩).path :=
+            ⟨ρ, by simp [Role.path]⟩
+          intro hm
+          simp only [List.mem_append, List.mem_cons] at hm
+          rcases hm with hm | hm | hm | hm | hm
+          · exact (not_mem_of_mem_rolesCols_earlier hm es₁.length).2 hpre
+          · simp at hm
+          · exact (not_mem_of_mem_rolesCol_earlier hm).2 hpre
+          · simp at hm
+          · exact hA' hm
+        · intro x hx
+          simp only [List.mem_append] at hx
+          rcases hx with hx | hx
+          · exact hC' x hx
+          · have hnp : ¬ π ++ [(cols₁.length, es₁.length)] <+: x.path := by
+              rcases hx with hx | hx
+              · exact not_prefix_of_mem_rolesCol_later hx
+              · exact not_prefix_of_mem_rolesCols_later hx
+            refine inEntry_eq_false ?_ ?_
+            · rintro rfl; exact hnp ⟨ρ, by simp [Role.path]⟩
+            · intro h'
+              have hp : π ++ [(cols₁.length, es₁.length)] <+:
+                  EntryAddr.heightPath ⟨⟨π ++ (cols₁.length, es₁.length) :: ρ, j⟩, i⟩ :=
+                ⟨ρ ++ [(j, i)], by simp [EntryAddr.heightPath]⟩
+              exact hnp (hp.trans h')
+        · simp [truncAux, rolesF, rolesCols_append, rolesCols, rolesCol_append, rolesCol,
+            List.getD_eq_getElem?_getD, hT]
+
 /-- D1.2c (`truncAfter_roles`†): the roles of `truncAfter t e` are the roles of `t` strictly before
 `U_e`, followed by the maximal run of roles inside `e` starting with `U_e`. -/
 theorem truncAfter_roles {t : Tree α} {e : EntryAddr} (he : e ∈ t.entryAddrs) :
     (t.truncAfter e).roles =
       t.roles.takeWhile (· != .slot e) ++
-        (t.roles.dropWhile (· != .slot e)).takeWhile (fun x => x.inEntry e) := by sorry
+        (t.roles.dropWhile (· != .slot e)).takeWhile (fun x => x.inEntry e) := by
+  have hs := (mem_entryAddrs_iff t e).mp he
+  obtain ⟨⟨p, h⟩, hpe⟩ := Option.isSome_iff_exists.mp hs
+  rw [truncAfter_eq_body, truncAfterBody, if_pos hs]
+  obtain ⟨⟨path, j⟩, i⟩ := e
+  obtain ⟨A, C, hR, hA, hC, hT⟩ := truncAux_roles_decomp path [] t j i p h hpe
+  simp only [List.nil_append] at hR hA hC hT
+  unfold roles
+  rw [hT, hR]
+  have hA' : ∀ x ∈ A, (x != .slot ⟨⟨path, j⟩, i⟩) = true := fun x hx => by
+    simp only [bne_iff_ne, ne_eq]; rintro rfl; exact hA hx
+  have hH : ∀ x ∈ rolesF (path ++ [(j, i)]) h, x.inEntry ⟨⟨path, j⟩, i⟩ = true := fun x hx => by
+    simp only [Role.inEntry, EntryAddr.heightPath, Bool.or_eq_true]
+    exact Or.inr (List.isPrefixOf_iff_prefix.mpr (rolesF_path_prefix _ h x hx))
+  have hC' : C.takeWhile (fun x => x.inEntry ⟨⟨path, j⟩, i⟩) = [] := by
+    cases C with
+    | nil => rfl
+    | cons y ys => simp [hC y (List.mem_cons_self ..)]
+  rw [List.takeWhile_append_of_pos hA', List.dropWhile_append_of_pos hA']
+  simp only [List.takeWhile_cons, List.dropWhile_cons, bne_self_eq_false, Bool.false_eq_true,
+    if_false, List.append_nil]
+  have hself : (Role.slot ⟨⟨path, j⟩, i⟩).inEntry ⟨⟨path, j⟩, i⟩ = true := by
+    simp [Role.inEntry]
+  rw [if_pos hself, List.takeWhile_append_of_pos hH, hC', List.append_nil]
 
 /-- D1.2c: `truncAfter` keeps `e` and its height. -/
 theorem entryAt_truncAfter {t : Tree α} {e : EntryAddr} (he : e ∈ t.entryAddrs) :
