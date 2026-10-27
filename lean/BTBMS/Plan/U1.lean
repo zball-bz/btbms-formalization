@@ -2252,7 +2252,18 @@ to `⊤`. -/
 theorem cursor_cappedAt (ks W : List (WithTop Key)) (u : Nat) (hu : u < ks.length)
     (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤)
     (hlt : W < cutQuery ks (u + 1)) :
-    cursor ks W ≤ u ∧ cursor ks W = cursor (ks.take u ++ [⊤]) W := by sorry
+    cursor ks W ≤ u ∧ cursor ks W = cursor (ks.take u ++ [⊤]) W := by
+  have hc : cursor ks W ≤ u := cursor_le_of_lt_cutQuery hW hu hlt
+  refine ⟨hc, ?_⟩
+  have h1 : cursor (ks.take (u + 1)) W = cursor ks W := by rw [cursor_take]; omega
+  have hsplit : ks.take (u + 1) = ks.take u ++ [ks[u]] := (List.take_append_getElem hu).symm
+  have hne : ks.take (u + 1) ≠ [] := by
+    rw [hsplit]; exact List.append_ne_nil_of_right_ne_nil _ (by simp)
+  have hlen : (ks.take (u + 1)).length = u + 1 := by rw [List.length_take]; omega
+  have hdl : (ks.take (u + 1)).dropLast = ks.take u := by rw [hsplit, List.dropLast_concat]
+  have h2 := cursor_eq_of_trace_eq (trace_cap_top hne (by rw [h1, hlen]; omega))
+  rw [hdl] at h2
+  rw [h2, h1]
 
 /-- L2.3c (requested by U3 R8): the cut barrier read at a containing column on the cut chain. -/
 theorem cut_barrier_read {E : Forest} (hE : InL E) {c : ColAddr} (hc : c ∈ E.colAddrs)
@@ -2260,6 +2271,88 @@ theorem cut_barrier_read {E : Forest} (hE : InL E) {c : ColAddr} (hc : c ∈ E.c
     (hy : Path E (actualKeys E) c (cutQuery (actualKeys E c) k) (cutStart E c k) y)
     {o : ColAddr} (ho : c.resolve 0 y = some o) {e : EntryAddr} (he : o.container c = some e) :
     cutQuery (actualKeys E c) k < cutQuery (actualKeys E o) (e.idx + 1) := by sorry
+
+/-- L2.5d helper: a run starts at its start state. -/
+theorem traceFrom_head? {α : Type} [LinearOrder α] (src qry : List α) (i j : Nat) :
+    (traceFrom i j src qry).head? = some (i, j) := by
+  cases src <;> cases qry <;> simp [traceFrom]
+
+/-- L2.5d helper: a run that stops with source cursor inside the source has used up its query. -/
+theorem qcursor_eq_length_of_lt {α : Type} [LinearOrder α] {src qry : List α}
+    (h : cursor src qry < src.length) : qcursor src qry = qry.length := by
+  induction src, qry using cursor.induct with
+  | case1 qry => simp at h
+  | case2 x xs => simp [qcursor]
+  | case3 x xs y ys hxy ih =>
+    rw [cursor, if_pos hxy, List.length_cons] at h
+    rw [qcursor, if_pos hxy, ih (by omega)]
+  | case4 xs y ys hyy ih =>
+    rw [cursor, if_neg hyy, if_pos rfl, List.length_cons] at h
+    rw [qcursor, if_neg hyy, if_pos rfl, ih (by omega), List.length_cons]
+  | case5 x xs y ys h1 h2 ih =>
+    rw [cursor, if_neg h1, if_neg h2] at h
+    rw [qcursor, if_neg h1, if_neg h2, ih h, List.length_cons]
+
+/-- L2.5d helper: consecutive states of a run started after the source prefix `A` and the query
+prefix `B` follow the three comparison rules. -/
+theorem traceFrom_step {α : Type} [LinearOrder α] (A B src qry : List α) :
+    ∀ k s s', (traceFrom A.length B.length src qry)[k]? = some s →
+      (traceFrom A.length B.length src qry)[k + 1]? = some s' →
+      ∃ x y, (A ++ src)[s.1]? = some x ∧ (B ++ qry)[s.2]? = some y ∧
+        ((x < y ∧ s' = (s.1 + 1, s.2)) ∨ (x = y ∧ s' = (s.1 + 1, s.2 + 1)) ∨
+          (y < x ∧ s' = (s.1, s.2 + 1))) := by
+  induction src, qry using cursor.induct generalizing A B with
+  | case1 qry => intro k s s' _ h'; simp [traceFrom] at h'
+  | case2 x xs => intro k s s' _ h'; simp [traceFrom] at h'
+  | case3 x xs y ys hxy ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_pos hxy] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨x, y, by simp, by simp, Or.inl ⟨hxy, rfl⟩⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih (A ++ [x]) B k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
+  | case4 xs y ys hyy ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_neg hyy, if_pos rfl] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨y, y, by simp, by simp, Or.inr (Or.inl ⟨rfl, rfl⟩)⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih (A ++ [y]) (B ++ [y]) k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
+  | case5 x xs y ys h1 h2 ih =>
+    intro k s s' h h'
+    rw [traceFrom, if_neg h1, if_neg h2] at h h'
+    cases k with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      rw [List.getElem?_cons_succ, ← List.head?_eq_getElem?, traceFrom_head?] at h'
+      cases h'
+      refine ⟨x, y, by simp, by simp,
+        Or.inr (Or.inr ⟨lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2), rfl⟩)⟩
+    | succ k =>
+      rw [List.getElem?_cons_succ] at h h'
+      have := ih A (B ++ [y]) k s s'
+      simp only [List.length_append, List.length_singleton, List.append_assoc,
+        List.singleton_append] at this
+      exact this h h'
 
 /-- L2.5d (requested by U5 R15): the trace of the raw scan starts at `(0,0)`, moves by the three
 comparison rules, stays within the cursors, and ends at `(cursor, j)` with `j = |qry|` when the
@@ -2272,7 +2365,12 @@ theorem trace_spec {α : Type} [LinearOrder α] (src qry : List α) :
           (y < x ∧ s' = (s.1, s.2 + 1)))) ∧
     (∀ s ∈ trace src qry, s.1 ≤ cursor src qry ∧ s.2 ≤ qry.length) ∧
     ∃ j, (trace src qry).getLast? = some (cursor src qry, j) ∧
-      (cursor src qry < src.length → j = qry.length) := by sorry
+      (cursor src qry < src.length → j = qry.length) := by
+  refine ⟨traceFrom_head? src qry 0 0, fun k s s' h h' => ?_, fun s hs => ?_,
+    qcursor src qry, trace_last src qry, qcursor_eq_length_of_lt⟩
+  · simpa using traceFrom_step [] [] src qry k s s' h h'
+  · have := mem_traceFrom src qry 0 0 hs
+    exact ⟨by simpa using this.2.1, by have := qcursor_le_length src qry; omega⟩
 
 end Scan
 
