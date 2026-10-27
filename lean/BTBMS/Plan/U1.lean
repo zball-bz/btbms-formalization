@@ -902,34 +902,222 @@ theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
     rw [nu_append_singleton, nuStep, List.append_assoc, List.singleton_append,
       cursor_reduce_before, ih, List.append_assoc, List.singleton_append]
 
+/-- L2.5a helper: the final state of a run started at `(i, j)`. -/
+theorem traceFrom_getLast (src qry : List α) (i j : Nat) :
+    (traceFrom i j src qry).getLast? = some (i + cursor src qry, j + qcursor src qry) := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry => simp [traceFrom, cursor, qcursor]
+  | case2 x xs => simp [traceFrom, cursor, qcursor]
+  | case3 x xs y ys h ih =>
+    rw [traceFrom, if_pos h, List.getLast?_cons, ih, cursor, if_pos h, qcursor, if_pos h]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq, and_true]; omega
+  | case4 xs y ys h ih =>
+    rw [traceFrom, if_neg h, if_pos rfl, List.getLast?_cons, ih, cursor, if_neg h, if_pos rfl,
+      qcursor, if_neg h, if_pos rfl]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq]; omega
+  | case5 x xs y ys h1 h2 ih =>
+    rw [traceFrom, if_neg h1, if_neg h2, List.getLast?_cons, ih, cursor, if_neg h1, if_neg h2,
+      qcursor, if_neg h1, if_neg h2]
+    simp only [Option.getD_some, Option.some.injEq, Prod.mk.injEq, true_and]; omega
+
 /-- L2.5a: the final state of the trace is `(cursor, qcursor)`. -/
 theorem trace_last (src qry : List α) :
-    (trace src qry).getLast? = some (cursor src qry, qcursor src qry) := by sorry
+    (trace src qry).getLast? = some (cursor src qry, qcursor src qry) := by
+  have := traceFrom_getLast src qry 0 0
+  simpa [trace] using this
 
 /-- L2.5a: equal traces have equal final source cursors. -/
 theorem cursor_eq_of_trace_eq {src₁ src₂ qry₁ qry₂ : List α}
-    (h : trace src₁ qry₁ = trace src₂ qry₂) : cursor src₁ qry₁ = cursor src₂ qry₂ := by sorry
+    (h : trace src₁ qry₁ = trace src₂ qry₂) : cursor src₁ qry₁ = cursor src₂ qry₂ := by
+  have := trace_last src₁ qry₁
+  rw [h, trace_last] at this
+  exact (Prod.mk.inj (Option.some.inj this)).1.symm
+
+/-- L2.5a helper: every state of a run started at `(i, j)` lies between the start and the final
+state, coordinatewise. -/
+theorem mem_traceFrom (src qry : List α) (i j : Nat) {s : Nat × Nat}
+    (hs : s ∈ traceFrom i j src qry) :
+    i ≤ s.1 ∧ s.1 ≤ i + cursor src qry ∧ j ≤ s.2 ∧ s.2 ≤ j + qcursor src qry := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry =>
+    simp only [traceFrom, List.mem_singleton] at hs; subst hs; simp
+  | case2 x xs =>
+    simp only [traceFrom, List.mem_singleton] at hs; subst hs; simp
+  | case3 x xs y ys h ih =>
+    rw [traceFrom, if_pos h, List.mem_cons] at hs
+    rw [cursor, if_pos h, qcursor, if_pos h]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih (i + 1) j hs; omega
+  | case4 xs y ys h ih =>
+    rw [traceFrom, if_neg h, if_pos rfl, List.mem_cons] at hs
+    rw [cursor, if_neg h, if_pos rfl, qcursor, if_neg h, if_pos rfl]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih (i + 1) (j + 1) hs; omega
+  | case5 x xs y ys h1 h2 ih =>
+    rw [traceFrom, if_neg h1, if_neg h2, List.mem_cons] at hs
+    rw [cursor, if_neg h1, if_neg h2, qcursor, if_neg h1, if_neg h2]
+    rcases hs with rfl | hs
+    · simp
+    · have := ih i (j + 1) hs; omega
 
 -- U1-verify: changed (new declaration)
 /-- L2.5a: no state of a run has a source cursor beyond the final one (used in the proof of
 `trace_agree`). -/
 theorem trace_fst_le_cursor (src qry : List α) {i j : Nat} (h : (i, j) ∈ trace src qry) :
-    i ≤ cursor src qry := by sorry
+    i ≤ cursor src qry := by
+  simpa using (mem_traceFrom src qry 0 0 h).2.1
+
+/-- L2.5 helper: `trace_map` from an arbitrary start state. -/
+theorem traceFrom_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f)
+    (src qry : List α) (i j : Nat) :
+    traceFrom i j (src.map f) (qry.map f) = traceFrom i j src qry := by
+  induction src, qry using cursor.induct generalizing i j with
+  | case1 qry => simp [traceFrom]
+  | case2 x xs => simp [traceFrom]
+  | case3 x xs y ys h ih =>
+    have := ih (i + 1) j
+    simp only [List.map_cons] at this
+    simp only [List.map_cons, traceFrom, if_pos (hf.lt_iff_lt.2 h), if_pos h, this]
+  | case4 xs y ys h ih =>
+    have := ih (i + 1) (j + 1)
+    simp only [List.map_cons, traceFrom, lt_irrefl, if_false, if_true, this]
+  | case5 x xs y ys h1 h2 ih =>
+    have := ih i (j + 1)
+    simp only [List.map_cons] at this
+    simp only [List.map_cons, traceFrom, if_neg (mt hf.lt_iff_lt.1 h1), if_neg (hf.injective.ne h2),
+      if_neg h1, if_neg h2, this]
 
 /-- L2.5 (1) (`trace_map`†, txt:238): a common strictly increasing map preserves every cursor
 pair. -/
 theorem trace_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (src qry : List α) :
-    trace (src.map f) (qry.map f) = trace src qry := by sorry
+    trace (src.map f) (qry.map f) = trace src qry := traceFrom_map hf src qry 0 0
 
 /-- L2.5 (1), cursor form. -/
 theorem cursor_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (src qry : List α) :
-    cursor (src.map f) (qry.map f) = cursor src qry := by sorry
+    cursor (src.map f) (qry.map f) = cursor src qry := by
+  have h1 := trace_last (src.map f) (qry.map f)
+  rw [trace_map hf, trace_last] at h1
+  exact (Prod.mk.inj (Option.some.inj h1)).1.symm
+
+/-- L2.5 helper: a one-letter source that is never consumed can be raised to `⊤`. -/
+theorem traceFrom_singleton_top {β : Type} [LinearOrder β] [OrderTop β] (s : β) :
+    ∀ (qry : List β) (i j : Nat), cursor [s] qry = 0 →
+      traceFrom i j [⊤] qry = traceFrom i j [s] qry
+  | [], i, j, _ => by simp [traceFrom]
+  | y :: ys, i, j, h => by
+    have h1 : ¬ s < y := fun hc => by rw [cursor, if_pos hc] at h; simp at h
+    have h2 : ¬ s = y := fun hc => by rw [cursor, if_neg h1, if_pos hc] at h; simp at h
+    rw [cursor, if_neg h1, if_neg h2] at h
+    have hys : y < s := lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2)
+    have h3 : ¬ (⊤ : β) < y := not_lt.2 le_top
+    have h4 : ¬ (⊤ : β) = y := fun hc => by
+      rw [← hc] at hys; exact absurd hys (not_lt.2 le_top)
+    conv_lhs => rw [traceFrom, if_neg h3, if_neg h4]
+    conv_rhs => rw [traceFrom, if_neg h1, if_neg h2]
+    rw [traceFrom_singleton_top s ys i (j + 1) h]
+
+/-- L2.5 helper: `trace_cap_top` for a source `A ⌢ [s]` and an arbitrary start state. -/
+theorem traceFrom_cap_top {β : Type} [LinearOrder β] [OrderTop β] (s : β) (A : List β) :
+    ∀ (qry : List β) (i j : Nat), cursor (A ++ [s]) qry < A.length + 1 →
+      traceFrom i j (A ++ [⊤]) qry = traceFrom i j (A ++ [s]) qry := by
+  induction A with
+  | nil =>
+    intro qry i j h
+    simp only [List.nil_append, List.length_nil, Nat.zero_add, Nat.lt_one_iff] at h ⊢
+    exact traceFrom_singleton_top s qry i j h
+  | cons a A ih =>
+    intro qry
+    induction qry with
+    | nil => intro i j _; simp [traceFrom]
+    | cons y ys ihq =>
+      intro i j h
+      simp only [List.cons_append, List.length_cons] at h ihq ⊢
+      by_cases h1 : a < y
+      · rw [cursor, if_pos h1] at h
+        rw [traceFrom, traceFrom, if_pos h1, if_pos h1, ih (y :: ys) (i + 1) j (by omega)]
+      · by_cases h2 : a = y
+        · subst h2
+          rw [cursor, if_neg h1, if_pos rfl] at h
+          rw [traceFrom, traceFrom, if_neg h1, if_pos rfl, if_neg h1, if_pos rfl,
+            ih ys (i + 1) (j + 1) (by omega)]
+        · rw [cursor, if_neg h1, if_neg h2] at h
+          rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h1, if_neg h2, ihq i (j + 1) h]
 
 /-- L2.5 (2) (`trace_cap_top`†, txt:239, 242-244): if a nonempty source is not exhausted,
 replacing its last key by `⊤` preserves every cursor pair. -/
 theorem trace_cap_top {β : Type} [LinearOrder β] [OrderTop β] {src qry : List β} (hne : src ≠ [])
     (hnx : cursor src qry < src.length) : trace (src.dropLast ++ [⊤]) qry = trace src qry := by
-  sorry
+  have hsrc := List.dropLast_append_getLast hne
+  have hlen : src.length = src.dropLast.length + 1 := by
+    conv_lhs => rw [← hsrc]
+    simp
+  rw [← hsrc] at hnx
+  unfold trace
+  conv_rhs => rw [← hsrc]
+  exact traceFrom_cap_top _ _ qry 0 0 (by rw [← hlen]; rwa [hsrc] at hnx ⊢)
+
+/-- L2.5 helper: `trace_agree` from an arbitrary start state, with the sign hypothesis phrased
+through `getElem?`. -/
+theorem traceFrom_agree (u : Nat) : ∀ (src₁ src₂ qry : List α) (i j : Nat),
+    src₁.take u = src₂.take u →
+    (∃ x₁ x₂, src₁[u]? = some x₁ ∧ src₂[u]? = some x₂ ∧ ∀ y ∈ qry, compare x₁ y = compare x₂ y) →
+    cursor src₁ qry ≤ u → traceFrom i j src₁ qry = traceFrom i j src₂ qry := by
+  induction u with
+  | zero =>
+    intro src₁ src₂ qry i j _ hsign hrun
+    obtain ⟨x₁, x₂, h₁, h₂, hs⟩ := hsign
+    obtain ⟨S₁, rfl⟩ : ∃ S₁, src₁ = x₁ :: S₁ := by
+      cases src₁ with
+      | nil => simp at h₁
+      | cons a S₁ => simp at h₁; exact ⟨S₁, by rw [h₁]⟩
+    obtain ⟨S₂, rfl⟩ : ∃ S₂, src₂ = x₂ :: S₂ := by
+      cases src₂ with
+      | nil => simp at h₂
+      | cons a S₂ => simp at h₂; exact ⟨S₂, by rw [h₂]⟩
+    induction qry generalizing i j with
+    | nil => simp [traceFrom]
+    | cons y ys ihq =>
+      have hy := hs y List.mem_cons_self
+      have h1 : ¬ x₁ < y := fun hc => by rw [cursor, if_pos hc] at hrun; omega
+      have h2 : ¬ x₁ = y := fun hc => by rw [cursor, if_neg h1, if_pos hc] at hrun; omega
+      have hgt : compare x₁ y = .gt :=
+        compare_gt_iff_gt.2 (lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2))
+      have hgt' : y < x₂ := compare_gt_iff_gt.1 (hy ▸ hgt)
+      have h3 : ¬ x₂ < y := not_lt.2 hgt'.le
+      have h4 : ¬ x₂ = y := ne_of_gt hgt'
+      rw [cursor, if_neg h1, if_neg h2] at hrun
+      rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h3, if_neg h4,
+        ihq i (j + 1) (fun z hz => hs z (List.mem_cons_of_mem _ hz)) hrun]
+  | succ u ih =>
+    intro src₁ src₂ qry i j hpre hsign hrun
+    obtain ⟨x₁, x₂, h₁, h₂, hs⟩ := hsign
+    cases src₁ with
+    | nil => simp at h₁
+    | cons a S₁ =>
+    cases src₂ with
+    | nil => simp at h₂
+    | cons b S₂ =>
+    simp only [List.take_succ_cons, List.cons.injEq] at hpre
+    obtain ⟨rfl, hpre⟩ := hpre
+    simp only [List.getElem?_cons_succ] at h₁ h₂
+    induction qry generalizing i j with
+    | nil => simp [traceFrom]
+    | cons y ys ihq =>
+      by_cases h1 : a < y
+      · rw [cursor, if_pos h1] at hrun
+        rw [traceFrom, traceFrom, if_pos h1, if_pos h1,
+          ih S₁ S₂ (y :: ys) (i + 1) j hpre ⟨x₁, x₂, h₁, h₂, hs⟩ (by omega)]
+      · by_cases h2 : a = y
+        · subst h2
+          rw [cursor, if_neg h1, if_pos rfl] at hrun
+          rw [traceFrom, traceFrom, if_neg h1, if_pos rfl, if_neg h1, if_pos rfl,
+            ih S₁ S₂ ys (i + 1) (j + 1) hpre
+              ⟨x₁, x₂, h₁, h₂, fun z hz => hs z (List.mem_cons_of_mem _ hz)⟩ (by omega)]
+        · rw [cursor, if_neg h1, if_neg h2] at hrun
+          rw [traceFrom, traceFrom, if_neg h1, if_neg h2, if_neg h1, if_neg h2,
+            ihq i (j + 1) (fun z hz => hs z (List.mem_cons_of_mem _ hz)) hrun]
 
 /-- L2.5 (3) (`trace_agree`†, txt:240-241, 244-245): sources agreeing before `u`, with keys at `u`
 of identical signs against every query key, have the same trace for a run ending at or before
@@ -937,7 +1125,9 @@ of identical signs against every query key, have the same trace for a run ending
 theorem trace_agree {src₁ src₂ qry : List α} {u : Nat} (hpre : src₁.take u = src₂.take u)
     (hu₁ : u < src₁.length) (hu₂ : u < src₂.length)
     (hsign : ∀ y ∈ qry, compare src₁[u] y = compare src₂[u] y) (hrun : cursor src₁ qry ≤ u) :
-    trace src₁ qry = trace src₂ qry := by sorry
+    trace src₁ qry = trace src₂ qry :=
+  traceFrom_agree u src₁ src₂ qry 0 0 hpre
+    ⟨src₁[u], src₂[u], List.getElem?_eq_getElem hu₁, List.getElem?_eq_getElem hu₂, hsign⟩ hrun
 
 end Words
 
