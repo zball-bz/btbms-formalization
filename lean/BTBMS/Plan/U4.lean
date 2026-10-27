@@ -122,43 +122,138 @@ def AgreeBelow (Q Q' : Prims.{u}) (z : Ordinal.{u}) : Prop :=
   (∀ x y, x < z → y < z → (Q.Elem x y ↔ Q'.Elem x y)) ∧
     (∀ c b a, c < z → b < z → a < z → (Q.Edge c b a ↔ Q'.Edge c b a))
 
+/-- N4.1b (helper): a base atom reads the assignment only at its variables. -/
+theorem BaseAtom.holds_congr {W : Type} (P : Prims.{u}) (b : BaseAtom W)
+    (a a' : W → Ordinal.{u}) (h : ∀ x ∈ b.vars, a x = a' x) :
+    b.Holds P a ↔ b.Holds P a' := by
+  cases b <;> simp_all [BaseAtom.vars, BaseAtom.Holds]
+
 /-- N4.1b: truth of a base diagram depends only on the values of its variables. -/
 theorem baseHolds_congr {W : Type} (P : Prims.{u}) (D : List (BaseAtom W))
     (a a' : W → Ordinal.{u}) (h : ∀ x ∈ baseVars D, a x = a' x) :
-    BaseHolds P D a ↔ BaseHolds P D a' := by sorry
+    BaseHolds P D a ↔ BaseHolds P D a' :=
+  forall₂_congr fun b hb => BaseAtom.holds_congr P b a a' fun x hx =>
+    h x (List.mem_flatMap.2 ⟨b, hb, hx⟩)
 
-/-- N4.1a: truth of a diagram depends only on the values of its variables. -/
-theorem Diagram.holds_congr {V : Type} (P : Prims.{u}) (D : Diagram V) (a a' : V → Ordinal.{u})
-    (h : ∀ x ∈ D.vars, a x = a' x) : D.Holds P a ↔ D.Holds P a' := by sorry
-
-/-- N4.1a (locality): a diagram whose variables are all below `z` reads the primitives only
-below `z`. -/
-theorem Diagram.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
-    (hQ : AgreeBelow Q Q' z) (D : Diagram V) (a : V → Ordinal.{u}) (ha : ∀ x ∈ D.vars, a x < z) :
-    D.Holds Q a ↔ D.Holds Q' a := by sorry
-
-/-- N4.1a: realizability below `w` is monotone in `w`. -/
-theorem Diagram.realizableBelow_mono {V : Type} (P : Prims.{u}) (D : Diagram V) (F : V → Prop)
-    (σ : V → Ordinal.{u}) {w w' : Ordinal.{u}} (hw : w ≤ w') :
-    D.RealizableBelow P F σ w → D.RealizableBelow P F σ w' := by sorry
-
-/-- N4.1a (locality of realizability). -/
-theorem Diagram.realizableBelow_congr_below {V : Type} {Q Q' : Prims.{u}} {z w : Ordinal.{u}}
-    (hQ : AgreeBelow Q Q' z) (hw : w ≤ z) (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u}) :
-    D.RealizableBelow Q F σ w ↔ D.RealizableBelow Q' F σ w := by sorry
-
-/-- N4.1a: only fixed variables that occur in `D` matter. -/
-theorem Diagram.realizableBelow_congr_fixed {V : Type} (P : Prims.{u}) (D : Diagram V)
-    (F : V → Prop) (σ σ' : V → Ordinal.{u}) (w : Ordinal.{u})
-    (h : ∀ x ∈ D.vars, F x → σ x = σ' x) :
-    D.RealizableBelow P F σ w ↔ D.RealizableBelow P F σ' w := by sorry
-
+-- Moved up from the end of this section (unchanged): `Atom.holds_congr` uses it.
 /-- N4.1b: `BlockAbove` only reads the frame on the base variables (used by the translation
 N4.4 and by L5.8c). -/
 theorem blockAbove_congr_frame {W : Type} (P : Prims.{u}) (D : List (BaseAtom W))
     (fr fr' : W → Option Ordinal.{u}) (L w : Ordinal.{u})
     (h : ∀ x ∈ baseVars D, fr x = fr' x) :
-    BlockAbove P D fr L w ↔ BlockAbove P D fr' L w := by sorry
+    BlockAbove P D fr L w ↔ BlockAbove P D fr' L w := by
+  have key : ∀ fr fr' : W → Option Ordinal.{u}, (∀ x ∈ baseVars D, fr x = fr' x) →
+      BlockAbove P D fr L w → BlockAbove P D fr' L w := by
+    rintro fr fr' h ⟨β, hfix, hnew, hlt, hhold⟩
+    have hβ : ∀ x ∈ baseVars D, (fr' x).getD (β x) = β x := by
+      intro x hx
+      cases hx' : fr' x with
+      | none => rfl
+      | some o => exact (hfix x o ((h x hx).trans hx')).symm
+    refine ⟨fun x => (fr' x).getD (β x), fun x o hx => by simp [hx], fun x hx hn => ?_,
+      fun x hx => (hβ x hx).trans_lt (hlt x hx),
+      (baseHolds_congr P D _ _ hβ).2 hhold⟩
+    simp only [hn, Option.getD_none]
+    exact hnew x hx ((h x hx).trans hn)
+  exact ⟨key fr fr' h, key fr' fr fun x hx => (h x hx).symm⟩
+
+/-- N4.1a (helper): an atom reads the assignment only at its variables. -/
+theorem Atom.holds_congr {V : Type} (P : Prims.{u}) (A : Atom V) (a a' : V → Ordinal.{u})
+    (h : ∀ x ∈ A.vars, a x = a' x) : A.Holds P a ↔ A.Holds P a' := by
+  cases A with
+  | base b => exact BaseAtom.holds_congr P b a a' h
+  | noReal D fr u L =>
+    simp only [Atom.vars, List.mem_cons, List.mem_filterMap] at h
+    simp only [Atom.Holds]
+    rw [h u (Or.inl rfl), h L (Or.inr (Or.inl rfl))]
+    refine not_congr (blockAbove_congr_frame P D _ _ _ _ fun x hx => ?_)
+    cases hfx : fr x with
+    | none => rfl
+    | some y => simp [h y (Or.inr (Or.inr ⟨x, hx, hfx⟩))]
+
+/-- N4.1a: truth of a diagram depends only on the values of its variables. -/
+theorem Diagram.holds_congr {V : Type} (P : Prims.{u}) (D : Diagram V) (a a' : V → Ordinal.{u})
+    (h : ∀ x ∈ D.vars, a x = a' x) : D.Holds P a ↔ D.Holds P a' :=
+  forall₂_congr fun A hA => Atom.holds_congr P A a a' fun x hx =>
+    h x (List.mem_flatMap.2 ⟨A, hA, hx⟩)
+
+/-- N4.1a (helper): a base atom whose variables are below `z` reads the primitives only below
+`z`. -/
+theorem BaseAtom.holds_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (b : BaseAtom W) (a : W → Ordinal.{u})
+    (ha : ∀ x ∈ b.vars, a x < z) : b.Holds Q a ↔ b.Holds Q' a := by
+  cases b with
+  | elem x y =>
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at ha
+    exact hQ.1 _ _ (ha x (Or.inl rfl)) (ha y (Or.inr rfl))
+  | edge c b a' =>
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at ha
+    exact hQ.2 _ _ _ (ha c (Or.inl rfl)) (ha b (Or.inr (Or.inl rfl))) (ha a' (Or.inr (Or.inr rfl)))
+  | _ => exact Iff.rfl
+
+/-- N4.1a (helper): a base diagram whose variables are below `z` reads the primitives only
+below `z`. -/
+theorem baseHolds_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : List (BaseAtom W)) (a : W → Ordinal.{u})
+    (ha : ∀ x ∈ baseVars D, a x < z) : BaseHolds Q D a ↔ BaseHolds Q' D a :=
+  forall₂_congr fun b hb => BaseAtom.holds_congr_below hQ b a fun x hx =>
+    ha x (List.mem_flatMap.2 ⟨b, hb, hx⟩)
+
+/-- N4.1a (helper): `BlockAbove` with bound `w ≤ z` reads the primitives only below `z`. -/
+theorem blockAbove_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : List (BaseAtom W)) (fr : W → Option Ordinal.{u})
+    {L w : Ordinal.{u}} (hw : w ≤ z) : BlockAbove Q D fr L w ↔ BlockAbove Q' D fr L w :=
+  exists_congr fun β => and_congr_right fun _ => and_congr_right fun _ => and_congr_right
+    fun hlt => baseHolds_congr_below hQ D β fun x hx => (hlt x hx).trans_le hw
+
+/-- N4.1a (helper): an atom whose variables are below `z` reads the primitives only below `z`. -/
+theorem Atom.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (A : Atom V) (a : V → Ordinal.{u})
+    (ha : ∀ x ∈ A.vars, a x < z) : A.Holds Q a ↔ A.Holds Q' a := by
+  cases A with
+  | base b => exact BaseAtom.holds_congr_below hQ b a ha
+  | noReal D fr u L =>
+    exact not_congr (blockAbove_congr_below hQ D _ (ha u List.mem_cons_self).le)
+
+/-- N4.1a (locality): a diagram whose variables are all below `z` reads the primitives only
+below `z`. -/
+theorem Diagram.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : Diagram V) (a : V → Ordinal.{u}) (ha : ∀ x ∈ D.vars, a x < z) :
+    D.Holds Q a ↔ D.Holds Q' a :=
+  forall₂_congr fun A hA => Atom.holds_congr_below hQ A a fun x hx =>
+    ha x (List.mem_flatMap.2 ⟨A, hA, hx⟩)
+
+/-- N4.1a: realizability below `w` is monotone in `w`. -/
+theorem Diagram.realizableBelow_mono {V : Type} (P : Prims.{u}) (D : Diagram V) (F : V → Prop)
+    (σ : V → Ordinal.{u}) {w w' : Ordinal.{u}} (hw : w ≤ w') :
+    D.RealizableBelow P F σ w → D.RealizableBelow P F σ w' := by
+  rintro ⟨a, hfix, hlt, hD⟩
+  exact ⟨a, hfix, fun x hx => (hlt x hx).trans_le hw, hD⟩
+
+/-- N4.1a (locality of realizability). -/
+theorem Diagram.realizableBelow_congr_below {V : Type} {Q Q' : Prims.{u}} {z w : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (hw : w ≤ z) (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u}) :
+    D.RealizableBelow Q F σ w ↔ D.RealizableBelow Q' F σ w :=
+  exists_congr fun a => and_congr_right fun _ => and_congr_right fun hlt =>
+    D.holds_congr_below hQ a fun x hx => (hlt x hx).trans_le hw
+
+/-- N4.1a: only fixed variables that occur in `D` matter. -/
+theorem Diagram.realizableBelow_congr_fixed {V : Type} (P : Prims.{u}) (D : Diagram V)
+    (F : V → Prop) (σ σ' : V → Ordinal.{u}) (w : Ordinal.{u})
+    (h : ∀ x ∈ D.vars, F x → σ x = σ' x) :
+    D.RealizableBelow P F σ w ↔ D.RealizableBelow P F σ' w := by
+  classical
+  have key : ∀ σ σ' : V → Ordinal.{u}, (∀ x ∈ D.vars, F x → σ x = σ' x) →
+      D.RealizableBelow P F σ w → D.RealizableBelow P F σ' w := by
+    rintro σ σ' h ⟨a, hfix, hlt, hD⟩
+    have ha : ∀ x ∈ D.vars, (if x ∈ D.vars then a x else σ' x) = a x := fun x hx => if_pos hx
+    refine ⟨fun x => if x ∈ D.vars then a x else σ' x, fun x hF => ?_,
+      fun x hx => (ha x hx).trans_lt (hlt x hx), (D.holds_congr P _ _ ha).2 hD⟩
+    by_cases hx : x ∈ D.vars
+    · simp only [if_pos hx]
+      exact (hfix x hF).trans (h x hx hF)
+    · simp only [if_neg hx]
+  exact ⟨key σ σ' h, key σ' σ fun x hx hF => (h x hx hF).symm⟩
 
 /-! Part B (the J-hierarchy route of paper §5) is dropped: decision D-4. -/
 
