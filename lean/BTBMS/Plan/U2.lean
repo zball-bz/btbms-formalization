@@ -3513,13 +3513,171 @@ theorem low_head_detour (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi
 
 /-! ## G9.6, G9.7 — the cut query is `κ_φ W`; lowness is the same at every head -/
 
+-- G9 (helper): no non-Q column of `A` lies inside a height of the stopping column
+theorem not_inside_sdcol (S : OrdStep) {a : ColAddr} (ha : a ∈ S.A.colAddrs)
+    (haq : isQMat S.sd a = false) {i : Nat} {rest : List (Nat × Nat)}
+    (hp : a.path = S.sd.col.path ++ (S.sd.col.col, i) :: rest) : False := by
+  obtain ⟨hcol, -, -, hroute, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, F, hF, -⟩ := (Scan.mem_routeCols_iff _ _).mp hroute
+  have hcolF : F.cols[S.sd.col.col]? = some (S.sd.Q ++ [(S.sd.r, Tree.empty)]) := by
+    unfold Tree.colAt at hcol
+    rw [hF] at hcol
+    simpa using hcol
+  rcases Nat.lt_trichotomy i S.sd.Q.length with hik | hik | hik
+  · apply Bool.false_ne_true
+    rw [← haq]
+    unfold isQMat
+    rw [hp, List.take_left, List.drop_left]
+    simp [hik]
+  · rw [Tree.mem_colAddrs_iff] at ha
+    unfold Tree.colAt at ha
+    rw [hp, Tree.forestAt_append, hF] at ha
+    simp only [Option.bind_some, Tree.forestAt, hcolF] at ha
+    rw [hik, List.getElem?_append_right le_rfl, Nat.sub_self] at ha
+    simp only [List.getElem?_cons_zero] at ha
+    cases rest with
+    | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at ha
+    | cons q rest' =>
+      obtain ⟨c', e'⟩ := q
+      simp [Tree.forestAt, Tree.empty, Tree.cols] at ha
+  · rw [Tree.mem_colAddrs_iff] at ha
+    unfold Tree.colAt at ha
+    rw [hp, Tree.forestAt_append, hF] at ha
+    simp only [Option.bind_some, Tree.forestAt, hcolF] at ha
+    rw [List.getElem?_eq_none (by simp; omega)] at ha
+    simp at ha
+
+-- G9 (helper): the stopping column contains no non-Q column of `A`
+theorem sdcol_container_none (S : OrdStep) {a : ColAddr} (ha : a ∈ S.A.colAddrs)
+    (haq : isQMat S.sd a = false) : S.sd.col.container a = none := by
+  cases h : S.sd.col.container a with
+  | none => rfl
+  | some e =>
+    exfalso
+    unfold ColAddr.container at h
+    cases hd : a.path.drop S.sd.col.path.length with
+    | nil => rw [hd] at h; cases h
+    | cons x rest =>
+      obtain ⟨k', i'⟩ := x
+      rw [hd] at h
+      simp only at h
+      split_ifs at h with hc
+      obtain ⟨htake, hk⟩ := hc
+      have hp : a.path = S.sd.col.path ++ (S.sd.col.col, i') :: rest := by
+        rw [← List.take_append_drop S.sd.col.path.length a.path, htake, hd, hk]
+      exact not_inside_sdcol S ha haq hp
+
+-- G9 (helper): a container of a column is on its stack
+theorem onStack_of_container {a b : ColAddr} {e : EntryAddr} (h : a.container b = some e) :
+    b.OnStack a := by
+  obtain ⟨he1, ⟨t, ht⟩⟩ := (ColAddr.container_spec a b e).mp h
+  subst he1
+  unfold EntryAddr.heightPath at ht
+  refine Or.inl ⟨e.col.path.length, e.col.col, e.idx, ?_, ?_, le_rfl⟩
+  · rw [← ht, List.append_assoc, List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+  · rw [← ht, List.append_assoc, List.take_left]
+
+-- G9.6 (helper, the full-cut exclusion; open): the phase copy `c` of a template column that
+-- contains the stopping column lies on the route of `B`, so a cut after its last entry is at the
+-- end of `w(B)` (G-009 §3 G9.6 step 2)
+theorem fullCut_container_end (S : OrdStep) {i : Nat} {a c : ColAddr} {ρ : Nat}
+    (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (haq : isQMat S.sd a = false)
+    (hc : phaseCol S.sd S.rd i a = some c) {e : EntryAddr} (he : a.container S.sd.col = some e)
+    (hup : IsUpward S.B c (e.idx + 1) ρ) : mu S.B ≤ capPos S.B c (e.idx + 1) := by sorry
+
 -- G9.6: off the full cut, the first `k` entries of `c` are pure `τ_φ`-copies of those of `a`, so
 -- `V = κ_φ(W)` with `W = B_a(k−1)` the old cut query (T3.2h.1)
 theorem capQ_eq_kappaQ (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
     (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
     (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
     (hend : capPos S.B c k < mu S.B) :
-    S.capQ c k ρ = kappaQ S.sd.r S.d (phaseOff S.sd i a) (cutQuery (actualKeys S.A a) k) := by sorry
+    S.capQ c k ρ = kappaQ S.sd.r S.d (phaseOff S.sd i a) (cutQuery (actualKeys S.A a) k) := by
+  obtain ⟨hKcol, hKlen⟩ := litCap_colAt_self hup
+  set f := shiftVal S.sd.r (phaseOff S.sd i a * S.d) with hf
+  -- the first `k` entries of `c` in `B` are `τ_φ`-copies of those of `a` in `A`
+  have hfirst : ((S.B.colAt c).getD []).take k =
+      (((S.A.colAt a).getD []).take k).map fun x => (f x.1, Tree.map f x.2) := by
+    by_cases haq : isQMat S.sd a = true
+    · have hroute : ¬ OnHoleRoute S.sd a := fun h => by
+        have := isQMat_of_short S.sd h.length_le
+        rw [haq] at this
+        cases this
+      have hB := colAt_phaseCol S.inL S.kind S.hsd S.hrd S.out hi ha hroute hc
+      rw [hB]
+      cases S.A.colAt a with
+      | none => simp
+      | some col => simp [mapCol_eq_map, List.map_take, hf, OrdStep.d]
+    · have haq' : isQMat S.sd a = false := by simpa using haq
+      have hφ : phaseOff S.sd i a = i := by simp [phaseOff, haq']
+      obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := i) hi.2 ha haq'
+      have hcopy : S.copyCol i a = c := by
+        simp only [OrdStep.copyCol, if_neg (show i ≠ 0 by omega), hc, Option.getD_some]
+      rw [hcopy] at hZ
+      rw [hZ]
+      -- the context agrees with `A` on the first `k` entries of `a`
+      have hctx : (((context S.A S.sd Z).colAt a).getD []).take k = ((S.A.colAt a).getD []).take k := by
+        cases hce : a.container S.sd.col with
+        | none =>
+          rw [colAt_context_of_not_route S.hsd Z ha.1 ha.2.1 (sdcol_container_none S ha.1 haq') hce]
+        | some e =>
+          have hst := onStack_of_container hce
+          obtain ⟨hpar, htk, -⟩ := colAt_context_onStack S.hsd Z hst
+          have hl := container_sdcol_last S hce
+          -- `k ≤ e.idx`: the full cut is excluded by `hend`
+          have hkle : k ≤ e.idx := by
+            have hk1 : k ≤ ((S.B.colAt c).getD []).length := by
+              have := hKlen; rw [List.length_take] at this; omega
+            have hBlen : ((S.B.colAt c).getD []).length = (parents S.A a).length := by
+              rw [hZ, ← hpar]
+              simp only [parents, List.length_map]
+              cases (context S.A S.sd Z).colAt a with
+              | none => rfl
+              | some col => simp [mapCol_eq_map]
+            by_contra hcon
+            have hk : k = e.idx + 1 := by omega
+            subst hk
+            have := fullCut_container_end S hi ha haq' hc hce hup
+            omega
+          have h1 := htk e hce
+          have key : ∀ (o1 o2 : Option Column), o1.map (·.take e.idx) = o2.map (·.take e.idx) →
+              (o1.getD []).take k = (o2.getD []).take k := by
+            intro o1 o2 h12
+            cases o1 with
+            | none =>
+              cases o2 with
+              | none => rfl
+              | some _ => cases h12
+            | some C1 =>
+              cases o2 with
+              | none => cases h12
+              | some C2 =>
+                simp only [Option.map_some, Option.some.injEq] at h12
+                simp only [Option.getD_some]
+                rw [← Nat.min_eq_left hkle, ← List.take_take, h12, List.take_take]
+          exact key _ _ h1
+      rw [← hctx]
+      simp only [hf, hφ]
+      cases (context S.A S.sd Z).colAt a with
+      | none => simp
+      | some col => simp [mapCol_eq_map, List.map_take]
+  -- keys
+  have hnum : c.num 0 = a.num 0 + phaseOff S.sd i a * S.d :=
+    num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inr ha) hi.1 hc
+  have hra : S.sd.r ≤ a.num 0 := (tmplCol_num_gt S ha).le
+  have hKtake : (actualKeys (litCap S.B c k ρ) c).take k =
+      kappaQ S.sd.r S.d (phaseOff S.sd i a) ((actualKeys S.A a).take k) := by
+    simp only [actualKeys, hKcol, Option.getD_some, List.map_append]
+    rw [List.take_left' (by rw [List.length_map, hKlen]), ← List.map_take, hfirst, List.map_map]
+    unfold kappaQ
+    rw [List.map_map]
+    congr 1
+    funext x
+    simp only [Function.comp_apply, WithTop.map_coe, hnum, hf]
+    exact congrArg _ (relKey_shift S.sd.r S.d (phaseOff S.sd i a) (a.num 0) hra x.2)
+  unfold OrdStep.capQ cutQuery
+  rw [hKtake]
+  unfold kappaQ
+  rw [nu_map (kappaQry_strictMono _ _ _)]
 
 -- G9.7 (T3.8lm, list form): a query `κ_φ W` that is low at `s_φ` is low at every head
 -- `s_1, …, s_φ`
