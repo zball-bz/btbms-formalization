@@ -1591,7 +1591,34 @@ theorem capQ_eq_kappaQ (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi 
 theorem low_all_heads (S : OrdStep) {φ : Nat} (hφ : 1 ≤ φ) (W : List Key)
     (hlow : kappaQ S.sd.r S.d φ (W.map (↑)) < kappaQ S.sd.r S.d (φ - 1) S.termZ) {h : Nat}
     (hh : 1 ≤ h ∧ h ≤ φ) :
-    kappaQ S.sd.r S.d φ (W.map (↑)) < kappaQ S.sd.r S.d (h - 1) S.termZ := by sorry
+    kappaQ S.sd.r S.d φ (W.map (↑)) < kappaQ S.sd.r S.d (h - 1) S.termZ := by
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  have hrt : S.sd.r < S.sd.t := (rootData_spec S.hsd S.hrd).2.2.2.2.1
+  have htd : S.sd.r + S.d = S.sd.t := by simp only [OrdStep.d, period]; omega
+  have hcoe : StrictMono (fun x : Key => (x : WithTop Key)) := WithTop.coe_strictMono
+  -- the old complete query is `ν(y)`, read in `WithTop Key`
+  have hZ : S.termZ = (nu (S.sd.Q.map fun x => relKey (S.sd.r + S.d) x.2)).map (↑) := by
+    unfold OrdStep.termZ cutQuery
+    rw [← nu_map hcoe]
+    congr 1
+    simp only [actualKeys, hcol, Option.getD_some, List.map_append, ← ht, htd, List.map_map]
+    rw [List.take_left' (by simp [OrdStep.m])]
+    rfl
+  obtain ⟨Js, -, hJs⟩ : ∃ Js : List Forest, Js.Sublist (S.sd.Q.map Prod.snd) ∧
+      nu (S.sd.Q.map fun x => relKey (S.sd.r + S.d) x.2) = Js.map (relKey (S.sd.r + S.d)) := by
+    have hm : (S.sd.Q.map fun x => relKey (S.sd.r + S.d) x.2) =
+        (S.sd.Q.map Prod.snd).map (relKey (S.sd.r + S.d)) := by
+      rw [List.map_map]; rfl
+    have := nu_sublist (S.sd.Q.map fun x => relKey (S.sd.r + S.d) x.2)
+    rw [hm] at this ⊢
+    exact List.sublist_map_iff.mp this
+  have hmap : ∀ j (l : List Key),
+      kappaQ S.sd.r S.d j (l.map (↑)) = (l.map (kappa S.sd.r S.d j)).map (↑) := by
+    intro j l; unfold kappaQ; rw [List.map_map, List.map_map]; rfl
+  rw [hZ, hJs, hmap, hmap] at hlow ⊢
+  rw [list_map_lt_iff (hcoe.strictMonoOn Set.univ) (fun _ _ => trivial) (fun _ _ => trivial)]
+    at hlow ⊢
+  exact (sign_indep_list (by omega) (by omega) W Js).mp hlow
 
 /-! ## G9.8 — the derivation of T3.8lo -/
 
@@ -1613,7 +1640,33 @@ theorem low_of_head_edge (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
     (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ) {h : Nat}
     (hh : 1 ≤ h ∧ h ≤ phaseOff S.sd i a) {w : Nat}
     (he : Edge (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) (S.s h) w)
-    (hw : S.sd.r ≤ w) : S.capQ c k ρ < kappaQ S.sd.r S.d (h - 1) S.termZ := by sorry
+    (hw : S.sd.r ≤ w) : S.capQ c k ρ < kappaQ S.sd.r S.d (h - 1) S.termZ := by
+  obtain ⟨o, ho, hresp⟩ := he
+  obtain ⟨hres, -⟩ := resolve_headCol S hi ha hq hc hh
+  rw [hres, Option.some.injEq] at ho
+  subst ho
+  obtain ⟨-, hbig, hkeys, hlen⟩ := headCol_litCap S hi ha hq hc hup hh
+  rw [resp_eq_parents] at hresp
+  have hcm : cursor (actualKeys (litCap S.B c k ρ) (S.headCol h)) (S.capQ c k ρ) < S.m := by
+    by_contra hcon
+    have := hbig _ _ (by omega) hresp
+    omega
+  have hst := kappaQry_strictMono S.sd.r S.d (h - 1)
+  have e1 := cursor_take (actualKeys (litCap S.B c k ρ) (S.headCol h)) (S.capQ c k ρ) S.m
+  rw [hkeys] at e1
+  have hlt : cursor (kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m))
+      (S.capQ c k ρ) < S.m := by
+    rw [e1]; omega
+  have hlenq : S.m ≤ (kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m)).length := by
+    rw [← hkeys, List.length_take]; omega
+  have := lt_cutQuery_of_cursor_lt (cutQuery_noninc _ _) hlenq hlt
+  unfold kappaQ at this ⊢
+  rw [cutQuery_map hst] at this
+  have htt : cutQuery ((actualKeys S.A S.sd.col).take S.m) S.m =
+      cutQuery (actualKeys S.A S.sd.col) S.m := by
+    unfold cutQuery; rw [List.take_take, Nat.min_self]
+  rw [htt] at this
+  exact this
 
 -- G9.8c: the first unconsumed root entry of a literal cap is the response of its root column at
 -- the cap's cut query
@@ -1622,7 +1675,25 @@ theorem unconsumed_litCap {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpwar
     c.resolve 0 ρ = some rd.col ∧
       (unconsumed (litCap B c k ρ) rd).head?.map Prod.fst =
         resp (litCap B c k ρ) (actualKeys (litCap B c k ρ)) rd.col
-          (cutQuery (actualKeys (litCap B c k ρ) c) k) := by sorry
+          (cutQuery (actualKeys (litCap B c k ρ) c) k) := by
+  have hsd := stopData_litCap hup
+  obtain ⟨hres, -, -, -, hcur, -⟩ := rootData_path hsd hrd
+  refine ⟨hres, ?_⟩
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  have hq : (actualKeys (litCap B c k ρ) c).take k =
+      (queryKeys ⟨colDepth c, c, c.num 0, ρ, ((B.colAt c).getD []).take k⟩).map (↑) := by
+    simp only [actualKeys, hcol, queryKeys, Option.getD_some, List.map_append, List.map_map]
+    rw [List.take_left' (by rw [List.length_map, hlen])]
+    rfl
+  have hkeys : actualKeys (litCap B c k ρ) rd.col = (rootKeys (litCap B c k ρ) rd).map (↑) := by
+    simp only [actualKeys, rootKeys, List.map_map]
+    rfl
+  have hc : cursor (actualKeys (litCap B c k ρ) rd.col) (cutQuery (actualKeys (litCap B c k ρ) c) k) =
+      rd.cursor := by
+    unfold cutQuery
+    rw [cursor_nu, hq, hkeys, cursor_map WithTop.coe_strictMono, hcur]
+  unfold unconsumed rootCol resp
+  rw [hc, List.head?_drop]
 
 -- T3.8lo (txt:556-560): at a previous-phase root the actual response is a parent `≥ r`
 theorem prev_root_response (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
