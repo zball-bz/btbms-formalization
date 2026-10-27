@@ -4244,13 +4244,761 @@ theorem onStack_of_container {a b : ColAddr} {e : EntryAddr} (h : a.container b 
   · rw [← ht, List.append_assoc, List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
   · rw [← ht, List.append_assoc, List.take_left]
 
--- G9.6 (helper, the full-cut exclusion; open): the phase copy `c` of a template column that
--- contains the stopping column lies on the route of `B`, so a cut after its last entry is at the
--- end of `w(B)` (G-009 §3 G9.6 step 2)
+/-! ### G9.6 (D7): the full cut of a route container is at the end of `w(B)` -/
+
+-- L-G010.21d (D7, helper): replacing the height of the last entry of a column changes the
+-- column's word length by the difference of the heights' word lengths
+theorem length_wordCol_last_D7 (e : Nat) (L : Column) (q : Nat) (H H' : Forest) :
+    (wordCol e (L ++ [(q, H')])).length + (wordAt (e + 1) H).length =
+      (wordCol e (L ++ [(q, H)])).length + (wordAt (e + 1) H').length := by
+  cases L with
+  | nil => simp [wordCol, wordLater]; omega
+  | cons x L =>
+    obtain ⟨p, h⟩ := x
+    simp [wordCol, wordLater_append, wordLater]
+    omega
+
+-- L-G010.21d (D7, helper): along a route path, a full cut of a nonempty last column adds exactly
+-- one atom to the word
+theorem length_wordAt_litCapAux_D7 (k p : Nat) :
+    ∀ (π : List (Nat × Nat)) (j e : Nat) (F : Forest), Scan.IsRoutePath F π →
+      (∃ G col, F.forestAt π = some G ∧ G.cols.length = j + 1 ∧ G.cols[j]? = some col ∧
+        col ≠ [] ∧ k = col.length) →
+      (wordAt e (litCapAux k p π j F)).length = (wordAt e F).length + 1
+  | [], j, e, .node cols, _, ⟨G, col, hG, hlen, hcol, hne, hk⟩ => by
+    simp only [Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    simp only [Tree.cols] at hlen hcol
+    have hgd : cols.getD j [] = col := by simp [List.getD_eq_getElem?_getD, hcol]
+    have hcols : cols = cols.take j ++ [col] := by
+      conv_lhs => rw [← List.take_append_drop j cols]
+      rw [List.drop_eq_getElem_cons (by omega), (List.getElem?_eq_some_iff.mp hcol).2,
+        List.drop_eq_nil_of_le (by omega)]
+    simp only [litCapAux, hgd, hk, List.take_length, wordAt]
+    conv_rhs => rw [hcols]
+    rw [wordCols_append, wordCols_append]
+    simp only [wordCols, List.append_nil]
+    rw [wordCol_append_of_ne_nil e hne]
+    simp [wordLater, wordAt, Tree.empty, wordCols]
+    omega
+  | (ci, ei) :: rest, j, e, .node cols, hr, ⟨G, col, hG, hlen, hcol, hne, hk⟩ => by
+    obtain ⟨hl, h, hh, hr'⟩ := Scan.isRoutePath_cons.mp hr
+    obtain ⟨colc, q, h', hcl, hel, hs, hh'⟩ := Scan.lastStep?_eq_some hl
+    rw [hh] at hh'
+    cases hh'
+    simp only [Prod.mk.injEq, Tree.cols] at hs
+    obtain ⟨hcie, heie⟩ := hs
+    simp only [Tree.cols] at hcl
+    have hcne : cols ≠ [] := by intro h0; simp [h0] at hcl
+    have hci : cols[ci]? = some colc := by
+      rw [hcie, ← List.getLast?_eq_getElem?]; exact hcl
+    have hgd : cols.getD ci [] = colc := by
+      simp [List.getD_eq_getElem?_getD, hci]
+    have hee : colc[ei]? = some (q, h) := by
+      rw [heie, ← List.getLast?_eq_getElem?]; exact hel
+    have hcne' : colc ≠ [] := by intro h0; simp [h0] at hel
+    have hcols : cols = cols.take ci ++ [colc] := by
+      conv_lhs => rw [← List.take_append_drop ci cols]
+      rw [List.drop_eq_getElem_cons (by have := List.length_pos_of_ne_nil hcne; omega),
+        (List.getElem?_eq_some_iff.mp hci).2, List.drop_eq_nil_of_le (by omega)]
+    have hcolc : colc = colc.take ei ++ [(q, h)] := by
+      conv_lhs => rw [← List.take_append_drop ei colc]
+      rw [List.drop_eq_getElem_cons (by have := List.length_pos_of_ne_nil hcne'; omega),
+        (List.getElem?_eq_some_iff.mp hee).2, List.drop_eq_nil_of_le (by omega)]
+    have hGh : h.forestAt rest = some G := by
+      rw [show (ci, ei) :: rest = [(ci, ei)] ++ rest from rfl, Tree.forestAt_append, hh] at hG
+      exact hG
+    have ih := length_wordAt_litCapAux_D7 k p rest j (e + 1) h hr' ⟨G, col, hGh, hlen, hcol, hne, hk⟩
+    simp only [litCapAux, hgd, hee, wordAt]
+    conv_rhs => rw [hcols]
+    rw [wordCols_append, wordCols_append]
+    simp only [wordCols, List.append_nil, List.length_append]
+    have := length_wordCol_last_D7 e (colc.take ei) q h
+      (litCapAux k p rest j h)
+    rw [← hcolc] at this
+    omega
+
+-- L-G010.21d (D7; D3.1c, L3.1c): the full cut of a nonempty route column is at the end of the
+-- word (an empty route column's marker atom is replaced instead)
+theorem capPos_route_D7 {E : Forest} {c : ColAddr} (hc : c ∈ routeCols E)
+    (hne : parents E c ≠ []) : capPos E c (parents E c).length = mu E := by
+  obtain ⟨hr, G, hG, hGl⟩ := (Scan.mem_routeCols_iff E c).mp hc
+  have hcm := Scan.mem_colAddrs_of_mem_routeCols hc
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.mp ((Tree.mem_colAddrs_iff _ _).mp hcm)
+  have hGc : G.cols[c.col]? = some col := by
+    unfold Tree.colAt at hcol; rw [hG] at hcol; exact hcol
+  have hpar : parents E c = col.map Prod.fst := by simp [parents, hcol]
+  have hcne : col ≠ [] := by intro h0; rw [hpar, h0] at hne; exact hne rfl
+  have hlen := length_wordAt_litCapAux_D7 (parents E c).length 0 c.path c.col 0 E hr
+    ⟨G, col, hG, hGl, hGc, hcne, by rw [hpar, List.length_map]⟩
+  unfold capPos mu word
+  have hK : litCap E c (parents E c).length 0 = litCapAux (parents E c).length 0 c.path c.col E := by
+    show litCapBody E c _ 0 = _
+    unfold litCapBody
+    rw [if_pos (by rw [hcol]; rfl)]
+  rw [hK, hlen]
+  omega
+
+
+/-! ### Route columns of placements (D7, for G9.6 `fullCut_container_end`) -/
+
+-- D7 (route helper): a route column one step down
+theorem mem_routeCols_cons_D7 {F h : Forest} {s : Nat × Nat} (hs : F.lastStep? = some s)
+    (hh : F.forestAt [s] = some h) {b : ColAddr} (hb : b ∈ routeCols h) :
+    (⟨s :: b.path, b.col⟩ : ColAddr) ∈ routeCols F := by
+  obtain ⟨hr, G, hG, hGl⟩ := (Scan.mem_routeCols_iff h b).mp hb
+  refine (Scan.mem_routeCols_iff F _).mpr ⟨Scan.isRoutePath_cons.mpr ⟨hs, h, hh, hr⟩, G, ?_, hGl⟩
+  show F.forestAt (s :: b.path) = some G
+  rw [show s :: b.path = [s] ++ b.path from rfl, Tree.forestAt_append, hh]
+  exact hG
+
+-- D7 (route helper): route columns survive prepending columns to the outer forest
+theorem mem_routeCols_append_D7 (L : List Column) {Z : Forest} {b : ColAddr}
+    (hb : b ∈ routeCols Z) : underCol ⟨[], L.length⟩ b ∈ routeCols (.node (L ++ Z.cols)) := by
+  obtain ⟨hr, G, hG, hGl⟩ := (Scan.mem_routeCols_iff Z b).mp hb
+  obtain ⟨bp, bc⟩ := b
+  cases bp with
+  | nil =>
+    simp only [Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    simp only [underCol]
+    refine (Scan.mem_routeCols_iff _ _).mpr ⟨fun d hd => absurd hd (by simp), _, rfl, ?_⟩
+    simp only [Tree.cols, List.length_append] at hGl ⊢
+    omega
+  | cons s rest =>
+    obtain ⟨c0, e0⟩ := s
+    obtain ⟨hl, h, hh, hr'⟩ := Scan.isRoutePath_cons.mp hr
+    obtain ⟨col, q, h', hcl, hel, hs, hh'⟩ := Scan.lastStep?_eq_some hl
+    simp only [Prod.mk.injEq] at hs
+    obtain ⟨hc0, he0⟩ := hs
+    have hZne : Z.cols ≠ [] := by intro h0; simp [h0] at hcl
+    have hc0' : Z.cols[c0]? = some col := by rw [hc0, ← List.getLast?_eq_getElem?]; exact hcl
+    have hl' : (Tree.node (L ++ Z.cols)).lastStep? = some (L.length + c0, e0) := by
+      have hcne : col ≠ [] := by intro h0; simp [h0] at hel
+      have hgl : (L ++ Z.cols).getLast? = some col := by
+        rw [List.getLast?_append_of_ne_nil _ hZne]; exact hcl
+      unfold Tree.lastStep?
+      rw [show (Tree.node (L ++ Z.cols)).cols = L ++ Z.cols from rfl, hgl]
+      have := List.length_pos_of_ne_nil hZne
+      simp only [Option.bind_some, List.isEmpty_iff, hcne, if_false, List.length_append,
+        Option.some.injEq, Prod.mk.injEq]
+      omega
+    have hh2 : (Tree.node (L ++ Z.cols)).forestAt [(L.length + c0, e0)] = some h := by
+      rw [show [(c0, e0)] = [(c0, e0)] from rfl, Tree.forestAt_cons] at hh
+      rw [Tree.forestAt_cons]
+      simp only [Tree.cols, List.getElem?_append_right (Nat.le_add_right _ _),
+        Nat.add_sub_cancel_left]
+      exact hh
+    have hb' : (⟨rest, bc⟩ : ColAddr) ∈ routeCols h := by
+      refine (Scan.mem_routeCols_iff h _).mpr ⟨hr', G, ?_, hGl⟩
+      rw [show (c0, e0) :: rest = [(c0, e0)] ++ rest from rfl, Tree.forestAt_append, hh] at hG
+      exact hG
+    simpa [underCol] using mem_routeCols_cons_D7 hl' hh2 hb'
+
+-- D7 (route helper): the last element of `mapLast`
+theorem getLast?_mapLast_D7 {β γ : Type} (f g : β → γ) (l : List β) :
+    (mapLast f g l).getLast? = l.getLast?.map g := by
+  rw [mapLast_eq]
+  cases h : l.getLast? with
+  | none => simp [List.getLast?_eq_none_iff.mp h]
+  | some x => simp [List.getLast?_append]
+
+theorem length_mapLast_D7 {β γ : Type} (f g : β → γ) (l : List β) :
+    (mapLast f g l).length = l.length := by
+  rw [mapLast_eq]
+  cases h : l.getLast? with
+  | none => simp [List.getLast?_eq_none_iff.mp h]
+  | some x =>
+    have : l ≠ [] := by intro h0; simp [h0] at h
+    have := List.length_pos_of_ne_nil this
+    simp; omega
+
+theorem getElem?_mapLast_last_D7 {β γ : Type} (f g : β → γ) (l : List β) :
+    (mapLast f g l)[l.length - 1]? = l.getLast?.map g := by
+  rw [← length_mapLast_D7 f g l, ← List.getLast?_eq_getElem?, getLast?_mapLast_D7]
+
+-- D7 (route helper): one level of `replaceAt` keeps the last step and replaces the height below it
+theorem replaceAt_succ_lastStep_D7 (r d : Nat) (Z : Forest) (k : Nat) {cols : List Column}
+    {s : Nat × Nat} (hs : (Tree.node cols).lastStep? = some s) {h : Forest}
+    (hh : (Tree.node cols).forestAt [s] = some h) :
+    (replaceAt r d Z (k + 1) (.node cols)).lastStep? = some s ∧
+      (replaceAt r d Z (k + 1) (.node cols)).forestAt [s] = some (replaceAt r d Z k h) ∧
+      (replaceAt r d Z (k + 1) (.node cols)).cols.length = cols.length := by
+  obtain ⟨col, q, h', hcl, hel, rfl, hh'⟩ := Scan.lastStep?_eq_some hs
+  rw [hh] at hh'
+  cases hh'
+  simp only [Tree.cols] at hcl ⊢
+  have hcne : col ≠ [] := by intro h0; simp [h0] at hel
+  set f := fun (x : Nat × Forest) => (shiftVal r d x.1, Tree.map (shiftVal r d) x.2)
+  set g := fun (x : Nat × Forest) => (shiftVal r d x.1, replaceAt r d Z k x.2)
+  have hR : replaceAt r d Z (k + 1) (.node cols) =
+      .node (mapLast (Tree.mapCol (shiftVal r d)) (mapLast f g) cols) := rfl
+  rw [hR]
+  have hgl : (mapLast (Tree.mapCol (shiftVal r d)) (mapLast f g) cols).getLast? =
+      some (mapLast f g col) := by rw [getLast?_mapLast_D7, hcl]; rfl
+  have hlc : (mapLast f g col).length = col.length := length_mapLast_D7 f g col
+  refine ⟨?_, ?_, length_mapLast_D7 _ _ _⟩
+  · have hne' : mapLast f g col ≠ [] := by
+      intro h0; rw [← List.length_eq_zero_iff, hlc] at h0; exact hcne (List.length_eq_zero_iff.mp h0)
+    simp only [Tree.lastStep?, Tree.cols, hgl, Option.bind_some, List.isEmpty_iff, hne', if_false,
+      length_mapLast_D7, hlc]
+  · rw [Tree.forestAt_cons]
+    simp only [Tree.cols]
+    rw [show cols.length - 1 = (cols).length - 1 from rfl, getElem?_mapLast_last_D7, hcl,
+      Option.map_some, Option.bind_some, ← hlc, ← List.getLast?_eq_getElem?, getLast?_mapLast_D7,
+      hel]
+    rfl
+
+-- D7 (route helper): a placement by `replaceAt` at the end of a route path puts the route
+-- columns of the filling on the route
+theorem routeCols_replaceAt_D7 (r d : Nat) (Z : Forest) :
+    ∀ (π : List (Nat × Nat)) (F : Forest), Scan.IsRoutePath F π →
+      ∀ H, F.forestAt π = some H → H.cols ≠ [] →
+      ∀ b ∈ routeCols Z, underCol ⟨π, H.cols.length - 1⟩ b ∈ routeCols (replaceAt r d Z π.length F)
+  | [], .node cols, _, H, hH, hne, b, hb => by
+    simp only [Tree.forestAt, Option.some.injEq] at hH
+    subst hH
+    simp only [Tree.cols] at hne ⊢
+    have hR : replaceAt r d Z 0 (.node cols) =
+        .node (cols.dropLast.map (Tree.mapCol (shiftVal r d)) ++ Z.cols) := by
+      cases cols with
+      | nil => exact absurd rfl hne
+      | cons x xs => rfl
+    rw [List.length_nil, hR]
+    have := mem_routeCols_append_D7 (cols.dropLast.map (Tree.mapCol (shiftVal r d))) hb
+    simpa [List.length_dropLast] using this
+  | (ci, ei) :: rest, .node cols, hr, H, hH, hne, b, hb => by
+    obtain ⟨hl, h, hh, hr'⟩ := Scan.isRoutePath_cons.mp hr
+    have hHh : h.forestAt rest = some H := by
+      rw [show (ci, ei) :: rest = [(ci, ei)] ++ rest from rfl, Tree.forestAt_append, hh] at hH
+      exact hH
+    have ih := routeCols_replaceAt_D7 r d Z rest h hr' H hHh hne b hb
+    obtain ⟨hl', hh', -⟩ := replaceAt_succ_lastStep_D7 r d Z rest.length hl hh
+    have := mem_routeCols_cons_D7 hl' hh' ih
+    rw [List.length_cons]
+    obtain ⟨bp, bc⟩ := b
+    cases bp with
+    | nil => simpa [underCol] using this
+    | cons x xs => simpa [underCol] using this
+
+-- D7 (route helper): `replaceAt` keeps the route columns above the placement level
+theorem routeCols_replaceAt_above_D7 (r d : Nat) (Z : Forest) :
+    ∀ (π : List (Nat × Nat)) (F : Forest), Scan.IsRoutePath F π →
+      ∀ L (hL : L < π.length),
+        (⟨π.take L, (π[L]'hL).1⟩ : ColAddr) ∈ routeCols (replaceAt r d Z π.length F)
+  | [], _, _, L, hL => absurd hL (by simp)
+  | (ci, ei) :: rest, .node cols, hr, L, hL => by
+    obtain ⟨hl, h, hh, hr'⟩ := Scan.isRoutePath_cons.mp hr
+    obtain ⟨hl', hh', hlen⟩ := replaceAt_succ_lastStep_D7 r d Z rest.length hl hh
+    rw [List.length_cons]
+    cases L with
+    | zero =>
+      obtain ⟨col, q, h', hcl, -, hs, -⟩ := Scan.lastStep?_eq_some hl
+      simp only [Prod.mk.injEq, Tree.cols] at hs
+      have hcne : cols ≠ [] := by intro h0; simp [h0, Tree.cols] at hcl
+      refine (Scan.mem_routeCols_iff _ _).mpr ⟨fun d hd => absurd hd (by simp), _, rfl, ?_⟩
+      simp only [List.getElem_cons_zero]
+      rw [hlen, hs.1]
+      have := List.length_pos_of_ne_nil hcne
+      omega
+    | succ L =>
+      have := mem_routeCols_cons_D7 hl' hh'
+        (routeCols_replaceAt_above_D7 r d Z rest h hr' L (by simp at hL; omega))
+      simpa using this
+
+-- D7 (route helper): relabelling keeps the route
+theorem mapCols_eq_map_D7 (f : Nat → Nat) (cols : List Column) :
+    Tree.mapCols f cols = cols.map (Tree.mapCol f) := by
+  induction cols with
+  | nil => rfl
+  | cons x xs ih => simp [Tree.mapCols, ih]
+
+theorem forestAt_map_D7 (f : Nat → Nat) :
+    ∀ (π : List (Nat × Nat)) (t : Forest), (Tree.map f t).forestAt π = (t.forestAt π).map (Tree.map f)
+  | [], t => rfl
+  | (c, i) :: rest, .node cols => by
+    rw [Tree.forestAt_cons, Tree.forestAt_cons]
+    simp only [Tree.map, Tree.cols]
+    rw [mapCols_eq_map_D7]
+    rw [List.getElem?_map]
+    cases hc : cols[c]? with
+    | none => rfl
+    | some col =>
+      simp only [Option.map_some, Option.bind_some, mapCol_eq_map, List.getElem?_map]
+      cases he : col[i]? with
+      | none => rfl
+      | some x => simp [forestAt_map_D7 f rest x.2]
+
+theorem lastStep?_map_D7 (f : Nat → Nat) (t : Forest) : (Tree.map f t).lastStep? = t.lastStep? := by
+  obtain ⟨cols⟩ := t
+  simp only [Tree.map, Tree.lastStep?, Tree.cols]
+  rw [mapCols_eq_map_D7]
+  rw [List.getLast?_map]
+  cases cols.getLast? with
+  | none => rfl
+  | some col => simp [mapCol_eq_map]
+
+theorem mem_routeCols_map_D7 (f : Nat → Nat) {t : Forest} {b : ColAddr} (hb : b ∈ routeCols t) :
+    b ∈ routeCols (Tree.map f t) := by
+  obtain ⟨hr, G, hG, hGl⟩ := (Scan.mem_routeCols_iff t b).mp hb
+  refine (Scan.mem_routeCols_iff _ b).mpr ⟨fun d hd => ?_, Tree.map f G, ?_, ?_⟩
+  · obtain ⟨F, hF, hFl⟩ := hr d hd
+    exact ⟨Tree.map f F, by rw [forestAt_map_D7, hF]; rfl, by rw [lastStep?_map_D7, hFl]⟩
+  · rw [forestAt_map_D7, hG]; rfl
+  · obtain ⟨cols⟩ := G
+    simp only [Tree.map, Tree.cols] at hGl ⊢
+    rw [mapCols_eq_map_D7]
+    simpa using hGl
+
+-- D7 (address helper): placements compose
+theorem underCol_assoc_D7 (h g b : ColAddr) :
+    underCol (underCol h g) b = underCol h (underCol g b) := by
+  obtain ⟨hp, hc⟩ := h
+  obtain ⟨gp, gc⟩ := g
+  obtain ⟨bp, bc⟩ := b
+  cases gp with
+  | nil =>
+    cases bp with
+    | nil => simp [underCol, Nat.add_assoc]
+    | cons x xs => obtain ⟨c0, e0⟩ := x; simp [underCol, Nat.add_assoc]
+  | cons y ys =>
+    obtain ⟨g0, f0⟩ := y
+    cases bp with
+    | nil => simp [underCol]
+    | cons x xs => obtain ⟨c0, e0⟩ := x; simp [underCol]
+
+
+-- D7 (route helper): a suffix of a route path is a route path of the forest it starts from
+theorem isRoutePath_append_D7 {E F : Forest} {π σ : List (Nat × Nat)}
+    (hr : Scan.IsRoutePath E (π ++ σ)) (hF : E.forestAt π = some F) : Scan.IsRoutePath F σ := by
+  intro d hd
+  obtain ⟨G, hG, hl⟩ := hr (π.length + d) (by simp; omega)
+  refine ⟨G, ?_, ?_⟩
+  · rw [List.take_length_add_append, Tree.forestAt_append, hF] at hG
+    exact hG
+  · rw [hl, List.getElem?_append_right (Nat.le_add_right _ _), Nat.add_sub_cancel_left]
+
+-- D7 (route helper): dropping columns before the last keeps the route, one column index lower
+theorem isRoutePath_drop_D7 {cols : List Column} {ci e : Nat} {rest : List (Nat × Nat)}
+    (hr : Scan.IsRoutePath (.node cols) ((ci, e) :: rest)) {k : Nat} (hk : k ≤ ci) :
+    Scan.IsRoutePath (.node (cols.drop k)) ((ci - k, e) :: rest) ∧
+      (Tree.node (cols.drop k)).forestAt [(ci - k, e)] = (Tree.node cols).forestAt [(ci, e)] := by
+  obtain ⟨hl, h, hh, hr'⟩ := Scan.isRoutePath_cons.mp hr
+  obtain ⟨col, q, h', hcl, hel, hs, hh'⟩ := Scan.lastStep?_eq_some hl
+  simp only [Prod.mk.injEq, Tree.cols] at hs hcl
+  obtain ⟨hci, he⟩ := hs
+  have hcne : cols ≠ [] := by intro h0; simp [h0] at hcl
+  have hlen := List.length_pos_of_ne_nil hcne
+  have hfa : (Tree.node (cols.drop k)).forestAt [(ci - k, e)] =
+      (Tree.node cols).forestAt [(ci, e)] := by
+    rw [Tree.forestAt_cons, Tree.forestAt_cons]
+    simp only [Tree.cols, List.getElem?_drop]
+    rw [show k + (ci - k) = ci by omega]
+  refine ⟨Scan.isRoutePath_cons.mpr ⟨?_, h, hfa.trans hh, hr'⟩, hfa⟩
+  have hdl : (cols.drop k).getLast? = some col := by
+    rw [List.getLast?_drop, if_neg (by omega), hcl]
+  have hcne' : col ≠ [] := by intro h0; simp [h0] at hel
+  unfold Tree.lastStep?
+  rw [show (Tree.node (cols.drop k)).cols = cols.drop k from rfl, hdl]
+  simp only [Option.bind_some, List.isEmpty_iff, hcne', if_false, List.length_drop,
+    Option.some.injEq, Prod.mk.injEq]
+  omega
+
+-- D7 (route setup): the stopping column's path seen from the root forest
+theorem route_setup_D7 (S : OrdStep) :
+    ∃ F H, S.A.forestAt S.rd.col.path = some F ∧
+      S.sd.col.path = S.rd.col.path ++ S.sd.col.path.drop S.rd.col.path.length ∧
+      Scan.IsRoutePath F (S.sd.col.path.drop S.rd.col.path.length) ∧
+      F.forestAt (S.sd.col.path.drop S.rd.col.path.length) = some H ∧
+      H.cols.length = S.sd.col.col + 1 ∧ S.rd.col.col < F.cols.length ∧
+      holeDepth S.sd S.rd = (S.sd.col.path.drop S.rd.col.path.length).length ∧
+      Scan.IsRoutePath S.A S.sd.col.path ∧ S.A.forestAt S.sd.col.path = some H := by
+  obtain ⟨-, hdepth, -, hroute, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, hlay, hpre, -⟩ := rootData_path S.hsd S.hrd
+  obtain ⟨-, -, -, -, -, hmem, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨hrp, H, hH, hHl⟩ := (Scan.mem_routeCols_iff _ _).mp hroute
+  obtain ⟨Rc, hRc⟩ := Option.isSome_iff_exists.mp ((Tree.mem_colAddrs_iff _ _).mp hmem)
+  obtain ⟨F, hF, hFc⟩ : ∃ F, S.A.forestAt S.rd.col.path = some F ∧ F.cols[S.rd.col.col]? = some Rc := by
+    unfold Tree.colAt at hRc
+    cases h : S.A.forestAt S.rd.col.path with
+    | none => rw [h] at hRc; cases hRc
+    | some F => rw [h] at hRc; exact ⟨F, rfl, hRc⟩
+  obtain ⟨σ, hσ⟩ := hpre
+  have hσ' : S.sd.col.path.drop S.rd.col.path.length = σ := by rw [← hσ, List.drop_left]
+  rw [hσ']
+  refine ⟨F, H, hF, hσ.symm, isRoutePath_append_D7 (hσ ▸ hrp) hF, ?_, hHl,
+    (List.getElem?_eq_some_iff.mp hFc).1, ?_, hrp, hH⟩
+  · rw [← hσ, Tree.forestAt_append, hF] at hH; exact hH
+  · unfold holeDepth
+    rw [hdepth, hlay, ← hσ, List.length_append]
+    omega
+
+
+-- D7 (route helper, body case): the kernel's route runs through the placed copy of `X`, and the
+-- kernel images of the containers of the stopping column are kernel route columns
+theorem kernel_route_body_D7 (S : OrdStep) (hown : S.rd.owner = false) (X : Forest) :
+    (∀ b ∈ routeCols X, underCol (kerHole S.sd S.rd) b ∈ routeCols (kernel S.A S.sd S.rd X)) ∧
+    ∀ L (hL : L < (S.sd.col.path.drop S.rd.col.path.length).length) a',
+      kerCol S.sd S.rd ⟨S.rd.col.path ++ (S.sd.col.path.drop S.rd.col.path.length).take L,
+        ((S.sd.col.path.drop S.rd.col.path.length)[L]'hL).1⟩ = some a' →
+      a' ∈ routeCols (kernel S.A S.sd S.rd X) := by
+  obtain ⟨F, H, hF, hσ, hrF, hFH, hHl, hidx, hhd, -, -⟩ := route_setup_D7 S
+  obtain ⟨-, -, hidxeq, -, -, -, -, hownF⟩ := rootData_spec S.hsd S.hrd
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  generalize hσd : S.sd.col.path.drop S.rd.col.path.length = σ at hσ hrF hFH hhd ⊢
+  obtain ⟨cols⟩ := F
+  have hnl : S.rd.col.col + 1 < cols.length := by
+    have : ¬ (S.rd.col.col + 1 = cols.length) := fun h => by
+      have := hownF.mpr ⟨_, hF, h⟩; rw [hown] at this; cases this
+    simp only [Tree.cols] at hidx
+    omega
+  have hK : kernel S.A S.sd S.rd X =
+      .node ([S.sd.Q ++ (unconsumed S.A S.rd).map fun x => (x.1, shift S.sd.r (period S.sd) x.2)] ++
+        (replaceAt S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) σ.length
+          (.node (cols.drop (S.rd.col.col + 1)))).cols) := by
+    simp only [kernel, hown, Bool.false_eq_true, if_false, rootForest, hF, Option.getD_some,
+      hidxeq, hhd, Tree.cols]
+    rfl
+  have hF0ne : (Tree.node (cols.drop (S.rd.col.col + 1))).cols ≠ [] := by
+    simp only [Tree.cols, ne_eq, List.drop_eq_nil_iff, not_le]; omega
+  rw [hK]
+  cases σ with
+  | nil =>
+    simp only [Tree.forestAt, Option.some.injEq] at hFH
+    subst hFH
+    simp only [List.append_nil] at hσ
+    simp only [Tree.cols] at hHl
+    have hkh : kerHole S.sd S.rd = ⟨[], S.sd.col.col - S.rd.col.col⟩ := by
+      simp only [kerHole, kerCol_nil_eq S hsdq hσ, if_neg (show S.sd.col.col ≠ S.rd.col.col by omega),
+        if_pos (show S.rd.col.col < S.sd.col.col ∧ S.rd.owner = false from ⟨by omega, hown⟩),
+        Option.getD_some]
+    refine ⟨fun b hb => ?_, fun L hL => absurd hL (by simp)⟩
+    have h1 := routeCols_replaceAt_D7 S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) []
+      (.node (cols.drop (S.rd.col.col + 1))) (fun d hd => absurd hd (by simp))
+      _ rfl hF0ne b (mem_routeCols_map_D7 _ hb)
+    have h2 := mem_routeCols_append_D7
+      [S.sd.Q ++ (unconsumed S.A S.rd).map fun x => (x.1, shift S.sd.r (period S.sd) x.2)] h1
+    rw [← underCol_assoc_D7] at h2
+    rw [hkh]
+    convert h2 using 2
+    simp only [underCol, Tree.cols, List.length_drop, List.length_singleton]
+    congr 1
+    omega
+  | cons st rest =>
+    obtain ⟨ci, e⟩ := st
+    obtain ⟨hl, -, -, -⟩ := Scan.isRoutePath_cons.mp hrF
+    obtain ⟨col, -, -, hcl, -, hs, -⟩ := Scan.lastStep?_eq_some hl
+    simp only [Prod.mk.injEq, Tree.cols] at hs
+    have hci : ci = cols.length - 1 := hs.1
+    have hdrop := isRoutePath_drop_D7 hrF (k := S.rd.col.col + 1) (by omega)
+    have hH0 : (Tree.node (cols.drop (S.rd.col.col + 1))).forestAt
+        ((ci - (S.rd.col.col + 1), e) :: rest) = some H := by
+      rw [show (ci - (S.rd.col.col + 1), e) :: rest = [(ci - (S.rd.col.col + 1), e)] ++ rest from rfl,
+        Tree.forestAt_append, hdrop.2, ← Tree.forestAt_append]
+      exact hFH
+    have hkh : kerHole S.sd S.rd = ⟨(ci - S.rd.col.col, e) :: rest, S.sd.col.col⟩ := by
+      simp only [kerHole, kerCol_cons_eq S hsdq hσ,
+        if_neg (show ¬ (ci = S.rd.col.col ∧ S.rd.cursor ≤ e) by omega),
+        if_pos (show S.rd.col.col < ci ∧ S.rd.owner = false from ⟨by omega, hown⟩),
+        Option.getD_some]
+    refine ⟨fun b hb => ?_, fun L hL a' ha' => ?_⟩
+    · have h1 := routeCols_replaceAt_D7 S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) _ _
+        hdrop.1 H hH0 (by intro h0; rw [h0] at hHl; simp at hHl) b (mem_routeCols_map_D7 _ hb)
+      have h2 := mem_routeCols_append_D7
+        [S.sd.Q ++ (unconsumed S.A S.rd).map fun x => (x.1, shift S.sd.r (period S.sd) x.2)] h1
+      rw [← underCol_assoc_D7] at h2
+      rw [hkh]
+      convert h2 using 2
+      all_goals first
+        | rfl
+        | (simp [underCol, hHl]; omega)
+    · have h1 := routeCols_replaceAt_above_D7 S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X)
+        _ _ hdrop.1 L (by simpa using hL)
+      have h2 := mem_routeCols_append_D7
+        [S.sd.Q ++ (unconsumed S.A S.rd).map fun x => (x.1, shift S.sd.r (period S.sd) x.2)] h1
+      cases L with
+      | zero =>
+        try simp only [List.take_zero, List.append_nil, List.getElem_cons_zero] at ha'
+        rw [kerCol_nil_eq S (o := ⟨S.rd.col.path, ci⟩) (isQMat_of_short S.sd (by simp [hσ])) rfl,
+          if_neg (show ci ≠ S.rd.col.col by omega),
+          if_pos (show S.rd.col.col < ci ∧ S.rd.owner = false from ⟨by omega, hown⟩)] at ha'
+        cases ha'
+        convert h2 using 2
+        all_goals first
+          | rfl
+          | (simp [underCol]; omega)
+      | succ L =>
+        try simp only [List.take_succ_cons, List.getElem_cons_succ] at ha'
+        rw [kerCol_cons_eq S
+            (o := ⟨S.rd.col.path ++ (ci, e) :: rest.take L, (rest[L]'(by simp at hL; omega)).1⟩)
+            (isQMat_of_short S.sd (by
+              simp only [hσ, List.length_append, List.length_cons, List.length_take]
+              omega)) rfl,
+          if_neg (show ¬ (ci = S.rd.col.col ∧ S.rd.cursor ≤ e) by omega),
+          if_pos (show S.rd.col.col < ci ∧ S.rd.owner = false from ⟨by omega, hown⟩)] at ha'
+        cases ha'
+        convert h2 using 2
+        all_goals first
+          | rfl
+          | (simp [underCol]; omega)
+
+
+-- D7 (route helper, owner case): as `kernel_route_body_D7`, for an owner root (the kernel is its
+-- head, whose last restored height carries the copy of the root's last height)
+theorem kernel_route_owner_D7 (S : OrdStep) (hown : S.rd.owner = true) (X : Forest) :
+    (∀ b ∈ routeCols X, underCol (kerHole S.sd S.rd) b ∈ routeCols (kernel S.A S.sd S.rd X)) ∧
+    ∀ L (hL : L < (S.sd.col.path.drop S.rd.col.path.length).length) a',
+      kerCol S.sd S.rd ⟨S.rd.col.path ++ (S.sd.col.path.drop S.rd.col.path.length).take L,
+        ((S.sd.col.path.drop S.rd.col.path.length)[L]'hL).1⟩ = some a' →
+      a' ∈ routeCols (kernel S.A S.sd S.rd X) := by
+  obtain ⟨F, H, hF, hσ, hrF, hFH, hHl, hidx, hhd, -, -⟩ := route_setup_D7 S
+  obtain ⟨-, -, -, -, -, hownc, hlast⟩ := rootData_path S.hsd S.hrd
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  obtain ⟨ce, hce⟩ := Option.isSome_iff_exists.mp (hownc.mp hown)
+  have hce1 := hlast ce hce
+  obtain ⟨hcecol, hcepre⟩ := (ColAddr.container_spec _ _ _).mp hce
+  generalize hσd : S.sd.col.path.drop S.rd.col.path.length = σ at hσ hrF hFH hhd ⊢
+  obtain ⟨rest, rfl⟩ : ∃ rest, σ = (S.rd.col.col, ce.idx) :: rest := by
+    obtain ⟨t, ht⟩ := hcepre
+    rw [EntryAddr.heightPath, hcecol, hσ, List.append_assoc] at ht
+    exact ⟨t, (List.append_cancel_left ht).symm⟩
+  -- the root column and its last entry
+  set e := ce.idx with he
+  obtain ⟨R, hR⟩ : ∃ R, F.cols[S.rd.col.col]? = some R := ⟨_, List.getElem?_eq_getElem hidx⟩
+  have hAR : S.A.colAt S.rd.col = some R := by
+    unfold Tree.colAt; rw [hF]; exact hR
+  have hRlen : R.length = e + 1 := by
+    unfold Packet.rootLenOf at hce1; rw [hAR] at hce1; simpa using hce1.symm
+  have hU := S.kernelDefined hown
+  have hUeq : unconsumed S.A S.rd = R.drop S.rd.cursor := by
+    simp [unconsumed, rootCol, hAR]
+  have hcur : S.rd.cursor ≤ e := by
+    rw [hUeq] at hU
+    by_contra hc
+    exact hU (List.drop_eq_nil_of_le (by omega))
+  obtain ⟨hl, HR, hHR, hrR⟩ := Scan.isRoutePath_cons.mp hrF
+  have hRH : HR.forestAt rest = some H := by
+    rw [show (S.rd.col.col, e) :: rest = [(S.rd.col.col, e)] ++ rest from rfl, Tree.forestAt_append,
+      hHR] at hFH
+    exact hFH
+  obtain ⟨pe, hRe⟩ : ∃ pe, R[e]? = some (pe, HR) := by
+    rw [Tree.forestAt_cons, hR] at hHR
+    simp only [Option.bind_some] at hHR
+    cases h : R[e]? with
+    | none => rw [h] at hHR; cases hHR
+    | some x =>
+      rw [h] at hHR
+      simp only [Option.bind_some, Tree.forestAt, Option.some.injEq] at hHR
+      exact ⟨x.1, by rw [← hHR]⟩
+  -- the kernel is its head column
+  set f := fun (x : Nat × Forest) => (x.1, shift S.sd.r (period S.sd) x.2)
+  set g := fun (x : Nat × Forest) =>
+    (x.1, replaceAt S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) rest.length x.2)
+  set hc := S.sd.Q ++ mapLast f g (R.drop S.rd.cursor) with hhc
+  have hK : kernel S.A S.sd S.rd X = .node [hc] := by
+    simp only [kernel, hown, if_true, hhd, hUeq, hhc, f, g]
+    rfl
+  have hdl : (R.drop S.rd.cursor).length = e + 1 - S.rd.cursor := by
+    rw [List.length_drop, hRlen]
+  have hclen : hc.length = S.m + (e + 1 - S.rd.cursor) := by
+    rw [hhc, List.length_append, length_mapLast_D7, hdl]; rfl
+  have hl' : (Tree.node [hc]).lastStep? = some (0, S.m + (e - S.rd.cursor)) := by
+    have hne : hc ≠ [] := by
+      intro h0; have := congrArg List.length h0; rw [hclen] at this; simp at this; omega
+    simp only [Tree.lastStep?, Tree.cols, List.getLast?_singleton, Option.bind_some,
+      List.isEmpty_iff, hne, if_false, List.length_singleton, Option.some.injEq, Prod.mk.injEq]
+    refine ⟨trivial, ?_⟩
+    have h1 := hclen
+    have h2 := hcur
+    omega
+  have hh' : (Tree.node [hc]).forestAt [(0, S.m + (e - S.rd.cursor))] =
+      some (replaceAt S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) rest.length HR) := by
+    rw [Tree.forestAt_cons]
+    simp only [Tree.cols, List.getElem?_singleton, if_true, Option.bind_some, hhc]
+    rw [List.getElem?_append_right (by simp [OrdStep.m]),
+      show S.m + (e - S.rd.cursor) - S.sd.Q.length = (R.drop S.rd.cursor).length - 1 by
+        rw [hdl]; simp [OrdStep.m]; omega,
+      getElem?_mapLast_last_D7, List.getLast?_drop, if_neg (by omega), List.getLast?_eq_getElem?,
+      hRlen, Nat.add_sub_cancel, hRe]
+    rfl
+  have hkh : kerHole S.sd S.rd = ⟨(0, S.m + (e - S.rd.cursor)) :: rest, S.sd.col.col⟩ := by
+    rw [kerHole, kerCol_cons_eq S hsdq hσ,
+      if_pos (show S.rd.col.col = S.rd.col.col ∧ S.rd.cursor ≤ e from ⟨rfl, hcur⟩)]
+    rfl
+  rw [hK]
+  refine ⟨fun b hb => ?_, fun L hL a' ha' => ?_⟩
+  · have h1 := routeCols_replaceAt_D7 S.sd.r (period S.sd) (shift S.sd.r (period S.sd) X) rest HR
+      hrR H hRH (by intro h0; rw [h0] at hHl; simp at hHl) b (mem_routeCols_map_D7 _ hb)
+    have h2 := mem_routeCols_cons_D7 hl' hh' h1
+    rw [hkh]
+    convert h2 using 2
+    all_goals first
+      | rfl
+      | (obtain ⟨bp, bc⟩ := b
+         cases bp with
+         | nil => simp [underCol, hHl]
+         | cons x xs => obtain ⟨c0, e0⟩ := x; simp [underCol, hHl])
+  · cases L with
+    | zero =>
+      try simp only [List.take_zero, List.append_nil, List.getElem_cons_zero] at ha'
+      rw [kerCol_nil_eq S (o := ⟨S.rd.col.path, S.rd.col.col⟩) (isQMat_of_short S.sd (by simp [hσ]))
+        rfl, if_pos rfl] at ha'
+      cases ha'
+      refine (Scan.mem_routeCols_iff _ _).mpr ⟨fun d hd => absurd hd (by simp), _, rfl, ?_⟩
+      rfl
+    | succ L =>
+      try simp only [List.take_succ_cons, List.getElem_cons_succ] at ha'
+      rw [kerCol_cons_eq S
+          (o := ⟨S.rd.col.path ++ (S.rd.col.col, e) :: rest.take L, (rest[L]'(by simp at hL; omega)).1⟩)
+          (isQMat_of_short S.sd (by
+            simp only [hσ, List.length_append, List.length_cons, List.length_take]
+            omega)) rfl,
+        if_pos (show S.rd.col.col = S.rd.col.col ∧ S.rd.cursor ≤ e from ⟨rfl, hcur⟩)] at ha'
+      cases ha'
+      exact mem_routeCols_cons_D7 hl' hh'
+        (routeCols_replaceAt_above_D7 _ _ _ rest HR hrR L (by simp at hL; omega))
+
+
+-- D7 (route helper): the kernel route facts, in both root cases
+theorem kernel_route_D7 (S : OrdStep) (X : Forest) :
+    (∀ b ∈ routeCols X, underCol (kerHole S.sd S.rd) b ∈ routeCols (kernel S.A S.sd S.rd X)) ∧
+    ∀ L (hL : L < (S.sd.col.path.drop S.rd.col.path.length).length) a',
+      kerCol S.sd S.rd ⟨S.rd.col.path ++ (S.sd.col.path.drop S.rd.col.path.length).take L,
+        ((S.sd.col.path.drop S.rd.col.path.length)[L]'hL).1⟩ = some a' →
+      a' ∈ routeCols (kernel S.A S.sd S.rd X) := by
+  cases h : S.rd.owner
+  · exact kernel_route_body_D7 S h X
+  · exact kernel_route_owner_D7 S h X
+
+-- G9.6 (D7; L-G010.4a, last clause): the phase copy of a template container of the stopping
+-- column is a route column of `B`
+theorem phaseCol_container_route_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (haq : isQMat S.sd a = false)
+    (hc : phaseCol S.sd S.rd i a = some c) {e : EntryAddr} (he : a.container S.sd.col = some e) :
+    c ∈ routeCols S.B := by
+  obtain ⟨F, H, hF, hσ, -, -, hHl, -, -, hrp, hH⟩ := route_setup_D7 S
+  obtain ⟨-, hdepth, -⟩ := stopData_spec S.hsd
+  obtain ⟨b₀, hb₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+  -- `a` is the container of the stopping column at some level `L` below the root forest
+  obtain ⟨hecol, hepre⟩ := (ColAddr.container_spec _ _ _).mp he
+  have hpre : a.path.take S.rd.col.path.length = S.rd.col.path := by
+    by_contra hne
+    unfold kerCol at hb₀
+    simp only [haq, Bool.false_eq_true, if_false, if_neg hne] at hb₀
+    cases hb₀
+  generalize hσd : S.sd.col.path.drop S.rd.col.path.length = σ at hσ
+  obtain ⟨t, ht⟩ := hepre
+  rw [EntryAddr.heightPath, hecol, List.append_assoc] at ht
+  have hlen : S.rd.col.path.length ≤ a.path.length := by
+    by_contra hc'
+    rw [List.take_of_length_le (by omega)] at hpre
+    rw [hpre] at hc'
+    omega
+  have hL : a.path.length - S.rd.col.path.length < σ.length := by
+    have := congrArg List.length ht
+    rw [hσ] at this
+    simp only [List.length_append, List.length_cons] at this
+    omega
+  have hapath : a.path = S.rd.col.path ++ σ.take (a.path.length - S.rd.col.path.length) := by
+    have h1 : a.path = (S.rd.col.path ++ σ).take a.path.length := by
+      rw [← hσ, ← ht, List.take_left]
+    calc a.path = (S.rd.col.path ++ σ).take a.path.length := h1
+      _ = _ := by rw [List.take_append]; simp [List.take_of_length_le hlen]
+  have hacol : a.col = (σ[a.path.length - S.rd.col.path.length]'hL).1 := by
+    have h1 : S.sd.col.path[a.path.length]? = some (a.col, e.idx) := by
+      rw [← ht, List.getElem?_append_right le_rfl, Nat.sub_self]; rfl
+    rw [hσ, List.getElem?_append_right hlen, List.getElem?_eq_getElem hL] at h1
+    simp only [Option.some.injEq] at h1
+    rw [h1]
+  have hb₀' : kerCol S.sd S.rd ⟨S.rd.col.path ++ σ.take (a.path.length - S.rd.col.path.length),
+      (σ[a.path.length - S.rd.col.path.length]'hL).1⟩ = some b₀ := by
+    rw [← hapath, ← hacol]; exact hb₀
+  have hroute₀ : ∀ X, b₀ ∈ routeCols (kernel S.A S.sd S.rd X) := fun X =>
+    (kernel_route_D7 S X).2 _ (by rw [hσd]; exact hL) b₀ (by simp only [hσd]; exact hb₀')
+  -- iterate through the layers
+  have hiter : ∀ j X, (underCol (kerHole S.sd S.rd))^[j] b₀ ∈
+      routeCols ((kernel S.A S.sd S.rd)^[j + 1] X) := by
+    intro j
+    induction j with
+    | zero => intro X; simpa using hroute₀ X
+    | succ j ih =>
+      intro X
+      have e1 : (underCol (kerHole S.sd S.rd))^[j + 1] b₀ =
+          underCol (kerHole S.sd S.rd) ((underCol (kerHole S.sd S.rd))^[j] b₀) :=
+        Function.iterate_succ_apply' _ _ _
+      have e2 : (kernel S.A S.sd S.rd)^[j + 1 + 1] X =
+          kernel S.A S.sd S.rd ((kernel S.A S.sd S.rd)^[j + 1] X) :=
+        Function.iterate_succ_apply' _ _ _
+      rw [e1, e2]
+      exact (kernel_route_D7 S _).1 _ (ih X)
+  have hcdef : c = underCol S.sd.col ((underCol (kerHole S.sd S.rd))^[i - 1] b₀) := by
+    unfold phaseCol at hc; rw [hb₀] at hc; exact (Option.some.inj hc).symm
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  have hB : S.B = context S.A S.sd ((kernel S.A S.sd S.rd)^[S.n] Tree.empty) := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact Option.some.inj this
+  have hZ : (underCol (kerHole S.sd S.rd))^[i - 1] b₀ ∈
+      routeCols ((kernel S.A S.sd S.rd)^[S.n] Tree.empty) := by
+    have := hiter (i - 1) ((kernel S.A S.sd S.rd)^[S.n - i] Tree.empty)
+    rwa [← Function.iterate_add_apply, show i - 1 + 1 + (S.n - i) = S.n by omega] at this
+  have := routeCols_replaceAt_D7 0 0 _ S.sd.col.path S.A hrp H hH
+    (by intro h0; rw [h0] at hHl; simp at hHl) _ hZ
+  rw [hB, hcdef]
+  unfold context
+  rw [hdepth]
+  convert this using 2
+  rw [hHl, Nat.add_sub_cancel]
+
+-- T3.2i (D7): the parents of a template copy are the shifted parents of its template column
+theorem parents_phaseCol_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
+    parents S.B c = (parents S.A a).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by
+  by_cases haq : isQMat S.sd a = true
+  · have hroute : ¬ OnHoleRoute S.sd a := fun h => by
+      have := isQMat_of_short S.sd h.length_le
+      rw [haq] at this
+      cases this
+    have hB := colAt_phaseCol S.inL S.kind S.hsd S.hrd S.out hi ha hroute hc
+    simp only [parents, hB]
+    cases S.A.colAt a with
+    | none => simp
+    | some col => simp [mapCol_eq_map, OrdStep.d]
+  · have haq' : isQMat S.sd a = false := by simpa using haq
+    have hφ : phaseOff S.sd i a = i := by simp [phaseOff, haq']
+    obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := i) hi.2 ha haq'
+    have hcopy : S.copyCol i a = c := by
+      simp only [OrdStep.copyCol, if_neg (show i ≠ 0 by omega), hc, Option.getD_some]
+    rw [hcopy] at hZ
+    have hctx : parents (context S.A S.sd Z) a = parents S.A a := by
+      cases hce : a.container S.sd.col with
+      | none =>
+        simp only [parents]
+        rw [colAt_context_of_not_route S.hsd Z ha.1 ha.2.1 (sdcol_container_none S ha.1 haq') hce]
+      | some e => exact (colAt_context_onStack S.hsd Z (onStack_of_container hce)).1
+    rw [hφ, ← hctx]
+    simp only [parents, hZ]
+    cases (context S.A S.sd Z).colAt a with
+    | none => simp
+    | some col => simp [mapCol_eq_map]
+
+-- G9.6 (helper, the full-cut exclusion): the phase copy `c` of a template column that contains
+-- the stopping column lies on the route of `B`, so a cut after its last entry is at the end of
+-- `w(B)` (G-009 §3 G9.6 step 2)
 theorem fullCut_container_end (S : OrdStep) {i : Nat} {a c : ColAddr} {ρ : Nat}
     (hi : 1 ≤ i ∧ i ≤ S.n) (ha : IsTmplCol S.A S.sd S.rd a) (haq : isQMat S.sd a = false)
     (hc : phaseCol S.sd S.rd i a = some c) {e : EntryAddr} (he : a.container S.sd.col = some e)
-    (hup : IsUpward S.B c (e.idx + 1) ρ) : mu S.B ≤ capPos S.B c (e.idx + 1) := by sorry
+    (_hup : IsUpward S.B c (e.idx + 1) ρ) : mu S.B ≤ capPos S.B c (e.idx + 1) := by
+  have hroute := phaseCol_container_route_D7 S hi ha haq hc he
+  have hlen : (parents S.B c).length = e.idx + 1 := by
+    rw [parents_phaseCol_D7 S hi ha hc, List.length_map, container_sdcol_last S he]
+  have hne : parents S.B c ≠ [] := by
+    intro h; rw [h] at hlen; simp at hlen
+  rw [← hlen, capPos_route_D7 hroute hne]
 
 -- G9.6: off the full cut, the first `k` entries of `c` are pure `τ_φ`-copies of those of `a`, so
 -- `V = κ_φ(W)` with `W = B_a(k−1)` the old cut query (T3.2h.1)
@@ -4379,38 +5127,6 @@ theorem low_all_heads (S : OrdStep) {φ : Nat} (hφ : 1 ≤ φ) (W : List Key)
   rw [list_map_lt_iff (hcoe.strictMonoOn Set.univ) (fun _ _ => trivial) (fun _ _ => trivial)]
     at hlow ⊢
   exact (sign_indep_list (by omega) (by omega) W Js).mp hlow
-
--- T3.2i (D7): the parents of a template copy are the shifted parents of its template column
-theorem parents_phaseCol_D7 (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
-    parents S.B c = (parents S.A a).map (shiftVal S.sd.r (phaseOff S.sd i a * S.d)) := by
-  by_cases haq : isQMat S.sd a = true
-  · have hroute : ¬ OnHoleRoute S.sd a := fun h => by
-      have := isQMat_of_short S.sd h.length_le
-      rw [haq] at this
-      cases this
-    have hB := colAt_phaseCol S.inL S.kind S.hsd S.hrd S.out hi ha hroute hc
-    simp only [parents, hB]
-    cases S.A.colAt a with
-    | none => simp
-    | some col => simp [mapCol_eq_map, OrdStep.d]
-  · have haq' : isQMat S.sd a = false := by simpa using haq
-    have hφ : phaseOff S.sd i a = i := by simp [phaseOff, haq']
-    obtain ⟨Z, hZ⟩ := colAt_copyCol S (h := i) hi.2 ha haq'
-    have hcopy : S.copyCol i a = c := by
-      simp only [OrdStep.copyCol, if_neg (show i ≠ 0 by omega), hc, Option.getD_some]
-    rw [hcopy] at hZ
-    have hctx : parents (context S.A S.sd Z) a = parents S.A a := by
-      cases hce : a.container S.sd.col with
-      | none =>
-        simp only [parents]
-        rw [colAt_context_of_not_route S.hsd Z ha.1 ha.2.1 (sdcol_container_none S ha.1 haq') hce]
-      | some e => exact (colAt_context_onStack S.hsd Z (onStack_of_container hce)).1
-    rw [hφ, ← hctx]
-    simp only [parents, hZ]
-    cases (context S.A S.sd Z).colAt a with
-    | none => simp
-    | some col => simp [mapCol_eq_map]
 
 -- T3.8ln (txt:530, 549-551; moved here, before its first use G9.8a `phase_exit`): parents of
 -- phase-`φ` material are `< r` or `≥ s_φ`
