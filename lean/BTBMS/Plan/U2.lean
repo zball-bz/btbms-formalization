@@ -781,12 +781,88 @@ theorem localSuffix_cont_le {A A' : Forest} {sd : StopData} {rd : RootData} {n :
     localSuffix A' a ≤ localSuffix A a ∧ (OnHoleRoute sd a ∨ a = rd.col ∧ rd.owner = true →
       localSuffix A' a < localSuffix A a) := by sorry
 
+/-! T3.2j helpers: first-parent paths. -/
+
+/-- Under V and A every `g_W` path is a `g_∅` path (path nesting with `∅ ≤ W`). -/
+theorem spx_path_nil {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks) {c : ColAddr}
+    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) {s t : Nat}
+    (h : Path E ks c W s t) : Path E ks c [] s t :=
+  path_replace hV (fun _ _ _ he => path_nesting hV hA c List.Pairwise.nil hW (nil_le_list W) he) h
+
+/-- A `g_∅` edge from `x` reads the first parent of the column numbered `x`, and that first parent
+is a `g_∅` ancestor of `x - 1` (A at entry `0`). -/
+theorem spx_edge_nil {E : Forest} (hV : CondV E) (hA : CondA E) {c : ColAddr} {x y : Nat}
+    (h : Edge E (actualKeys E) c [] x y) : Path E (actualKeys E) c [] (x - 1) y := by
+  obtain ⟨o, ho, hr⟩ := h
+  rw [resp_eq_parents, cursor_nil_right] at hr
+  have hoE : o ∈ E.colAddrs := mem_colAddrs_of_parents hr
+  have h0 := hA o hoE 0 y hr
+  simp only [if_true, cutQuery_zero] at h0
+  have hox : o.num 0 = x := ColAddr.resolve_num ho
+  have hlt : y < o.num 0 := parent_lt_num hV hr
+  rw [hox] at h0 hlt
+  exact (path_congr_stack hV (fun q hq => ColAddr.resolve_of_resolve_lt ho hq) (by omega)).1 h0
+
 -- T3.2j (txt:337-340): every body column on the stopping column's stack lies in the subtree of
 -- `r`, is nonempty and has first parent at least `r`
 theorem body_firstParent {A : Forest} {sd : StopData} (hL : InL A) (hk : stepKind A = some .ordinary)
     (hsd : stopData A = some sd) {x : Nat} (hx1 : sd.r < x) (hx2 : x < sd.t) {o : ColAddr}
     (ho : sd.col.resolve 0 x = some o) :
-    ∃ q H rest, A.colAt o = some ((q, H) :: rest) ∧ sd.r ≤ q := by sorry
+    ∃ q H rest, A.colAt o = some ((q, H) :: rest) ∧ sd.r ≤ q := by
+  obtain ⟨hV, -, -, hA, -⟩ := hL
+  obtain ⟨hcol, -, ht, -, -, -⟩ := stopData_spec hsd
+  set c := sd.col
+  have hcE : c ∈ A.colAddrs := (Tree.mem_colAddrs_iff A c).2 (by rw [hcol]; rfl)
+  have hpar : parents A c = (sd.Q ++ [(sd.r, Tree.empty)]).map Prod.fst := by
+    simp [parents, hcol]
+  -- the A tests of the stopping column chain `t - 1` down to `r`
+  have hchain : ∀ (i p : Nat), (parents A c)[i]? = some p → Path A (actualKeys A) c [] (sd.t - 1) p := by
+    intro i
+    induction i with
+    | zero =>
+      intro p hp
+      have h0 := hA c hcE 0 p hp
+      simp only [if_true, cutQuery_zero] at h0
+      rw [ht]; exact h0
+    | succ i ih =>
+      intro p hp
+      have hlt : i < (parents A c).length := by
+        have := (List.getElem?_eq_some_iff.1 hp).1; omega
+      obtain ⟨p', hp'⟩ : ∃ p', (parents A c)[i]? = some p' := ⟨_, List.getElem?_eq_getElem hlt⟩
+      have h1 := hA c hcE (i + 1) p hp
+      simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel, hp', Option.getD_some] at h1
+      exact (ih p' hp').trans (spx_path_nil hV hA (cutQuery_noninc _ _) h1)
+  have hbase : Path A (actualKeys A) c [] (sd.t - 1) sd.r :=
+    hchain sd.Q.length sd.r (by rw [hpar]; simp)
+  -- downward induction: `r` is a `g_∅` ancestor of every `x` with `r ≤ x < t`
+  have key : ∀ n x, x + n = sd.t - 1 → sd.r ≤ x → Path A (actualKeys A) c [] x sd.r := by
+    intro n
+    induction n with
+    | zero => intro x hx _; rw [show x = sd.t - 1 by omega]; exact hbase
+    | succ n ih =>
+      intro x hx hrx
+      rcases Relation.ReflTransGen.cases_head (ih (x + 1) (by omega) (by omega)) with h | ⟨y, hxy, hyr⟩
+      · omega
+      · have := spx_edge_nil hV hA hxy
+        simp only [Nat.add_sub_cancel] at this
+        exact this.trans hyr
+  have hxr := key (sd.t - 1 - x) x (by omega) (le_of_lt hx1)
+  rcases Relation.ReflTransGen.cases_head hxr with h | ⟨y, hxy, hyr⟩
+  · omega
+  · obtain ⟨o', ho', hr⟩ := hxy
+    rw [ho, Option.some.injEq] at ho'
+    subst ho'
+    rw [resp_eq_parents, cursor_nil_right, parents_getElem?] at hr
+    obtain ⟨⟨q, H⟩, he, rfl⟩ := Option.map_eq_some_iff.1 hr
+    obtain ⟨col, hcol', hc0⟩ := Tree.colAt_of_entryAt he
+    obtain ⟨⟨q', H'⟩, rest, rfl⟩ : ∃ x rest, col = x :: rest := by
+      cases col with
+      | nil => simp at hc0
+      | cons x rest => exact ⟨x, rest, rfl⟩
+    simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hc0
+    obtain ⟨rfl, rfl⟩ := hc0
+    exact ⟨q', H', rest, hcol', path_le hV hyr⟩
+
 
 /-! T3.2c helpers: the structure of the budgeted walk `spF` behind `safePrefix`. -/
 
