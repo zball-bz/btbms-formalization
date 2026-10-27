@@ -931,7 +931,9 @@ theorem edge_of_reflPoint (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (h�
 /-- N4.9b (14). -/
 theorem club_edge (κ : Cardinal.{u}) (w : Ordinal.{u}) (hκ : ℵ₀ < κ) (hreg : κ.IsRegular)
     (hw : IsLim w) (hκw : κ.ord < w) :
-    ∃ C : Set (Set.Iio κ.ord), IsClub C ∧ ∀ x ∈ C, prims.Edge w κ.ord x.1 := by sorry
+    ∃ C : Set (Set.Iio κ.ord), IsClub C ∧ ∀ x ∈ C, prims.Edge w κ.ord x.1 :=
+  ⟨reflPoints κ w (isLim_pos hw), isClub_reflPoints κ w _ hκ hreg hκw,
+    fun _ hx => edge_of_reflPoint κ w _ hκ hreg hw hκw hx⟩
 
 /-- N4.10 (P-U4-1): the reflection-structure instance of the S-4 interface. -/
 noncomputable def interface : Interface.{u} where
