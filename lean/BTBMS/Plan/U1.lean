@@ -1591,11 +1591,93 @@ theorem expand_eq_paperOp_special {E : Forest} {sd : StopData} (h : stopData E =
 visible root. -/
 theorem expand_eq_paperOp_ordinary {E : Forest} {sd : StopData} {o : ColAddr}
     (h : stopData E = some sd) (hs : specialStop sd = false) (ho : sd.col.resolve 0 sd.r = some o)
-    (n : Nat) : expand E n = paperOp E n := by sorry
+    (n : Nat) : expand E n = paperOp E n := by
+  obtain ⟨x, xs, hc⟩ := lastCol_of_stopData h
+  have hE : E.cols ≠ [] := by intro h0; simp [h0] at hc
+  obtain ⟨hcc, hd, ht, hlast, -, -, -, hfa, -⟩ := stopData_core h
+  have htl := tailLayer_of_stopData h
+  have hsp := isSpecial_of_stopData h
+  have hk : stepKind E = some .ordinary := (stepKind_ordinary_iff E).mpr ⟨sd, o, h, hs, ho⟩
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  have happ := rootAppendingStart_of_rootData h hrd
+  have hlay := rootData_layer_lt h hrd
+  have hcurle : rd.cursor ≤ ((E.colAt rd.col).getD []).length := by
+    obtain ⟨-, -, -, -, -, -, hcur, -⟩ := rootData_spec h hrd
+    rw [hcur]
+    have := cursor_le_length (rootKeys E rd) (queryKeys sd)
+    simpa [rootKeys] using this
+  rw [paperOp_ordinary hk h hrd n]
+  obtain ⟨-, o', ho', rfl⟩ := rootData_unpack h hrd
+  rw [ho] at ho'; cases ho'
+  have hrl := rootLayer_of_resolve h ho
+  have htn := tailNum_of_stopData h
+  have hra := rootAt_of_stopData h
+  obtain ⟨hon, hnum⟩ := (ColAddr.resolve_spec 0 sd.col o sd.r).mp ho
+  obtain ⟨F, hF, hlt, hpre, hiff, -⟩ := onStack_route h hon
+  have hj : o.path.length ≤ sd.depth := by have := hpre.length_le; omega
+  have hFj : skipLayers E o.path.length = F := by
+    have h1 := hfa o.path.length hj
+    rw [List.prefix_iff_eq_take.mp hpre] at hF
+    rw [hF] at h1
+    exact (Option.some.inj h1).symm
+  have hTail : (skipLayers F (sd.depth - o.path.length)).cols.getLast?.getD [] =
+      sd.Q ++ [(sd.r, Tree.empty)] := by
+    rw [← hFj, skipLayers_add, Nat.add_sub_cancel' hj, hlast]; rfl
+  have hcolAt : (E.colAt o).getD [] = F.cols.getD o.col [] := by
+    simp [Tree.colAt, hF, List.getD_eq_getElem?_getD]
+  have hrc : (rootOf E sd o).col = o := rfl
+  have hlay' : (rootOf E sd o).layer = o.path.length := rfl
+  have hidx : (rootOf E sd o).idx = o.col := rfl
+  have hown : (rootOf E sd o).owner = (o.col + 1 == F.cols.length) := by simp [rootOf, hF]
+  rw [hrc, hcolAt] at happ hcurle
+  rw [hlay'] at hlay
+  have hordZ : ordZ E sd (rootOf E sd o) n = ordLoop (ordStep sd (rootOf E sd o) F
+      ((F.cols.getD o.col []).drop (rootOf E sd o).cursor)) n Tree.empty := by
+    simp only [ordZ, hrc, hF, Option.getD_some, hcolAt]
+  unfold expand
+  split
+  · rename_i heq; exact absurd heq hE
+  · simp only [htl]
+    rw [if_neg (by omega)]
+    simp only [Int.toNat_natCast, hsp, hs, Bool.false_eq_true, if_false, htn, hra, hrl]
+    rw [if_neg (by omega)]
+    simp only [hFj, hTail, happ, List.dropLast_concat, hrc, hcolAt, hordZ, Hole.fill]
+    rw [iterDown_eq_ordLoop, iterDown_eq_ordLoop]
+    by_cases hO : o.col + 1 = F.cols.length
+    · have hb : (o.col != F.cols.length - 1) = false := by simp; omega
+      have hown' : (rootOf E sd o).owner = true := by rw [hown]; simpa using hO
+      have hjl := hlay hown'
+      have hex : ((rootOf E sd o).cursor == (F.cols.getD o.col []).length) =
+          ((F.cols.getD o.col []).drop (rootOf E sd o).cursor).isEmpty := by
+        rw [Bool.eq_iff_iff, beq_iff_eq, List.isEmpty_iff, List.drop_eq_nil_iff]; omega
+      rw [hb, hown', hex]
+      simp only [Bool.false_eq_true, if_false, Bool.true_and]
+      split_ifs
+      · rfl
+      · congr 3
+        funext k Z
+        simp only [ordStep, hown', if_true, hlay', mapLast_eq, List.append_assoc]
+        rw [show (sd.depth : Int) - (o.path.length : Int) - 1 =
+          ((sd.depth - o.path.length - 1 : Nat) : Int) by omega]
+        rfl
+    · have hb : (o.col != F.cols.length - 1) = true := by simp; omega
+      have hown' : (rootOf E sd o).owner = false := by rw [hown]; simpa using hO
+      rw [hb, hown']
+      simp only [if_true, Bool.false_and, Bool.false_eq_true, if_false]
+      congr 3
+      funext k Z
+      simp only [ordStep, hown', Bool.false_eq_true, if_false, hlay', hidx]
+      rw [show (sd.depth : Int) - (o.path.length : Int) =
+        ((sd.depth - o.path.length : Nat) : Int) by omega]
+      rfl
 
 /-- D1.6c: under V the root of a stop is visible. -/
 theorem resolve_root_of_condV {E : Forest} (hV : CondV E) {sd : StopData} (h : stopData E = some sd) :
-    (sd.col.resolve 0 sd.r).isSome := by sorry
+    (sd.col.resolve 0 sd.r).isSome := by
+  obtain ⟨hcol, -⟩ := stopData_spec h
+  have hent : E.entryAt (closingSlot sd) = some (sd.r, Tree.empty) := by
+    simp [Tree.entryAt, closingSlot, hcol]
+  exact hV _ ((Tree.mem_entryAddrs_iff E _).mpr (by rw [hent]; rfl)) sd.r Tree.empty hent
 
 /-! ## D2.2a — responses, edges and paths -/
 
