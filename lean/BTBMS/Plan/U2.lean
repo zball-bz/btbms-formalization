@@ -17688,11 +17688,169 @@ theorem covers_of_end_E5 {B : Forest} (hB : CondI B) {c : ColAddr} {k p : Nat}
     (litCap_ordinary hB hup hKL.1 hKL.2.1) (stopData_litCap hup) hrd)).2
     (fullCut_success hup hKL hend)
 
+/-- L3.6a helper: the data of one legal move of an upward literal cap of an `H`-expression: the
+moved entry `j` and the target entry `i` of the move column share the parent `q`, the old heights
+satisfy `H_j ≤ H_i`, both carry the same internal cap, and `H_i` is below that cap. -/
+theorem move_data_G5 {E : Forest} (hH : CondH E) {cs : ColAddr} {k p : Nat}
+    (hup : IsUpward E cs k p) {m : Move} (hm : MoveOK (litCap E cs k p) m) :
+    ∃ rest Ecol q Hi Hj, cs.path = m.col.path ++ (m.col.col, m.j) :: rest ∧
+      E.colAt m.col = some Ecol ∧ Ecol[m.i]? = some (q, Hi) ∧ Ecol[m.j]? = some (q, Hj) ∧
+      m.i < m.j ∧ Hj ≤ Hi ∧ IsUpward Hj ⟨rest, cs.col⟩ k p ∧ IsUpward Hi ⟨rest, cs.col⟩ k p ∧
+      litCap Hi ⟨rest, cs.col⟩ k p = litCap Hj ⟨rest, cs.col⟩ k p ∧
+      (∀ x, m.i ≤ x → x ≤ m.j → (Ecol.getD x (0, Tree.empty)).1 = q) ∧
+      Hi < litCap Hj ⟨rest, cs.col⟩ k p ∧
+      (litCap E cs k p).colAt m.col = some (Ecol.take m.j ++ [(q, litCap Hj ⟨rest, cs.col⟩ k p)]) := by
+  obtain ⟨col0, hcol0, hk0, hq0⟩ := isUpward_iff_exists.1 hup
+  obtain ⟨col, sd, hcolK, hsd, hj, hij, hpre, hpar, hlt, -⟩ := hm
+  rw [stopData_litCap' hcol0] at hsd
+  obtain rfl := Option.some.inj hsd
+  obtain ⟨rest, hrest⟩ := hpre
+  simp only [EntryAddr.heightPath, List.append_assoc, List.singleton_append] at hrest
+  set P := m.col.path
+  set cc := m.col.col
+  have hcs : cs = ⟨P ++ (cc, m.j) :: rest, cs.col⟩ := by rw [hrest]
+  have hcol0' := hcol0
+  rw [hcs] at hcol0'
+  obtain ⟨Ecol, qj, Hj, hEcol, hEj, hHj⟩ := colAt_through hcol0'
+  have hKcol : (litCap E cs k p).colAt m.col =
+      some (Ecol.take m.j ++ [(qj, litCapAux k p rest cs.col Hj)]) := by
+    rw [litCap_eq_aux hcol0]
+    simp only [Tree.colAt] at hEcol ⊢
+    have hpreP : P <+: cs.path := ⟨(cc, m.j) :: rest, hrest⟩
+    rw [forestAt_litCapAux_prefix k p cs.col cs.path P E hpreP ⟨col0, hcol0⟩]
+    obtain ⟨G, hG, hGc⟩ := Option.bind_eq_some_iff.1 hEcol
+    rw [hG]
+    have hdrop : cs.path.drop P.length = (cc, m.j) :: rest := by rw [← hrest]; simp
+    obtain ⟨gcols⟩ := G
+    have hget : (gcols.getD cc [])[m.j]? = some (qj, Hj) := by
+      simp only [Tree.cols] at hGc; rw [List.getD_eq_getElem?_getD, hGc, Option.getD_some]; exact hEj
+    simp only [Option.map_some, Option.bind_some, hdrop]
+    rw [litCapAux_cons k p cc m.j cs.col rest gcols hget]
+    simp only [Tree.cols] at hGc ⊢
+    have hci : cc < gcols.length := (List.getElem?_eq_some_iff.1 hGc).1
+    rw [list_getElem?_take_snoc _ _ _ hci.le, if_neg (lt_irrefl _), if_pos rfl]
+    all_goals simp [List.getD_eq_getElem?_getD, hGc]
+  have hcolK' : (litCap E cs k p).colAt m.col = some col := hcolK
+  rw [hKcol] at hcolK'
+  obtain rfl := Option.some.inj hcolK'
+  have hjE : m.j < Ecol.length := (List.getElem?_eq_some_iff.1 hEj).1
+  have hgetK : ∀ x, x < m.j →
+      (Ecol.take m.j ++ [(qj, litCapAux k p rest cs.col Hj)]).getD x (0, Tree.empty) =
+        Ecol.getD x (0, Tree.empty) := by
+    intro x hx
+    simp only [List.getD_eq_getElem?_getD]
+    rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hx]
+  have hgetKj : (Ecol.take m.j ++ [(qj, litCapAux k p rest cs.col Hj)]).getD m.j (0, Tree.empty) =
+      (qj, litCapAux k p rest cs.col Hj) := by
+    simp only [List.getD_eq_getElem?_getD]
+    rw [List.getElem?_append_right (by simp)]; simp [List.length_take_of_le hjE.le]
+  have hparE : ∀ x, m.i ≤ x → x < m.j → (Ecol.getD x (0, Tree.empty)).1 = qj := by
+    intro x h1 h2
+    have := hpar x h1 h2.le
+    rw [hgetK x h2, hgetKj] at this; exact this
+  obtain ⟨qi, Hi, hEi⟩ : ∃ qi Hi, Ecol[m.i]? = some (qi, Hi) := by
+    cases h : Ecol[m.i]? with
+    | none => have := List.getElem?_eq_none_iff.1 h; omega
+    | some x => exact ⟨x.1, x.2, rfl⟩
+  have hqi : qi = qj := by
+    have := hparE m.i le_rfl hij
+    simp only [List.getD_eq_getElem?_getD, hEi, Option.getD_some] at this; exact this
+  subst hqi
+  have hltE : Hi < litCapAux k p rest cs.col Hj := by
+    have := hlt
+    rw [hgetK m.i hij, hgetKj] at this
+    simpa [List.getD_eq_getElem?_getD, hEi] using this
+  have hmemc : m.col ∈ E.colAddrs := (Tree.mem_colAddrs_iff E m.col).2 (by
+    show (E.colAt ⟨P, cc⟩).isSome; rw [hEcol]; rfl)
+  have hchain : ∀ n, m.i + n ≤ m.j → Hj ≤ (Ecol.getD (m.j - n) (0, Tree.empty)).2 := by
+    intro n
+    induction n with
+    | zero => intro _; simp [List.getD_eq_getElem?_getD, hEj]
+    | succ n ih =>
+      intro hn
+      have h1 := ih (by omega)
+      have hx : Ecol[m.j - (n + 1)]? = some (Ecol.getD (m.j - (n + 1)) (0, Tree.empty)) := by
+        rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega)]; simp
+      have hy : Ecol[m.j - (n + 1) + 1]? = some (Ecol.getD (m.j - n) (0, Tree.empty)) := by
+        rw [show m.j - (n + 1) + 1 = m.j - n by omega, List.getD_eq_getElem?_getD,
+          List.getElem?_eq_getElem (by omega)]; simp
+      have hle := hH m.col hmemc (m.j - (n + 1)) _ _
+        (by rw [show m.col = ⟨P, cc⟩ from rfl, hEcol]; exact hx)
+        (by rw [show m.col = ⟨P, cc⟩ from rfl, hEcol]; exact hy)
+      have hp1 : (Ecol.getD (m.j - (n + 1)) (0, Tree.empty)).1 = qi := hparE _ (by omega) (by omega)
+      have hp2 : (Ecol.getD (m.j - n) (0, Tree.empty)).1 = qi := by
+        rcases Nat.eq_zero_or_pos n with rfl | hn0
+        · simp [List.getD_eq_getElem?_getD, hEj]
+        · exact hparE _ (by omega) (by omega)
+      rcases hle with h | ⟨-, h⟩
+      · omega
+      · exact le_trans h1 h
+  have hHjHi : Hj ≤ Hi := by
+    have := hchain (m.j - m.i) (by omega)
+    rw [show m.j - (m.j - m.i) = m.i by omega] at this
+    simpa [List.getD_eq_getElem?_getD, hEi] using this
+  have hupJ : IsUpward Hj ⟨rest, cs.col⟩ k p := isUpward_iff_exists.2 ⟨col0, hHj, hk0, hq0⟩
+  obtain ⟨hupI, heq⟩ := interval_cap hupJ hHjHi (by rw [litCap_eq_aux hHj]; exact hltE)
+  have hparAll : ∀ x, m.i ≤ x → x ≤ m.j → (Ecol.getD x (0, Tree.empty)).1 = qi := by
+    intro x h1 h2
+    rcases Nat.lt_or_ge x m.j with h | h
+    · exact hparE x h1 h
+    · rw [show x = m.j by omega]; simp [List.getD_eq_getElem?_getD, hEj]
+  refine ⟨rest, Ecol, qi, Hi, Hj, hrest.symm, hEcol, hEi, hEj, hij, hHjHi, hupJ, hupI, heq,
+    hparAll, ?_, ?_⟩
+  · rw [litCap_eq_aux hHj]; exact hltE
+  · rw [hKcol, litCap_eq_aux hHj]
+
+/-- L3.6a helper: equal upward caps of `X ≤ Y` compare the complete local suffixes. -/
+theorem localSuffix_le_of_cap_G5 {X Y : Forest} {c : ColAddr} {k p : Nat}
+    (hX : IsUpward X c k p) (hY : IsUpward Y c k p) (hXY : X ≤ Y)
+    (hcap : litCap Y c k p = litCap X c k p) : localSuffix X c ≤ localSuffix Y c := by
+  by_contra hlt
+  rw [not_le] at hlt
+  obtain ⟨sd, hsd⟩ : ∃ sd, stopData (litCap Y c k p) = some sd := ⟨_, stopData_litCap hY⟩
+  have h1 := (lt_context_iff_E5 hY hsd (localSuffix X c)).2 hlt
+  rw [hcap] at hsd h1
+  obtain ⟨A, S, hw, -, -, -, -, -, -, -, -, hC⟩ := word_context_litCap_E5 hX hsd
+  have h2 : word (context (litCap X c k p) sd (localSuffix X c)) <+: word X := by
+    rw [hC, hw]; exact List.prefix_append _ _
+  have h3 := (word_lt_iff _ _).2 h1
+  have h4 := word_le_of_le hXY
+  exact list_not_lt_prefix h2 (lt_of_le_of_lt h4 h3)
+
+/-- L3.6a helper: the complete local suffix below an entry is the local suffix of its height. -/
+theorem localSuffix_through_G5 {E : Forest} {P rest : List (Nat × Nat)} {cc b : Nat} {c : ColAddr}
+    {Ecol : Column} {q : Nat} {H : Forest} (hc : c.path = P ++ (cc, b) :: rest)
+    (hE : E.colAt ⟨P, cc⟩ = some Ecol) (hb : Ecol[b]? = some (q, H)) :
+    localSuffix E c = localSuffix H ⟨rest, c.col⟩ := by
+  unfold localSuffix
+  rw [hc, forestAt_through_col, hE]
+  simp only [Option.bind_some, hb]
+
 -- L3.6a (txt:463-465): reversing one repair: the complete old suffixes compare `Y_i ≥ Y_j`
 theorem repair_suffix_ge {B : Forest} (hH : CondH B) {cj ci : ColAddr} {k p : Nat}
     (hj : IsUpward B cj k p) (hi : IsUpward B ci k p)
     (hmove : ∃ m, MoveOK (litCap B cj k p) m ∧ applyMove (litCap B cj k p) m = litCap B ci k p) :
-    localSuffix B cj ≤ localSuffix B ci := by sorry
+    localSuffix B cj ≤ localSuffix B ci := by
+  obtain ⟨m, hm, heq⟩ := hmove
+  obtain ⟨rest, Ecol, q, Hi, Hj, hrest, hEcol, hEi, hEj, -, hle, hupJ, hupI, hcapeq, -⟩ :=
+    move_data_G5 hH hj hm
+  obtain ⟨rest', hrest', hupI', hmv', -⟩ := litCap_move_step hH hj hm
+  have hr : rest' = rest := by
+    rw [hrest] at hrest'
+    have := List.append_cancel_left hrest'
+    simp only [List.cons.injEq, true_and] at this
+    exact this.symm
+  subst hr
+  have hci : ci = ⟨m.col.path ++ (m.col.col, m.i) :: rest', cj.col⟩ := by
+    have e1 := stopData_litCap hi
+    rw [← heq, hmv', stopData_litCap hupI'] at e1
+    have := congrArg StopData.col (Option.some.inj e1)
+    exact this.symm
+  have hEcol' : B.colAt ⟨m.col.path, m.col.col⟩ = some Ecol := hEcol
+  have hcip : ci.path = m.col.path ++ (m.col.col, m.i) :: rest' := by rw [hci]
+  have hcic : ci.col = cj.col := by rw [hci]
+  rw [localSuffix_through_G5 hrest hEcol' hEj, localSuffix_through_G5 hcip hEcol' hEi, hcic]
+  exact localSuffix_le_of_cap_G5 hupJ hupI hle hcapeq
 
 -- L3.6b (txt:466-481): success transfers backward through one legal move
 -- VERIFY-U2 (F5): `hP` added; step 1 gets S of the cap from L3.1e, which needs P of `B`
