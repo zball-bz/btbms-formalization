@@ -615,22 +615,345 @@ noncomputable def hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
   haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
   Substructure.elementarySkolem₁Reduct (Substructure.closure (lang.sum lang.skolem₁) s)
 
+/-- N4.7 (helper): the carrier of the hull is the carrier of the Skolem closure. -/
+theorem coe_hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
+    (hull w hw s : Set (M w)) =
+      (haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+       (Substructure.closure (lang.sum lang.skolem₁) s : Set (M w))) := rfl
+
 /-- N4.7: generators lie in the hull. -/
 theorem subset_hull (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
-    s ⊆ (hull w hw s : Set (M w)) := by sorry
+    s ⊆ (hull w hw s : Set (M w)) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  rw [coe_hull]
+  exact Substructure.subset_closure
 
 /-- N4.7: monotonicity. -/
 theorem hull_mono (w : Ordinal.{u}) (hw : 0 < w) {s t : Set (M w)} (h : s ⊆ t) :
-    (hull w hw s : Set (M w)) ⊆ hull w hw t := by sorry
+    (hull w hw s : Set (M w)) ⊆ hull w hw t := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  rw [coe_hull, coe_hull]
+  exact Substructure.closure_mono h
 
 /-- N4.7: continuity on directed unions. -/
 theorem hull_iUnion (w : Ordinal.{u}) (hw : 0 < w) {ι : Type*} [Nonempty ι]
     {s : ι → Set (M w)} (hs : Directed (· ⊆ ·) s) :
-    (hull w hw (⋃ i, s i) : Set (M w)) = ⋃ i, (hull w hw (s i) : Set (M w)) := by sorry
+    (hull w hw (⋃ i, s i) : Set (M w)) = ⋃ i, (hull w hw (s i) : Set (M w)) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  simp only [coe_hull]
+  rw [Substructure.closure_iUnion]
+  ext x
+  rw [SetLike.mem_coe, Substructure.mem_iSup_of_directed, Set.mem_iUnion]
+  · rfl
+  · exact hs.mono_comp _ (fun a b h => Substructure.closure_mono h)
+
+/-- N4.7 (helper): each arity has countably many relation symbols. -/
+instance (n : Nat) : Countable (Rel n) := by
+  refine Function.Injective.countable (f := fun r : Rel n => match r with
+    | .lt => (0 : Fin 3) | .elem => 1 | .edge => 2) ?_
+  intro a b h
+  cases a <;> cases b <;> first | rfl | (simp at h)
+
+/-- N4.7 (helper): the language is countable. -/
+theorem lang_card_le : lang.card ≤ ℵ₀ := by
+  have : Countable lang.Symbols := by
+    change Countable ((Σ l, Empty) ⊕ (Σ l, Rel l))
+    infer_instance
+  exact Cardinal.mk_le_aleph0
 
 /-- N4.7: the size bound `|hull s| ≤ max(ℵ₀, |s|)`. -/
 theorem card_hull_le (w : Ordinal.{u}) (hw : 0 < w) (s : Set (M w)) :
-    Cardinal.mk (hull w hw s) ≤ max ℵ₀ (Cardinal.mk s) := by sorry
+    Cardinal.mk (hull w hw s) ≤ max ℵ₀ (Cardinal.mk s) := by
+  haveI : Nonempty (M w) := ⟨⟨0, hw⟩⟩
+  have h1 := Substructure.lift_card_closure_le (L := lang.sum lang.skolem₁) (s := s)
+  have h2 : #(Σ n, (lang.sum lang.skolem₁).Functions n) ≤ ℵ₀ :=
+    card_functions_sum_skolem₁_le.trans (max_le le_rfl lang_card_le)
+  change #(Substructure.closure (lang.sum lang.skolem₁) s) ≤ _
+  simp only [Cardinal.lift_uzero] at h1
+  refine h1.trans (max_le (le_max_left _ _) ?_)
+  refine (Cardinal.add_le_max _ _).trans (max_le (max_le (le_max_right _ _) ?_) (le_max_left _ _))
+  refine ((Cardinal.lift_le.2 h2).trans (by simp)).trans (le_max_left _ _)
+
+-- Moved before `condensation`, which uses it (statement unchanged).
+/-- N4.7: the collapse of a point is the order type of the substructure below it: if exactly
+the ordinals below `x` lie (as points of `S`) below `k`, then `π k = x`. -/
+theorem collapse_eq_of_cut {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
+    (π : S ≃[lang] M ν)
+    (hπ : ∀ x y : S, ((x : M w).val < (y : M w).val ↔ (π x).val < (π y).val)) (k : S)
+    {x : Ordinal.{u}} (hcut : ∀ y : S, (y : M w).val < (k : M w).val ↔ (y : M w).val < x)
+    (hfull : ∀ o < x, ∃ y : S, (y : M w).val = o) : (π k).val = x := by
+  -- `π` is onto the ordinals below `ν`
+  have hsurj : ∀ o (ho : o < ν), (π (π.symm ⟨o, ho⟩)).val = o := fun o ho => by
+    rw [π.apply_symm_apply]
+  -- points below `x` are fixed
+  have key : ∀ o, ∀ y : S, (y : M w).val = o → o < x → (π y).val = o := by
+    intro o
+    induction o using WellFoundedLT.induction with
+    | _ o IH =>
+      intro y hy hox
+      apply le_antisymm
+      · by_contra hlt
+        rw [not_le] at hlt
+        set z := π.symm ⟨o, hlt.trans (π y).lt⟩
+        have hz : (π z).val = o := hsurj _ _
+        have hzy : (z : M w).val < o := hy ▸ (hπ z y).2 (by rw [hz]; exact hlt)
+        have := IH _ hzy z rfl (hzy.trans hox)
+        rw [hz] at this
+        exact (lt_irrefl o) (this ▸ hzy)
+      · refine le_of_forall_lt fun c hc => ?_
+        obtain ⟨y', hy'⟩ := hfull c (hc.trans hox)
+        rw [← IH c hc y' hy' (hc.trans hox)]
+        exact (hπ y' y).1 (by rw [hy', hy]; exact hc)
+  apply le_antisymm
+  · by_contra hlt
+    rw [not_le] at hlt
+    set z := π.symm ⟨x, hlt.trans (π k).lt⟩
+    have hz : (π z).val = x := hsurj _ _
+    have hzx : (z : M w).val < x := (hcut z).1 ((hπ z k).2 (by rw [hz]; exact hlt))
+    have := key _ z rfl hzx
+    rw [hz] at this
+    exact (lt_irrefl x) (this ▸ hzx)
+  · refine le_of_forall_lt fun c hc => ?_
+    obtain ⟨y, hy⟩ := hfull c hc
+    rw [← key c y hy hc]
+    exact (hπ y k).1 ((hcut y).2 (hy ▸ hc))
+
+/-- N4.7 (helper): formulas transfer from `M_w` to an elementary substructure `S` and then
+along an isomorphism of `S` (`ElementaryEmbedding.map_formula`,
+`StrongHomClass.realize_formula`). -/
+theorem realize_elemIso {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
+    {Q : Prims.{u}} (π : S ≃[lang] Carrier ν Q) {α : Type*} (φ : lang.Formula α)
+    (v : α → S) : φ.Realize (((↑) : S → M w) ∘ v) ↔ φ.Realize (π ∘ v) :=
+  (S.subtype.map_formula φ v).trans (StrongHomClass.realize_formula π φ).symm
+
+/-- N4.7 (helper): `ReflectsD` only reads the primitives below `z` when `a, b ≤ z`. -/
+theorem reflectsD_congr {Q Q' : Prims.{u}} {z : Ordinal.{u}} (hQ : AgreeBelow Q Q' z) {V : Type}
+    (D : Diagram V) (F : V → Prop) {a b : Ordinal.{u}} (ha : a ≤ z) (hb : b ≤ z) :
+    ReflectsD Q D F a b ↔ ReflectsD Q' D F a b := by
+  unfold ReflectsD
+  simp only [Diagram.realizableBelow_congr_below hQ ha, Diagram.realizableBelow_congr_below hQ hb]
+
+/-- N4.7 (helper): `TransportsD` only reads the primitives below `z` when `b, c ≤ z`. -/
+theorem transportsD_congr {Q Q' : Prims.{u}} {z : Ordinal.{u}} (hQ : AgreeBelow Q Q' z)
+    {V : Type} [DecidableEq V] (D : Diagram V) (F : V → Prop) (t : V) {c b a : Ordinal.{u}}
+    (hc : c ≤ z) (hb : b ≤ z) :
+    TransportsD Q D F t c b a ↔ TransportsD Q' D F t c b a := by
+  unfold TransportsD
+  simp only [Diagram.realizableBelow_congr_below hQ hc, Diagram.realizableBelow_congr_below hQ hb]
+
+/-- N4.7 (helper): `Transports` is the conjunction of the `TransportsD`. -/
+theorem transports_iff (Q : Prims.{u}) (c b a : Ordinal.{u}) :
+    Transports Q c b a ↔ ∀ {V : Type} [DecidableEq V] (D : Diagram V) (F : V → Prop) (t : V),
+      TransportsD Q D F t c b a :=
+  ⟨fun h _ _ D F t ht σ hσ hr => h D F σ t ht hσ hr,
+   fun h _ _ D F σ t ht hσ hr => h D F t ht σ hσ hr⟩
+
+/-- N4.7 (helper): an order collapse of the points of `S` onto the ordinals below `ν`. -/
+structure Collapse {w : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
+    (ν : Ordinal.{u}) where
+  f : S → Ordinal.{u}
+  lt_top : ∀ x, f x < ν
+  lt_iff : ∀ x y : S, (x : M w).val < (y : M w).val ↔ f x < f y
+  surj : ∀ o < ν, ∃ x, f x = o
+
+namespace Collapse
+
+variable {w ν : Ordinal.{u}} {S : lang.ElementarySubstructure (M w)} (C : Collapse S ν)
+
+/-- N4.7 (helper): the collapse preserves `≤`. -/
+theorem le_iff (x y : S) : (x : M w).val ≤ (y : M w).val ↔ C.f x ≤ C.f y := by
+  rw [← not_lt, ← not_lt, C.lt_iff]
+
+/-- N4.7 (helper): the collapse is injective. -/
+theorem injective : Function.Injective C.f := fun x y h =>
+  Subtype.ext (Carrier.ext (le_antisymm ((C.le_iff x y).2 h.le) ((C.le_iff y x).2 h.ge)))
+
+/-- N4.7 (helper): the underlying bijection onto `Carrier ν Q`. -/
+noncomputable def equiv (Q : Prims.{u}) : S ≃ Carrier ν Q :=
+  Equiv.ofBijective (fun x => ⟨C.f x, C.lt_top x⟩)
+    ⟨fun _ _ h => C.injective (congrArg Carrier.val h),
+     fun z => let ⟨x, hx⟩ := C.surj z.val z.lt; ⟨x, Carrier.ext hx⟩⟩
+
+/-- N4.7 (helper): the primitives pushed forward along the collapse. -/
+def pushQ : Prims.{u} where
+  Elem x' y' := ∃ x y : S, C.f x = x' ∧ C.f y = y' ∧ prims.Elem (x : M w).val (y : M w).val
+  Edge c' b' a' := ∃ c b a : S, C.f c = c' ∧ C.f b = b' ∧ C.f a = a' ∧
+    prims.Edge (c : M w).val (b : M w).val (a : M w).val
+
+/-- N4.7 (helper): the pushed-forward `Elem` on collapsed points. -/
+theorem pushQ_elem (x y : S) :
+    C.pushQ.Elem (C.f x) (C.f y) ↔ prims.Elem (x : M w).val (y : M w).val :=
+  ⟨fun ⟨_, _, hx, hy, h⟩ => C.injective hx ▸ C.injective hy ▸ h,
+   fun h => ⟨x, y, rfl, rfl, h⟩⟩
+
+/-- N4.7 (helper): the pushed-forward `Edge` on collapsed points. -/
+theorem pushQ_edge (c b a : S) :
+    C.pushQ.Edge (C.f c) (C.f b) (C.f a) ↔
+      prims.Edge (c : M w).val (b : M w).val (a : M w).val :=
+  ⟨fun ⟨_, _, _, hc, hb, ha, h⟩ => C.injective hc ▸ C.injective hb ▸ C.injective ha ▸ h,
+   fun h => ⟨c, b, a, rfl, rfl, rfl, h⟩⟩
+
+/-- N4.7 (helper): the collapse as an isomorphism onto `Carrier ν pushQ`. -/
+noncomputable def pushEquiv : S ≃[lang] Carrier ν C.pushQ :=
+  { C.equiv C.pushQ with
+    map_fun' := fun {_} g => Empty.elim g
+    map_rel' := by
+      intro n r xs
+      cases r
+      · exact (C.lt_iff (xs 0) (xs 1)).symm
+      · exact C.pushQ_elem (xs 0) (xs 1)
+      · exact C.pushQ_edge (xs 0) (xs 1) (xs 2) }
+
+/-- N4.7 (helper): the collapse map on values. -/
+theorem pushEquiv_val (x : S) : (C.pushEquiv x).val = C.f x := rfl
+
+/-- N4.7 (helper): formulas transfer from `M_w` along the collapse. -/
+theorem realize_push {α : Type*} (φ : lang.Formula α) (v : α → S) :
+    φ.Realize (((↑) : S → M w) ∘ v) ↔ φ.Realize (C.pushEquiv ∘ v) :=
+  realize_elemIso S C.pushEquiv φ v
+
+/-- N4.7 (helper): `realize_push` at a pair. -/
+theorem realize_push2 (φ : lang.Formula (Fin 2)) (x y : S) :
+    φ.Realize ![(x : M w), (y : M w)] ↔ φ.Realize ![C.pushEquiv x, C.pushEquiv y] := by
+  have h := C.realize_push φ ![x, y]
+  have e1 : (((↑) : S → M w) ∘ ![x, y]) = ![(x : M w), (y : M w)] := by
+    funext i; match i with | 0 => rfl | 1 => rfl
+  have e2 : (C.pushEquiv ∘ ![x, y]) = ![C.pushEquiv x, C.pushEquiv y] := by
+    funext i; match i with | 0 => rfl | 1 => rfl
+  rwa [e1, e2] at h
+
+/-- N4.7 (helper): `realize_push` at a triple. -/
+theorem realize_push3 (φ : lang.Formula (Fin 3)) (x y z : S) :
+    φ.Realize ![(x : M w), (y : M w), (z : M w)] ↔
+      φ.Realize ![C.pushEquiv x, C.pushEquiv y, C.pushEquiv z] := by
+  have h := C.realize_push φ ![x, y, z]
+  have e1 : (((↑) : S → M w) ∘ ![x, y, z]) = ![(x : M w), (y : M w), (z : M w)] := by
+    funext i; match i with | 0 => rfl | 1 => rfl | 2 => rfl
+  have e2 : (C.pushEquiv ∘ ![x, y, z]) = ![C.pushEquiv x, C.pushEquiv y, C.pushEquiv z] := by
+    funext i; match i with | 0 => rfl | 1 => rfl | 2 => rfl
+  rwa [e1, e2] at h
+
+/-- N4.7 (helper): the collapse preserves `IsLim` (`limFml` and elementarity). -/
+theorem isLim_iff (x : S) : IsLim (x : M w).val ↔ IsLim (C.f x) :=
+  (realize_limFml (x : M w)).symm.trans
+    ((C.realize_push limFml (fun _ => x)).trans (realize_limFml (C.pushEquiv x)))
+
+/-- N4.7 (helper): the induction statement (step 4): the collapse preserves `Elem` and `Edge`
+at top coordinate `o`. -/
+def Good (o : Ordinal.{u}) : Prop :=
+  (∀ x y : S, C.f y = o →
+    (prims.Elem (x : M w).val (y : M w).val ↔ prims.Elem (C.f x) (C.f y))) ∧
+  (∀ c b a : S, C.f c = o →
+    (prims.Edge (c : M w).val (b : M w).val (a : M w).val ↔
+      prims.Edge (C.f c) (C.f b) (C.f a)))
+
+/-- N4.7 (helper, step 4a): below a collapsed top coordinate, the pushed-forward primitives
+are the true ones. -/
+theorem agreeBelow (o : Ordinal.{u}) (ho : o ≤ ν) (IH : ∀ o' < o, C.Good o') :
+    AgreeBelow C.pushQ prims o := by
+  refine ⟨fun x' y' hx' hy' => ?_, fun c' b' a' hc' hb' ha' => ?_⟩
+  · obtain ⟨x, rfl⟩ := C.surj x' (hx'.trans_le ho)
+    obtain ⟨y, rfl⟩ := C.surj y' (hy'.trans_le ho)
+    rw [C.pushQ_elem]
+    exact (IH _ hy').1 x y rfl
+  · obtain ⟨c, rfl⟩ := C.surj c' (hc'.trans_le ho)
+    obtain ⟨b, rfl⟩ := C.surj b' (hb'.trans_le ho)
+    obtain ⟨a, rfl⟩ := C.surj a' (ha'.trans_le ho)
+    rw [C.pushQ_edge]
+    exact (IH _ hc').2 c b a rfl
+
+/-- N4.7 (helper, step 4b): `Elem` at the collapsed top coordinate `o`. -/
+theorem good_elem (o : Ordinal.{u}) (IH : ∀ o' < o, C.Good o') (x y : S) (hy : C.f y = o) :
+    prims.Elem (x : M w).val (y : M w).val ↔ prims.Elem (C.f x) (C.f y) := by
+  have hQ := C.agreeBelow o (hy ▸ (C.lt_top y).le) IH
+  rw [elem_iff, elem_iff, C.isLim_iff x, C.isLim_iff y, C.le_iff x y]
+  refine and_congr_right fun _ => and_congr_right fun _ => and_congr_right fun hxy => ?_
+  have key : ∀ {V : Type} (D : Diagram V) (F : V → Prop),
+      ReflectsD prims D F (x : M w).val (y : M w).val ↔ ReflectsD prims D F (C.f x) (C.f y) := by
+    intro V D F
+    rw [← realize_reflFml D F (x : M w) (y : M w) ((C.le_iff x y).2 hxy), C.realize_push2,
+      realize_reflFml D F (C.pushEquiv x) (C.pushEquiv y) hxy]
+    exact reflectsD_congr hQ D F (hxy.trans_eq hy) hy.le
+  exact ⟨fun h V D F => (key D F).1 (h D F), fun h V D F => (key D F).2 (h D F)⟩
+
+/-- N4.7 (helper, step 4c): `Edge` at the collapsed top coordinate `o`. -/
+theorem good_edge (o : Ordinal.{u}) (IH : ∀ o' < o, C.Good o') (c b a : S) (hc : C.f c = o) :
+    prims.Edge (c : M w).val (b : M w).val (a : M w).val ↔
+      prims.Edge (C.f c) (C.f b) (C.f a) := by
+  have hQ := C.agreeBelow o (hc ▸ (C.lt_top c).le) IH
+  rw [edge_iff, edge_iff, C.isLim_iff a, C.isLim_iff b, C.isLim_iff c, C.lt_iff a b,
+    C.lt_iff b c]
+  refine and_congr_right fun _ => and_congr_right fun _ => and_congr_right fun _ =>
+    and_congr_right fun hab => and_congr_right fun hbc => ?_
+  rw [(IH (C.f b) (hbc.trans_eq hc)).1 a b rfl, C.good_elem o IH b c hc]
+  refine and_congr_right fun _ => and_congr_right fun _ => ?_
+  rw [transports_iff, transports_iff]
+  have key : ∀ {V : Type} [DecidableEq V] (D : Diagram V) (F : V → Prop) (t : V),
+      TransportsD prims D F t (c : M w).val (b : M w).val (a : M w).val ↔
+        TransportsD prims D F t (C.f c) (C.f b) (C.f a) := by
+    intro V _ D F t
+    by_cases ht : F t
+    · exact ⟨fun _ h => absurd ht h, fun _ h => absurd ht h⟩
+    rw [← realize_transFml D F t ht (c : M w) (b : M w) (a : M w) ((C.lt_iff a b).2 hab)
+      ((C.lt_iff b c).2 hbc), C.realize_push3,
+      realize_transFml D F t ht (C.pushEquiv c) (C.pushEquiv b) (C.pushEquiv a) hab hbc]
+    exact transportsD_congr hQ D F t hc.le (hbc.trans_eq hc).le
+  exact ⟨fun h V _ D F t => (key D F t).1 (h D F t), fun h V _ D F t => (key D F t).2 (h D F t)⟩
+
+/-- N4.7 (helper, step 4): strong induction on the collapsed top coordinate. -/
+theorem good (o : Ordinal.{u}) : C.Good o := by
+  induction o using WellFoundedLT.induction with
+  | _ o IH =>
+    exact ⟨fun x y hy => C.good_elem o IH x y hy, fun c b a hc => C.good_edge o IH c b a hc⟩
+
+/-- N4.7 (helper, step 5): the collapse as an isomorphism onto the genuine `M ν`. -/
+noncomputable def iso : S ≃[lang] M ν :=
+  { C.equiv prims with
+    map_fun' := fun {_} g => Empty.elim g
+    map_rel' := by
+      intro n r xs
+      cases r
+      · exact (C.lt_iff (xs 0) (xs 1)).symm
+      · exact ((C.good (C.f (xs 1))).1 (xs 0) (xs 1) rfl).symm
+      · exact ((C.good (C.f (xs 0))).2 (xs 0) (xs 1) (xs 2) rfl).symm }
+
+/-- N4.7 (helper): the isomorphism on values. -/
+theorem iso_val (x : S) : (C.iso x).val = C.f x := rfl
+
+end Collapse
+
+/-- N4.7 (helper): every elementary substructure of `M_w` has an order collapse onto some
+`ν ≤ w` (via `Ordinal.enumOrdOrderIso`). -/
+theorem exists_collapse {w : Ordinal.{u}} (S : lang.ElementarySubstructure (M w)) :
+    ∃ ν : Ordinal.{u}, ν ≤ w ∧ Nonempty (Collapse S ν) := by
+  set T : Set Ordinal.{u} := Set.range (fun x : S => (x : M w).val) ∪ Set.Ici w
+  have hTb : ¬ BddAbove T := by
+    rintro ⟨b, hb⟩
+    have := hb (show max w (Order.succ b) ∈ T from Or.inr (Set.mem_Ici.2 (le_max_left _ _)))
+    exact (not_le.2 ((Order.lt_succ b).trans_le (le_max_right _ _))) this
+  let e := Ordinal.enumOrdOrderIso T hTb
+  let ν := e.symm ⟨w, Or.inr (Set.mem_Ici.2 le_rfl)⟩
+  have heν : e ν = ⟨w, Or.inr (Set.mem_Ici.2 le_rfl)⟩ := e.apply_symm_apply _
+  refine ⟨ν, ?_,
+    ⟨⟨fun x => e.symm ⟨(x : M w).val, Or.inl ⟨x, rfl⟩⟩, ?_, ?_, ?_⟩⟩⟩
+  · calc ν ≤ Ordinal.enumOrd T ν := Ordinal.le_enumOrd_self hTb
+      _ = w := congrArg Subtype.val heν
+  · intro x
+    exact e.symm.lt_iff_lt.2 (show (⟨(x : M w).val, _⟩ : T) < ⟨w, _⟩ from (x : M w).lt)
+  · intro x y
+    exact (e.symm.lt_iff_lt (x := ⟨(x : M w).val, Or.inl ⟨x, rfl⟩⟩)
+      (y := ⟨(y : M w).val, Or.inl ⟨y, rfl⟩⟩)).symm
+  · intro o ho
+    have h1 : (e o : Ordinal.{u}) < w := by
+      have := e.lt_iff_lt.2 ho
+      rw [heν] at this
+      exact this
+    rcases (e o).2 with ⟨x, hx⟩ | hw'
+    · refine ⟨x, ?_⟩
+      show e.symm _ = o
+      rw [OrderIso.symm_apply_eq]
+      exact Subtype.ext hx
+    · exact absurd hw' (not_le.2 h1)
 
 /-- N4.7 (condensation for reflection structures): the order collapse of an elementary
 substructure of `M_w` is an isomorphism onto the *genuine* `M_ν`, for some `ν ≤ w`; it fixes
@@ -640,15 +963,17 @@ theorem condensation {w : Ordinal.{u}} (S : lang.ElementarySubstructure (M w)) :
       (∀ x y : S, ((x : M w).val < (y : M w).val ↔ (π x).val < (π y).val)) ∧
       (∀ x : S, (∀ o < (x : M w).val, ∃ y : S, (y : M w).val = o) →
         (π x).val = (x : M w).val) ∧
-      Cardinal.lift.{u + 1} ν.card = Cardinal.mk S := by sorry
+      Cardinal.lift.{u + 1} ν.card = Cardinal.mk S := by
+  obtain ⟨ν, hν, ⟨C⟩⟩ := exists_collapse S
+  have hπ : ∀ x y : S, ((x : M w).val < (y : M w).val ↔ (C.iso x).val < (C.iso y).val) :=
+    C.lt_iff
+  refine ⟨ν, C.iso, hν, hπ, fun x hx => collapse_eq_of_cut S C.iso hπ x (fun _ => Iff.rfl) hx,
+    ?_⟩
+  rw [← Cardinal.mk_Iio_ordinal]
+  exact Cardinal.mk_congr
+    ((⟨fun y => ⟨y.1, y.2⟩, fun x => ⟨x.val, x.lt⟩, fun _ => rfl, fun _ => rfl⟩ :
+      Set.Iio ν ≃ M ν).trans C.iso.toEquiv.symm)
 
-/-- N4.7: the collapse of a point is the order type of the substructure below it: if exactly
-the ordinals below `x` lie (as points of `S`) below `k`, then `π k = x`. -/
-theorem collapse_eq_of_cut {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
-    (π : S ≃[lang] M ν)
-    (hπ : ∀ x y : S, ((x : M w).val < (y : M w).val ↔ (π x).val < (π y).val)) (k : S)
-    {x : Ordinal.{u}} (hcut : ∀ y : S, (y : M w).val < (k : M w).val ↔ (y : M w).val < x)
-    (hfull : ∀ o < x, ∃ y : S, (y : M w).val = o) : (π k).val = x := by sorry
 
 /-! ## N4.8: transfer of realizations through a collapsed hull -/
 
@@ -659,13 +984,57 @@ theorem transfer {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
     (p : V → S) (hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ' x)
     (bd : S) :
     D.RealizableBelow prims F σ (bd : M w).val → D.RealizableBelow prims F σ' (π bd).val := by
-  sorry
+  intro h
+  have h1 : D.RealizableBelow prims F (fixAsg D F (fun x => (p x.1 : M w))) (bd : M w).val := by
+    refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h
+    intro x hx hF
+    simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).1]
+  rw [← realize_realFml D F (k := 0) 0 0 (fun _ => (bd : M w)) (fun x => (p x.1 : M w))] at h1
+  have e1 : (Sum.elim (fun _ => (bd : M w)) (fun x => (p x.1 : M w)) : Fin 1 ⊕ FixT D F → M w) =
+      ((↑) : S → M w) ∘ Sum.elim (fun _ => bd) (fun x => p x.1) := by
+    funext i; cases i <;> rfl
+  have e2 : (π ∘ Sum.elim (fun _ : Fin 1 => bd) (fun x : FixT D F => p x.1)) =
+      Sum.elim (fun _ => π bd) (fun x => π (p x.1)) := by
+    funext i; cases i <;> rfl
+  rw [e1, realize_elemIso S π, e2, realize_realFml] at h1
+  refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h1
+  intro x hx hF
+  simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).2]
 
 /-- N4.8: the same with the top bound `w ↦ ν`. -/
 theorem transfer_top {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w))
     (π : S ≃[lang] M ν) {V : Type} (D : Diagram V) (F : V → Prop) (σ σ' : V → Ordinal.{u})
     (p : V → S) (hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ' x) :
-    D.RealizableBelow prims F σ w → D.RealizableBelow prims F σ' ν := by sorry
+    D.RealizableBelow prims F σ w → D.RealizableBelow prims F σ' ν := by
+  intro h
+  by_cases hS : Nonempty S
+  · obtain ⟨s₀⟩ := hS
+    have h1 : D.RealizableBelow prims F (fixAsg D F (fun x => (p x.1 : M w))) w := by
+      refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h
+      intro x hx hF
+      simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).1]
+    rw [← realize_realTopFml D F (fun _ => (s₀ : M w)) (fun x => (p x.1 : M w))] at h1
+    have e1 : (Sum.elim (fun _ => (s₀ : M w)) (fun x => (p x.1 : M w)) :
+        Fin 1 ⊕ FixT D F → M w) =
+        ((↑) : S → M w) ∘ Sum.elim (fun _ => s₀) (fun x => p x.1) := by
+      funext i; cases i <;> rfl
+    have e2 : (π ∘ Sum.elim (fun _ : Fin 1 => s₀) (fun x : FixT D F => p x.1)) =
+        Sum.elim (fun _ => π s₀) (fun x => π (p x.1)) := by
+      funext i; cases i <;> rfl
+    rw [e1, realize_elemIso S π, e2, realize_realTopFml] at h1
+    refine (Diagram.realizableBelow_congr_fixed prims D F _ _ _ ?_).1 h1
+    intro x hx hF
+    simp only [fixAsg, dif_pos (And.intro hx hF), (hp x hx hF).2]
+  · -- an empty elementary substructure only occurs in the empty structure `M 0`
+    have hw : w = 0 := by
+      by_contra hw
+      haveI : Nonempty (M w) := ⟨⟨0, pos_iff_ne_zero.2 hw⟩⟩
+      exact hS inferInstance
+    subst hw
+    obtain ⟨a, -, ha, hD⟩ := h
+    have hv : ∀ x ∈ D.vars, False := fun x hx => not_lt_zero (ha x hx)
+    exact ⟨σ', fun _ _ => rfl, fun x hx => (hv x hx).elim,
+      (Diagram.holds_congr prims D a σ' (fun x hx => (hv x hx).elim)).1 hD⟩
 
 /-! ## N4.9: (13) and (14) for the reflection hierarchy -/
 
