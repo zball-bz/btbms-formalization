@@ -10210,13 +10210,226 @@ theorem scan_valid2_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j
   · rw [hRc, hcB x hx'] at hxy; exact absurd hxy (hbfresh x (hBk x hx')).2.1
   · rw [hcB x hx', hcB y hy'] at hxy; exact hbinj (hBk x hx') (hBk y hy') hxy
 
+/-- L7.6a step 8(a): the target prefix graph through the target chart. -/
+theorem scan_joint_tgt_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) :
+    BaseHolds P ((prefixGraph S.E (S.scanRecord i j).b).map (BaseAtom.map S.pkTgtChart))
+      (S.pkAsg β) := by
+  sorry
+
+/-- L7.6a step 8(b) helper: roles inside a root entry are not pre-root roles. -/
+theorem preRoot_not_bank_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {v : Role}
+    (hv : v ∈ S.preRoot) : v ∉ S.bankRoles := by
+  obtain ⟨⟨-, -, -, hsd, hrd, -, -⟩, -⟩ := hS
+  obtain ⟨-, -, -, -, -, hmem, -, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  obtain ⟨A, B, hr⟩ := roles_col_decomp hcolR
+  have hpre : S.preRoot = A := rolesBefore_of_decomp_E8 hr
+  intro hb
+  obtain ⟨hvH, hany⟩ := List.mem_filter.1 hb
+  obtain ⟨k, -, hin⟩ := List.any_eq_true.1 hany
+  -- `v` is a role of root entry `k`
+  have hk : (⟨S.rd.col, k⟩ : EntryAddr) ∈ S.H.entryAddrs ∧ v ∈ Tree.rolesCol S.rd.col.path
+      S.rd.col.col 0 colR := by
+    rcases (inEntry_iff _ _).1 hin with rfl | hp
+    · have hk : (S.H.entryAt ⟨S.rd.col, k⟩).isSome := by
+        have := (Tree.mem_roles_iff _ _).1 hvH; exact this
+      obtain ⟨⟨p0, h0⟩, hx⟩ := Option.isSome_iff_exists.1 hk
+      obtain ⟨col', hc', hk'⟩ := Tree.colAt_of_entryAt hx
+      rw [hcolR] at hc'; cases hc'
+      exact ⟨(Tree.mem_entryAddrs_iff _ _).2 hk, Tree.mem_rolesCol_iff.2 ⟨k, p0, h0, hk',
+        Or.inl (by simp)⟩⟩
+    · have he : (⟨S.rd.col, k⟩ : EntryAddr) ∈ S.H.entryAddrs := by
+        obtain ⟨tl, htl⟩ := hp
+        have hfa : (S.H.forestAt (⟨S.rd.col, k⟩ : EntryAddr).heightPath).isSome := by
+          have hv' := (Tree.mem_roles_iff _ _).1 hvH
+          cases v with
+          | ord d =>
+            simp only [Role.path] at htl
+            simp only [Tree.colAt, ← htl, Tree.forestAt_append] at hv'
+            cases h : S.H.forestAt (⟨S.rd.col, k⟩ : EntryAddr).heightPath with
+            | none => rw [h] at hv'; simp at hv'
+            | some _ => rfl
+          | slot d =>
+            simp only [Role.path] at htl
+            simp only [Tree.entryAt, Tree.colAt, ← htl, Tree.forestAt_append] at hv'
+            cases h : S.H.forestAt (⟨S.rd.col, k⟩ : EntryAddr).heightPath with
+            | none => rw [h] at hv'; simp at hv'
+            | some _ => rfl
+        rw [Tree.forestAt_heightPath] at hfa
+        rw [Tree.mem_entryAddrs_iff]
+        unfold Tree.heightAt at hfa
+        cases h : S.H.entryAt ⟨S.rd.col, k⟩ with
+        | none => rw [h] at hfa; simp at hfa
+        | some _ => rfl
+      refine ⟨he, ?_⟩
+      obtain ⟨⟨p0, h0⟩, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff _ _).1 he)
+      obtain ⟨col', hc', hk'⟩ := Tree.colAt_of_entryAt hx
+      rw [hcolR] at hc'; cases hc'
+      refine Tree.mem_rolesCol_iff.2 ⟨k, p0, h0, hk', Or.inr ?_⟩
+      have := mem_under_of_inEntry_E8 he hvH hp
+      have hB : S.H.heightAt ⟨S.rd.col, k⟩ = some h0 := by simp [Tree.heightAt, hx]
+      rw [hB, Option.getD_some] at this
+      rw [Tree.rolesF_eq_map_under]
+      simpa [EntryAddr.heightPath] using this
+  have hnd := Tree.roles_nodup S.H
+  rw [hr, List.nodup_append] at hnd
+  rw [hpre] at hv
+  exact hnd.2.2 _ hv _ (List.mem_cons_of_mem _ (List.mem_append_left _ hk.2)) rfl
+
+/-- L7.6a step 8(b): `Γ(F)` through the source chart: bank atoms by S5, `P_R` atoms by D6.1b
+(transported by `χ̂` into `P_E`) and S2. -/
+theorem scan_joint_src_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    (β : Role → Ordinal.{u}) :
+    BaseHolds P ((graph (S.scanRecord i j).F).map (BaseAtom.map S.pkSrcChart)) (S.pkAsg β) := by
+  have hS' := hS
+  obtain ⟨⟨hstd, hInL, -, hsd, hrd, -, -⟩, ⟨-, h2, hPE⟩, -, -, h5, -⟩ := hS'
+  have hE := Closure.std_inL hstd
+  obtain ⟨hi, -⟩ := reach_idx_E8 hij
+  obtain ⟨Bk, hroles, hBk⟩ := scan_src_roles_E8 S hS hij
+  have hndF := Tree.roles_nodup (S.scanRecord i j).F
+  rw [hroles] at hndF
+  have hndF' := List.nodup_append.1 hndF
+  have hRB : S.R ∉ Bk := (List.nodup_cons.1 hndF'.2.1).1
+  have hBP : ∀ y ∈ Bk, y ∉ S.preRoot := fun y hy h =>
+    hndF'.2.2 _ h _ (List.mem_cons_of_mem _ hy) rfl
+  have hRP : S.R ∉ S.preRoot := fun h => hndF'.2.2 _ h _ List.mem_cons_self rfl
+  obtain ⟨-, hRc⟩ := scan_hosts_E8 S hS
+  have hstopv : S.pkAsg β S.stopNm = S.asg S.stopNm :=
+    pkAsg_used_E8 S β (by simp [ScanSetup.usedNames])
+  -- values on the source roles
+  have hvP : ∀ v ∈ S.preRoot, S.pkAsg β (S.pkSrcChart v) = S.asg (S.ePre (S.chi v)) := by
+    intro v hv
+    obtain ⟨-, -, h3, -⟩ := scan_pre_val_E8 S hS β (preRoot_sub_preStop_E8 hsd hrd hv)
+    simp only [ScanSetup.pkSrcChart, if_pos hv, h3]
+  have hvR : S.pkAsg β (S.pkSrcChart S.R) = S.asg S.stopNm := by rw [hRc, hstopv]
+  have hvB : ∀ v ∈ Bk, S.pkAsg β (S.pkSrcChart v) = S.asg (S.bankNm v) := by
+    intro v hv
+    have h2' : v ≠ S.R := fun h => hRB (h ▸ hv)
+    simp only [ScanSetup.pkSrcChart, if_neg (hBP v hv), if_neg h2']
+    exact pkAsg_used_E8 S β (by
+      simp only [ScanSetup.usedNames, List.mem_append]
+      exact Or.inl (Or.inr (List.mem_map_of_mem (hBk v hv))))
+  -- `Γ(F)` is `Γ(H)` restricted to the roles of `F`
+  have haH : (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs := by
+    obtain ⟨colR, hcolR, hcurR, -⟩ := bank_chain_E8 S hS
+    have hiR : i < colR.length := by simpa [rootLenOf, hcolR] using hi
+    rw [Tree.mem_entryAddrs_iff]; simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+  intro b hb
+  obtain ⟨a, ha, rfl⟩ := List.mem_map.1 hb
+  rw [BaseAtom.holds_map]
+  have ha' := (graph_truncAfter S.H _ haH a).1 ha
+  obtain ⟨haH', hall⟩ := List.mem_filter.1 ha'
+  have hvars : ∀ v ∈ a.vars, v ∈ S.preRoot ++ S.R :: Bk := by
+    intro v hv
+    have := List.all_eq_true.1 hall v hv
+    simp only [decide_eq_true_eq] at this
+    rw [← hroles]; exact this
+  by_cases hA : ∃ v ∈ a.vars, v ∈ S.R :: Bk
+  · -- an atom of the bank graph (S5)
+    have hbg : a ∈ S.bankGraph := by
+      refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨haH', List.all_eq_true.2 fun v hv => ?_⟩, ?_⟩
+      · have := hvars v hv
+        simp only [List.mem_append, List.mem_cons, decide_eq_true_eq] at this ⊢
+        rcases this with h | h | h
+        · exact Or.inl (Or.inl h)
+        · exact Or.inl (Or.inr (Or.inl h))
+        · exact Or.inr (hBk v h)
+      · obtain ⟨v, hv, hvRB⟩ := hA
+        refine List.any_eq_true.2 ⟨v, hv, ?_⟩
+        simp only [decide_eq_true_eq, List.mem_cons] at hvRB ⊢
+        rcases hvRB with h | h
+        · exact Or.inl h
+        · exact Or.inr (hBk v h)
+    refine (amalg_baseAtom_congr P a (fun v hv => ?_)).1 (h5 a hbg)
+    have := hvars v hv
+    simp only [List.mem_append, List.mem_cons] at this
+    rcases this with h | rfl | h
+    · rw [Function.comp_apply, hvP v h]
+      have hvR' : v ≠ S.R := fun he => hRP (he ▸ h)
+      simp only [ScanSetup.bankVal, if_neg hvR', if_neg (preRoot_not_bank_E8 S hS h)]
+    · rw [Function.comp_apply, hvR]
+      simp [ScanSetup.bankVal]
+    · rw [Function.comp_apply, hvB v h]
+      have hvR' : v ≠ S.R := fun he => hRB (he ▸ h)
+      simp only [ScanSetup.bankVal, if_neg hvR', if_pos (hBk v h)]
+  · -- an atom inside `P_R`: transported to `P_E` by `χ̂` (D6.1b), then S2
+    push Not at hA
+    have hvP' : ∀ v ∈ a.vars, v ∈ S.preRoot := by
+      intro v hv
+      have := hvars v hv
+      rcases List.mem_append.1 this with h | h
+      · exact h
+      · exact absurd h (hA v hv)
+    obtain ⟨T', -, -, hpre'⟩ := Closure.anchorOrigin_prefix hInL hsd
+    have horig : ∀ v ∈ S.preRoot, Closure.anchorOrigin S.E S.cap v = some (S.chi v) := by
+      intro v hv
+      obtain ⟨y', hy', -, -⟩ := hpre' v (preRoot_sub_preStop_E8 hsd hrd hv)
+      simp [ScanSetup.chi, anchorD, hy']
+    have hPEv : ∀ v ∈ S.preRoot, S.chi v ∈ S.PE := fun v hv =>
+      (scan_pre_val_E8 S hS β (preRoot_sub_preStop_E8 hsd hrd hv)).1
+    have hS2 : BaseHolds P (restrictTo (graph S.E) S.PE) (S.asg ∘ S.ePre) :=
+      (baseHolds_map P S.ePre _ S.asg).1 h2
+    have hcongr : ∀ v ∈ a.vars, (S.pkAsg β ∘ S.pkSrcChart) v = (S.asg ∘ S.ePre ∘ S.chi) v := by
+      intro v hv
+      simp only [Function.comp_apply]; exact hvP v (hvP' v hv)
+    refine (amalg_baseAtom_congr P a hcongr).2 ?_
+    rcases graph_atom_cases S.H a haH' with ⟨k, x, y, rfl, hx, hy⟩ | ⟨z, hz, hown⟩
+    · -- an order atom: `χ̂` preserves the reading order, and `P_E` is increasing (S2)
+      have hxP := hvP' x (by simp [BaseAtom.vars])
+      have hyP := hvP' y (by simp [BaseAtom.vars])
+      have hbef : Before S.H x y := ⟨k, k + 1, hx, hy, by omega⟩
+      have hbefE := (graph_origin hE S.cap).2 x y hbef (by rw [horig x hxP]; rfl)
+        (by rw [horig y hyP]; rfl)
+      have hPEt : S.PE = S.E.roles.take S.PE.length :=
+        List.prefix_iff_eq_take.1 (List.takeWhile_prefix _)
+      have hS2' : BaseHolds P (restrictTo (graph S.E) (S.E.roles.take S.PE.length))
+          (S.asg ∘ S.ePre) := by rw [← hPEt]; exact hS2
+      show (S.asg ∘ S.ePre) (S.chi x) < (S.asg ∘ S.ePre) (S.chi y)
+      refine before_of_restrict hS2' ?_ ?_ hbefE
+      · rw [← hPEt]; exact hPEv x hxP
+      · rw [← hPEt]; exact hPEv y hyP
+    · -- an owned atom: its `χ̂`-image is an atom of `Γ(E)` inside `P_E`
+      have hown' : atomOwner a ≠ none := by rw [hown]; simp
+      have himg : a.map (anchorD S.E S.cap) ∈ graph S.E := by
+        have h1 := ((graph_origin hE S.cap).1 (a.map (anchorD S.E S.cap))
+          (by rw [atomOwner_map]; intro h; apply hown'; cases h' : atomOwner a <;> simp_all)).1
+          ⟨a, haH', fun v hv => by rw [horig v (hvP' v hv)]; rfl, rfl⟩
+        exact h1.1
+      have hin : a.map S.chi ∈ restrictTo (graph S.E) S.PE := by
+        refine List.mem_filter.2 ⟨himg, List.all_eq_true.2 fun v hv => ?_⟩
+        rw [baseAtom_vars_map] at hv
+        obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hv
+        simpa using hPEv w (hvP' w hw)
+      have := hS2 _ hin
+      rw [BaseAtom.holds_map] at this
+      exact this
+
 /-- L7.6a step 8 (Valid clause 4 of the paper, the joint diagram): `prefixGraph E b` through the
 target chart, `Γ(F)` through the source chart, and the auxiliary diagram hold at `pkAsg β`. -/
 theorem scan_valid5_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
     {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) :
     (S.scanPacket i j β).joint.Holds P (S.scanPacket i j β).asg := by
-  sorry
+  have hS' := hS
+  obtain ⟨-, -, ⟨haux, -⟩, -⟩ := hS'
+  have hbase : ∀ (D : List (BaseAtom Name)), BaseHolds P D (S.pkAsg β) →
+      (Diagram.ofBase D).Holds P (S.pkAsg β) := by
+    intro D hD x hx
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.1 hx
+    exact hD b hb
+  show (Diagram.ofBase ((prefixGraph S.E (S.scanRecord i j).b).map (BaseAtom.map S.pkTgtChart)) ++
+    Diagram.ofBase ((graph (S.scanRecord i j).F).map (BaseAtom.map S.pkSrcChart)) ++ S.aux).Holds P
+      (S.pkAsg β)
+  rw [Diagram.holds_append, Diagram.holds_append]
+  refine ⟨⟨hbase _ (scan_joint_tgt_E8 S hS hij hfit), hbase _ (scan_joint_src_E8 S hS hij β)⟩, ?_⟩
+  intro x hx
+  refine (amalg_atom_congr P x (fun v hv => ?_)).1 (haux x hx)
+  exact (pkAsg_used_E8 S β (by
+    simp only [ScanSetup.usedNames]
+    exact List.mem_append_right _ (List.mem_flatMap.2 ⟨x, hx, hv⟩))).symm
 
 /-- L7.6a step 10 (Valid clause 6): the low certificate lies below the owner `u_i`. -/
 theorem scan_valid7_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
