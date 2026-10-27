@@ -2391,6 +2391,38 @@ theorem copyCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi 
           rw [h2] at this
           simpa using this
 
+-- G9 (helper): the column of an upward cap exists
+theorem mem_colAddrs_of_upward {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) :
+    c ∈ B.colAddrs := by
+  rw [Tree.mem_colAddrs_iff]
+  unfold IsUpward at hup
+  cases hB : B.colAt c with
+  | none => rw [hB] at hup; exact hup.elim
+  | some _ => rfl
+
+-- G9 (helper): the head of layer `h` is the phase-`h` copy of the root column
+theorem phaseCol_headCol (S : OrdStep) (h : Nat) :
+    phaseCol S.sd S.rd h S.rd.col = some (S.headCol h) := by
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S), headCol_eq S hkh]
+
+-- G9 (helper): the unconsumed root entries have parents below `r`
+theorem unconsumed_parent_lt (S : OrdStep) {v : Nat} {x : Nat × Forest}
+    (hx : (unconsumed S.A S.rd)[v]? = some x) : x.1 < S.sd.r := by
+  obtain ⟨-, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  unfold unconsumed rootCol at hx
+  rw [List.getElem?_drop] at hx
+  have hent : S.A.entryAt ⟨S.rd.col, S.rd.cursor + v⟩ = some x := by
+    unfold Tree.entryAt
+    cases hR : S.A.colAt S.rd.col with
+    | none => rw [hR] at hx; simp at hx
+    | some R => rw [hR] at hx; exact hx
+  have hmem : (⟨S.rd.col, S.rd.cursor + v⟩ : EntryAddr) ∈ S.A.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  have := (condV_iff_lt S.A).mp S.inL.1 _ hmem x.1 x.2 hent
+  rw [hrnum] at this
+  exact this
+
 -- G9.4d: contents in `K` of the head `s_h` (`1 ≤ h ≤ φ`): the query part `τ_{h−1}(Q)` with keys
 -- `κ_{h−1}(y)`, then restored entries with parents `< r`
 theorem headCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -2402,7 +2434,84 @@ theorem headCol_litCap (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi 
       (∀ v p, S.m ≤ v → (parents (litCap S.B c k ρ) (S.headCol h))[v]? = some p → p < S.sd.r) ∧
       (actualKeys (litCap S.B c k ρ) (S.headCol h)).take S.m =
         kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) ∧
-      S.m ≤ (actualKeys (litCap S.B c k ρ) (S.headCol h)).length := by sorry
+      S.m ≤ (actualKeys (litCap S.B c k ρ) (S.headCol h)).length := by
+  obtain ⟨hres, hidx⟩ := resolve_headCol S hi ha hq hc hh
+  obtain ⟨hcst, hHnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp hres
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hφ : phaseOff S.sd i a ≤ i := by unfold phaseOff; split_ifs <;> omega
+  obtain ⟨col, hBcol, hlen, htake, hrest⟩ :=
+    colAt_head S.inL S.kind S.hsd S.hrd S.out ⟨hh.1, by omega⟩ (phaseCol_headCol S h)
+  obtain ⟨hK1, hK2⟩ := colAt_litCap_onStack (k := k) (p := ρ) (mem_colAddrs_of_upward hup) hcst
+  have hm : S.sd.Q.length = S.m := rfl
+  -- facts about `B`'s head column
+  have hBpar : parents S.B (S.headCol h) = col.map Prod.fst := by simp [parents, hBcol]
+  have hBpar_take : (parents S.B (S.headCol h)).take S.m =
+      ((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((h - 1) * S.d)) := by
+    rw [hBpar, ← List.map_take, ← hm, htake, mapCol_eq_map]
+    simp only [parents, hcol, Option.getD_some, List.map_append, List.map_map]
+    rw [List.take_left' (by simp), List.map_map]
+    rfl
+  have hBkeys_take : (actualKeys S.B (S.headCol h)).take S.m =
+      kappaQ S.sd.r S.d (h - 1) ((actualKeys S.A S.sd.col).take S.m) := by
+    simp only [actualKeys, hBcol, hcol, Option.getD_some, ← List.map_take, ← hm, htake,
+      mapCol_eq_map, List.map_map, kappaQ]
+    rw [List.take_left' (by simp)]
+    congr 1
+    funext y
+    simp only [Function.comp_apply, WithTop.map_coe]
+    rw [hHnum, ← ht]
+    have : S.s h = S.sd.t + (h - 1) * S.d := by
+      simp only [OrdStep.s, OrdStep.d, period]
+      have : h * (S.sd.t - S.sd.r) = (h - 1) * (S.sd.t - S.sd.r) + (S.sd.t - S.sd.r) := by
+        rw [← Nat.succ_mul]; congr 1; omega
+      omega
+    rw [this]
+    exact congrArg _ (relKey_shift S.sd.r S.d (h - 1) S.sd.t hrt.le y.2)
+  have hBbig : ∀ v p, S.m ≤ v → (parents S.B (S.headCol h))[v]? = some p → p < S.sd.r := by
+    intro v p hv hp
+    rw [hBpar, List.getElem?_map] at hp
+    obtain ⟨v', rfl⟩ : ∃ v', v = S.m + v' := ⟨v - S.m, by omega⟩
+    have hlt : v' < (unconsumed S.A S.rd).length := by
+      have : S.m + v' < col.length := by
+        by_contra hcon
+        rw [List.getElem?_eq_none (by omega)] at hp
+        cases hp
+      omega
+    obtain ⟨y, hy, hy1, -⟩ := hrest v' _ (List.getElem?_eq_getElem hlt)
+    rw [← hm, hy] at hp
+    simp only [Option.map_some, Option.some.injEq] at hp
+    rw [← hp, hy1]
+    exact unconsumed_parent_lt S (List.getElem?_eq_getElem hlt)
+  have hBlen : S.m ≤ (parents S.B (S.headCol h)).length := by
+    rw [hBpar, List.length_map, hlen]; omega
+  have hlenK : ∀ E, (actualKeys E (S.headCol h)).length = (parents E (S.headCol h)).length := by
+    intro E; rw [length_actualKeys]; simp [parents]
+  cases hce : (S.headCol h).container c with
+  | none =>
+    have hK := hK2 hce
+    have hp : parents (litCap S.B c k ρ) (S.headCol h) = parents S.B (S.headCol h) := by
+      simp only [parents, hK]
+    have hk : actualKeys (litCap S.B c k ρ) (S.headCol h) = actualKeys S.B (S.headCol h) := by
+      simp only [actualKeys, hK]
+    rw [hp, hk, hlenK]
+    exact ⟨hBpar_take, hBbig, hBkeys_take, hBlen⟩
+  | some e =>
+    obtain ⟨hKp, hKk⟩ := hK1 e hce
+    have he := hidx e hce
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · rw [hKp, List.take_take, Nat.min_eq_left (by omega)]
+      exact hBpar_take
+    · intro v p hv hp
+      rw [hKp, List.getElem?_take] at hp
+      split_ifs at hp
+      · exact hBbig v p hv hp
+    · have := congrArg (List.take S.m) hKk
+      rw [List.take_take, List.take_take, Nat.min_eq_left he] at this
+      rw [this]
+      exact hBkeys_take
+    · rw [hlenK, hKp, List.length_take]
+      omega
 
 -- G9.4e: every column on the stack of `c` above `s_φ` has parents `< r` or `≥ s_φ` in `K`
 -- (generalizes T3.8ln from `c` to its stack)
