@@ -7166,7 +7166,7 @@
   },
   {
    "id": "G-012",
-   "status": "suspected",
+   "status": "repaired",
    "severity": "unknown",
    "loc": "§8.5 txt:1418-1423",
    "summary": "Case 3 data: whole-frame survival through repairs (\"induction through the containers\") and an injective chart of the repaired cap compatible with χ are sketched",
@@ -7177,7 +7177,9 @@
    "refs": [
     "blueprint/INTEGRATION.md §2.2-2.3"
    ],
-   "detail": "Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field."
+   "detail": "Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field.",
+   "fix_by": "claude",
+   "repair": "cap_package (L7.5d) proved in Lean from its cited contracts (prove/A8, merged); remaining dependence is on those contracts, which are ordinary sorry nodes"
   },
   {
    "id": "G-013",

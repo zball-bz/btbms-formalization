@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "4d1239c305038f13ead04d7337c8fbc90fc9603c09ca3b1ee750a0d4464f3d1b",
+ "fingerprint": "095c68bcdd771c8678cdd5586f25c0cdf2ef14701c511848b37776769d0db215",
  "decls": [
   {
    "axioms": [
@@ -3403,6 +3403,78 @@
    ],
    "direct_sorry": false,
    "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.capRole_of_origin"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.cap_package"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.injOn_of_config"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.litCap_rolesBefore_col"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.marked_entry_cap"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.origin_moveAddr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.DLabHyps.below"
   },
@@ -6332,18 +6404,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
-   "name": "BTBMS.Packet.cap_package"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.capped_block_resp"
   },
   {
@@ -9234,6 +9294,28 @@
    ],
    "direct_sorry": false,
    "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.foldr_bwd_moveAddr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.mapEntry_bwd_fwd"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.Carrier.ext"
   },
@@ -9357,6 +9439,39 @@
    "kind": "def",
    "module": "BTBMS.Plan.U1",
    "name": "BTBMS.Scan.ReturnBound"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Tree.mem_under_of_inEntry"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Tree.not_inEntry_of_mem_prefix"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Tree.prefix_slot_before_inEntry"
   },
   {
    "axioms": [
@@ -13144,6 +13259,24 @@
    ],
    "direct_sorry": false,
    "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Packet.takeWhile_ne_take_append"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U3",
+   "name": "BTBMS.Tree.takeWhile_append_of_forall"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
    "module": "BTBMS.Plan.U5",
    "name": "BTBMS.Descent.SVar.lab.injEq"
   },
@@ -15784,6 +15917,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T15:04:46+00:00",
- "head": "c190873"
+ "generated": "2026-10-27T15:05:11+00:00",
+ "head": "3788f0d"
 }
