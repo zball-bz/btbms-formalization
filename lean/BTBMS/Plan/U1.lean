@@ -764,24 +764,49 @@ theorem cursor_eq_length_iff (src : List α) {W : List α} (hW : Noninc W) :
 theorem cursor_spec {α : Type} [LinearOrder α] (ks W : List α)
     (hW : W.Pairwise fun x y => y ≤ x) :
     cutQuery ks (cursor ks W) ≤ W ∧
-      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by sorry
+      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by
+  have hc := cursor_le_length ks W
+  refine ⟨?_, fun hlt => ?_⟩
+  · have h1 : cursor (ks.take (cursor ks W)) W = (ks.take (cursor ks W)).length := by
+      rw [cursor_take, min_self, List.length_take, Nat.min_eq_left hc]
+    exact (cursor_eq_length_iff _ hW).1 h1
+  · have h1 : cursor (ks.take (cursor ks W + 1)) W ≠ (ks.take (cursor ks W + 1)).length := by
+      rw [cursor_take, List.length_take, Nat.min_eq_left hlt]; omega
+    exact not_le.1 fun h => h1 ((cursor_eq_length_iff _ hW).2 h)
 
 /-- L2.1 ("the unique i", txt:165-167). -/
 theorem cursor_unique {ks W : List α} (hW : Noninc W) {i : Nat} (hi : i ≤ ks.length)
     (hlo : cutQuery ks i ≤ W) (hhi : i < ks.length → W < cutQuery ks (i + 1)) :
-    cursor ks W = i := by sorry
+    cursor ks W = i := by
+  obtain ⟨h1, h2⟩ := cursor_spec ks W hW
+  have hc := cursor_le_length ks W
+  rcases lt_trichotomy i (cursor ks W) with h | h | h
+  · exact absurd (lt_of_lt_of_le (hhi (by omega)) ((cutQuery_mono ks h).trans h1)) (lt_irrefl W)
+  · exact h.symm
+  · exact absurd (lt_of_lt_of_le (h2 (by omega)) ((cutQuery_mono ks h).trans hlo)) (lt_irrefl W)
 
 /-- L2.1: a query strictly below `B(v)` stops the scan at or before `v`. -/
 theorem cursor_le_of_lt_cutQuery {ks W : List α} (hW : Noninc W) {v : Nat} (hv : v < ks.length)
-    (h : W < cutQuery ks (v + 1)) : cursor ks W ≤ v := by sorry
+    (h : W < cutQuery ks (v + 1)) : cursor ks W ≤ v := by
+  by_contra hc
+  exact lt_irrefl W (lt_of_lt_of_le h
+    ((cutQuery_mono ks (by omega : v + 1 ≤ cursor ks W)).trans (cursor_spec ks W hW).1))
 
 /-- L2.1: a query at least `B(v-1)` reaches `v`. -/
 theorem le_cursor_of_cutQuery_le {ks W : List α} (hW : Noninc W) {v : Nat} (hv : v ≤ ks.length)
-    (h : cutQuery ks v ≤ W) : v ≤ cursor ks W := by sorry
+    (h : cutQuery ks v ≤ W) : v ≤ cursor ks W := by
+  have h1 : cursor (ks.take v) W = (ks.take v).length := (cursor_eq_length_iff _ hW).2 h
+  rw [cursor_take, List.length_take, Nat.min_eq_left hv] at h1
+  omega
 
 /-- L2.1: the final source cursor is monotone in reduced queries (used by L2.2). -/
 theorem cursor_mono (ks : List α) {W Z : List α} (hW : Noninc W) (hZ : Noninc Z) (h : W ≤ Z) :
-    cursor ks W ≤ cursor ks Z := by sorry
+    cursor ks W ≤ cursor ks Z := by
+  by_contra hc
+  have hZl : cursor ks Z < ks.length := by have := cursor_le_length ks W; omega
+  exact lt_irrefl Z (lt_of_lt_of_le ((cursor_spec ks Z hZ).2 hZl)
+    (((cutQuery_mono ks (by omega : cursor ks Z + 1 ≤ cursor ks W)).trans
+      (cursor_spec ks W hW).1).trans h))
 
 /-- L2.1c (txt:174-176): deleting a query letter immediately followed by a larger one does not
 change the final source cursor. -/
