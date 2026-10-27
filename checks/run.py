@@ -112,9 +112,12 @@ def bounded_report(report: dict) -> dict:
     report["details_truncated"] = True
     if len(json.dumps(report).encode()) > MAX_RESULT_BYTES:
         # Never silently discard a failure status or alter the counted sample.
-        report["failures"] = [{"message": "Diagnostic detail exceeds result budget; see raw_report."}]
-        for key in ("observations", "examples", "expected_domain_differences"):
-            report.pop(key, None)
+        retained = {"schema_version", "check", "mode", "status", "counts", "limits",
+                    "input_sha256s", "runtime", "ledger_nodes", "reference", "exit_code",
+                    "log", "raw_report", "passing_is_not_proof", "details_truncated"}
+        report = {k: v for k, v in report.items() if k in retained}
+        report["failures"] = [] if report["status"] == "pass" else [
+            {"message": "Diagnostic detail exceeds result budget; see raw_report."}]
     return report
 
 
@@ -137,14 +140,20 @@ def execute(mode: str) -> int:
     for name in (*CHECK_NAMES, "summary"):
         (RESULTS / f"{mode}-{name}.json").unlink(missing_ok=True)
 
-    limits = json.loads((CHECKS / "limits.json").read_text())[mode]
-    inputs = source_hashes()
+    limits = {}
+    inputs = {}
     runtime = {"python": platform.python_version()}
     summary = {"schema_version": 1, "check": "summary", "mode": mode,
                "input_sha256s": inputs, "limits": limits, "runtime": runtime,
-               "status": "fail", "counts": {"passed": 0, "failed": 0, "skipped": 0},
+               "status": "fail", "counts": {"checks": 0, "passed": 0, "failed": 0, "skipped": 0},
+               "execution_limits": {"per_check_timeout_seconds": 180 if mode == "quick" else 1800,
+                                    "max_result_bytes": MAX_RESULT_BYTES},
                "checks": [], "passing_is_not_proof": True}
     try:
+        limits.update(json.loads((CHECKS / "limits.json").read_text())[mode])
+        if set(limits) != set(CHECK_NAMES):
+            raise ValueError("Mode limits must name exactly the eight packaged checks")
+        inputs.update(source_hashes())
         node = shutil.which("node")
         if not node:
             raise RuntimeError("Node.js with node:module.stripTypeScriptTypes is required.")
@@ -159,7 +168,7 @@ def execute(mode: str) -> int:
         inputs.update(reference_hashes)
         reference = {"repository": manifest["repository"], "revision": manifest["revision"]}
         summary["reference"] = reference
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         summary["failures"] = [{"stage": "preflight", "message": str(error)[:1800]}]
         write_json(RESULTS / f"{mode}-summary.json", summary)
         print(f"Preflight failed: {error}", file=sys.stderr)

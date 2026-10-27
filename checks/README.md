@@ -57,7 +57,8 @@ The authoritative, fully explicit limits and random seeds are in `limits.json`.
 Parameters below are inclusive maxima. Size in the JS and Claude generators is
 the number of ordinary-column plus entry vertices; μ in the Codex Python
 generator is compact-word length. A generation cutoff is not a size cap on every
-output that is compared; counters and rejection events distinguish those cases.
+output that is compared. Recorded limits and stored/processed/queued counts
+describe the sample; Claude's driver additionally counts rejected-output events.
 
 | Workload | `--quick` | `--full` |
 |---|---|---|
@@ -132,3 +133,6 @@ independent checks still run, but any failure or skip makes `run.sh` exit nonzer
 There is no silent success based only on a printed report, and no git add/commit
 operation in the runner. Root can commit the harness and compact result JSONs
 after review.
+
+The supplied result snapshot is from `--quick`. `--full` was configured but not
+run for this packaging task.

@@ -106,12 +106,15 @@
    "id": "T-006",
    "phase": "P1",
    "owner": "codex",
-   "status": "review",
+   "status": "done",
    "title": "Differential test harness: paper's E[n] (independent implementation) vs reference BTBM.ts",
    "deps": [
     "T-003"
    ],
-   "note": "Done inside the Codex review (59,995 operation comparisons, 93,076 graph comparisons, no mismatch); evidence is in scratch/ and must be packaged (T-010)."
+   "note": "Done inside the Codex review (59,995 operation comparisons, 93,076 graph comparisons, no mismatch); evidence is in scratch/ and must be packaged (T-010).",
+   "evidence": [
+    "checks/results/quick-reference-diff.json"
+   ]
   },
   {
    "id": "T-007",
@@ -150,11 +153,17 @@
    "id": "T-010",
    "phase": "P1",
    "owner": "codex",
-   "status": "doing",
+   "status": "done",
    "title": "Package bounded checks (reference diff, graph identity, finite invariants, cofinality) into checks/ with pinned inputs and one command",
    "deps": [
     "T-005"
-   ]
+   ],
+   "evidence": [
+    "checks/run.sh",
+    "checks/README.md",
+    "checks/results/quick-summary.json"
+   ],
+   "note": "Re-run by Claude: quick mode 8/8 checks pass. Commit 7c744fb had caught a partial checks/ while Codex was writing; this commit records the finished state."
   },
   {
    "id": "T-011",
