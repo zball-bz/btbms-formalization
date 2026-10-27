@@ -12951,6 +12951,1810 @@ theorem condH_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some 
       (fun h x hx => ⟨(hownerR h x hx).1, howner h x hx⟩) hZ.1 hZ.2
     exact ⟨this.1, le_of_lt this.2⟩
 
+/-! ### T3.2m helpers (branch E3): the loop, word lengths, entries of a filled hole -/
+
+/-- Steps `lo + c, …, lo + 1` of the ordinary loop applied to `∅`. -/
+def loopFrom_E3 (step : Nat → Forest → Forest) : Nat → Nat → Forest
+  | _, 0 => Tree.empty
+  | lo, c + 1 => step (lo + 1) (loopFrom_E3 step (lo + 1) c)
+
+theorem ordLoop_loopFrom_E3 (step : Nat → Forest → Forest) : ∀ lo c,
+    ordLoop step lo (loopFrom_E3 step lo c) = loopFrom_E3 step 0 (lo + c)
+  | 0, c => by simp [ordLoop]
+  | lo + 1, c => by
+    rw [ordLoop, show step (lo + 1) (loopFrom_E3 step (lo + 1) c) = loopFrom_E3 step lo (c + 1)
+      from rfl, ordLoop_loopFrom_E3 step lo (c + 1)]
+    congr 1; omega
+
+/-- The filling of the hole of layer `j` of `A[n]` (steps `n, …, j+1`; `zs_E3 … 0` is `ordZ`). -/
+def zs_E3 (A : Forest) (sd : StopData) (rd : RootData) (n j : Nat) : Forest :=
+  loopFrom_E3 (ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+    (((A.colAt rd.col).getD []).drop rd.cursor)) j (n - j)
+
+theorem zs_top_E3 (A : Forest) (sd : StopData) (rd : RootData) (n : Nat) :
+    zs_E3 A sd rd n n = Tree.empty := by
+  simp [zs_E3, loopFrom_E3]
+
+theorem zs_step_E3 (A : Forest) (sd : StopData) (rd : RootData) {n j : Nat} (hj : j < n) :
+    zs_E3 A sd rd n j = ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor) (j + 1) (zs_E3 A sd rd n (j + 1)) := by
+  simp only [zs_E3]
+  rw [show n - j = (n - (j + 1)) + 1 by omega]
+  rfl
+
+theorem ordZ_eq_zs_E3 (A : Forest) (sd : StopData) (rd : RootData) (n : Nat) :
+    ordZ A sd rd n = zs_E3 A sd rd n 0 := by
+  have := ordLoop_loopFrom_E3 (ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+    (((A.colAt rd.col).getD []).drop rd.cursor)) n 0
+  simp only [loopFrom_E3, Nat.add_zero] at this
+  simp only [ordZ, zs_E3, Nat.sub_zero]
+  exact this
+
+/-! Word lengths. -/
+
+/-- The length of the (generic) word of a forest. -/
+def N_E3 (X : Forest) : Nat := (gwordAt 0 X).length
+
+theorem len_gwordAt_E3 (e : Nat) (X : Forest) : (gwordAt e X).length = N_E3 X := by
+  have h := wordAt_add 0 e X
+  rw [Nat.zero_add] at h
+  rw [N_E3, gwordAt_eq_map_wordAt, gwordAt_eq_map_wordAt, List.length_map, List.length_map, h,
+    List.length_map]
+
+theorem gwordCols_append_E3 {α : Type} (e : Nat) (l₁ l₂ : List (List (α × Tree α))) :
+    gwordCols e (l₁ ++ l₂) = gwordCols e l₁ ++ gwordCols e l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons c l ih => simp only [List.cons_append, gwordCols, ih, List.append_assoc]
+
+theorem gwordLater_append_E3 {α : Type} (e : Nat) (l₁ l₂ : List (α × Tree α)) :
+    gwordLater e (l₁ ++ l₂) = gwordLater e l₁ ++ gwordLater e l₂ := by
+  induction l₁ with
+  | nil => rfl
+  | cons x l ih =>
+    obtain ⟨p, h⟩ := x
+    simp only [List.cons_append, gwordLater, ih, List.append_assoc]
+
+theorem gwordCol_append_E3 {α : Type} (e : Nat) {l₁ : List (α × Tree α)} (h : l₁ ≠ [])
+    (l₂ : List (α × Tree α)) : gwordCol e (l₁ ++ l₂) = gwordCol e l₁ ++ gwordLater e l₂ := by
+  cases l₁ with
+  | nil => exact absurd rfl h
+  | cons x l =>
+    obtain ⟨p, hh⟩ := x
+    simp only [List.cons_append, gwordCol, gwordLater_append_E3, List.append_assoc]
+
+theorem gwordAt_empty_E3 {α : Type} (e : Nat) : gwordAt e (Tree.empty : Tree α) = [] := rfl
+
+theorem gwordCol_snoc_E3 {α : Type} (e : Nat) (l : List (α × Tree α)) (q : α) (H : Tree α) :
+    gwordCol e (l ++ [(q, H)]) = gwordCol e (l ++ [(q, Tree.empty)]) ++ gwordAt (e + 1) H := by
+  cases l with
+  | nil => simp [gwordCol, gwordLater, gwordAt_empty_E3]
+  | cons x l =>
+    obtain ⟨p, h⟩ := x
+    rw [gwordCol_append_E3 e (List.cons_ne_nil _ _), gwordCol_append_E3 e (List.cons_ne_nil _ _)]
+    simp [gwordLater, gwordAt_empty_E3]
+
+theorem len_later_entry_E3 {α : Type} (e : Nat) : ∀ (col : List (α × Tree α)) (i : Nat)
+    (x : α × Tree α), col[i]? = some x → (gwordAt (e + 1) x.2).length < (gwordLater e col).length
+  | [], _, _, h => by simp at h
+  | (p, h') :: rest, 0, x, h => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+    subst h
+    simp [gwordLater]
+  | (p, h') :: rest, i + 1, x, h => by
+    simp only [List.getElem?_cons_succ] at h
+    have := len_later_entry_E3 e rest i x h
+    simp [gwordLater]; omega
+
+theorem len_col_entry_E3 {α : Type} (e : Nat) (col : List (α × Tree α)) (i : Nat)
+    (x : α × Tree α) (h : col[i]? = some x) :
+    (gwordAt (e + 1) x.2).length < (gwordCol e col).length := by
+  cases col with
+  | nil => simp at h
+  | cons y rest =>
+    obtain ⟨p, h'⟩ := y
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      subst h
+      simp [gwordCol]
+    | succ i =>
+      simp only [List.getElem?_cons_succ] at h
+      have := len_later_entry_E3 e rest i x h
+      simp [gwordCol]; omega
+
+theorem len_cols_col_E3 {α : Type} (e : Nat) : ∀ (cols : List (List (α × Tree α))) (j : Nat)
+    (col : List (α × Tree α)), cols[j]? = some col →
+      (gwordCol e col).length ≤ (gwordCols e cols).length
+  | [], _, _, h => by simp at h
+  | c :: rest, 0, col, h => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+    subst h; simp [gwordCols]
+  | c :: rest, j + 1, col, h => by
+    simp only [List.getElem?_cons_succ] at h
+    have := len_cols_col_E3 e rest j col h
+    simp [gwordCols]; omega
+
+/-- An entry's height has a shorter word than any forest containing the entry. -/
+theorem N_entry_lt_E3 : ∀ (X : Forest) (e : EntryAddr) (x : Nat × Forest),
+    X.entryAt e = some x → N_E3 x.2 < N_E3 X := by
+  intro X e
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  induction P generalizing X with
+  | nil =>
+    intro x h
+    obtain ⟨cols⟩ := X
+    rw [entryAt_nil_D3] at h
+    cases hc : cols[j]? with
+    | none => simp [hc] at h
+    | some col =>
+      simp only [hc, Option.bind_some] at h
+      have h1 := len_col_entry_E3 0 col i x h
+      have h2 := len_cols_col_E3 0 cols j col hc
+      rw [len_gwordAt_E3] at h1
+      unfold N_E3 at h1 ⊢
+      simp only [gwordAt] at h2 ⊢
+      omega
+  | cons s P ih =>
+    intro x h
+    obtain ⟨c, m⟩ := s
+    obtain ⟨cols⟩ := X
+    rw [entryAt_cons_D3] at h
+    cases hc : cols[c]? with
+    | none => simp [hc] at h
+    | some col =>
+      cases hm : col[m]? with
+      | none => simp [hc, hm] at h
+      | some y =>
+        simp only [hc, hm, Option.bind_some] at h
+        have h0 := ih y.2 x h
+        have h1 := len_col_entry_E3 0 col m y hm
+        have h2 := len_cols_col_E3 0 cols c col hc
+        rw [len_gwordAt_E3] at h1
+        unfold N_E3 at h1 h0 ⊢
+        simp only [gwordAt] at h2 h0 ⊢
+        omega
+
+/-! Entries of a filled hole. -/
+
+/-- The route path of depth `k` (the `(column, entry)` steps of the last-column, last-entry
+route). -/
+def rpath_E3 : Nat → Forest → List (Nat × Nat)
+  | 0, _ => []
+  | k + 1, F => (F.cols.length - 1, (F.cols.getLast?.getD []).length - 1) ::
+      rpath_E3 k (nextLayer F)
+
+/-- The index of the hole column (the route column at depth `k`) in its forest. -/
+def hcol_E3 (k : Nat) (F : Forest) : Nat := (skipLayers F k).cols.length - 1
+
+/-- A column at or after the hole column at depth `k`, or inside one. -/
+def InHole_E3 (k : Nat) (F : Forest) (c : ColAddr) : Prop :=
+  (c.path = rpath_E3 k F ∧ hcol_E3 k F ≤ c.col) ∨
+    ∃ c' i rest, c.path = rpath_E3 k F ++ (c', i) :: rest ∧ hcol_E3 k F ≤ c'
+
+/-- The address of a hole column relative to the filling. -/
+def unplace_E3 (k : Nat) (F : Forest) (c : ColAddr) : ColAddr :=
+  match c.path.drop (rpath_E3 k F).length with
+  | [] => ⟨[], c.col - hcol_E3 k F⟩
+  | (c', i) :: rest => ⟨(c' - hcol_E3 k F, i) :: rest, c.col⟩
+
+/-- A route container above depth `k`. -/
+def IsRoute_E3 (k : Nat) (F : Forest) (e : EntryAddr) : Prop := e.heightPath <+: rpath_E3 k F
+
+theorem rpath_snoc_E3 (k : Nat) (cs : List Column) (es : Column) (q : Nat) (H : Forest) :
+    rpath_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) = (cs.length, es.length) :: rpath_E3 k H := by
+  simp [rpath_E3, Tree.cols, nextLayer_snoc_D3]
+
+theorem hcol_snoc_E3 (k : Nat) (cs : List Column) (es : Column) (q : Nat) (H : Forest) :
+    hcol_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) = hcol_E3 k H := by
+  simp [hcol_E3, skipLayers, nextLayer_snoc_D3]
+
+theorem snoc_entry_ne_E3 (cs : List Column) (es : Column) (q : Nat) (Y Y' : Forest) {c m : Nat}
+    (h : (c, m) ≠ (cs.length, es.length)) :
+    ((cs ++ [es ++ [(q, Y)]])[c]?).bind (·[m]?) = ((cs ++ [es ++ [(q, Y')]])[c]?).bind (·[m]?) := by
+  rcases Nat.lt_trichotomy c cs.length with hc | rfl | hc
+  · rw [List.getElem?_append_left hc, List.getElem?_append_left hc]
+  · have hm : m ≠ es.length := fun hm => h (by rw [hm])
+    simp only [List.getElem?_append_right (le_refl _), Nat.sub_self, List.getElem?_cons_zero,
+      Option.bind_some]
+    rcases Nat.lt_or_gt_of_ne hm with hm | hm
+    · rw [List.getElem?_append_left hm, List.getElem?_append_left hm]
+    · rw [List.getElem?_append_right (by omega), List.getElem?_append_right (by omega)]
+      simp [show m - es.length ≠ 0 by omega]
+  · rw [List.getElem?_eq_none (by simp; omega), List.getElem?_eq_none (by simp; omega)]
+
+theorem snoc_entry_eq_E3 (cs : List Column) (es : Column) (q : Nat) (Y : Forest) :
+    ((cs ++ [es ++ [(q, Y)]])[cs.length]?).bind (·[es.length]?) = some (q, Y) := by
+  simp
+
+/-- The entries of `A_{0,0,k,Z}(F)`: hole addresses read `Z`, route containers have filled
+heights, every other entry is unchanged. -/
+theorem put_entryAt_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F →
+    ∀ (e : EntryAddr),
+    (InHole_E3 k F e.col → (replaceAt 0 0 Z k F).entryAt e = Z.entryAt ⟨unplace_E3 k F e.col, e.idx⟩ ∧
+        ∀ b, e.col.num b = (unplace_E3 k F e.col).num (b + routeNum_D3 k F)) ∧
+    (¬ InHole_E3 k F e.col → IsRoute_E3 k F e →
+      (replaceAt 0 0 Z k F).entryAt e =
+        (F.entryAt e).map (fun x => (x.1, replaceAt 0 0 Z (k - e.col.path.length - 1) x.2))) ∧
+    (¬ InHole_E3 k F e.col → ¬ IsRoute_E3 k F e → (replaceAt 0 0 Z k F).entryAt e = F.entryAt e)
+  | 0, .node cols, hR, ⟨⟨P, j⟩, i⟩ => by
+    have hc : cols ≠ [] := hR
+    have hlen : cols.dropLast.length = hcol_E3 0 (.node cols) := by
+      simp [hcol_E3, skipLayers, Tree.cols]
+    rw [put_zero_D3 Z hc]
+    obtain ⟨zc⟩ := Z
+    have hnr : ¬ IsRoute_E3 0 (.node cols) ⟨⟨P, j⟩, i⟩ := by
+      simp [IsRoute_E3, rpath_E3, EntryAddr.heightPath]
+    cases P with
+    | nil =>
+      have hiff : InHole_E3 0 (.node cols) ⟨[], j⟩ ↔ hcol_E3 0 (.node cols) ≤ j := by
+        simp [InHole_E3, rpath_E3]
+      refine ⟨fun hh => ?_, fun _ h => absurd h hnr, fun hh _ => ?_⟩
+      · rw [hiff] at hh
+        refine ⟨?_, fun b => ?_⟩
+        · simp only [entryAt_nil_D3, Tree.cols, unplace_E3, rpath_E3, List.length_nil,
+            List.drop_zero]
+          rw [List.getElem?_append_right (by omega), hlen]
+        · simp only [unplace_E3, rpath_E3, List.length_nil, List.drop_zero, num_nil_D3,
+            routeNum_D3, Tree.cols]
+          simp only [hcol_E3, skipLayers, Tree.cols] at hh ⊢
+          omega
+      · rw [hiff] at hh
+        simp only [entryAt_nil_D3, Tree.cols]
+        have hj : j < cols.length - 1 := by
+          simp only [hcol_E3, skipLayers, Tree.cols] at hh; omega
+        rw [List.getElem?_append_left (by omega), List.getElem?_dropLast, if_pos hj]
+    | cons s P =>
+      obtain ⟨c, m⟩ := s
+      have hiff : InHole_E3 0 (.node cols) ⟨(c, m) :: P, j⟩ ↔ hcol_E3 0 (.node cols) ≤ c := by
+        simp [InHole_E3, rpath_E3]
+      refine ⟨fun hh => ?_, fun _ h => absurd h hnr, fun hh _ => ?_⟩
+      · rw [hiff] at hh
+        refine ⟨?_, fun b => ?_⟩
+        · simp only [entryAt_cons_D3, Tree.cols, unplace_E3, rpath_E3, List.length_nil,
+            List.drop_zero]
+          rw [List.getElem?_append_right (by omega), hlen]
+        · simp only [unplace_E3, rpath_E3, List.length_nil, List.drop_zero, num_cons_D3,
+            routeNum_D3, Tree.cols]
+          simp only [hcol_E3, skipLayers, Tree.cols] at hh ⊢
+          congr 1; omega
+      · rw [hiff] at hh
+        simp only [entryAt_cons_D3, Tree.cols]
+        have hj : c < cols.length - 1 := by
+          simp only [hcol_E3, skipLayers, Tree.cols] at hh; omega
+        rw [List.getElem?_append_left (by omega), List.getElem?_dropLast, if_pos hj]
+  | k + 1, F, hR, ⟨⟨P, j⟩, i⟩ => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    have hrp := rpath_snoc_E3 k cs es q H
+    have hhc := hcol_snoc_E3 k cs es q H
+    cases P with
+    | nil =>
+      have hnh : ¬ InHole_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) ⟨[], j⟩ := by
+        simp [InHole_E3, hrp]
+      refine ⟨fun h => absurd h hnh, fun _ hr => ?_, fun _ hr => ?_⟩
+      · simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append,
+          List.cons_prefix_cons, List.nil_prefix, and_true, Prod.mk.injEq] at hr
+        obtain ⟨rfl, rfl⟩ := hr
+        simp only [entryAt_nil_D3, snoc_entry_eq_E3, Option.map_some, List.length_nil]
+        rfl
+      · have hne : (j, i) ≠ (cs.length, es.length) := by
+          rintro he
+          apply hr
+          simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append, he]
+          exact List.cons_prefix_cons.2 ⟨rfl, List.nil_prefix⟩
+        simp only [entryAt_nil_D3]
+        exact snoc_entry_ne_E3 cs es q _ _ hne
+    | cons s P =>
+      obtain ⟨c, m⟩ := s
+      by_cases hs : (c, m) = (cs.length, es.length)
+      · simp only [Prod.mk.injEq] at hs
+        obtain ⟨rfl, rfl⟩ := hs
+        have ih := put_entryAt_E3 Z k H hR' ⟨⟨P, j⟩, i⟩
+        have hh : InHole_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) ⟨(cs.length, es.length) :: P, j⟩ ↔
+            InHole_E3 k H ⟨P, j⟩ := by
+          simp only [InHole_E3, hrp, hhc, List.cons_append, List.cons.injEq, true_and]
+        have hr : IsRoute_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]]))
+            ⟨⟨(cs.length, es.length) :: P, j⟩, i⟩ ↔ IsRoute_E3 k H ⟨⟨P, j⟩, i⟩ := by
+          simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append,
+            List.cons_prefix_cons, true_and]
+        have hu : unplace_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) ⟨(cs.length, es.length) :: P, j⟩ =
+            unplace_E3 k H ⟨P, j⟩ := by
+          simp only [unplace_E3, hrp, List.length_cons, hhc]
+          rw [show (rpath_E3 k H).length + 1 = 1 + (rpath_E3 k H).length by omega,
+            ← List.drop_drop]
+          rfl
+        simp only [entryAt_cons_D3, snoc_entry_eq_E3, Option.bind_some]
+        rw [hh, hr, hu]
+        refine ⟨fun h => ⟨(ih.1 h).1, fun b => ?_⟩, fun h1 h2 => ?_, ih.2.2⟩
+        · rw [num_cons_D3, (ih.1 h).2 (b + cs.length + 1)]
+          simp only [routeNum_D3, Tree.cols, nextLayer_snoc_D3, List.length_append,
+            List.length_singleton]
+          congr 1; omega
+        · rw [ih.2.1 h1 h2]
+          simp only [List.length_cons]
+          congr 2; funext x; congr 2; omega
+      · have hnh : ¬ InHole_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) ⟨(c, m) :: P, j⟩ := by
+          simp only [InHole_E3, hrp, List.cons_append, List.cons.injEq, not_or, not_and,
+            not_exists]
+          exact ⟨fun h => absurd h.1 hs, fun _ _ _ h => absurd h.1 hs⟩
+        have hnr : ¬ IsRoute_E3 (k + 1) (.node (cs ++ [es ++ [(q, H)]])) ⟨⟨(c, m) :: P, j⟩, i⟩ := by
+          simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append,
+            List.cons_prefix_cons, not_and]
+          exact fun h => absurd h hs
+        refine ⟨fun h => absurd h hnh, fun _ h => absurd h hnr, fun _ _ => ?_⟩
+        simp only [entryAt_cons_D3]
+        rw [snoc_entry_ne_E3 cs es q _ H hs]
+
+/-! Words of filled holes and first decreases. -/
+
+theorem gword_put_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F → ∀ e,
+    gwordAt e (replaceAt 0 0 Z k F) = gwordAt e (replaceAt 0 0 Tree.empty k F) ++ gwordAt (e + k) Z
+  | 0, .node cols, hR, e => by
+    have hc : cols ≠ [] := hR
+    rw [put_zero_D3 Z hc, put_zero_D3 _ hc]
+    obtain ⟨zc⟩ := Z
+    simp [gwordAt, gwordCols_append_E3, Tree.empty, Tree.cols]
+  | k + 1, F, hR, e => by
+    obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
+    rw [put_succ_D3, put_succ_D3]
+    simp only [gwordAt, gwordCols_append_E3, gwordCols, List.append_nil]
+    rw [gwordCol_snoc_E3, gwordCol_snoc_E3 e _ _ (replaceAt 0 0 Tree.empty k H),
+      gword_put_E3 Z k H hR' (e + 1)]
+    simp only [List.append_assoc]
+    rw [show e + 1 + k = e + (k + 1) by omega]
+
+theorem N_put_E3 {Z : Forest} {k : Nat} {F : Forest} (hR : RouteOK_D3 k F) :
+    N_E3 (replaceAt 0 0 Z k F) = N_E3 (replaceAt 0 0 Tree.empty k F) + N_E3 Z := by
+  unfold N_E3
+  rw [gword_put_E3 Z k F hR 0, List.length_append]
+  simp only [len_gwordAt_E3]
+
+theorem N_self_E3 {k : Nat} {F : Forest} (hR : RouteOK_D3 k F) :
+    N_E3 F = N_E3 (replaceAt 0 0 Tree.empty k F) + N_E3 (.node [routeCol_D3 k F]) := by
+  conv_lhs => rw [← put_self_D3 k F hR]
+  exact N_put_E3 hR
+
+theorem N_shift_E3 (r d : Nat) (X : Forest) : N_E3 (shift r d X) = N_E3 X := by
+  unfold N_E3 shift; rw [gwordAt_map, List.length_map]
+
+theorem N_col_pos_E3 (col : Column) : 0 < N_E3 (.node [col]) := by
+  unfold N_E3
+  obtain ⟨A, rest, h, -⟩ := gwordCol_head 0 col
+  simp [gwordAt, gwordCols, h]
+
+section FirstDecE3
+variable {α : Type} [LinearOrder α]
+
+theorem firstDec_append_E3 (P : List α) {X X' : List α} {a : Nat} (h : FirstDec X X' a) :
+    FirstDec (P ++ X) (P ++ X') (P.length + a) := by
+  obtain ⟨h1, h2, h3⟩ := h
+  refine ⟨by rw [List.take_length_add_append, List.take_length_add_append, h1], by simp; omega, ?_⟩
+  rcases h3 with ⟨h3, h4⟩ | ⟨x, x', hx, hx', hlt⟩
+  · exact Or.inl ⟨by simp; omega, by simp; omega⟩
+  · refine Or.inr ⟨x, x', ?_, ?_, hlt⟩
+    · rw [List.getElem?_append_right (by omega)]; simpa using hx
+    · rw [List.getElem?_append_right (by omega)]; simpa using hx'
+
+theorem firstDec_map_E3 {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f)
+    {X X' : List α} {a : Nat} (h : FirstDec X X' a) : FirstDec (X.map f) (X'.map f) a := by
+  obtain ⟨h1, h2, h3⟩ := h
+  refine ⟨by rw [← List.map_take, ← List.map_take, h1], by simpa using h2, ?_⟩
+  rcases h3 with ⟨h3, h4⟩ | ⟨x, x', hx, hx', hlt⟩
+  · exact Or.inl ⟨by simpa using h3, by simpa using h4⟩
+  · exact Or.inr ⟨f x, f x', by simp [hx], by simp [hx'], hf hlt⟩
+
+theorem lt_of_firstDec_E3 {X X' : List α} {a : Nat} (h : FirstDec X X' a) : X' < X := by
+  obtain ⟨h1, h2, h3⟩ := h
+  rw [← List.take_append_drop a X, ← List.take_append_drop a X', h1,
+    list_append_lt_append_left]
+  rcases h3 with ⟨h3, h4⟩ | ⟨x, x', hx, hx', hlt⟩
+  · rw [List.drop_eq_nil_of_le (by omega)]
+    obtain ⟨y, ys, hy⟩ := List.exists_cons_of_ne_nil (by simp; omega : X.drop a ≠ [])
+    rw [hy]; exact List.nil_lt_cons _ _
+  · obtain ⟨hl1, hx⟩ := List.getElem?_eq_some_iff.1 hx
+    obtain ⟨hl2, hx'⟩ := List.getElem?_eq_some_iff.1 hx'
+    rw [List.drop_eq_getElem_cons (l := X) hl1, List.drop_eq_getElem_cons (l := X') hl2, hx, hx']
+    exact List.cons_lt_cons_iff.2 (Or.inl hlt)
+
+theorem firstDec_ends_E3 (P X : List α) (hX : X ≠ []) : FirstDec (P ++ X) P P.length := by
+  refine ⟨by simp, le_refl _, Or.inl ⟨rfl, ?_⟩⟩
+  have : 0 < X.length := List.length_pos_iff.2 hX
+  simp; omega
+
+end FirstDecE3
+
+theorem gatom_lt_E3 {α : Type} [LinearOrder α] {x y : Nat} {m m' : Nat} {l l' : WithBot α}
+    (h : x < y ∨ (x = y ∧ (m < m' ∨ (m = m' ∧ l < l')))) :
+    (toLex (x, toLex (m, l)) : GAtom α) < toLex (y, toLex (m', l')) := by
+  rw [Prod.Lex.lt_iff]
+  rcases h with h | ⟨rfl, h⟩
+  · exact Or.inl h
+  · refine Or.inr ⟨rfl, ?_⟩
+    show toLex (m, l) < toLex (m', l')
+    rw [Prod.Lex.lt_iff]
+    rcases h with h | ⟨rfl, h⟩
+    · exact Or.inl h
+    · exact Or.inr ⟨rfl, h⟩
+
+/-- The first decrease of a head column `P ⌢ V` against the stopping column `P ⌢ [(s, ∅)]`. -/
+theorem head_firstDec_E3 (e : Nat) (P V : Column) (rest : List Column) (s : Nat)
+    (hV : ∀ v ∈ V.head?, v.1 < s) :
+    FirstDec (gwordAt e (Tree.node [P ++ [(s, Tree.empty)]]))
+      (gwordAt e (Tree.node ((P ++ V) :: rest)))
+      ((gwordAt e (Tree.node [P ++ [(s, Tree.empty)]])).length - 1) := by
+  simp only [gwordAt, gwordCols, List.append_nil]
+  rcases eq_or_ne P [] with rfl | hP
+  · simp only [List.nil_append, gwordCol, gwordAt_empty_E3, gwordLater, List.append_nil,
+      List.length_singleton, Nat.sub_self]
+    refine ⟨by simp, Nat.zero_le _, Or.inr ?_⟩
+    cases V with
+    | nil =>
+      refine ⟨_, toLex (2 * e, toLex (0, (⊥ : WithBot Nat))), rfl, by simp [gwordCol],
+        gatom_lt_E3 (Or.inr ⟨rfl, Or.inl (by omega)⟩)⟩
+    | cons v vs =>
+      obtain ⟨p, h⟩ := v
+      have hp : p < s := hV (p, h) (by simp)
+      refine ⟨_, toLex (2 * e, toLex (1, (p : WithBot Nat))), rfl, by simp [gwordCol]; rfl,
+        gatom_lt_E3 (Or.inr ⟨rfl, Or.inr ⟨rfl, ?_⟩⟩)⟩
+      exact WithBot.coe_lt_coe.2 hp
+  · rw [gwordCol_append_E3 e hP, gwordCol_append_E3 e hP]
+    simp only [gwordLater, gwordAt_empty_E3, List.append_nil, List.length_append,
+      List.length_singleton, Nat.add_sub_cancel, List.append_assoc]
+    show FirstDec _ _ ((gwordCol e P).length + 0)
+    apply firstDec_append_E3
+    cases V with
+    | cons v vs =>
+      obtain ⟨p, h⟩ := v
+      have hp : p < s := hV (p, h) (by simp)
+      refine ⟨by simp, Nat.zero_le _, Or.inr ⟨_, toLex (2 * e + 1, toLex (0, (p : WithBot Nat))), rfl,
+        by simp [gwordLater]; rfl, ?_⟩⟩
+      exact gatom_lt_E3 (Or.inr ⟨rfl, Or.inr ⟨rfl, WithBot.coe_lt_coe.2 hp⟩⟩)
+    | nil =>
+      cases rest with
+      | nil => exact ⟨by simp, by simp, Or.inl ⟨by simp [gwordLater, gwordCols], by simp⟩⟩
+      | cons c cs =>
+        obtain ⟨A, l, hA, hA1⟩ := gwordCol_head e c
+        refine ⟨by simp, Nat.zero_le _, Or.inr ⟨_, A, rfl, by simp [gwordLater, gwordCols, hA], ?_⟩⟩
+        rw [← toLex_ofLex A, Prod.Lex.lt_iff]; left
+        show (ofLex A).1 < 2 * e + 1
+        omega
+
+/-- The first decrease of a filled continuation against the shifted old height (`k < n`): at the
+old closing atom. -/
+theorem fill_firstDec_head_E3 {H : Forest} {k : Nat} (hR : RouteOK_D3 k H) {Q : Column} {s : Nat}
+    (hc : routeCol_D3 k H = Q ++ [(s, Tree.empty)]) {r δ : Nat} (hs : r ≤ s) {V : Column}
+    {rest : List Column} (hV : ∀ v ∈ V.head?, v.1 < r) (e : Nat) :
+    FirstDec (gwordAt e (shift r δ H))
+      (gwordAt e (replaceAt r δ (.node ((Tree.mapCol (shiftVal r δ) Q ++ V) :: rest)) k H))
+      (N_E3 H - 1) := by
+  have hRG : RouteOK_D3 k (shift r δ H) := (routeOK_shift_D3 r δ k H).2 hR
+  have hcG : routeCol_D3 k (shift r δ H) = Tree.mapCol (shiftVal r δ) Q ++ [(s + δ, Tree.empty)] := by
+    rw [routeCol_shift_D3, hc, Tree.treeMapCol_append_D3]
+    simp [Tree.mapCol, shiftVal, hs]; rfl
+  have h1 := gword_put_E3 (.node [routeCol_D3 k (shift r δ H)]) k _ hRG e
+  rw [put_self_D3 k _ hRG] at h1
+  rw [replaceAt_eq_shift, h1,
+    gword_put_E3 (.node ((Tree.mapCol (shiftVal r δ) Q ++ V) :: rest)) k _ hRG e, hcG]
+  have h3 := head_firstDec_E3 (e + k) (Tree.mapCol (shiftVal r δ) Q) V rest (s + δ)
+    (fun v hv => lt_of_lt_of_le (hV v hv) (by omega))
+  have h4 := firstDec_append_E3 (gwordAt e (replaceAt 0 0 Tree.empty k (shift r δ H))) h3
+  convert h4 using 1
+  have hl : (gwordAt e (shift r δ H)).length = N_E3 H := by rw [len_gwordAt_E3, N_shift_E3]
+  rw [h1, hcG, List.length_append] at hl
+  have hpos := N_col_pos_E3 (Tree.mapCol (shiftVal r δ) Q ++ [(s + δ, Tree.empty)])
+  simp only [len_gwordAt_E3] at hl ⊢
+  omega
+
+/-- The first decrease of the last continuation (`k = n`, empty filling): the old stopping column
+is deleted. -/
+theorem fill_firstDec_empty_E3 {H : Forest} {k : Nat} (hR : RouteOK_D3 k H) (r δ e : Nat) :
+    FirstDec (gwordAt e (shift r δ H)) (gwordAt e (replaceAt r δ Tree.empty k H))
+      (N_E3 H - N_E3 (.node [routeCol_D3 k H])) := by
+  have hRG : RouteOK_D3 k (shift r δ H) := (routeOK_shift_D3 r δ k H).2 hR
+  have h1 := gword_put_E3 (.node [routeCol_D3 k (shift r δ H)]) k _ hRG e
+  rw [put_self_D3 k _ hRG] at h1
+  rw [replaceAt_eq_shift, h1]
+  have hne : gwordAt (e + k) (Tree.node [routeCol_D3 k (shift r δ H)]) ≠ [] := by
+    intro h
+    have := N_col_pos_E3 (routeCol_D3 k (shift r δ H))
+    rw [← len_gwordAt_E3 (e + k), h] at this; simp at this
+  convert firstDec_ends_E3 _ _ hne using 1
+  have hl : (gwordAt e (shift r δ H)).length = N_E3 H := by rw [len_gwordAt_E3, N_shift_E3]
+  rw [h1, List.length_append] at hl
+  have : N_E3 (.node [routeCol_D3 k (shift r δ H)]) = N_E3 (.node [routeCol_D3 k H]) := by
+    rw [routeCol_shift_D3, ← N_shift_E3 r δ (.node [routeCol_D3 k H])]
+    simp [shift, Tree.map, Tree.mapCols]
+  simp only [len_gwordAt_E3] at hl ⊢
+  rw [← this]; omega
+
+/-! Key words as relabelled words. -/
+
+/-- The label map of `relKey a`, into the lexicographic order. -/
+def lab_E3 (a p : Nat) : Bool ×ₗ Nat := toLex (if p < a then (false, p) else (true, p - a))
+
+theorem lab_strictMono_E3 (a : Nat) : StrictMono (lab_E3 a) := by
+  intro p q h
+  simp only [lab_E3]
+  split_ifs with h1 h2 h2
+  · exact Prod.Lex.lt_iff.2 (Or.inr ⟨rfl, h⟩)
+  · exact Prod.Lex.lt_iff.2 (Or.inl (show false < true by decide))
+  · omega
+  · exact Prod.Lex.lt_iff.2 (Or.inr ⟨rfl, show p - a < q - a by omega⟩)
+
+theorem gatomMap_strictMono_E3 {α β : Type} [LinearOrder α] [LinearOrder β] {f : α → β}
+    (hf : StrictMono f) : StrictMono (GAtom.map f) := by
+  intro A B h
+  obtain ⟨⟨a1, a2, a3⟩, rfl⟩ : ∃ t : Nat × Nat × WithBot α, A = toLex (t.1, toLex (t.2.1, t.2.2)) :=
+    ⟨((ofLex A).1, (ofLex (ofLex A).2).1, (ofLex (ofLex A).2).2), rfl⟩
+  obtain ⟨⟨b1, b2, b3⟩, rfl⟩ : ∃ t : Nat × Nat × WithBot α, B = toLex (t.1, toLex (t.2.1, t.2.2)) :=
+    ⟨((ofLex B).1, (ofLex (ofLex B).2).1, (ofLex (ofLex B).2).2), rfl⟩
+  simp only [GAtom.map, ofLex_toLex]
+  rw [Prod.Lex.lt_iff] at h ⊢
+  rcases h with h | ⟨h1, h⟩
+  · exact Or.inl h
+  · refine Or.inr ⟨h1, ?_⟩
+    simp only at h ⊢
+    rw [Prod.Lex.lt_iff] at h ⊢
+    rcases h with h | ⟨h2, h⟩
+    · exact Or.inl h
+    · exact Or.inr ⟨h2, hf.withBot_map h⟩
+
+theorem keyWord_relKey_E3 (a : Nat) (X : Forest) :
+    keyWord (relKey a X) = (gwordAt 0 X).map (GAtom.map (lab_E3 a)) := by
+  unfold keyWord relKey
+  rw [treeMap_map, gwordAt_map]
+  rfl
+
+theorem len_keyWord_E3 (a : Nat) (X : Forest) : (keyWord (relKey a X)).length = N_E3 X := by
+  rw [keyWord_relKey_E3, List.length_map]; rfl
+
+/-- First decreases of words are first decreases of key words. -/
+theorem firstDec_keyWord_E3 (a : Nat) {X X' : Forest} {b : Nat}
+    (h : FirstDec (gwordAt 0 X) (gwordAt 0 X') b) :
+    FirstDec (keyWord (relKey a X)) (keyWord (relKey a X')) b := by
+  rw [keyWord_relKey_E3, keyWord_relKey_E3]
+  exact firstDec_map_E3 (gatomMap_strictMono_E3 (lab_strictMono_E3 a)) h
+
+/-! Route paths of the old forest. -/
+
+theorem cols_length_map_E3 (f : Nat → Nat) (F : Forest) : (Tree.map f F).cols.length = F.cols.length := by
+  rw [cols_map_D3, List.length_map]
+
+theorem rpath_map_E3 (f : Nat → Nat) : ∀ (k : Nat) (F : Forest), rpath_E3 k (Tree.map f F) = rpath_E3 k F
+  | 0, _ => rfl
+  | k + 1, F => by
+    simp only [rpath_E3, cols_length_map_E3, nextLayer_map_D3, rpath_map_E3 f k]
+    rw [cols_map_D3, List.getLast?_map]
+    cases F.cols.getLast? with
+    | none => rfl
+    | some c => simp [treeMapCol_eq_map]
+
+theorem skipLayers_map_E3 (f : Nat → Nat) : ∀ (k : Nat) (F : Forest),
+    skipLayers (Tree.map f F) k = Tree.map f (skipLayers F k)
+  | 0, _ => rfl
+  | k + 1, F => by simp only [skipLayers, nextLayer_map_D3, skipLayers_map_E3 f k]
+
+theorem hcol_map_E3 (f : Nat → Nat) (k : Nat) (F : Forest) : hcol_E3 k (Tree.map f F) = hcol_E3 k F := by
+  simp only [hcol_E3, skipLayers_map_E3, cols_length_map_E3]
+
+theorem rpath_skip_E3 {E : Forest} {sd : StopData} (h : stopData E = some sd) :
+    ∀ m i, i + m = sd.depth → rpath_E3 m (skipLayers E i) = sd.col.path.drop i := by
+  obtain ⟨-, h2, -, -, h5, -⟩ := stopData_core h
+  intro m
+  induction m with
+  | zero =>
+    intro i hi
+    simp only [rpath_E3]
+    rw [List.drop_eq_nil_of_le (by omega)]
+  | succ m ih =>
+    intro i hi
+    obtain ⟨col, p, hc, hp, -, hpk⟩ := h5 i (by omega)
+    rw [rpath_E3, ← skipLayers_succ, ih (i + 1) (by omega),
+      List.drop_eq_getElem_cons (l := sd.col.path) (i := i) (by omega)]
+    rw [List.getElem?_eq_some_iff] at hpk
+    obtain ⟨_, hpk⟩ := hpk
+    rw [hpk, hc]
+    obtain ⟨es, rfl⟩ := List.getLast?_eq_some_iff.1 hp
+    simp
+
+theorem hcol_skip_E3 {E : Forest} {sd : StopData} (h : stopData E = some sd) (m i : Nat)
+    (hi : i + m = sd.depth) : hcol_E3 m (skipLayers E i) = sd.col.col := by
+  obtain ⟨h1, -⟩ := stopData_core h
+  simp only [hcol_E3, skipLayers_add, hi]; omega
+
+/-! Translating relative addresses of a forest on the route into absolute addresses. -/
+
+theorem entryAt_abs_E3 {A G : Forest} {π : List (Nat × Nat)} (hG : A.forestAt π = some G)
+    (e : EntryAddr) : A.entryAt ⟨⟨π ++ e.col.path, e.col.col⟩, e.idx⟩ = G.entryAt e := by
+  rw [Tree.entryAt_eq_bind, Tree.forestAt_append, hG, Option.bind_some, ← Tree.entryAt_eq_bind]
+
+theorem num_abs_E3 (π : List (Nat × Nat)) (c : ColAddr) :
+    (⟨π ++ c.path, c.col⟩ : ColAddr).num 0 = c.num ((π.map (·.1 + 1)).sum) := by
+  simp only [ColAddr.num, List.map_append, List.sum_append]; omega
+
+theorem isRoute_abs_E3 {k k' : Nat} {F G : Forest} {π : List (Nat × Nat)}
+    (hp : rpath_E3 k' F = π ++ rpath_E3 k G) (e : EntryAddr) :
+    IsRoute_E3 k' F ⟨⟨π ++ e.col.path, e.col.col⟩, e.idx⟩ ↔ IsRoute_E3 k G e := by
+  simp only [IsRoute_E3, EntryAddr.heightPath, hp, List.append_assoc]
+  exact List.prefix_append_right_inj π
+
+theorem inHole_abs_E3 {k k' : Nat} {F G : Forest} {π : List (Nat × Nat)}
+    (hp : rpath_E3 k' F = π ++ rpath_E3 k G) (hh : hcol_E3 k' F = hcol_E3 k G) (c : ColAddr) :
+    InHole_E3 k' F ⟨π ++ c.path, c.col⟩ ↔ InHole_E3 k G c := by
+  simp only [InHole_E3, hp, hh, List.append_assoc, List.append_cancel_left_eq]
+
+/-! Locations of old entries: route containers, the hole region, the query region. -/
+
+/-- `e` lies in the query region: an entry of `Q`, or inside the height of one. -/
+def InQ_E3 (sd : StopData) (e : EntryAddr) : Prop :=
+  (e.col = sd.col ∧ e.idx < sd.Q.length) ∨
+    ∃ i < sd.Q.length, (⟨sd.col, i⟩ : EntryAddr).heightPath <+: e.col.path
+
+/-- Entries outside the route and the hole are hereditary: so is everything in their heights. -/
+theorem outside_hered_E3 {S : List (Nat × Nat)} {c0 : Nat} {e0 e : EntryAddr}
+    (hr : ¬ e0.heightPath <+: S)
+    (hh : ¬ ((e0.col.path = S ∧ c0 ≤ e0.col.col) ∨
+      ∃ c' i rest, e0.col.path = S ++ (c', i) :: rest ∧ c0 ≤ c'))
+    (hc : e0.heightPath <+: e.col.path) :
+    ¬ e.heightPath <+: S ∧ ¬ ((e.col.path = S ∧ c0 ≤ e.col.col) ∨
+      ∃ c' i rest, e.col.path = S ++ (c', i) :: rest ∧ c0 ≤ c') := by
+  have hc' : e0.heightPath <+: e.heightPath := hc.trans (List.prefix_append _ _)
+  refine ⟨fun h => hr (hc'.trans h), ?_⟩
+  rintro (⟨h1, -⟩ | ⟨c', i, rest, h1, h2⟩)
+  · exact hr (h1 ▸ hc)
+  · have hS : S <+: e.col.path := h1 ▸ List.prefix_append _ _
+    rcases List.prefix_or_prefix_of_prefix hc hS with h3 | h3
+    · exact hr h3
+    · -- `S` is a proper prefix of `e0.heightPath`
+      have hlen : S.length < e0.heightPath.length := by
+        rcases Nat.lt_or_ge S.length e0.heightPath.length with h4 | h4
+        · exact h4
+        · exact absurd (h3.eq_of_length_le h4 ▸ List.prefix_refl S) (fun h => hr (by
+            rw [h3.eq_of_length_le h4]))
+      have hlen' : S.length ≤ e0.col.path.length := by
+        simp [EntryAddr.heightPath] at hlen; omega
+      have hSP : S <+: e0.col.path :=
+        List.prefix_of_prefix_length_le h3 (List.prefix_append _ _) hlen'
+      obtain ⟨T, hT⟩ := hSP
+      -- position `S.length` of `e.col.path`
+      have hpos : ∀ x, (e0.heightPath)[S.length]? = some x → x = (c', i) := by
+        intro x hx
+        obtain ⟨tt, htt⟩ := hc
+        have := congrArg (fun l => l[S.length]?) htt
+        rw [List.getElem?_append_left (by rw [List.getElem?_eq_some_iff] at hx; exact hx.1),
+          hx, h1] at this
+        simp at this; exact this
+      cases T with
+      | nil =>
+        simp only [List.append_nil] at hT
+        have hx := hpos (e0.col.col, e0.idx) (by
+          simp [EntryAddr.heightPath, ← hT])
+        simp only [Prod.mk.injEq] at hx
+        exact hh (Or.inl ⟨hT.symm, hx.1 ▸ h2⟩)
+      | cons t T =>
+        have hx := hpos t (by simp [EntryAddr.heightPath, ← hT])
+        exact hh (Or.inr ⟨t.1, t.2, T, by rw [← hT, hx], by rw [hx]; exact h2⟩)
+
+/-- Route containers are outside the hole region. -/
+theorem route_not_hole_E3 {S : List (Nat × Nat)} {c0 : Nat} {e : EntryAddr} (h : e.heightPath <+: S) :
+    ¬ ((e.col.path = S ∧ c0 ≤ e.col.col) ∨ ∃ c' i rest, e.col.path = S ++ (c', i) :: rest ∧ c0 ≤ c') := by
+  have := h.length_le
+  simp only [EntryAddr.heightPath, List.length_append, List.length_singleton] at this
+  rintro (⟨h1, -⟩ | ⟨c', i, rest, h1, -⟩)
+  · rw [h1] at this; omega
+  · rw [h1] at this; simp at this
+
+/-! Origins of the entries of the loop output. -/
+
+/-- A template entry of `A`: below the root column's forest, numbered at least `r`, and in the
+query region or outside the hole. -/
+def Tmpl_E3 (A : Forest) (sd : StopData) (rd : RootData) (e : EntryAddr) : Prop :=
+  rd.col.path <+: e.col.path ∧ sd.r ≤ e.col.num 0 ∧
+    (InQ_E3 sd e ∨ ¬ InHole_E3 sd.depth A e.col)
+
+/-- `(y, c')` (an entry and its column number) is the phase-`ψ` copy of the old entry `e`: parent
+shifted, number shifted, height shifted, or (route containers) shifted with the filling of
+layer `ψ` placed in its hole. -/
+def Orig_E3 (A : Forest) (sd : StopData) (rd : RootData) (n ψ : Nat) (e : EntryAddr)
+    (y : Nat × Forest) (c' : Nat) : Prop :=
+  ∃ x, A.entryAt e = some x ∧ y.1 = shiftVal sd.r (ψ * period sd) x.1 ∧
+    c' = e.col.num 0 + ψ * period sd ∧
+    ((¬ e.heightPath <+: sd.col.path ∧ y.2 = shift sd.r (ψ * period sd) x.2) ∨
+     (e.heightPath <+: sd.col.path ∧ y.2 = replaceAt sd.r (ψ * period sd) (zs_E3 A sd rd n ψ)
+        (sd.depth - e.col.path.length - 1) x.2))
+
+/-- Every entry of the filling `Z` of layer `j` (first column numbered `t + j d`) is a copy of a
+template entry, of phase `ψ ≥ j`, and of phase `j` only in the query region of the first head. -/
+def E1_E3 (A : Forest) (sd : StopData) (rd : RootData) (n j : Nat) (Z : Forest) : Prop :=
+  ∀ ρ y, Z.entryAt ρ = some y → ∃ e ψ, j ≤ ψ ∧ ψ ≤ n ∧ (ψ = j → InQ_E3 sd e) ∧
+    Tmpl_E3 A sd rd e ∧ Orig_E3 A sd rd n ψ e y (ρ.col.num (sd.t + j * period sd))
+
+theorem num_ge_E3 (b : Nat) (c : ColAddr) : b ≤ c.num b := by simp only [ColAddr.num]; omega
+
+theorem sum_heightPath_E3 (e : EntryAddr) :
+    (e.heightPath.map (·.1 + 1)).sum = e.col.num 0 + 1 := by
+  simp [EntryAddr.heightPath, ColAddr.num]; omega
+
+theorem stop_rpath_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) :
+    rpath_E3 sd.depth A = sd.col.path ∧ hcol_E3 sd.depth A = sd.col.col := by
+  have h1 := rpath_skip_E3 hsd sd.depth 0 (by omega)
+  have h2 := hcol_skip_E3 hsd sd.depth 0 (by omega)
+  simp only [skipLayers, List.drop_zero] at h1 h2
+  exact ⟨h1, h2⟩
+
+/-- Pure copies of the entries inside the height of a non-route template entry. -/
+theorem pure_orig_E3 {A : Forest} {sd : StopData} (rd : RootData) (n : Nat)
+    (hsd : stopData A = some sd)
+    {e0 : EntryAddr} {x0 : Nat × Forest} (hx0 : A.entryAt e0 = some x0)
+    (hnr : ¬ e0.heightPath <+: sd.col.path) (hloc : InQ_E3 sd e0 ∨ ¬ InHole_E3 sd.depth A e0.col)
+    (hrd0 : rd.col.path <+: e0.col.path) (hr0 : sd.r ≤ e0.col.num 0) (ψ : Nat) {ρ : EntryAddr}
+    {y : Nat × Forest} (hy : (shift sd.r (ψ * period sd) x0.2).entryAt ρ = some y) :
+    Tmpl_E3 A sd rd ⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ ∧
+      (InQ_E3 sd e0 → InQ_E3 sd ⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩) ∧
+      Orig_E3 A sd rd n ψ ⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ y
+        (ρ.col.num (e0.col.num 0 + 1 + ψ * period sd)) := by
+  obtain ⟨hrp, hhc⟩ := stop_rpath_E3 hsd
+  rw [shift, entryAt_map_D3] at hy
+  obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+  have hfa : A.forestAt e0.heightPath = some x0.2 := by
+    rw [Tree.forestAt_heightPath, Tree.heightAt, hx0]; rfl
+  have hA := entryAt_abs_E3 hfa ρ
+  rw [hx] at hA
+  have hcon : e0.heightPath <+: (⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ : EntryAddr).col.path :=
+    List.prefix_append _ _
+  have hnum : (⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ : EntryAddr).col.num 0 =
+      ρ.col.num (e0.col.num 0 + 1) := by
+    rw [num_abs_E3, sum_heightPath_E3]
+  have hnr' : ¬ (⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ : EntryAddr).heightPath <+:
+      sd.col.path := fun h => hnr ((hcon.trans (List.prefix_append _ _)).trans h)
+  have hq : InQ_E3 sd e0 → InQ_E3 sd ⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩ := by
+    rintro (⟨h1, h2⟩ | ⟨i, hi, h⟩)
+    · refine Or.inr ⟨e0.idx, h2, ?_⟩
+      have : (⟨sd.col, e0.idx⟩ : EntryAddr) = e0 := by rw [← h1]
+      rw [this]; exact hcon
+    · exact Or.inr ⟨i, hi, h.trans ((List.prefix_append _ _).trans hcon)⟩
+  refine ⟨⟨hrd0.trans ((List.prefix_append _ _).trans hcon), ?_, ?_⟩, hq, x, hA, rfl, ?_, Or.inl ⟨hnr', rfl⟩⟩
+  · rw [hnum]; have := num_ge_E3 (e0.col.num 0 + 1) ρ.col; omega
+  · rcases hloc with h | h
+    · exact Or.inl (hq h)
+    · right
+      simp only [InHole_E3, hrp, hhc] at h ⊢
+      exact (outside_hered_E3 hnr h hcon).2
+  · rw [hnum, num_add_D3]
+
+/-- The first column index of an address (the column of its outermost step). -/
+def fstCol_E3 (e : EntryAddr) : Nat :=
+  match e.col.path with
+  | [] => e.col.col
+  | (c, _) :: _ => c
+
+theorem num_ge_fst_E3 (b : Nat) (e : EntryAddr) : b + fstCol_E3 e ≤ e.col.num b := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil => simp [fstCol_E3, ColAddr.num]
+  | cons s P => obtain ⟨c, m⟩ := s; simp [fstCol_E3, ColAddr.num]; omega
+
+/-- The route forests of `A`, read relatively. -/
+theorem skip_data_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {i : Nat}
+    (hi : i ≤ sd.depth) :
+    A.forestAt (sd.col.path.take i) = some (skipLayers A i) ∧
+      RouteOK_D3 (sd.depth - i) (skipLayers A i) ∧
+      leftCount A i + routeNum_D3 (sd.depth - i) (skipLayers A i) = sd.t ∧
+      rpath_E3 sd.depth A = sd.col.path.take i ++ rpath_E3 (sd.depth - i) (skipLayers A i) ∧
+      hcol_E3 sd.depth A = hcol_E3 (sd.depth - i) (skipLayers A i) ∧
+      ((sd.col.path.take i).map (·.1 + 1)).sum = leftCount A i := by
+  obtain ⟨hrp, hhc⟩ := stop_rpath_E3 hsd
+  have h1 := stop_route_D3 hsd (sd.depth - i) (by omega)
+  rw [show sd.depth - (sd.depth - i) = i by omega] at h1
+  refine ⟨skipLayers_of_stopData hsd hi, h1.1, h1.2, ?_, ?_, stop_pathSum_D3 hsd i hi⟩
+  · rw [hrp, rpath_skip_E3 hsd (sd.depth - i) i (by omega), List.take_append_drop]
+  · rw [hhc, hcol_skip_E3 hsd (sd.depth - i) i (by omega)]
+
+/-- Entries of a filled copy of a route forest `skipLayers A i` (the owner's last restored
+height, or the root forest in the body case): kept entries and route containers are copies of
+phase `k`, hole entries come from the filling of layer `k`. -/
+theorem route_orig_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat}
+    (hsd : stopData A = some sd) (hrp : rd.col.path = sd.col.path.take rd.layer)
+    {i : Nat} (hi : i ≤ sd.depth) (hli : rd.layer ≤ i) {k : Nat}
+    (hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k)) (hk : k ≤ n) {e : EntryAddr} {y : Nat × Forest}
+    (hy : (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - i)
+      (shift sd.r (k * period sd) (skipLayers A i))).entryAt e = some y)
+    (hnum : sd.r ≤ leftCount A i + fstCol_E3 e) :
+    ∃ eA ψ, k ≤ ψ ∧ ψ ≤ n ∧ Tmpl_E3 A sd rd eA ∧
+      Orig_E3 A sd rd n ψ eA y (e.col.num (leftCount A i + k * period sd)) := by
+  obtain ⟨hfa, hR, hN, hrp', hhc', hsum⟩ := skip_data_E3 hsd hi
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  have hRG := (routeOK_shift_D3 sd.r (k * period sd) _ _).2 hR
+  have hrpG : rpath_E3 sd.depth A = sd.col.path.take i ++
+      rpath_E3 (sd.depth - i) (shift sd.r (k * period sd) (skipLayers A i)) := by
+    rw [shift, rpath_map_E3]; exact hrp'
+  have hhcG : hcol_E3 sd.depth A = hcol_E3 (sd.depth - i) (shift sd.r (k * period sd) (skipLayers A i)) := by
+    rw [shift, hcol_map_E3]; exact hhc'
+  have hlen : (sd.col.path.take i).length = i := by
+    obtain ⟨-, h2, -⟩ := stopData_core hsd; rw [List.length_take]; omega
+  have hrdP : rd.col.path <+: sd.col.path.take i := hrp ▸ List.take_prefix_take_left hli
+  have hnumA : ∀ e' : EntryAddr, (⟨sd.col.path.take i ++ e'.col.path, e'.col.col⟩ : ColAddr).num 0 =
+      e'.col.num (leftCount A i) := fun e' => by rw [num_abs_E3, hsum]
+  have hP := put_entryAt_E3 (zs_E3 A sd rd n k) (sd.depth - i) _ hRG e
+  by_cases hh : InHole_E3 (sd.depth - i) (shift sd.r (k * period sd) (skipLayers A i)) e.col
+  · obtain ⟨h1, h2⟩ := hP.1 hh
+    rw [h1] at hy
+    obtain ⟨eA, ψ, hψ1, hψ2, -, ht, ho⟩ := hE _ _ hy
+    refine ⟨eA, ψ, hψ1, hψ2, ht, ?_⟩
+    rw [h2, routeNum_shift_D3, show leftCount A i + k * period sd + routeNum_D3 (sd.depth - i)
+      (skipLayers A i) = sd.t + k * period sd by omega]
+    exact ho
+  · -- kept entries and route containers: copies of `skipLayers A i` at phase `k`
+    have hkept : ∀ x, (skipLayers A i).entryAt e = some x →
+        A.entryAt ⟨⟨sd.col.path.take i ++ e.col.path, e.col.col⟩, e.idx⟩ = some x := by
+      intro x hx; rw [entryAt_abs_E3 hfa, hx]
+    have hhA : ¬ InHole_E3 sd.depth A ⟨sd.col.path.take i ++ e.col.path, e.col.col⟩ := by
+      rw [inHole_abs_E3 hrpG hhcG]; exact hh
+    have htm : sd.r ≤ (⟨sd.col.path.take i ++ e.col.path, e.col.col⟩ : ColAddr).num 0 := by
+      rw [hnumA]; exact le_trans hnum (num_ge_fst_E3 _ e)
+    have hrdA : rd.col.path <+: (⟨sd.col.path.take i ++ e.col.path, e.col.col⟩ : ColAddr).path :=
+      hrdP.trans (List.prefix_append _ _)
+    refine ⟨⟨⟨sd.col.path.take i ++ e.col.path, e.col.col⟩, e.idx⟩, k, le_rfl, hk,
+      ⟨hrdA, htm, Or.inr hhA⟩, ?_⟩
+    by_cases hr : IsRoute_E3 (sd.depth - i) (shift sd.r (k * period sd) (skipLayers A i)) e
+    · rw [hP.2.1 hh hr, shift, entryAt_map_D3] at hy
+      simp only [Option.map_map] at hy
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+      refine ⟨x, hkept x hx, rfl, by rw [hnumA, num_add_D3], Or.inr ⟨?_, ?_⟩⟩
+      · have := (isRoute_abs_E3 hrpG e).2 hr
+        rwa [IsRoute_E3, hrpA] at this
+      · simp only [Function.comp, List.length_append, hlen]
+        rw [replaceAt_eq_shift sd.r,
+          show sd.depth - (i + e.col.path.length) - 1 = sd.depth - i - e.col.path.length - 1 by omega]
+        rfl
+    · rw [hP.2.2 hh hr, shift, entryAt_map_D3] at hy
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+      refine ⟨x, hkept x hx, rfl, by rw [hnumA, num_add_D3], Or.inl ⟨?_, rfl⟩⟩
+      intro h
+      apply hr
+      have : IsRoute_E3 sd.depth A ⟨⟨sd.col.path.take i ++ e.col.path, e.col.col⟩, e.idx⟩ := by
+        rw [IsRoute_E3, hrpA]; exact h
+      exact (isRoute_abs_E3 hrpG e).1 this
+
+/-- Facts about the root column and its unconsumed suffix. -/
+theorem root_pack_E3 {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    rd.col.path = sd.col.path.take rd.layer ∧ rd.col.col = rd.idx ∧ rd.col.num 0 = sd.r ∧
+      sd.r = leftCount A rd.layer + rd.idx ∧ rd.layer ≤ sd.depth ∧
+      (A.forestAt rd.col.path).getD Tree.empty = skipLayers A rd.layer ∧
+      (∀ v u, (((A.colAt rd.col).getD []).drop rd.cursor)[v]? = some u →
+        A.entryAt ⟨rd.col, rd.cursor + v⟩ = some u ∧ u.1 < sd.r ∧
+        ¬ InHole_E3 sd.depth A rd.col ∧
+        ((⟨rd.col, rd.cursor + v⟩ : EntryAddr).heightPath <+: sd.col.path ↔
+          rd.owner = true ∧ v + 1 = (((A.colAt rd.col).getD []).drop rd.cursor).length)) ∧
+      (rd.owner = true → ∀ u, (((A.colAt rd.col).getD []).drop rd.cursor).getLast? = some u →
+        u.2 = skipLayers A (rd.layer + 1) ∧ rd.layer < sd.depth ∧
+        leftCount A (rd.layer + 1) = sd.r + 1) := by
+  obtain ⟨hle, hfa, hr, hidx, howner, hcol⟩ := root_facts_D3 hsd hrd
+  obtain ⟨-, hlay, hcc, hnum, hrt, hmem, -, -⟩ := rootData_spec hsd hrd
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path hsd hrd
+  obtain ⟨h1, h2, h3, h4, h5, -⟩ := stopData_core hsd
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨-, -, hU, -⟩ := ord_vdata_D3 hV hsd hrd
+  have hpath : rd.col.path = sd.col.path.take rd.layer := by
+    rw [List.prefix_iff_eq_take] at hpre; rw [hpre, hlay]
+  obtain ⟨R, hR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A rd.col).1 hmem)
+  have hRc : (skipLayers A rd.layer).cols[rd.idx]? = some R := by rw [← hcol, hR]
+  have hstep : rd.layer < sd.depth → ∃ col p, (skipLayers A rd.layer).cols.getLast? = some col ∧
+      col.getLast? = some (p, skipLayers A (rd.layer + 1)) ∧
+      sd.col.path[rd.layer]? = some ((skipLayers A rd.layer).cols.length - 1, col.length - 1) := by
+    intro hl; obtain ⟨col, p, a, b, -, c⟩ := h5 rd.layer hl; exact ⟨col, p, a, b, c⟩
+  have hlr : rd.owner = true → rd.layer < sd.depth := rootData_layer_lt hsd hrd
+  have hlastR : rd.owner = true → ∀ col, (skipLayers A rd.layer).cols.getLast? = some col → col = R := by
+    intro hown col hc1
+    rw [List.getLast?_eq_getElem?, show (skipLayers A rd.layer).cols.length - 1 = rd.idx by
+      have := howner.1 hown; omega, hRc] at hc1
+    exact (Option.some.inj hc1).symm
+  have hnh : ¬ InHole_E3 sd.depth A rd.col := by
+    simp only [InHole_E3, hrpA, hhcA]
+    rintro (⟨hp, hc⟩ | ⟨c', i, rest, hp, -⟩)
+    · have hl : rd.layer = sd.depth := by
+        have := congrArg List.length hp; rw [hlay]; simpa [h2] using this
+      have hown : rd.owner = false := by
+        cases ho : rd.owner
+        · rfl
+        · exact absurd hl (Nat.ne_of_lt (hlr ho))
+      have : rd.idx + 1 < (skipLayers A rd.layer).cols.length := by
+        have : ¬ rd.idx + 1 = (skipLayers A rd.layer).cols.length := by rw [← howner, hown]; simp
+        omega
+      rw [hl] at this; rw [← hcc] at hc; omega
+    · have := congrArg List.length hp
+      have := hpre.length_le
+      simp at *; omega
+  refine ⟨hpath, hcc.symm, hnum, hr, hle, by rw [hfa]; rfl, ?_, ?_⟩
+  · intro v u hu
+    have hmemU : u ∈ ((A.colAt rd.col).getD []).drop rd.cursor := List.mem_of_getElem? hu
+    rw [hR, Option.getD_some, List.getElem?_drop] at hu
+    refine ⟨by simp [Tree.entryAt, hR, hu], (hU u hmemU).1, hnh, ?_⟩
+    have hlt : rd.cursor + v < R.length := (List.getElem?_eq_some_iff.1 hu).1
+    simp only [hR, Option.getD_some, List.length_drop]
+    have hhp : (⟨rd.col, rd.cursor + v⟩ : EntryAddr).heightPath =
+        sd.col.path.take rd.layer ++ [(rd.idx, rd.cursor + v)] := by
+      rw [EntryAddr.heightPath, hpath, ← hcc]
+    rw [hhp]
+    constructor
+    · intro hon
+      have hlen := hon.length_le
+      simp only [List.length_append, List.length_take, List.length_singleton] at hlen
+      have hl : rd.layer < sd.depth := by omega
+      obtain ⟨col, p, hc1, hc2, hc3⟩ := hstep hl
+      have : sd.col.path[rd.layer]? = some (rd.idx, rd.cursor + v) := by
+        obtain ⟨t, ht⟩ := hon
+        rw [← ht, List.append_assoc, List.getElem?_append_right (by simp), List.length_take,
+          Nat.min_eq_left (by omega), Nat.sub_self]
+        rfl
+      rw [hc3] at this
+      simp only [Option.some.injEq, Prod.mk.injEq] at this
+      have hown : rd.owner = true := howner.2 (by omega)
+      refine ⟨hown, ?_⟩
+      have := hlastR hown col hc1
+      subst this; omega
+    · rintro ⟨hown, hv⟩
+      obtain ⟨col, p, hc1, hc2, hc3⟩ := hstep (hlr hown)
+      have := hlastR hown col hc1
+      subst this
+      have hio := howner.1 hown
+      rw [List.prefix_iff_eq_take, List.length_append, List.length_take, List.length_singleton,
+        show min rd.layer sd.col.path.length = rd.layer by omega, List.take_add_one]
+      congr 1
+      rw [hc3]; simp; omega
+  · intro hown u hu
+    obtain ⟨col, p, hc1, hc2, hc3⟩ := hstep (hlr hown)
+    have := hlastR hown col hc1
+    subst this
+    rw [hR, Option.getD_some, List.getLast?_drop] at hu
+    split at hu
+    · cases hu
+    · rw [hc2] at hu
+      refine ⟨by rw [← Option.some.inj hu], hlr hown, ?_⟩
+      rw [leftCount_succ_D3, hr]; have := howner.1 hown; omega
+
+/-! Entries of a step of the loop. -/
+
+/-- Move an address `m` columns to the right in its outermost forest. -/
+def addCol_E3 (m : Nat) (e : EntryAddr) : EntryAddr :=
+  match e.col.path with
+  | [] => ⟨⟨[], e.col.col + m⟩, e.idx⟩
+  | (c, i) :: P => ⟨⟨(c + m, i) :: P, e.col.col⟩, e.idx⟩
+
+theorem entryAt_drop_E3 (L : List Column) (m : Nat) (e : EntryAddr) :
+    (Tree.node (L.drop m)).entryAt e = (Tree.node L).entryAt (addCol_E3 m e) := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil => simp only [addCol_E3, entryAt_nil_D3, List.getElem?_drop]; rw [Nat.add_comm]
+  | cons s P =>
+    obtain ⟨c, k⟩ := s
+    simp only [addCol_E3, entryAt_cons_D3, List.getElem?_drop]; rw [Nat.add_comm m c]
+
+theorem addCol_num_E3 (m b : Nat) (e : EntryAddr) :
+    (addCol_E3 m e).col.num b = e.col.num (b + m) := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil => simp [addCol_E3, ColAddr.num]; omega
+  | cons s P => obtain ⟨c, k⟩ := s; simp [addCol_E3, ColAddr.num]; omega
+
+theorem fstCol_addCol_E3 (m : Nat) (e : EntryAddr) : fstCol_E3 (addCol_E3 m e) = fstCol_E3 e + m := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil => rfl
+  | cons s P => obtain ⟨c, k⟩ := s; rfl
+
+theorem addCol_of_fstCol_E3 (e : EntryAddr) (h : 1 ≤ fstCol_E3 e) : ∃ e0, e = addCol_E3 1 e0 := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil =>
+    simp only [fstCol_E3] at h
+    exact ⟨⟨⟨[], j - 1⟩, i⟩, by simp [addCol_E3]; omega⟩
+  | cons s P =>
+    obtain ⟨c, k⟩ := s
+    simp only [fstCol_E3] at h
+    exact ⟨⟨⟨(c - 1, k) :: P, j⟩, i⟩, by simp [addCol_E3]; omega⟩
+
+theorem put_drop_E3 (Z : Forest) : ∀ (k : Nat) (L : List Column), RouteOK_D3 k (.node L) →
+    ∀ m, m < L.length →
+      replaceAt 0 0 Z k (.node (L.drop m)) = .node ((replaceAt 0 0 Z k (.node L)).cols.drop m)
+  | 0, L, hR, m, hm => by
+    have hc : L ≠ [] := hR
+    have hc' : L.drop m ≠ [] := by simp; omega
+    rw [put_zero_D3 Z hc, put_zero_D3 Z hc']
+    obtain ⟨L', x, rfl⟩ := List.eq_nil_or_concat L |>.resolve_left hc
+    simp only [List.concat_eq_append, List.length_append, List.length_singleton] at hm ⊢
+    obtain ⟨zc⟩ := Z
+    simp only [Tree.cols, List.dropLast_concat]
+    rw [List.drop_append_of_le_length (by omega), List.drop_append_of_le_length (by omega),
+      List.dropLast_concat]
+  | k + 1, L, hR, m, hm => by
+    obtain ⟨cs, es, q, H, he, hR'⟩ := hR
+    simp only [Tree.node.injEq] at he
+    subst he
+    simp only [List.length_append, List.length_singleton] at hm
+    rw [List.drop_append_of_le_length (by omega), put_succ_D3, put_succ_D3]
+    simp only [Tree.cols]
+    rw [List.drop_append_of_le_length (by omega)]
+
+theorem shift_drop_E3 (r d : Nat) (L : List Column) (m : Nat) :
+    shift r d (.node (L.drop m)) = .node ((shift r d (.node L)).cols.drop m) := by
+  simp [shift, Tree.map, Tree.cols, treeMapCols_eq_map, List.map_drop]
+
+theorem q_pack_E3 {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) {i : Nat} {x : Nat × Forest} (hx : sd.Q[i]? = some x) :
+    A.entryAt ⟨sd.col, i⟩ = some x ∧ ¬ (⟨sd.col, i⟩ : EntryAddr).heightPath <+: sd.col.path ∧
+      InQ_E3 sd ⟨sd.col, i⟩ ∧ Tmpl_E3 A sd rd ⟨sd.col, i⟩ := by
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec hsd
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd hrd
+  obtain ⟨-, -, -, hpre, -⟩ := rootData_path hsd hrd
+  have hi : i < sd.Q.length := (List.getElem?_eq_some_iff.1 hx).1
+  have hq : InQ_E3 sd ⟨sd.col, i⟩ := Or.inl ⟨rfl, hi⟩
+  refine ⟨?_, ?_, hq, hpre, by rw [← ht]; omega, Or.inl hq⟩
+  · simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [List.getElem?_append_left hi, hx]
+  · intro h
+    have := h.length_le
+    simp [EntryAddr.heightPath] at this
+
+/-- The head column of a step: the query copy (phase `k-1`) and the restored entries (phase `k`). -/
+theorem head_orig_E3 {A : Forest} {sd : StopData} {rd : RootData} {n k : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hk1 : 1 ≤ k) (hkn : k ≤ n)
+    (hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k)) {W : Column} {rest : List Column}
+    (hW : ∀ v x, W[v]? = some x → ∃ u, (((A.colAt rd.col).getD []).drop rd.cursor)[v]? = some u ∧
+      x.1 = u.1 ∧ ((¬ (rd.owner = true ∧ v + 1 = (((A.colAt rd.col).getD []).drop rd.cursor).length) ∧
+          x.2 = shift sd.r (k * period sd) u.2) ∨
+        (rd.owner = true ∧ v + 1 = (((A.colAt rd.col).getD []).drop rd.cursor).length ∧
+          x.2 = replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k) (sd.depth - rd.layer - 1) u.2)))
+    {ρ : EntryAddr} {y : Nat × Forest} (hρ : fstCol_E3 ρ = 0)
+    (hy : (Tree.node ((Tree.mapCol (shiftVal sd.r ((k - 1) * period sd)) sd.Q ++ W) :: rest)).entryAt ρ
+      = some y) :
+    ∃ e ψ, k - 1 ≤ ψ ∧ ψ ≤ n ∧ (ψ = k - 1 → InQ_E3 sd e) ∧ Tmpl_E3 A sd rd e ∧
+      Orig_E3 A sd rd n ψ e y (ρ.col.num (sd.t + (k - 1) * period sd)) := by
+  obtain ⟨hpath, hcc, hnum, hr, hle, hF, hUe, hlast⟩ := root_pack_E3 hL.1 hsd hrd
+  obtain ⟨-, -, ht, -⟩ := stopData_spec hsd
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd hrd
+  have hbase : sd.t + (k - 1) * period sd = sd.r + k * period sd := by
+    obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    simp only [period, Nat.add_sub_cancel, Nat.succ_mul]; omega
+  have hlay : rd.col.path.length = rd.layer := by
+    rw [hpath, List.length_take]; obtain ⟨-, h2, -⟩ := stopData_core hsd; omega
+  have hhd : ∀ i, (Tree.mapCol (shiftVal sd.r ((k - 1) * period sd)) sd.Q ++ W)[i]? =
+      if i < sd.Q.length then (sd.Q[i]?).map (fun x => (shiftVal sd.r ((k - 1) * period sd) x.1,
+        shift sd.r ((k - 1) * period sd) x.2)) else W[i - sd.Q.length]? := by
+    intro i
+    split_ifs with hi
+    · rw [List.getElem?_append_left (by rw [treeMapCol_eq_map, List.length_map]; exact hi),
+        treeMapCol_eq_map, List.getElem?_map]; rfl
+    · rw [List.getElem?_append_right (by rw [treeMapCol_eq_map, List.length_map]; omega),
+        treeMapCol_eq_map, List.length_map]
+  -- the restored entry `v`
+  have hWo : ∀ v x, W[v]? = some x → (Tmpl_E3 A sd rd ⟨rd.col, rd.cursor + v⟩ ∧
+      ∃ u, A.entryAt ⟨rd.col, rd.cursor + v⟩ = some u ∧ x.1 = shiftVal sd.r (k * period sd) u.1 ∧
+      ((¬ (⟨rd.col, rd.cursor + v⟩ : EntryAddr).heightPath <+: sd.col.path ∧
+          x.2 = shift sd.r (k * period sd) u.2) ∨
+        ((⟨rd.col, rd.cursor + v⟩ : EntryAddr).heightPath <+: sd.col.path ∧ rd.owner = true ∧
+          x.2 = replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k) (sd.depth - rd.layer - 1) u.2 ∧
+          u.2 = skipLayers A (rd.layer + 1) ∧ rd.layer < sd.depth ∧
+          leftCount A (rd.layer + 1) = sd.r + 1))) := by
+    intro v x hx
+    obtain ⟨u, hu, hx1, hx2⟩ := hW v x hx
+    obtain ⟨hA, hur, hnh, hon⟩ := hUe v u hu
+    refine ⟨⟨List.prefix_refl _, by rw [hnum], Or.inr hnh⟩, u, hA, ?_, ?_⟩
+    · rw [hx1, shiftVal, if_neg (by omega)]
+    · rcases hx2 with ⟨h1, h2⟩ | ⟨h1, h2, h3⟩
+      · exact Or.inl ⟨fun h => h1 (hon.1 h), h2⟩
+      · have hl : (((A.colAt rd.col).getD []).drop rd.cursor).getLast? = some u := by
+          rw [List.getLast?_eq_getElem?, show (((A.colAt rd.col).getD []).drop rd.cursor).length - 1 = v
+            by omega, hu]
+        obtain ⟨g1, g2, g3⟩ := hlast h1 u hl
+        exact Or.inr ⟨hon.2 ⟨h1, h2⟩, h1, h3, g1, g2, g3⟩
+  obtain ⟨⟨P, j⟩, i⟩ := ρ
+  cases P with
+  | nil =>
+    simp only [fstCol_E3] at hρ
+    subst hρ
+    rw [entryAt_nil_D3] at hy
+    simp only [List.getElem?_cons_zero, Option.bind_some, hhd] at hy
+    split_ifs at hy with hi
+    · obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+      obtain ⟨hA, hnr, hq, htm⟩ := q_pack_E3 hsd hrd hx
+      refine ⟨⟨sd.col, i⟩, k - 1, le_rfl, by omega, fun _ => hq, htm, x, hA, rfl, ?_,
+        Or.inl ⟨hnr, rfl⟩⟩
+      simp [num_nil_D3, ht]
+    · obtain ⟨htm, u, hA, hy1, hy2⟩ := hWo _ _ hy
+      refine ⟨⟨rd.col, rd.cursor + (i - sd.Q.length)⟩, k, by omega, hkn, fun h => by omega, htm,
+        u, hA, hy1, by simp [num_nil_D3, hnum, hbase], ?_⟩
+      rcases hy2 with h | ⟨h1, -, h2, -⟩
+      · exact Or.inl h
+      · exact Or.inr ⟨h1, by rw [h2, hlay]⟩
+  | cons s P =>
+    obtain ⟨c0, i0⟩ := s
+    simp only [fstCol_E3] at hρ
+    subst hρ
+    rw [entryAt_cons_D3] at hy
+    simp only [List.getElem?_cons_zero, Option.bind_some, hhd] at hy
+    rw [num_cons_D3]
+    split_ifs at hy with hi
+    · cases hx : sd.Q[i0]? with
+      | none => simp [hx] at hy
+      | some x =>
+        simp only [hx, Option.map_some, Option.bind_some] at hy
+        obtain ⟨hA, hnr, hq, htm⟩ := q_pack_E3 hsd hrd hx
+        obtain ⟨t1, t2, t3⟩ := pure_orig_E3 rd n hsd hA hnr htm.2.2 htm.1 htm.2.1 (k - 1) hy
+        refine ⟨_, k - 1, le_rfl, by omega, fun _ => t2 hq, t1, ?_⟩
+        convert t3 using 2
+        simp only; rw [← ht]; omega
+    · obtain ⟨x, hx, hy⟩ := Option.bind_eq_some_iff.1 hy
+      · obtain ⟨htm, u, hA, hy1, hy2⟩ := hWo _ _ hx
+        rcases hy2 with ⟨hnr, h2⟩ | ⟨hon, hown, h2, g1, g2, g3⟩
+        · rw [h2] at hy
+          obtain ⟨t1, -, t3⟩ := pure_orig_E3 rd n hsd hA hnr htm.2.2 htm.1 htm.2.1 k hy
+          refine ⟨_, k, by omega, hkn, fun h => by omega, t1, ?_⟩
+          convert t3 using 2
+          simp only; rw [hnum]; omega
+        · rw [h2, g1, replaceAt_eq_shift] at hy
+          obtain ⟨eA, ψ, hψ1, hψ2, htA, hoA⟩ := route_orig_E3 hsd hpath (i := rd.layer + 1)
+            (by omega) (by omega) hE hkn (by rw [show sd.depth - (rd.layer + 1) =
+              sd.depth - rd.layer - 1 by omega]; exact hy) (by rw [g3]; omega)
+          refine ⟨eA, ψ, by omega, hψ2, fun h => by omega, htA, ?_⟩
+          convert hoA using 2
+          rw [g3]; omega
+
+theorem eta_E3 (X : Forest) : Tree.node X.cols = X := by cases X; rfl
+
+/-- The body columns of a step (body case): copies of the root forest's columns after the root. -/
+theorem body_orig_E3 {A : Forest} {sd : StopData} {rd : RootData} {n k : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hown : rd.owner = false)
+    (hk1 : 1 ≤ k) (hkn : k ≤ n) (hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k)) (hd : Column)
+    {ρ : EntryAddr} {y : Nat × Forest}
+    (hy : (Tree.node (hd :: (Hole.fill ⟨.node (((A.forestAt rd.col.path).getD Tree.empty).cols.drop
+      (rd.idx + 1)), sd.depth - rd.layer⟩ sd.r (k * period sd) (zs_E3 A sd rd n k)).cols)).entryAt
+        (addCol_E3 1 ρ) = some y) :
+    ∃ e ψ, k ≤ ψ ∧ ψ ≤ n ∧ Tmpl_E3 A sd rd e ∧
+      Orig_E3 A sd rd n ψ e y ((addCol_E3 1 ρ).col.num (sd.t + (k - 1) * period sd)) := by
+  obtain ⟨hpath, hcc, hnum, hr, hle, hF, -⟩ := root_pack_E3 hL.1 hsd hrd
+  obtain ⟨-, -, -, hidx, howner, -⟩ := root_facts_D3 hsd hrd
+  obtain ⟨-, hRF, -⟩ := skip_data_E3 hsd hle
+  have hbase : sd.t + (k - 1) * period sd = sd.r + k * period sd := by
+    obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
+    simp only [period, Nat.add_sub_cancel, Nat.succ_mul]
+    obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd hrd; omega
+  have hlt : rd.idx + 1 < (skipLayers A rd.layer).cols.length := by
+    have : ¬ rd.idx + 1 = (skipLayers A rd.layer).cols.length := by rw [← howner, hown]; simp
+    omega
+  rw [hF] at hy
+  have h1 := entryAt_drop_E3 (hd :: (Hole.fill ⟨.node ((skipLayers A rd.layer).cols.drop (rd.idx + 1)),
+    sd.depth - rd.layer⟩ sd.r (k * period sd) (zs_E3 A sd rd n k)).cols) 1 ρ
+  rw [← h1, List.drop_one, List.tail_cons, eta_E3] at hy
+  have hRG : RouteOK_D3 (sd.depth - rd.layer) (Tree.node (shift sd.r (k * period sd) (skipLayers A rd.layer)).cols) := by
+    rw [eta_E3]; exact (routeOK_shift_D3 _ _ _ _).2 hRF
+  have hlt' : rd.idx + 1 < (shift sd.r (k * period sd) (skipLayers A rd.layer)).cols.length := by
+    rw [shift, cols_length_map_E3]; exact hlt
+  have h2 : Hole.fill ⟨.node ((skipLayers A rd.layer).cols.drop (rd.idx + 1)), sd.depth - rd.layer⟩ sd.r
+      (k * period sd) (zs_E3 A sd rd n k) =
+      .node ((replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - rd.layer)
+        (shift sd.r (k * period sd) (skipLayers A rd.layer))).cols.drop (rd.idx + 1)) := by
+    rw [Hole.fill, replaceAt_eq_shift, shift_drop_E3, eta_E3]
+    have := put_drop_E3 (zs_E3 A sd rd n k) _ _ hRG _ hlt'
+    rw [eta_E3] at this
+    exact this
+  rw [h2, entryAt_drop_E3, eta_E3] at hy
+  obtain ⟨eA, ψ, hψ1, hψ2, htA, hoA⟩ := route_orig_E3 hsd hpath (i := rd.layer) hle le_rfl hE hkn hy
+    (by rw [fstCol_addCol_E3]; omega)
+  refine ⟨eA, ψ, hψ1, hψ2, htA, ?_⟩
+  have : (addCol_E3 1 ρ).col.num (sd.t + (k - 1) * period sd) =
+      (addCol_E3 (rd.idx + 1) ρ).col.num (leftCount A rd.layer + k * period sd) := by
+    rw [addCol_num_E3, addCol_num_E3]; congr 1; omega
+  rw [this]; exact hoA
+
+theorem mapLast_getElem_E3 {β : Type} (f g : β → β) (U : List β) (v : Nat) (x : β)
+    (h : (U.dropLast.map f ++ (U.getLast?.map g).toList)[v]? = some x) :
+    ∃ u, U[v]? = some u ∧ ((v + 1 ≠ U.length ∧ x = f u) ∨ (v + 1 = U.length ∧ x = g u)) := by
+  rcases List.eq_nil_or_concat U with rfl | ⟨U', u0, rfl⟩
+  · simp at h
+  · simp only [List.concat_eq_append, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+      Option.toList_some] at h ⊢
+    rcases Nat.lt_or_ge v U'.length with hv | hv
+    · rw [List.getElem?_append_left (by simpa using hv), List.getElem?_map] at h
+      obtain ⟨u, hu, rfl⟩ := Option.map_eq_some_iff.1 h
+      exact ⟨u, by rw [List.getElem?_append_left hv, hu], Or.inl ⟨by simp; omega, rfl⟩⟩
+    · rw [List.getElem?_append_right (by simpa using hv)] at h
+      simp only [List.length_map] at h
+      rcases Nat.lt_or_ge v (U'.length + 1) with hv' | hv'
+      · have : v = U'.length := by omega
+        subst this
+        simp at h
+        exact ⟨u0, by simp, Or.inr ⟨by simp, h.symm⟩⟩
+      · rw [List.getElem?_eq_none (by simp; omega)] at h; cases h
+
+theorem entryAt_single_E3 (col : Column) (ρ : EntryAddr) (y : Nat × Forest)
+    (h : (Tree.node [col]).entryAt ρ = some y) : fstCol_E3 ρ = 0 := by
+  by_contra hc
+  obtain ⟨ρ0, rfl⟩ := addCol_of_fstCol_E3 ρ (by omega)
+  have := entryAt_drop_E3 [col] 1 ρ0
+  rw [← this] at h
+  simp only [List.drop_one, List.tail_cons] at h
+  obtain ⟨⟨P, j⟩, i⟩ := ρ0
+  cases P with
+  | nil => simp [entryAt_nil_D3] at h
+  | cons s P => obtain ⟨c, m⟩ := s; simp [entryAt_cons_D3] at h
+
+/-- One step of the loop keeps the origin classification, one phase down. -/
+theorem ordStep_E1_E3 {A : Forest} {sd : StopData} {rd : RootData} {n k : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hk1 : 1 ≤ k) (hkn : k ≤ n)
+    (hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k)) :
+    E1_E3 A sd rd n (k - 1) (ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor) k (zs_E3 A sd rd n k)) := by
+  intro ρ y hy
+  simp only [ordStep] at hy
+  split_ifs at hy with hown
+  · rw [List.append_assoc] at hy
+    have hρ := entryAt_single_E3 _ ρ y hy
+    refine head_orig_E3 hL hsd hrd hk1 hkn hE (rest := []) ?_ hρ hy
+    intro v x hx
+    obtain ⟨u, hu, hx'⟩ := mapLast_getElem_E3 _ _ _ v x hx
+    refine ⟨u, hu, ?_⟩
+    rcases hx' with ⟨h1, rfl⟩ | ⟨h1, rfl⟩
+    · exact ⟨rfl, Or.inl ⟨fun h => h1 h.2, rfl⟩⟩
+    · exact ⟨rfl, Or.inr ⟨hown, h1, rfl⟩⟩
+  · have hown' : rd.owner = false := by simpa using hown
+    by_cases hρ : fstCol_E3 ρ = 0
+    · refine head_orig_E3 hL hsd hrd hk1 hkn hE ?_ hρ hy
+      intro v x hx
+      rw [List.getElem?_map] at hx
+      obtain ⟨u, hu, rfl⟩ := Option.map_eq_some_iff.1 hx
+      exact ⟨u, hu, rfl, Or.inl ⟨by simp [hown'], rfl⟩⟩
+    · obtain ⟨ρ0, rfl⟩ := addCol_of_fstCol_E3 ρ (by omega)
+      obtain ⟨e, ψ, h1, h2, h3, h4⟩ := body_orig_E3 hL hsd hrd hown' hk1 hkn hE _ hy
+      exact ⟨e, ψ, by omega, h2, fun h => by omega, h3, h4⟩
+
+/-- The origin classification of every filling `zs_E3 … j`. -/
+theorem zs_E1_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) :
+    ∀ c, c ≤ n → E1_E3 A sd rd n (n - c) (zs_E3 A sd rd n (n - c))
+  | 0, _ => by
+    rw [Nat.sub_zero, zs_top_E3]
+    intro ρ y hy
+    obtain ⟨⟨P, j⟩, i⟩ := ρ
+    cases P with
+    | nil => simp [Tree.empty, entryAt_nil_D3] at hy
+    | cons s P => obtain ⟨c, m⟩ := s; simp [Tree.empty, entryAt_cons_D3] at hy
+  | c + 1, hc => by
+    have ih := zs_E1_E3 (n := n) hL hsd hrd c (by omega)
+    rw [zs_step_E3 A sd rd (n := n) (j := n - (c + 1)) (by omega),
+      show n - (c + 1) + 1 = n - c by omega]
+    have := ordStep_E1_E3 hL hsd hrd (n := n) (k := n - c) (by omega) (by omega) ih
+    rwa [show n - c - 1 = n - (c + 1) by omega] at this
+
+/-! Facts used by the owner-return analysis. -/
+
+theorem kappa_zero_E3 (r d : Nat) (K : Key) : kappa r d 0 K = K := by
+  have : kappaLabel r d 0 = id := by
+    funext x; simp only [kappaLabel, Nat.zero_mul, Nat.add_zero, id]
+    split_ifs with h
+    · obtain ⟨x1, x2⟩ := x; simp only at h; rw [h.1]
+    · rfl
+  rw [kappa, this, treeMap_id]
+
+/-- `κ_j h_x(H)` read as `h_{x + j d}` of the shifted height (for `x ≥ r` or `j = 0`). -/
+theorem kappa_eq_E3 (r d j x : Nat) (h : j = 0 ∨ r ≤ x) (H : Forest) :
+    kappa r d j (relKey x H) = relKey (x + j * d) (shift r (j * d) H) := by
+  rcases h with rfl | h
+  · rw [kappa_zero_E3, Nat.zero_mul, Nat.add_zero, shift_zero]
+  · exact (relKey_shift r d j x h H).symm
+
+/-- Route containers of `A`: their depth, height, number and route. -/
+theorem onR_pack_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {e0 : EntryAddr}
+    {x0 : Nat × Forest} (hx0 : A.entryAt e0 = some x0) (hon : e0.heightPath <+: sd.col.path) :
+    e0.col.path.length < sd.depth ∧ e0.heightPath = sd.col.path.take (e0.col.path.length + 1) ∧
+      x0.2 = skipLayers A (e0.col.path.length + 1) ∧
+      e0.col.num 0 + 1 = leftCount A (e0.col.path.length + 1) ∧
+      RouteOK_D3 (sd.depth - e0.col.path.length - 1) x0.2 ∧
+      e0.col.num 0 + 1 + routeNum_D3 (sd.depth - e0.col.path.length - 1) x0.2 = sd.t ∧
+      routeCol_D3 (sd.depth - e0.col.path.length - 1) x0.2 = sd.Q ++ [(sd.r, Tree.empty)] ∧
+      rpath_E3 sd.depth A = e0.heightPath ++ rpath_E3 (sd.depth - e0.col.path.length - 1) x0.2 ∧
+      hcol_E3 sd.depth A = hcol_E3 (sd.depth - e0.col.path.length - 1) x0.2 ∧
+      e0.col.num 0 < sd.t := by
+  obtain ⟨-, h2, -, h4, -⟩ := stopData_core hsd
+  have hlen := hon.length_le
+  simp only [EntryAddr.heightPath, List.length_append, List.length_singleton] at hlen
+  have hl : e0.col.path.length < sd.depth := by omega
+  have hhp : e0.heightPath = sd.col.path.take (e0.col.path.length + 1) := by
+    rw [List.prefix_iff_eq_take] at hon
+    rw [hon]; simp [EntryAddr.heightPath]
+  obtain ⟨hfa, hR, hN, hrp, hhc, hsum⟩ := skip_data_E3 hsd (i := e0.col.path.length + 1) (by omega)
+  have hx : x0.2 = skipLayers A (e0.col.path.length + 1) := by
+    have : A.forestAt e0.heightPath = some x0.2 := by
+      rw [Tree.forestAt_heightPath, Tree.heightAt, hx0]; rfl
+    rw [hhp, hfa] at this; exact (Option.some.inj this).symm
+  have hnum : e0.col.num 0 + 1 = leftCount A (e0.col.path.length + 1) := by
+    rw [← sum_heightPath_E3, hhp, hsum]
+  have hd : sd.depth - e0.col.path.length - 1 = sd.depth - (e0.col.path.length + 1) := by omega
+  rw [hd, hx]
+  refine ⟨hl, hhp, rfl, hnum, hR, by omega, ?_, by rw [hhp]; exact hrp, hhc, by omega⟩
+  simp only [routeCol_D3, skipLayers_add, show e0.col.path.length + 1 + (sd.depth - (e0.col.path.length + 1))
+    = sd.depth by omega, h4, Option.getD_some]
+
+/-- An entry inside the height of another has a shorter height word. -/
+theorem N_inside_E3 {E : Forest} {e1 e : EntryAddr} {x1 x : Nat × Forest}
+    (h1 : E.entryAt e1 = some x1) (hc : e1.heightPath <+: e.col.path) (h : E.entryAt e = some x) :
+    N_E3 x.2 < N_E3 x1.2 := by
+  obtain ⟨P, hP⟩ := hc
+  have hfa : E.forestAt e1.heightPath = some x1.2 := by
+    rw [Tree.forestAt_heightPath, Tree.heightAt, h1]; rfl
+  have := entryAt_abs_E3 hfa ⟨⟨P, e.col.col⟩, e.idx⟩
+  simp only [hP] at this
+  rw [h] at this
+  exact N_entry_lt_E3 _ _ _ this.symm
+
+theorem len_col_snoc_E3 (e : Nat) (Q : Column) (z : Nat × Forest) {i : Nat} {y : Nat × Forest}
+    (h : Q[i]? = some y) : (gwordAt (e + 1) y.2).length + 2 ≤ (gwordCol e (Q ++ [z])).length := by
+  have hQ : Q ≠ [] := by rintro rfl; simp at h
+  rw [gwordCol_append_E3 e hQ, List.length_append]
+  have := len_col_entry_E3 e Q i y h
+  obtain ⟨p, hz⟩ := z
+  simp [gwordLater]; omega
+
+/-- Heights in the query region are short against any route container. -/
+theorem N_query_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {e0 e : EntryAddr}
+    {x0 x : Nat × Forest} (hx0 : A.entryAt e0 = some x0) (hon : e0.heightPath <+: sd.col.path)
+    (hq : InQ_E3 sd e) (hx : A.entryAt e = some x) : N_E3 x.2 + 2 ≤ N_E3 x0.2 := by
+  obtain ⟨-, -, -, -, hR, -, hrc, -⟩ := onR_pack_E3 hsd hx0 hon
+  obtain ⟨hcol, -⟩ := stopData_spec hsd
+  have hS := N_self_E3 hR
+  rw [hrc] at hS
+  have hstop : ∀ (i : Nat) (y : Nat × Forest), sd.Q[i]? = some y → N_E3 y.2 + 2 ≤ N_E3 x0.2 := by
+    intro i y hy
+    have := len_col_snoc_E3 0 sd.Q (sd.r, Tree.empty) hy
+    rw [len_gwordAt_E3] at this
+    have h' : N_E3 (Tree.node [sd.Q ++ [(sd.r, Tree.empty)]]) =
+        (gwordCol 0 (sd.Q ++ [(sd.r, Tree.empty)])).length := by
+      simp [N_E3, gwordAt, gwordCols]
+    omega
+  have hQe : ∀ i, i < sd.Q.length → A.entryAt ⟨sd.col, i⟩ = sd.Q[i]? := by
+    intro i hi; simp only [Tree.entryAt, hcol, Option.bind_some]; rw [List.getElem?_append_left hi]
+  rcases hq with ⟨h1, h2⟩ | ⟨i, hi, hc⟩
+  · have : e = ⟨sd.col, e.idx⟩ := by rw [← h1]
+    rw [this, hQe _ h2] at hx
+    exact hstop _ _ hx
+  · obtain ⟨y, hy⟩ : ∃ y, sd.Q[i]? = some y := ⟨_, List.getElem?_eq_getElem hi⟩
+    have h1 := N_inside_E3 (by rw [hQe i hi]; exact hy) hc hx
+    have := hstop i y hy
+    omega
+
+/-- Kept heights (outside the route and the hole) are short against the emptied route container. -/
+theorem N_kept_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {e0 e : EntryAddr}
+    {x0 x : Nat × Forest} (hx0 : A.entryAt e0 = some x0) (hon : e0.heightPath <+: sd.col.path)
+    (hnr : ¬ e.heightPath <+: sd.col.path) (hnh : ¬ InHole_E3 sd.depth A e.col)
+    (hc : e0.heightPath <+: e.col.path) (hx : A.entryAt e = some x) :
+    N_E3 x.2 < N_E3 (replaceAt 0 0 Tree.empty (sd.depth - e0.col.path.length - 1) x0.2) := by
+  obtain ⟨hrp, -⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, -⟩ := stop_route_top_D3 hsd
+  have hP := put_entryAt_E3 Tree.empty sd.depth A hRA
+  have he : (replaceAt 0 0 Tree.empty sd.depth A).entryAt e = some x := by
+    rw [(hP e).2.2 hnh (by rw [IsRoute_E3, hrp]; exact hnr), hx]
+  have he0 : (replaceAt 0 0 Tree.empty sd.depth A).entryAt e0 =
+      some (x0.1, replaceAt 0 0 Tree.empty (sd.depth - e0.col.path.length - 1) x0.2) := by
+    rw [(hP e0).2.1 (by rw [InHole_E3, hrp]; exact route_not_hole_E3 hon)
+      (by rw [IsRoute_E3, hrp]; exact hon), hx0]; rfl
+  exact N_inside_E3 he0 hc he
+
+/-- The shape of a step of the loop: the shifted query, then restored entries below `r`. -/
+theorem ordStep_shape_E3 {A : Forest} {sd : StopData} {rd : RootData} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (k : Nat) (Z : Forest) :
+    ∃ V rest, ordStep sd rd ((A.forestAt rd.col.path).getD Tree.empty)
+      (((A.colAt rd.col).getD []).drop rd.cursor) (k + 1) Z =
+        .node ((Tree.mapCol (shiftVal sd.r (k * period sd)) sd.Q ++ V) :: rest) ∧
+      ∀ v ∈ V.head?, v.1 < sd.r := by
+  obtain ⟨-, -, -, -, -, -, hUe, -⟩ := root_pack_E3 hL.1 hsd hrd
+  have hU0 : ∀ u ∈ (((A.colAt rd.col).getD []).drop rd.cursor).head?, u.1 < sd.r := by
+    intro u hu
+    exact (hUe 0 u (by rw [List.head?_eq_getElem?] at hu; exact hu)).2.1
+  simp only [ordStep, Nat.add_sub_cancel]
+  split_ifs
+  · refine ⟨_, [], by rw [List.append_assoc]; rfl, ?_⟩
+    intro v hv
+    rw [List.head?_eq_getElem?] at hv
+    obtain ⟨u, hu, hx⟩ := mapLast_getElem_E3 _ _ _ 0 v hv
+    rcases hx with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;>
+      exact hU0 u (by rw [List.head?_eq_getElem?]; exact hu)
+  · refine ⟨_, _, rfl, ?_⟩
+    intro v hv
+    rw [List.head?_map] at hv
+    obtain ⟨u, hu, rfl⟩ := Option.map_eq_some_iff.1 hv
+    exact hU0 u hu
+
+/-! The conclusion of T3.2m for one pair of heights. -/
+
+/-- The conclusion of `ownerReturn_origin` for an old pair `(a, H), (c, J)` at phase `j` and a new
+pair `(a', H'), (c', J')`. -/
+def Concl_E3 (sd : StopData) (j a c : Nat) (H J : Forest) (a' c' : Nat) (H' J' : Forest) : Prop :=
+  let kJ := keyWord (kappa sd.r (period sd) j (relKey c J))
+  let kH := keyWord (kappa sd.r (period sd) j (relKey a H))
+  let kJ' := keyWord (relKey c' J')
+  let kH' := keyWord (relKey a' H')
+  (kH' = kH ∨ ∃ b, kH'.take b = kH.take b ∧ b ≤ kH'.length ∧ kH' ≤ kH ∧
+    (kJ' = kJ ∧ kJ.length < b ∨ ∃ a, a < b ∧ FirstDec kJ kJ' a)) ∧ (kH' = kH → kJ' = kJ)
+
+theorem concl_eq_E3 {sd : StopData} {j a c : Nat} {H J : Forest} {a' c' : Nat} {H' J' : Forest}
+    (hH : keyWord (relKey a' H') = keyWord (kappa sd.r (period sd) j (relKey a H)))
+    (hJ : keyWord (relKey c' J') = keyWord (kappa sd.r (period sd) j (relKey c J))) :
+    Concl_E3 sd j a c H J a' c' H' J' :=
+  ⟨Or.inl hH, fun _ => hJ⟩
+
+theorem concl_dec_E3 {sd : StopData} {j a c : Nat} {H J : Forest} {a' c' : Nat} {H' J' : Forest}
+    {b : Nat} (hH : FirstDec (keyWord (kappa sd.r (period sd) j (relKey a H))) (keyWord (relKey a' H')) b)
+    (hJ : (keyWord (relKey c' J') = keyWord (kappa sd.r (period sd) j (relKey c J)) ∧
+        (keyWord (kappa sd.r (period sd) j (relKey c J))).length < b) ∨
+      ∃ a0, a0 < b ∧ FirstDec (keyWord (kappa sd.r (period sd) j (relKey c J))) (keyWord (relKey c' J')) a0) :
+    Concl_E3 sd j a c H J a' c' H' J' := by
+  have hlt := lt_of_firstDec_E3 hH
+  exact ⟨Or.inr ⟨b, hH.1, hH.2.1, le_of_lt hlt, hJ⟩, fun h => absurd h (ne_of_lt hlt)⟩
+
+/-- A new pair of heights with an old owner return of `A` as origin. -/
+def Good_E3 (A : Forest) (sd : StopData) (a' : Nat) (H' : Forest) (c' : Nat) (J' : Forest) : Prop :=
+  ∃ e0 e j x0 x, A.entryAt e0 = some x0 ∧ A.entryAt e = some x ∧ IsOwnerReturn A e0 e ∧
+    Concl_E3 sd j (e0.col.num 0) (e.col.num 0) x0.2 x.2 a' c' H' J'
+
+/-- Every return to the host `a'` inside the height `H'` has an origin. -/
+def HostGood_E3 (A : Forest) (sd : StopData) (a' : Nat) (H' : Forest) : Prop :=
+  ∀ ρ J', H'.entryAt ρ = some (a', J') → Good_E3 A sd a' H' (ρ.col.num (a' + 1)) J'
+
+/-- The absolute address of an entry read inside the height of `e0`. -/
+def under_E3 (e0 ρ : EntryAddr) : EntryAddr := ⟨⟨e0.heightPath ++ ρ.col.path, ρ.col.col⟩, ρ.idx⟩
+
+theorem under_entryAt_E3 {E : Forest} {e0 : EntryAddr} {x0 : Nat × Forest}
+    (h : E.entryAt e0 = some x0) (ρ : EntryAddr) : E.entryAt (under_E3 e0 ρ) = x0.2.entryAt ρ := by
+  have hfa : E.forestAt e0.heightPath = some x0.2 := by
+    rw [Tree.forestAt_heightPath, Tree.heightAt, h]; rfl
+  exact entryAt_abs_E3 hfa ρ
+
+theorem under_num_E3 (e0 ρ : EntryAddr) :
+    (under_E3 e0 ρ).col.num 0 = ρ.col.num (e0.col.num 0 + 1) := by
+  rw [under_E3, num_abs_E3, sum_heightPath_E3]
+
+theorem under_return_E3 {E : Forest} {e0 : EntryAddr} {x0 : Nat × Forest}
+    (h : E.entryAt e0 = some x0) {ρ : EntryAddr} {J : Forest}
+    (hρ : x0.2.entryAt ρ = some (e0.col.num 0, J)) :
+    E.entryAt (under_E3 e0 ρ) = some (e0.col.num 0, J) ∧ IsOwnerReturn E e0 (under_E3 e0 ρ) := by
+  have h1 : E.entryAt (under_E3 e0 ρ) = some (e0.col.num 0, J) := by
+    rw [under_entryAt_E3 h, hρ]
+  exact ⟨h1, isOwnerReturn_of_parent (List.prefix_append _ _) h1⟩
+
+theorem shiftVal_host_E3 {r δ a p : Nat} (h : δ = 0 ∨ r ≤ a) (hp : shiftVal r δ p = a + δ) : p = a := by
+  unfold shiftVal at hp; split_ifs at hp <;> omega
+
+/-- Pure copies of hosts: returns are copies of old returns, at the same phase. -/
+theorem hostS_E3 {A : Forest} (sd : StopData) {e0 : EntryAddr} {x0 : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (ψ : Nat) (hψ : ψ = 0 ∨ sd.r ≤ e0.col.num 0) :
+    HostGood_E3 A sd (e0.col.num 0 + ψ * period sd) (shift sd.r (ψ * period sd) x0.2) := by
+  intro ρ J' hρ
+  rw [shift, entryAt_map_D3] at hρ
+  obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+  simp only [Prod.mk.injEq] at hxe
+  obtain ⟨hp, rfl⟩ := hxe
+  have hδ : ψ * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hψ with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  have hp' : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+  have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hp']
+  obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+  have hψ' : ψ = 0 ∨ sd.r ≤ (under_E3 e0 ρ).col.num 0 := by
+    rcases hψ with h | h
+    · exact Or.inl h
+    · right; rw [under_num_E3]; have := num_ge_E3 (e0.col.num 0 + 1) ρ.col; omega
+  refine ⟨e0, under_E3 e0 ρ, ψ, x0, (e0.col.num 0, x.2), hx0, h1, h2, concl_eq_E3 ?_ ?_⟩
+  · rw [kappa_eq_E3 _ _ _ _ hψ]
+  · rw [kappa_eq_E3 _ _ _ _ hψ', under_num_E3, ← num_add_D3 (e0.col.num 0 + 1) (ψ * period sd) ρ.col,
+      show e0.col.num 0 + ψ * period sd + 1 = e0.col.num 0 + 1 + ψ * period sd by omega]
+    rfl
+
+/-! Type C hosts: route containers, in the context or copied into a layer. -/
+
+theorem inHole_map_E3 (f : Nat → Nat) (k : Nat) (F : Forest) (c : ColAddr) :
+    InHole_E3 k (Tree.map f F) c ↔ InHole_E3 k F c := by
+  simp only [InHole_E3, rpath_map_E3, hcol_map_E3]
+
+theorem isRoute_map_E3 (f : Nat → Nat) (k : Nat) (F : Forest) (e : EntryAddr) :
+    IsRoute_E3 k (Tree.map f F) e ↔ IsRoute_E3 k F e := by
+  simp only [IsRoute_E3, rpath_map_E3]
+
+/-- A route container numbered below `r` lies above the root column. -/
+theorem low_route_E3 {A : Forest} {sd : StopData} {rd : RootData} (hV : CondV A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) {e0 : EntryAddr} {x0 : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (hon : e0.heightPath <+: sd.col.path) (ha : e0.col.num 0 < sd.r) :
+    e0.heightPath <+: rd.col.path := by
+  obtain ⟨-, hhp, -, hnum, -⟩ := onR_pack_E3 hsd hx0 hon
+  obtain ⟨hpath, -, -, hr, -⟩ := root_pack_E3 hV hsd hrd
+  obtain ⟨-, -, -, hidx, -⟩ := root_facts_D3 hsd hrd
+  rw [hhp, hpath]
+  by_cases h : e0.col.path.length + 1 ≤ rd.layer
+  · exact List.take_prefix_take_left h
+  · exfalso
+    have h1 := leftCount_mono_D3 A (show rd.layer + 1 ≤ e0.col.path.length + 1 by omega)
+    rw [leftCount_succ_D3] at h1
+    omega
+
+/-- Route containers end with the stopping column. -/
+theorem route_N_E3 {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {e : EntryAddr}
+    {x : Nat × Forest} (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path) :
+    N_E3 x.2 = N_E3 (replaceAt 0 0 Tree.empty (sd.depth - e.col.path.length - 1) x.2) +
+      N_E3 (.node [sd.Q ++ [(sd.r, Tree.empty)]]) ∧
+      1 ≤ N_E3 (.node [sd.Q ++ [(sd.r, Tree.empty)]]) := by
+  obtain ⟨-, -, -, -, hR, -, hrc, -⟩ := onR_pack_E3 hsd hx hon
+  have := N_self_E3 hR
+  rw [hrc] at this
+  exact ⟨this, N_col_pos_E3 _⟩
+
+/-- The first decrease of a copied route container against its shifted old height. -/
+theorem routeFD_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) {e : EntryAddr} {x : Nat × Forest}
+    (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path) {ψ : Nat} (hψ : ψ ≤ n) :
+    FirstDec (gwordAt 0 (shift sd.r (ψ * period sd) x.2))
+      (gwordAt 0 (replaceAt sd.r (ψ * period sd) (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1) x.2))
+      (if ψ < n then N_E3 x.2 - 1 else N_E3 x.2 - N_E3 (.node [sd.Q ++ [(sd.r, Tree.empty)]])) := by
+  obtain ⟨-, -, -, -, hR, -, hrc, -⟩ := onR_pack_E3 hsd hx hon
+  split_ifs with h
+  · rw [zs_step_E3 A sd rd h]
+    obtain ⟨V, rest, hsh, hV⟩ := ordStep_shape_E3 hL hsd hrd ψ (zs_E3 A sd rd n (ψ + 1))
+    rw [hsh]
+    exact fill_firstDec_head_E3 hR hrc le_rfl hV 0
+  · rw [show ψ = n by omega, zs_top_E3]
+    have := fill_firstDec_empty_E3 hR sd.r (n * period sd) 0
+    rwa [hrc] at this
+
+theorem empty_entryAt_E3 (e : EntryAddr) : (Tree.node [] : Forest).entryAt e = none := by
+  obtain ⟨⟨P, j⟩, i⟩ := e
+  cases P with
+  | nil => simp [entryAt_nil_D3]
+  | cons s P => obtain ⟨c, m⟩ := s; simp [entryAt_cons_D3]
+
+theorem period_pos_E3 {A : Forest} {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) : 0 < period sd := by
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd hrd
+  simp only [period]; omega
+
+/-- Route containers of phase `k` (the context ones for `k = 0`): every return has an origin;
+the host height decreases first at the old closing entry (`k < n`) or at the old stopping column
+(`k = n`), and the lower height is unchanged before that position or decreases earlier. -/
+theorem hostC_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) {e0 : EntryAddr} {x0 : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (hon : e0.heightPath <+: sd.col.path) {k : Nat} (hkn : k ≤ n)
+    (hk : k = 0 ∨ sd.r ≤ e0.col.num 0) :
+    HostGood_E3 A sd (e0.col.num 0 + k * period sd)
+      (replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) x0.2) := by
+  have hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k) := by
+    have := zs_E1_E3 (n := n) hL hsd hrd (n - k) (by omega)
+    rwa [show n - (n - k) = k by omega] at this
+  have hd := period_pos_E3 hsd hrd
+  obtain ⟨hl, hhp, hxH, hnum, hR, hN, hrc, hrp, hhc, hat⟩ := onR_pack_E3 hsd hx0 hon
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hNH, hS⟩ := route_N_E3 hsd hx0 hon
+  have hδ : k * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hk with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  -- the host's key words
+  have hkH : ∀ j, (j = k ∨ (k = 0 ∧ e0.col.num 0 ≤ sd.r)) →
+      keyWord (kappa sd.r (period sd) j (relKey (e0.col.num 0) x0.2)) =
+        keyWord (relKey (e0.col.num 0 + k * period sd) (shift sd.r (k * period sd) x0.2)) := by
+    rintro j (rfl | ⟨rfl, h⟩)
+    · rw [kappa_eq_E3 _ _ _ _ hk]
+    · rw [kappa_fix _ _ _ _ h, Nat.zero_mul, Nat.add_zero, shift_zero]
+  set bH := if k < n then N_E3 x0.2 - 1 else N_E3 x0.2 - N_E3 (.node [sd.Q ++ [(sd.r, Tree.empty)]])
+    with hbH
+  have hFH : FirstDec (keyWord (relKey (e0.col.num 0 + k * period sd) (shift sd.r (k * period sd) x0.2)))
+      (keyWord (relKey (e0.col.num 0 + k * period sd) (replaceAt sd.r (k * period sd)
+        (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) x0.2))) bH :=
+    firstDec_keyWord_E3 _ (routeFD_E3 hL hsd hrd hx0 hon hkn)
+  have hRG := (routeOK_shift_D3 sd.r (k * period sd) _ _).2 hR
+  intro ρ J' hρ
+  rw [replaceAt_eq_shift] at hρ
+  have hP := put_entryAt_E3 (zs_E3 A sd rd n k) _ _ hRG ρ
+  by_cases hh : InHole_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ.col
+  · -- returns from the filling: the query region of the next head, or low parents
+    obtain ⟨h1, h2⟩ := hP.1 hh
+    rw [h1] at hρ
+    obtain ⟨e, ψ, hψ1, hψ2, hψq, ⟨htr, htn, htl⟩, x, hxA, hx1, hc', hx2⟩ := hE _ _ hρ
+    have hkn' : k < n := by
+      by_contra hc
+      rw [show k = n by omega, zs_top_E3, Tree.empty, empty_entryAt_E3] at hρ
+      cases hρ
+    simp only at hx1
+    have hcase : x.1 = e0.col.num 0 ∧ ((k = 0 ∧ e0.col.num 0 < sd.r) ∨ (ψ = k ∧ InQ_E3 sd e)) := by
+      unfold shiftVal at hx1
+      split_ifs at hx1 with hxr
+      · by_cases hψk : ψ = k
+        · subst hψk; exact ⟨by omega, Or.inr ⟨rfl, hψq rfl⟩⟩
+        · exfalso
+          have : (k + 1) * period sd ≤ ψ * period sd := Nat.mul_le_mul_right _ (by omega)
+          have : sd.t = sd.r + period sd := by simp only [period]; omega
+          rw [Nat.succ_mul] at *
+          omega
+      · have hk0 : k = 0 := by
+          rcases hk with h | h
+          · exact h
+          · exfalso; omega
+        subst hk0
+        exact ⟨by omega, Or.inl ⟨rfl, by omega⟩⟩
+    obtain ⟨hxa, hcase⟩ := hcase
+    have hcon : e0.Contains e.col := by
+      rcases hcase with ⟨-, hlow⟩ | ⟨-, hq⟩
+      · exact (low_route_E3 hL.1 hsd hrd hx0 hon hlow).trans htr
+      · rcases hq with ⟨h1, -⟩ | ⟨i, -, hi⟩
+        · show e0.heightPath <+: e.col.path; rw [h1]; exact hon
+        · exact hon.trans ((List.prefix_append _ _).trans hi)
+    have hret : IsOwnerReturn A e0 e := by
+      have : A.entryAt ⟨e.col, e.idx⟩ = some (e0.col.num 0, x.2) := by rw [← hxa]; exact hxA
+      exact isOwnerReturn_of_parent hcon this
+    refine ⟨e0, e, ψ, x0, x, hx0, hxA, hret, ?_⟩
+    have hkH' := hkH ψ (by
+      rcases hcase with ⟨h1, h2⟩ | ⟨h1, -⟩
+      · exact Or.inr ⟨h1, le_of_lt h2⟩
+      · exact Or.inl h1)
+    have hnumρ : ρ.col.num (e0.col.num 0 + k * period sd + 1) = e.col.num 0 + ψ * period sd := by
+      rw [h2, routeNum_shift_D3, show e0.col.num 0 + k * period sd + 1 +
+        routeNum_D3 (sd.depth - e0.col.path.length - 1) x0.2 = sd.t + k * period sd by omega]
+      exact hc'
+    have hbH : bH = N_E3 x0.2 - 1 := by rw [hbH, if_pos hkn']
+    refine concl_dec_E3 (b := bH) (by rw [hkH']; exact hFH) ?_
+    rw [hnumρ, kappa_eq_E3 _ _ _ _ (Or.inr htn)]
+    rcases hx2 with ⟨hnr, hJ'⟩ | ⟨hon', hJ'⟩ <;> simp only at hJ'
+    · left
+      refine ⟨by rw [hJ'], ?_⟩
+      rw [len_keyWord_E3, N_shift_E3, hbH]
+      by_cases hq : InQ_E3 sd e
+      · have := N_query_E3 hsd hx0 hon hq hxA; omega
+      · have hnh := htl.resolve_left hq
+        have := N_kept_E3 hsd hx0 hon hnr hnh hcon hxA
+        omega
+    · right
+      have hfd := firstDec_keyWord_E3 (e.col.num 0 + ψ * period sd) (routeFD_E3 hL hsd hrd hxA hon' hψ2)
+      rw [← hJ'] at hfd
+      refine ⟨_, ?_, hfd⟩
+      have hlt := N_inside_E3 hx0 hcon hxA
+      obtain ⟨hNx, hSx⟩ := route_N_E3 hsd hxA hon'
+      rw [hbH]
+      split_ifs <;> omega
+  · have hgen : ∀ x, x0.2.entryAt ρ = some x →
+        shiftVal sd.r (k * period sd) x.1 = e0.col.num 0 + k * period sd →
+        x.1 = e0.col.num 0 ∧ A.entryAt (under_E3 e0 ρ) = some (e0.col.num 0, x.2) ∧
+          IsOwnerReturn A e0 (under_E3 e0 ρ) ∧ (k = 0 ∨ sd.r ≤ (under_E3 e0 ρ).col.num 0) ∧
+          ρ.col.num (e0.col.num 0 + k * period sd + 1) = (under_E3 e0 ρ).col.num 0 + k * period sd := by
+      intro x hx hp
+      have hxa : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+      have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hxa]
+      obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+      refine ⟨hxa, h1, h2, ?_, ?_⟩
+      · rcases hk with h | h
+        · exact Or.inl h
+        · right; rw [under_num_E3]; have := num_ge_E3 (e0.col.num 0 + 1) ρ.col; omega
+      · rw [under_num_E3, ← num_add_D3 (e0.col.num 0 + 1) (k * period sd) ρ.col]; congr 1; omega
+    by_cases hr : IsRoute_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ
+    · -- route containers inside the host: both heights change, the lower one first
+      rw [hP.2.1 hh hr, shift, entryAt_map_D3, Option.map_map] at hρ
+      obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Function.comp, Prod.mk.injEq] at hxe
+      obtain ⟨hp, hJ'⟩ := hxe
+      obtain ⟨hxa, h1, h2, hk', hnumρ⟩ := hgen x hx hp
+      refine ⟨e0, under_E3 e0 ρ, k, x0, (e0.col.num 0, x.2), hx0, h1, h2, ?_⟩
+      have hon' : (under_E3 e0 ρ).heightPath <+: sd.col.path := by
+        have := (isRoute_abs_E3 hrp ρ).2 ((isRoute_map_E3 _ _ _ _).1 hr)
+        rwa [IsRoute_E3, hrpA] at this
+      have hlen : (under_E3 e0 ρ).col.path.length = e0.col.path.length + 1 + ρ.col.path.length := by
+        simp [under_E3, EntryAddr.heightPath]; omega
+      have hfd := firstDec_keyWord_E3 ((under_E3 e0 ρ).col.num 0 + k * period sd)
+        (routeFD_E3 hL hsd hrd h1 hon' hkn)
+      have hJ'' : replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k)
+          (sd.depth - (under_E3 e0 ρ).col.path.length - 1) x.2 = J' := by
+        rw [← hJ', hlen, replaceAt_eq_shift]
+        congr 1; omega
+      simp only at hfd
+      rw [hJ''] at hfd
+      refine concl_dec_E3 (b := bH) (by rw [hkH k (Or.inl rfl)]; exact hFH) ?_
+      rw [hnumρ, kappa_eq_E3 _ _ _ _ hk']
+      refine Or.inr ⟨_, ?_, hfd⟩
+      have hlt := N_entry_lt_E3 _ _ _ hx
+      obtain ⟨hNx, hSx⟩ := route_N_E3 hsd h1 hon'
+      rw [hbH]
+      split_ifs <;> simp only at hlt hNx <;> omega
+    · -- kept entries: pure copies, ending before the host's first change
+      rw [hP.2.2 hh hr, shift, entryAt_map_D3] at hρ
+      obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Prod.mk.injEq] at hxe
+      obtain ⟨hp, hJ'⟩ := hxe
+      obtain ⟨hxa, h1, h2, hk', hnumρ⟩ := hgen x hx hp
+      refine ⟨e0, under_E3 e0 ρ, k, x0, (e0.col.num 0, x.2), hx0, h1, h2, ?_⟩
+      have hC : (replaceAt 0 0 Tree.empty (sd.depth - e0.col.path.length - 1) x0.2).entryAt ρ = some x := by
+        rw [(put_entryAt_E3 Tree.empty _ _ hR ρ).2.2 ((inHole_map_E3 _ _ _ _).not.1 hh)
+          ((isRoute_map_E3 _ _ _ _).not.1 hr), hx]
+      have hlt := N_entry_lt_E3 _ _ _ hC
+      refine concl_dec_E3 (b := bH) (by rw [hkH k (Or.inl rfl)]; exact hFH) ?_
+      rw [hnumρ, kappa_eq_E3 _ _ _ _ hk']
+      refine Or.inl ⟨by rw [← hJ']; rfl, ?_⟩
+      rw [len_keyWord_E3, N_shift_E3, hbH]
+      simp only at hlt ⊢
+      split_ifs <;> omega
+
+theorem replaceAt_zero_E3 (r : Nat) (Z : Forest) (k : Nat) (F : Forest) :
+    replaceAt r 0 Z k F = replaceAt 0 0 Z k F := by
+  rw [replaceAt_eq_shift, shift_zero]
+
+/-- Every host of an ordinary output has origins for all its returns. -/
+theorem hosts_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) {e0' : EntryAddr} {y0 : Nat × Forest}
+    (hy0 : (replaceAt 0 0 (zs_E3 A sd rd n 0) sd.depth A).entryAt e0' = some y0) :
+    HostGood_E3 A sd (e0'.col.num 0) y0.2 := by
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, hNA⟩ := stop_route_top_D3 hsd
+  have hP := put_entryAt_E3 (zs_E3 A sd rd n 0) sd.depth A hRA e0'
+  by_cases hh : InHole_E3 sd.depth A e0'.col
+  · obtain ⟨h1, h2⟩ := hP.1 hh
+    rw [h1] at hy0
+    have hE := zs_E1_E3 (n := n) hL hsd hrd n le_rfl
+    rw [Nat.sub_self] at hE
+    obtain ⟨e, ψ, -, hψ2, -, ⟨-, htn, -⟩, x, hxA, -, hc', hx2⟩ := hE _ _ hy0
+    have hnum : e0'.col.num 0 = e.col.num 0 + ψ * period sd := by
+      rw [h2 0, Nat.zero_add, hNA, ← hc', Nat.zero_mul, Nat.add_zero]
+    rw [hnum]
+    rcases hx2 with ⟨-, hJ⟩ | ⟨hon, hJ⟩
+    · rw [hJ]; exact hostS_E3 sd hxA ψ (Or.inr htn)
+    · rw [hJ]; exact hostC_E3 hL hsd hrd hxA hon hψ2 (Or.inr htn)
+  · by_cases hr : IsRoute_E3 sd.depth A e0'
+    · rw [hP.2.1 hh hr] at hy0
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy0
+      have hon : e0'.heightPath <+: sd.col.path := by rw [IsRoute_E3, hrpA] at hr; exact hr
+      have := hostC_E3 (n := n) hL hsd hrd hx hon (Nat.zero_le n) (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, replaceAt_zero_E3] at this
+      exact this
+    · rw [hP.2.2 hh hr] at hy0
+      have := hostS_E3 sd hy0 0 (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, shift_zero] at this
+      exact this
+
+/-- Entry-level classification of an ordinary output `B = A[n]` (reusable form of T3.2i at the
+level of entries): every entry of `B` is an unchanged context entry, a context route container
+whose height is filled with the layers, or (in the hole) a phase-`ψ` copy of a template entry of
+`A` (`Orig_E3`: parent and number shifted by `ψ d`, height shifted, or filled for route
+containers). -/
+theorem ord_entry_origin_E3 {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hB : expand A n = some B) {sd : StopData} {rd : RootData} (hsd : stopData A = some sd)
+    (hrd : rootData A = some rd) {e' : EntryAddr} {y : Nat × Forest} (hy : B.entryAt e' = some y) :
+    (¬ InHole_E3 sd.depth A e'.col ∧ ¬ e'.heightPath <+: sd.col.path ∧ A.entryAt e' = some y) ∨
+    (e'.heightPath <+: sd.col.path ∧ ∃ x, A.entryAt e' = some x ∧
+      y = (x.1, replaceAt 0 0 (zs_E3 A sd rd n 0) (sd.depth - e'.col.path.length - 1) x.2)) ∨
+    (InHole_E3 sd.depth A e'.col ∧ ∃ e ψ, ψ ≤ n ∧ Tmpl_E3 A sd rd e ∧
+      Orig_E3 A sd rd n ψ e y (e'.col.num 0)) := by
+  obtain ⟨sd', rd', hsd', hrd', hBeq, -⟩ := ord_output_D3 hL hk hB
+  rw [hsd] at hsd'; cases hsd'
+  rw [hrd] at hrd'; cases hrd'
+  rw [ordZ_eq_zs_E3] at hBeq
+  subst hBeq
+  obtain ⟨hrpA, -⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, hNA⟩ := stop_route_top_D3 hsd
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n 0) sd.depth A hRA e'
+  by_cases hh : InHole_E3 sd.depth A e'.col
+  · right; right
+    obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hy
+    have hE := zs_E1_E3 (n := n) hL hsd hrd n le_rfl
+    rw [Nat.sub_self] at hE
+    obtain ⟨e, ψ, -, hψ2, -, ht, ho⟩ := hE _ _ hy
+    refine ⟨hh, e, ψ, hψ2, ht, ?_⟩
+    rw [h2 0, Nat.zero_add, hNA]
+    simpa using ho
+  · by_cases hr : IsRoute_E3 sd.depth A e'
+    · right; left
+      rw [hPu.2.1 hh hr] at hy
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+      exact ⟨by rw [IsRoute_E3, hrpA] at hr; exact hr, x, hx, rfl⟩
+    · left
+      rw [hPu.2.2 hh hr] at hy
+      exact ⟨hh, by rw [IsRoute_E3, hrpA] at hr; exact hr, hy⟩
+
 -- T3.2m (txt:350-362): every owner return of an ordinary output has an old origin; the key
 -- words of both heights are the phase images of the old ones, changed only by decreases whose
 -- first changes respect the containment offset (or the lower height is unchanged and ends
@@ -12970,7 +14774,31 @@ theorem ownerReturn_origin {A B : Forest} {sd : StopData} {rd : RootData} {n : N
       let kH' := keyWord (relKey (e0'.col.num 0) H')
       (kH' = kH ∨ ∃ b, kH'.take b = kH.take b ∧ b ≤ kH'.length ∧ kH' ≤ kH ∧
         (kJ' = kJ ∧ kJ.length < b ∨ ∃ a, a < b ∧ FirstDec kJ kJ' a)) ∧
-      (kH' = kH → kJ' = kJ) := by sorry
+      (kH' = kH → kJ' = kJ) := by
+  obtain ⟨sd', rd', hsd', hrd', hBeq, -⟩ := ord_output_D3 hL hk hB
+  rw [hsd] at hsd'; cases hsd'
+  rw [hrd] at hrd'; cases hrd'
+  rw [ordZ_eq_zs_E3] at hBeq
+  obtain ⟨y0, hy0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff B e0').1 he0)
+  obtain ⟨hcon, q, J', hJ, hres⟩ := hret
+  have hq : q = e0'.col.num 0 := (ColAddr.resolve_num hres).symm
+  subst hq
+  obtain ⟨P, hP⟩ := hcon
+  have he' : e' = under_E3 e0' ⟨⟨P, e'.col.col⟩, e'.idx⟩ := by
+    simp only [under_E3, hP]
+  have hρ : y0.2.entryAt ⟨⟨P, e'.col.col⟩, e'.idx⟩ = some (e0'.col.num 0, J') := by
+    rw [← under_entryAt_E3 hy0, ← he', hJ]
+  have hG := hosts_E3 (n := n) hL hsd hrd (by rw [← hBeq]; exact hy0) _ _ hρ
+  rw [← under_num_E3, ← he'] at hG
+  obtain ⟨e0, e, j, x0, x, hx0, hx, hret', hC⟩ := hG
+  refine ⟨e0, e, j, (Tree.mem_entryAddrs_iff A e0).2 (by rw [hx0]; rfl),
+    (Tree.mem_entryAddrs_iff A e).2 (by rw [hx]; rfl), hret', ?_⟩
+  have h1 : (A.heightAt e).getD Tree.empty = x.2 := by simp [Tree.heightAt, hx]
+  have h2 : (A.heightAt e0).getD Tree.empty = x0.2 := by simp [Tree.heightAt, hx0]
+  have h3 : (B.heightAt e').getD Tree.empty = J' := by simp [Tree.heightAt, hJ]
+  have h4 : (B.heightAt e0').getD Tree.empty = y0.2 := by simp [Tree.heightAt, hy0]
+  simp only [h1, h2, h3, h4]
+  exact hC
 
 /-- T3.2n helper (branch D3): key-word order is key order. -/
 theorem keyWord_lt_iff_D3 (K K' : Key) : keyWord K < keyWord K' ↔ K < K' := by
@@ -13002,9 +14830,814 @@ theorem condS_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some 
     rwa [min_eq_left (by omega)] at h1
   · exact lt_of_firstDec hlt hfd ⟨hb1, hb2⟩ hab
 
+/-! ### T3.2o helpers (branch E3): profiles of shifted and filled heights -/
+
+theorem takeWhile_map_len_E3 {f : Nat → Nat} (hf : Function.Injective f) (p : Nat) :
+    ∀ rest : Column, ((Tree.mapCol f rest).takeWhile (fun x => x.1 == f p)).length =
+      (rest.takeWhile (fun x => x.1 == p)).length
+  | [] => rfl
+  | (q, h) :: rest => by
+    simp only [Tree.mapCol, List.takeWhile_cons]
+    by_cases hq : q = p
+    · subst hq; simp [takeWhile_map_len_E3 hf q rest]
+    · have : f q ≠ f p := fun h => hq (hf h)
+      simp [hq, this]
+
+theorem profileAux_map_E3 {f : Nat → Nat} (hf : Function.Injective f) (d : Nat) (X : Forest) :
+    profileAux d (Tree.map f X) = profileAux d X := by
+  induction d, X using profileAux.induct with
+  | case1 d p rest tail =>
+    simp only [Tree.map, Tree.mapCols, Tree.mapCol, profileAux]
+    rw [takeWhile_map_len_E3 hf p rest]
+  | case2 d p rest tail head tail_1 ih =>
+    simp only [Tree.map, Tree.mapCols, Tree.mapCol] at ih ⊢
+    rw [profileAux, profileAux]; exact ih
+  | case3 d cols hne =>
+    match cols, hne with
+    | [], _ => simp [Tree.map, Tree.mapCols, profileAux]
+    | [] :: cs, _ => simp [Tree.map, Tree.mapCols, Tree.mapCol, profileAux]
+    | ((p, h) :: rest) :: cs, hne => exact absurd rfl (hne p h rest cs)
+
+theorem profile_shift_E3 (r d : Nat) (X : Forest) : profile (shift r d X) = profile X := by
+  have hf : Function.Injective (shiftVal r d) := (StrictMono.injective (fun _ _ h =>
+    shiftVal_strictMono_D3 r d h))
+  obtain ⟨cols⟩ := X
+  cases cols with
+  | nil => rfl
+  | cons c cs =>
+    show (profileAux 0 (Tree.map (shiftVal r d) (Tree.node (c :: cs))) : WithBot (Nat ×ₗ Nat)) =
+      profileAux 0 (Tree.node (c :: cs))
+    rw [profileAux_map_E3 hf]
+
+/-- One more singleton level above a height. -/
+def sig_E3 : WithBot (Nat ×ₗ Nat) → WithBot (Nat ×ₗ Nat)
+  | ⊥ => ((toLex (0, 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+  | (x : Nat ×ₗ Nat) => ((toLex ((ofLex x).1 + 1, (ofLex x).2) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+
+theorem profile_single_E3 (p : Nat) (Y : Forest) : profile (.node [[(p, Y)]]) = sig_E3 (profile Y) := by
+  obtain ⟨ycols⟩ := Y
+  cases ycols with
+  | nil =>
+    show (profileAux 0 (Tree.node [[(p, Tree.node [])]]) : WithBot (Nat ×ₗ Nat)) = sig_E3 ⊥
+    simp [profileAux, sig_E3]
+  | cons c cs =>
+    show (profileAux 0 (Tree.node [[(p, Tree.node (c :: cs))]]) : WithBot (Nat ×ₗ Nat)) = _
+    rw [spx_profileAux_cons 0 p (by simp [Tree.cols]), spx_profileAux_one]
+    rfl
+
+theorem lt_sig_E3 (x : WithBot (Nat ×ₗ Nat)) : x < sig_E3 x := by
+  cases x with
+  | bot => exact WithBot.bot_lt_coe _
+  | coe x =>
+    simp only [sig_E3]
+    rw [WithBot.coe_lt_coe, ← toLex_ofLex x, Prod.Lex.lt_iff]
+    left; simp
+
+theorem sig_mono_E3 {x y : WithBot (Nat ×ₗ Nat)} (h : x ≤ y) : sig_E3 x ≤ sig_E3 y := by
+  cases x with
+  | bot =>
+    cases y with
+    | bot => exact le_rfl
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_le_coe]
+      apply le_of_lt
+      rw [Prod.Lex.lt_iff]; left; simp
+  | coe x =>
+    cases y with
+    | bot => exact absurd h (by simp)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_le_coe] at h ⊢
+      rw [← toLex_ofLex x, ← toLex_ofLex y, Prod.Lex.le_iff] at h
+      rw [Prod.Lex.le_iff]
+      simp only [ofLex_toLex] at h ⊢
+      omega
+
+theorem sig_strictMono_E3 : StrictMono sig_E3 := by
+  intro x y h
+  cases x with
+  | bot =>
+    cases y with
+    | bot => exact absurd h (lt_irrefl _)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_lt_coe, ← toLex_ofLex y, Prod.Lex.lt_iff]
+      simp only [ofLex_toLex]
+      left; omega
+  | coe x =>
+    cases y with
+    | bot => exact absurd h (by simp)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_lt_coe] at h ⊢
+      rw [← toLex_ofLex x, ← toLex_ofLex y, Prod.Lex.lt_iff] at h
+      rw [Prod.Lex.lt_iff]
+      simp only [ofLex_toLex] at h ⊢
+      omega
+
+theorem sig_iter_mono_E3 (k : Nat) {x y : WithBot (Nat ×ₗ Nat)} (h : x ≤ y) :
+    sig_E3^[k] x ≤ sig_E3^[k] y := by
+  induction k generalizing x y with
+  | zero => exact h
+  | succ k ih => rw [Function.iterate_succ_apply, Function.iterate_succ_apply]; exact ih (sig_mono_E3 h)
+
+theorem sig_iter_coe_E3 (k a b : Nat) :
+    sig_E3^[k] (((toLex (a, b) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) =
+      ((toLex (a + k, b) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  induction k generalizing a with
+  | zero => rfl
+  | succ k ih =>
+    rw [Function.iterate_succ_apply]
+    simp only [sig_E3, ofLex_toLex]
+    rw [ih]; congr 3; omega
+
+/-- A singleton chain of depth `k`: one column with one entry at each level above depth `k`, and a
+single column at depth `k`. -/
+def Chain_E3 : Nat → Forest → Prop
+  | 0, S => S.cols.length = 1
+  | k + 1, X => ∃ p Y, X = .node [[(p, Y)]] ∧ Chain_E3 k Y
+
+theorem chain_routeOK_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → RouteOK_D3 k X
+  | 0, X, h => by
+    show X.cols ≠ []
+    intro hc; simp [Chain_E3, hc] at h
+  | k + 1, _, ⟨p, Y, rfl, h⟩ => ⟨[], [], p, Y, rfl, chain_routeOK_E3 k Y h⟩
+
+theorem chain_map_E3 (f : Nat → Nat) : ∀ (k : Nat) (X : Forest),
+    Chain_E3 k (Tree.map f X) ↔ Chain_E3 k X
+  | 0, X => by simp only [Chain_E3, cols_length_map_E3]
+  | k + 1, .node cols => by
+    simp only [Chain_E3]
+    constructor
+    · rintro ⟨p, Y, hX, h⟩
+      simp only [Tree.map, Tree.node.injEq] at hX
+      match cols, hX with
+      | [[(q, Y0)]], hX =>
+        simp only [Tree.mapCols, Tree.mapCol, List.cons.injEq, Prod.mk.injEq, and_true] at hX
+        obtain ⟨-, rfl⟩ := hX
+        exact ⟨q, Y0, rfl, (chain_map_E3 f k Y0).1 h⟩
+      | [], hX => simp [Tree.mapCols] at hX
+      | [[]], hX => simp [Tree.mapCols, Tree.mapCol] at hX
+      | [x :: y :: zs], hX => simp [Tree.mapCols, Tree.mapCol] at hX
+      | c :: d :: ds, hX => simp [Tree.mapCols] at hX
+    · rintro ⟨p, Y, hX, h⟩
+      cases hX
+      exact ⟨f p, Tree.map f Y, by simp [Tree.map, Tree.mapCols, Tree.mapCol],
+        (chain_map_E3 f k Y).2 h⟩
+
+theorem nextLayer_single_E3 (p : Nat) (Y : Forest) : nextLayer (.node [[(p, Y)]]) = Y := by
+  simp [nextLayer, lastEntry?, Tree.cols]
+
+theorem chain_skip_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → ∀ j, j ≤ k →
+    Chain_E3 (k - j) (skipLayers X j)
+  | k, X, h, 0, _ => by simpa [skipLayers] using h
+  | 0, X, h, j + 1, hj => absurd hj (by omega)
+  | k + 1, _, ⟨p, Y, rfl, h⟩, j + 1, hj => by
+    rw [skipLayers, nextLayer_single_E3, show k + 1 - (j + 1) = k - j by omega]
+    exact chain_skip_E3 k Y h j (by omega)
+
+theorem put_single_E3 (Z : Forest) (k p : Nat) (Y : Forest) :
+    replaceAt 0 0 Z (k + 1) (.node [[(p, Y)]]) = .node [[(p, replaceAt 0 0 Z k Y)]] := by
+  have := put_succ_D3 Z k [] [] p Y
+  simpa using this
+
+theorem chain_put_E3 (Z : Forest) : ∀ (k : Nat) (X : Forest), Chain_E3 k X →
+    profile (replaceAt 0 0 Z k X) = sig_E3^[k] (profile Z)
+  | 0, .node cols, h => by
+    simp only [Chain_E3, Tree.cols] at h
+    match cols, h with
+    | [c], _ =>
+      rw [put_zero_D3 Z (by simp)]
+      simp only [List.dropLast_singleton, List.nil_append, Function.iterate_zero, id, eta_E3]
+  | k + 1, _, ⟨p, Y, rfl, h⟩ => by
+    rw [put_single_E3, profile_single_E3, chain_put_E3 Z k Y h, Function.iterate_succ_apply']
+
+theorem chain_self_E3 {k : Nat} {X : Forest} (h : Chain_E3 k X) :
+    profile X = sig_E3^[k] (profile (.node [routeCol_D3 k X])) := by
+  conv_lhs => rw [← put_self_D3 k X (chain_routeOK_E3 k X h)]
+  exact chain_put_E3 _ k X h
+
+/-- Route containers of a filled chain have smaller profiles than the filled chain. -/
+theorem chain_route_E3 (Z : Forest) : ∀ (k : Nat) (X : Forest), Chain_E3 k X →
+    ∀ (ρ : EntryAddr) (x : Nat × Forest), IsRoute_E3 k X ρ → X.entryAt ρ = some x →
+      profile (replaceAt 0 0 Z (k - ρ.col.path.length - 1) x.2) < profile (replaceAt 0 0 Z k X)
+  | 0, X, _, ρ, x, hr, _ => by
+    exfalso; have := hr.length_le; simp [rpath_E3, EntryAddr.heightPath] at this
+  | k + 1, _, ⟨p, Y, rfl, h⟩, ⟨⟨P, c⟩, i⟩, x, hr, hx => by
+    have hrp : rpath_E3 (k + 1) (.node [[(p, Y)]]) = (0, 0) :: rpath_E3 k Y := by
+      have := rpath_snoc_E3 k [] [] p Y; simpa using this
+    rw [put_single_E3, profile_single_E3]
+    cases P with
+    | nil =>
+      simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append, List.cons_prefix_cons,
+        Prod.mk.injEq, List.nil_prefix, and_true] at hr
+      obtain ⟨rfl, rfl⟩ := hr
+      simp only [entryAt_nil_D3] at hx
+      simp at hx; subst hx
+      simpa using lt_sig_E3 _
+    | cons s P =>
+      obtain ⟨c0, i0⟩ := s
+      simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append, List.cons_prefix_cons,
+        Prod.mk.injEq] at hr
+      obtain ⟨⟨rfl, rfl⟩, hr⟩ := hr
+      rw [entryAt_cons_D3] at hx
+      simp only [List.getElem?_cons_zero, Option.bind_some] at hx
+      have := chain_route_E3 Z k Y h ⟨⟨P, c⟩, i⟩ x hr hx
+      simp only [List.length_cons] at this ⊢
+      rw [show k + 1 - (P.length + 1) - 1 = k - P.length - 1 by omega]
+      exact lt_trans this (lt_sig_E3 _)
+
+/-- In a chain every entry is a route container or lies in the hole. -/
+theorem chain_entries_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → ∀ (ρ : EntryAddr) (x : Nat × Forest),
+    X.entryAt ρ = some x → IsRoute_E3 k X ρ ∨ InHole_E3 k X ρ.col
+  | 0, X, h, ⟨⟨P, c⟩, i⟩, x, _ => by
+    right
+    have h0 : hcol_E3 0 X = 0 := by simp only [hcol_E3, skipLayers]; simp only [Chain_E3] at h; omega
+    cases P with
+    | nil => exact Or.inl ⟨rfl, by rw [h0]; omega⟩
+    | cons s P => exact Or.inr ⟨s.1, s.2, P, rfl, by rw [h0]; omega⟩
+  | k + 1, _, ⟨p, Y, rfl, h⟩, ⟨⟨P, c⟩, i⟩, x, hx => by
+    have hrp : rpath_E3 (k + 1) (.node [[(p, Y)]]) = (0, 0) :: rpath_E3 k Y := by
+      have := rpath_snoc_E3 k [] [] p Y; simpa using this
+    have hhc : hcol_E3 (k + 1) (.node [[(p, Y)]]) = hcol_E3 k Y := by
+      have := hcol_snoc_E3 k [] [] p Y; simpa using this
+    cases P with
+    | nil =>
+      left
+      rw [entryAt_nil_D3] at hx
+      rcases c with _ | c
+      · rcases i with _ | i
+        · simp [IsRoute_E3, EntryAddr.heightPath, hrp]
+        · simp at hx
+      · simp at hx
+    | cons s P =>
+      obtain ⟨c0, i0⟩ := s
+      rw [entryAt_cons_D3] at hx
+      rcases c0 with _ | c0
+      · rcases i0 with _ | i0
+        · simp only [List.getElem?_cons_zero, Option.bind_some] at hx
+          rcases chain_entries_E3 k Y h ⟨⟨P, c⟩, i⟩ x hx with h1 | h1
+          · left
+            simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append,
+              List.cons_prefix_cons, true_and] at h1 ⊢
+            exact h1
+          · right
+            simp only [InHole_E3, hrp, hhc, List.cons_append, List.cons.injEq, true_and] at h1 ⊢
+            exact h1
+        · simp at hx
+      · simp at hx
+
+theorem profileAux_col_E3 (d : Nat) (c : Column) (cs : List Column) :
+    profileAux d (.node (c :: cs)) = profileAux d (.node [c]) := by
+  rcases c with _ | ⟨⟨p, h⟩, rest⟩
+  · simp [profileAux]
+  · obtain ⟨hc⟩ := h
+    cases hc <;> simp [profileAux]
+
+theorem takeWhile_fst_len_E3 (p : Nat) : ∀ (l l' : Column), l.map Prod.fst = l'.map Prod.fst →
+    (l.takeWhile (fun x => x.1 == p)).length = (l'.takeWhile (fun x => x.1 == p)).length
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp at h
+  | _ :: _, [], h => by simp at h
+  | x :: l, y :: l', h => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    simp only [List.takeWhile_cons, h.1]
+    split <;> simp [takeWhile_fst_len_E3 p l l' h.2]
+
+theorem profileAux_entry_E3 (d : Nat) (x : Nat × Forest) (l l' : Column)
+    (h : l.map Prod.fst = l'.map Prod.fst) (tl tl' : List Column) :
+    profileAux d (.node ((x :: l) :: tl)) = profileAux d (.node ((x :: l') :: tl')) := by
+  obtain ⟨p, ⟨hc⟩⟩ := x
+  cases hc with
+  | nil => simp only [profileAux]; rw [takeWhile_fst_len_E3 p l l' h]
+  | cons c cs => simp only [profileAux]
+
+/-- A filling changes the profile only through a chain. -/
+theorem put_profile_E3 (Z : Forest) : ∀ (k : Nat) (G : Forest), RouteOK_D3 k G →
+    profile (replaceAt 0 0 Z k G) = profile G ∨ Chain_E3 k G
+  | 0, .node cols, hR => by
+    have hc : cols ≠ [] := hR
+    match cols, hc with
+    | [c], _ => exact Or.inr rfl
+    | c :: c' :: cs, _ =>
+      left
+      rw [put_zero_D3 Z (by simp)]
+      simp only [List.dropLast_cons_cons, List.cons_append]
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      rw [profileAux_col_E3, profileAux_col_E3 0 c (c' :: cs)]
+  | k + 1, G, hR => by
+    obtain ⟨cs, es, q, Y, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    rcases cs with _ | ⟨c, cs⟩
+    · rcases es with _ | ⟨x, es⟩
+      · rcases put_profile_E3 Z k Y hR' with h | h
+        · left
+          have e1 : (Tree.node ([] ++ [[] ++ [(q, replaceAt 0 0 Z k Y)]]) : Forest) =
+            .node [[(q, replaceAt 0 0 Z k Y)]] := rfl
+          have e2 : (Tree.node ([] ++ [[] ++ [(q, Y)]]) : Forest) = .node [[(q, Y)]] := rfl
+          rw [e1, e2, profile_single_E3, profile_single_E3, h]
+        · exact Or.inr ⟨q, Y, rfl, h⟩
+      · left
+        show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+        simp only [List.nil_append, List.cons_append]
+        exact congrArg _ (profileAux_entry_E3 0 x _ _ (by simp) _ _)
+    · left
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      simp only [List.cons_append]
+      rw [profileAux_col_E3, profileAux_col_E3 0 c (cs ++ [es ++ [(q, Y)]])]
+
+/-- The bottom of a chain: a head `P ⌢ V` against the stopping column `P ⌢ [(s, ∅)]`. -/
+theorem bot_E3 {P V : Column} {rest : List Column} {s : Nat} (hP : P ≠ []) (hPs : ∀ x ∈ P, s ≤ x.1)
+    (hV : ∀ v ∈ V.head?, v.1 < s) (hN : spxNoninc (P ++ [(s, Tree.empty)])) :
+    profile (.node ((P ++ V) :: rest)) = profile (.node [P ++ [(s, Tree.empty)]]) ∨
+      ((∀ x ∈ P, x = (s, Tree.empty)) ∧
+        profile (.node ((P ++ V) :: rest)) = ((toLex (0, P.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) ∧
+        profile (.node [P ++ [(s, Tree.empty)]]) =
+          ((toLex (0, P.length + 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) := by
+  obtain ⟨⟨q0, h0⟩, P', rfl⟩ := List.exists_cons_of_ne_nil hP
+  have hq0 : s ≤ q0 := hPs (q0, h0) (by simp)
+  have hVt : V.takeWhile (fun x => x.1 == q0) = [] := by
+    cases V with
+    | nil => rfl
+    | cons v vs =>
+      have : v.1 < s := hV v (by simp)
+      simp [show v.1 ≠ q0 by omega]
+  obtain ⟨hc⟩ := h0
+  cases hc with
+  | cons c cs =>
+    left
+    show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+    simp only [List.cons_append, profileAux]
+  | nil =>
+    by_cases hall : ∀ x ∈ P', (x.1 == q0) = true
+    · by_cases hs : s = q0
+      · subst hs
+        right
+        have hrun := spx_run_empty s (P' ++ [(s, Tree.empty)])
+          (show spxNoninc ((s, Tree.empty) :: (P' ++ [(s, Tree.empty)])) from hN)
+        rw [List.takeWhile_append_of_pos hall] at hrun
+        refine ⟨?_, ?_, ?_⟩
+        · intro x hx
+          simp only [List.mem_cons] at hx
+          rcases hx with rfl | hx
+          · rfl
+          · exact hrun x (List.mem_append_left _ hx)
+        · show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = _
+          simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall, hVt]
+          simp; omega
+        · show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = _
+          simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall]
+          simp; omega
+      · left
+        show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+        simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall, hVt]
+        simp [show s ≠ q0 from hs]
+    · left
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      simp only [List.cons_append, profileAux]
+      have hlen : (P'.takeWhile (fun x => x.1 == q0)).length ≠ P'.length := by
+        intro h
+        apply hall
+        have heq := (List.takeWhile_prefix (l := P') (fun x => x.1 == q0)).eq_of_length h
+        have := List.all_takeWhile (l := P') (p := fun x => x.1 == q0)
+        rw [heq, List.all_eq_true] at this
+        exact this
+      rw [List.takeWhile_append, List.takeWhile_append, if_neg hlen, if_neg hlen]
+
+theorem noninc_ge_E3 {col : Column} (h : spxNoninc col) :
+    ∀ (k i : Nat) (x y : Nat × Forest), col[i]? = some x → col[i + k]? = some y → y.1 ≤ x.1
+  | 0, i, x, y, hx, hy => by rw [Nat.add_zero, hx] at hy; cases hy; exact le_rfl
+  | k + 1, i, x, y, hx, hy => by
+    obtain ⟨z, hz⟩ : ∃ z, col[i + 1]? = some z := by
+      have := (List.getElem?_eq_some_iff.1 hy).1
+      exact ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    have h1 := noninc_ge_E3 h k (i + 1) z y hz (by rw [show i + 1 + k = i + (k + 1) by omega]; exact hy)
+    have h2 := h i x z hx hz
+    rcases h2 with h2 | ⟨h2, -⟩ <;> omega
+
+theorem noninc_shift_E3 {col : Column} (h : spxNoninc col) (r d : Nat) :
+    spxNoninc (Tree.mapCol (shiftVal r d) col) := by
+  intro i x y hx hy
+  rw [treeMapCol_eq_map, List.getElem?_map] at hx hy
+  obtain ⟨x0, hx0, rfl⟩ := Option.map_eq_some_iff.1 hx
+  obtain ⟨y0, hy0, rfl⟩ := Option.map_eq_some_iff.1 hy
+  exact entryLe_shift_D3 r d (h i x0 y0 hx0 hy0)
+
+/-- Under I, a query-free stop at positive depth has at least two columns (otherwise the step is
+special). -/
+theorem fq_E3 {A : Forest} {sd : StopData} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hsd : stopData A = some sd) (hpos : 0 < sd.depth) (hc0 : sd.col.col = 0) : sd.Q ≠ [] := by
+  intro hQ
+  obtain ⟨oe, col, p, -, hoe, hcol, -, hlast, hidx, hnum⟩ := ownerEntry_data hsd hpos
+  obtain ⟨-, -, -, h4, -⟩ := stopData_core hsd
+  have hent : A.entryAt oe = some (p, skipLayers A sd.depth) := by
+    simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [List.getLast?_eq_getElem?, show col.length - 1 = oe.idx by omega] at hlast
+    exact hlast
+  have hne : skipLayers A sd.depth ≠ Tree.empty := by
+    intro h; rw [h] at h4; simp [Tree.empty, Tree.cols] at h4
+  have hmem : sd.Q ++ [(sd.r, Tree.empty)] ∈ (skipLayers A sd.depth).cols := List.mem_of_getLast? h4
+  obtain ⟨q, H, rest, hc, hle⟩ := hL.2.1 oe ((Tree.mem_entryAddrs_iff A oe).2 (by rw [hent]; rfl))
+    p _ hent hne _ hmem
+  rw [hQ, List.nil_append] at hc
+  simp only [List.cons.injEq, Prod.mk.injEq] at hc
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd (Option.isSome_iff_exists.1 (rootData_of_ordinary hk)).choose_spec
+  have hsp : specialStop sd = true := by
+    simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff, beq_iff_eq]
+    refine ⟨⟨hpos, hQ⟩, ?_⟩
+    omega
+  have := (stepKind_special_iff A).2 ⟨sd, hsd, hsp⟩
+  rw [hk] at this; cases this
+
+/-- A continuation never raises the profile. -/
+theorem cot_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e : EntryAddr} {x : Nat × Forest} (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path)
+    {ψ : Nat} (hψ : ψ ≤ n) :
+    profile (replaceAt sd.r (ψ * period sd) (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1) x.2)
+      ≤ profile x.2 := by
+  obtain ⟨hl, -, -, -, hR, -, hrc, -, hhc, -⟩ := onR_pack_E3 hsd hx hon
+  obtain ⟨-, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+  have hNs := spx_condH_col hL.2.2.1 hcolsd
+  have hRG := (routeOK_shift_D3 sd.r (ψ * period sd) _ _).2 hR
+  rw [replaceAt_eq_shift]
+  rcases put_profile_E3 (zs_E3 A sd rd n ψ) _ _ hRG with h | hch
+  · rw [h, profile_shift_E3]
+  · rw [chain_put_E3 _ _ _ hch, ← profile_shift_E3 sd.r (ψ * period sd) x.2, chain_self_E3 hch]
+    apply sig_iter_mono_E3
+    rw [routeCol_shift_D3, hrc, Tree.treeMapCol_append_D3]
+    have hcm : Tree.mapCol (shiftVal sd.r (ψ * period sd)) [(sd.r, Tree.empty)] =
+        [(sd.r + ψ * period sd, Tree.empty)] := by
+      simp [Tree.mapCol, shiftVal]; rfl
+    rw [hcm]
+    by_cases hψn : ψ < n
+    · rw [zs_step_E3 A sd rd hψn]
+      obtain ⟨V, rest, hsh, hV⟩ := ordStep_shape_E3 hL hsd hrd ψ (zs_E3 A sd rd n (ψ + 1))
+      rw [hsh]
+      have hQ : sd.Q ≠ [] := by
+        apply fq_E3 hL hk hsd (by omega)
+        have h0 := chain_skip_E3 _ _ hch _ le_rfl
+        simp only [Nat.sub_self, Chain_E3] at h0
+        have : hcol_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2) = 0 := by
+          simp only [hcol_E3]; omega
+        rw [shift, hcol_map_E3, ← hhc, hhcA] at this; exact this
+      have hPs : ∀ y ∈ Tree.mapCol (shiftVal sd.r (ψ * period sd)) sd.Q, sd.r + ψ * period sd ≤ y.1 := by
+        intro y hy
+        rw [treeMapCol_eq_map] at hy
+        obtain ⟨y0, hy0, rfl⟩ := List.mem_map.1 hy
+        obtain ⟨i, hi⟩ := List.getElem?_of_mem hy0
+        have := noninc_ge_E3 hNs (sd.Q.length - i) i y0 (sd.r, Tree.empty)
+          (by rw [List.getElem?_append_left (List.getElem?_eq_some_iff.1 hi).1]; exact hi)
+          (by rw [show i + (sd.Q.length - i) = sd.Q.length by
+                have := (List.getElem?_eq_some_iff.1 hi).1; omega]; simp)
+        simp only [shiftVal, if_pos this]; omega
+      have hN := noninc_shift_E3 hNs sd.r (ψ * period sd)
+      rw [Tree.treeMapCol_append_D3, hcm] at hN
+      rcases bot_E3 (by simpa [treeMapCol_eq_map] using hQ) hPs
+        (fun v hv => lt_of_lt_of_le (hV v hv) (by omega)) hN with h | ⟨-, h1, h2⟩
+      · exact le_of_eq h
+      · rw [h1, h2, WithBot.coe_le_coe, Prod.Lex.le_iff]; right; simp
+    · rw [show ψ = n by omega, zs_top_E3]
+      exact bot_le
+
+/-- Every return to the host `a'` in `H'` has a smaller profile. -/
+def ProfHost_E3 (a' : Nat) (H' : Forest) : Prop :=
+  ∀ ρ J', H'.entryAt ρ = some (a', J') → profile J' < profile H'
+
+theorem condP_pair_E3 {A : Forest} (hP : CondP A) {e0 e : EntryAddr} {x0 x : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (hx : A.entryAt e = some x) (hret : IsOwnerReturn A e0 e) :
+    profile x.2 < profile x0.2 := by
+  have := hP e0 ((Tree.mem_entryAddrs_iff A e0).2 (by rw [hx0]; rfl)) e
+    ((Tree.mem_entryAddrs_iff A e).2 (by rw [hx]; rfl)) hret
+  simpa [Tree.heightAt, hx0, hx] using this
+
+theorem hostSP_E3 {A : Forest} (sd : StopData) (hP : CondP A) {e0 : EntryAddr} {x0 : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (ψ : Nat) (hψ : ψ = 0 ∨ sd.r ≤ e0.col.num 0) :
+    ProfHost_E3 (e0.col.num 0 + ψ * period sd) (shift sd.r (ψ * period sd) x0.2) := by
+  intro ρ J' hρ
+  rw [shift, entryAt_map_D3] at hρ
+  obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+  simp only [Prod.mk.injEq] at hxe
+  obtain ⟨hp, rfl⟩ := hxe
+  have hδ : ψ * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hψ with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  have hp' : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+  have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hp']
+  obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+  have := condP_pair_E3 hP hx0 h1 h2
+  rw [← shift, profile_shift_E3, profile_shift_E3]; exact this
+
+/-- The bottom of a filled chain at phase `ψ < n`: the profile is unchanged, or the query is a run
+of `(r, ∅)` entries and the run loses its closing entry. -/
+theorem bottom_dich_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e : EntryAddr} {x : Nat × Forest} (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path)
+    {ψ : Nat} (hψ : ψ < n)
+    (hch : Chain_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2)) :
+    profile (replaceAt 0 0 (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1)
+      (shift sd.r (ψ * period sd) x.2)) = profile x.2 ∨
+    ((∀ y ∈ sd.Q, y = (sd.r, Tree.empty)) ∧ 1 ≤ sd.Q.length ∧
+      profile (replaceAt 0 0 (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1)
+        (shift sd.r (ψ * period sd) x.2)) =
+        ((toLex (sd.depth - e.col.path.length - 1, sd.Q.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) := by
+  obtain ⟨hl, -, -, -, hR, -, hrc, -, hhc, -⟩ := onR_pack_E3 hsd hx hon
+  obtain ⟨-, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+  have hNs := spx_condH_col hL.2.2.1 hcolsd
+  rw [chain_put_E3 _ _ _ hch, ← profile_shift_E3 sd.r (ψ * period sd) x.2, chain_self_E3 hch,
+    routeCol_shift_D3, hrc, Tree.treeMapCol_append_D3]
+  have hcm : Tree.mapCol (shiftVal sd.r (ψ * period sd)) [(sd.r, Tree.empty)] =
+      [(sd.r + ψ * period sd, Tree.empty)] := by
+    simp [Tree.mapCol, shiftVal]; rfl
+  rw [hcm, zs_step_E3 A sd rd hψ]
+  obtain ⟨V, rest, hsh, hV⟩ := ordStep_shape_E3 hL hsd hrd ψ (zs_E3 A sd rd n (ψ + 1))
+  rw [hsh]
+  have hQ : sd.Q ≠ [] := by
+    apply fq_E3 hL hk hsd (by omega)
+    have h0 := chain_skip_E3 _ _ hch _ le_rfl
+    simp only [Nat.sub_self, Chain_E3] at h0
+    have : hcol_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2) = 0 := by
+      simp only [hcol_E3]; omega
+    rw [shift, hcol_map_E3, ← hhc, hhcA] at this; exact this
+  have hPs : ∀ y ∈ Tree.mapCol (shiftVal sd.r (ψ * period sd)) sd.Q, sd.r + ψ * period sd ≤ y.1 := by
+    intro y hy
+    rw [treeMapCol_eq_map] at hy
+    obtain ⟨y0, hy0, rfl⟩ := List.mem_map.1 hy
+    obtain ⟨i, hi⟩ := List.getElem?_of_mem hy0
+    have := noninc_ge_E3 hNs (sd.Q.length - i) i y0 (sd.r, Tree.empty)
+      (by rw [List.getElem?_append_left (List.getElem?_eq_some_iff.1 hi).1]; exact hi)
+      (by rw [show i + (sd.Q.length - i) = sd.Q.length by
+            have := (List.getElem?_eq_some_iff.1 hi).1; omega]; simp)
+    simp only [shiftVal, if_pos this]; omega
+  have hN := noninc_shift_E3 hNs sd.r (ψ * period sd)
+  rw [Tree.treeMapCol_append_D3, hcm] at hN
+  rcases bot_E3 (by simpa [treeMapCol_eq_map] using hQ) hPs
+    (fun v hv => lt_of_lt_of_le (hV v hv) (by omega)) hN with h | ⟨hall, h1, -⟩
+  · left; rw [h]
+  · right
+    refine ⟨?_, List.length_pos_iff.2 hQ, ?_⟩
+    · intro y hy
+      have := hall _ (by rw [treeMapCol_eq_map]; exact List.mem_map_of_mem hy)
+      simp only [Prod.mk.injEq] at this
+      obtain ⟨h1, h2⟩ := this
+      have hy1 : y.1 = sd.r := by unfold shiftVal at h1; split_ifs at h1 <;> omega
+      have hy2 : y.2 = Tree.empty := by
+        match hY : y.2 with
+        | .node [] => rfl
+        | .node (c :: cs) => rw [hY] at h2; simp [Tree.map, Tree.mapCols, Tree.empty] at h2
+      exact Prod.ext hy1 hy2
+    · rw [h1, sig_iter_coe_E3, treeMapCol_eq_map, List.length_map]; simp
+
+/-- Route containers of phase `k`: P for their returns. The profile is unchanged (then the old
+returns bound the new ones), or the host is a filled chain: then its route containers are smaller
+by the chain, and (`k < n`) the query is a run of `(r, ∅)` whose copies have empty heights, while
+the low returns are copies of chain levels strictly below the host. -/
+theorem hostCP_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A) (hP : CondP A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e0 : EntryAddr} {x0 : Nat × Forest} (hx0 : A.entryAt e0 = some x0)
+    (hon : e0.heightPath <+: sd.col.path) {k : Nat} (hkn : k ≤ n)
+    (hkk : k = 0 ∨ sd.r ≤ e0.col.num 0) :
+    ProfHost_E3 (e0.col.num 0 + k * period sd)
+      (replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) x0.2) := by
+  have hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k) := by
+    have := zs_E1_E3 (n := n) hL hsd hrd (n - k) (by omega)
+    rwa [show n - (n - k) = k by omega] at this
+  have hd := period_pos_E3 hsd hrd
+  obtain ⟨hl, hhp, hxH, hnum, hR, hN, hrc, hrp, hhc, hat⟩ := onR_pack_E3 hsd hx0 hon
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  have hδ : k * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hkk with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  have hRG := (routeOK_shift_D3 sd.r (k * period sd) _ _).2 hR
+  -- the host's profile: unchanged, or a filled chain
+  have hdich : profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) = profile x0.2 ∨
+      (Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 ∧ Chain_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ∧ (k = n ∨ (k < n ∧ (∀ y ∈ sd.Q, y = (sd.r, Tree.empty)) ∧
+        1 ≤ sd.Q.length ∧ profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) =
+          ((toLex (sd.depth - e0.col.path.length - 1, sd.Q.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))))) := by
+    rcases put_profile_E3 (zs_E3 A sd rd n k) _ _ hRG with h | hch
+    · left; rw [h, profile_shift_E3]
+    · have hch0 : Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 := (chain_map_E3 _ _ _).1 hch
+      by_cases hkn' : k < n
+      · rcases bottom_dich_E3 hL hk hsd hrd hx0 hon hkn' hch with h | h
+        · exact Or.inl h
+        · exact Or.inr ⟨hch0, hch, Or.inr ⟨hkn', h⟩⟩
+      · exact Or.inr ⟨hch0, hch, Or.inl (by omega)⟩
+  intro ρ J' hρ
+  rw [replaceAt_eq_shift] at hρ ⊢
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n k) _ _ hRG ρ
+  -- a return whose profile is bounded by an old return of `e0`
+  have hbound : ∀ e x, A.entryAt e = some x → IsOwnerReturn A e0 e → profile J' ≤ profile x.2 →
+      profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) = profile x0.2 → profile J' < profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) := by
+    intro e x hx hret hle heq
+    rw [heq]; exact lt_of_le_of_lt hle (condP_pair_E3 hP hx0 hx hret)
+  have hnochain : ∀ ρ' x', Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 → x0.2.entryAt ρ' = some x' →
+      ¬ InHole_E3 (sd.depth - e0.col.path.length - 1) x0.2 ρ'.col → ¬ IsRoute_E3 (sd.depth - e0.col.path.length - 1) x0.2 ρ' → False := by
+    intro ρ' x' hch hx' h1 h2
+    rcases chain_entries_E3 _ x0.2 hch ρ' x' hx' with h | h
+    · exact h2 h
+    · exact h1 h
+  by_cases hh : InHole_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ.col
+  · obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hρ
+    obtain ⟨e, ψ, hψ1, hψ2, hψq, ⟨htr, htn, htl⟩, x, hxA, hx1, hc', hx2⟩ := hE _ _ hρ
+    have hkn' : k < n := by
+      by_contra hc
+      rw [show k = n by omega, zs_top_E3, Tree.empty, empty_entryAt_E3] at hρ
+      cases hρ
+    simp only at hx1
+    have hcase : x.1 = e0.col.num 0 ∧ ((k = 0 ∧ e0.col.num 0 < sd.r) ∨ (ψ = k ∧ InQ_E3 sd e)) := by
+      unfold shiftVal at hx1
+      split_ifs at hx1 with hxr
+      · by_cases hψk : ψ = k
+        · subst hψk; exact ⟨by omega, Or.inr ⟨rfl, hψq rfl⟩⟩
+        · exfalso
+          have : (k + 1) * period sd ≤ ψ * period sd := Nat.mul_le_mul_right _ (by omega)
+          have : sd.t = sd.r + period sd := by simp only [period]; omega
+          rw [Nat.succ_mul] at *
+          omega
+      · have hk0 : k = 0 := by
+          rcases hkk with h | h
+          · exact h
+          · exfalso; omega
+        subst hk0
+        exact ⟨by omega, Or.inl ⟨rfl, by omega⟩⟩
+    obtain ⟨hxa, hcase⟩ := hcase
+    have hcon : e0.Contains e.col := by
+      rcases hcase with ⟨-, hlow⟩ | ⟨-, hq⟩
+      · exact (low_route_E3 hL.1 hsd hrd hx0 hon hlow).trans htr
+      · rcases hq with ⟨h1, -⟩ | ⟨i, -, hi⟩
+        · show e0.heightPath <+: e.col.path; rw [h1]; exact hon
+        · exact hon.trans ((List.prefix_append _ _).trans hi)
+    have hret : IsOwnerReturn A e0 e := by
+      have : A.entryAt ⟨e.col, e.idx⟩ = some (e0.col.num 0, x.2) := by rw [← hxa]; exact hxA
+      exact isOwnerReturn_of_parent hcon this
+    have hle : profile J' ≤ profile x.2 := by
+      rcases hx2 with ⟨-, hJ'⟩ | ⟨hon', hJ'⟩
+      · simp only at hJ'; rw [hJ', profile_shift_E3]
+      · simp only at hJ'; rw [hJ']; exact cot_E3 hL hk hsd hrd hxA hon' hψ2
+    rcases hdich with heq | ⟨hch0, hch, hkn2 | ⟨-, hQr, hQ1, hprof⟩⟩
+    · exact hbound e x hxA hret hle heq
+    · omega
+    · rw [hprof]
+      obtain ⟨P, hP'⟩ := hcon
+      have hρe : x0.2.entryAt ⟨⟨P, e.col.col⟩, e.idx⟩ = some x := by
+        rw [← under_entryAt_E3 hx0]
+        have : under_E3 e0 ⟨⟨P, e.col.col⟩, e.idx⟩ = e := by simp only [under_E3, hP']
+        rw [this, hxA]
+      by_cases hone : e.heightPath <+: sd.col.path
+      · -- a chain level strictly below the host
+        obtain ⟨hle', -, hxe, -, -, -, hrce, -⟩ := onR_pack_E3 hsd hxA hone
+        have hlen : e.col.path.length = e0.col.path.length + 1 + P.length := by
+          rw [← hP']; simp [EntryAddr.heightPath]; omega
+        have hj : x.2 = skipLayers x0.2 (P.length + 1) := by
+          rw [hxe, hxH, skipLayers_add, hlen, show e0.col.path.length + 1 + (P.length + 1) =
+            e0.col.path.length + 1 + P.length + 1 by omega]
+        have hchx := chain_skip_E3 _ _ hch0 (P.length + 1) (by omega)
+        rw [← hj] at hchx
+        have hself := chain_self_E3 hchx
+        rw [show sd.depth - e0.col.path.length - 1 - (P.length + 1) = sd.depth - e.col.path.length - 1 by
+          omega, hrce] at hself
+        have hrep : sd.Q ++ [(sd.r, Tree.empty)] = List.replicate (sd.Q.length + 1) (sd.r, Tree.empty) := by
+          have hQe : sd.Q = List.replicate sd.Q.length (sd.r, Tree.empty) := List.eq_replicate_iff.2 ⟨rfl, hQr⟩
+          rw [List.replicate_succ', ← hQe]
+        have htow : profile (Tree.node [sd.Q ++ [(sd.r, Tree.empty)]]) =
+            ((toLex (0, sd.Q.length + 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+          rw [hrep]
+          have := spx_profile_tower [] sd.r sd.Q.length
+          simpa [spxTower] using this
+        rw [htow, sig_iter_coe_E3] at hself
+        refine lt_of_le_of_lt hle ?_
+        rw [hself, WithBot.coe_lt_coe, Prod.Lex.lt_iff]
+        left; simp only [ofLex_toLex]; omega
+      · -- the query region: empty heights
+        have hq : InQ_E3 sd e := by
+          rcases htl with h | h
+          · exact h
+          · exfalso
+            refine hnochain _ x hch0 hρe ?_ ?_
+            · intro hh'
+              apply h
+              have := (inHole_abs_E3 hrp hhc ⟨P, e.col.col⟩).2 hh'
+              simpa [hP'] using this
+            · intro hr'
+              apply hone
+              have := (isRoute_abs_E3 hrp ⟨⟨P, e.col.col⟩, e.idx⟩).2 hr'
+              rw [IsRoute_E3, hrpA] at this
+              show e.col.path ++ _ <+: _
+              rw [← hP']
+              simpa [EntryAddr.heightPath] using this
+        have hx2e : x.2 = Tree.empty := by
+          obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+          rcases hq with ⟨h1, h2⟩ | ⟨i, hi, hc⟩
+          · have : A.entryAt ⟨sd.col, e.idx⟩ = sd.Q[e.idx]? := by
+              simp only [Tree.entryAt, hcolsd, Option.bind_some]; rw [List.getElem?_append_left h2]
+            have he : e = ⟨sd.col, e.idx⟩ := by rw [← h1]
+            rw [← he, hxA] at this
+            have := hQr x (List.mem_of_getElem? this.symm)
+            rw [this]
+          · exfalso
+            have hqi : A.entryAt ⟨sd.col, i⟩ = some (sd.r, Tree.empty) := by
+              simp only [Tree.entryAt, hcolsd, Option.bind_some]; rw [List.getElem?_append_left hi]
+              exact hQr _ (List.getElem_mem hi) ▸ List.getElem?_eq_getElem hi
+            have := N_inside_E3 hqi hc hxA
+            simp [N_E3, gwordAt_empty_E3] at this
+        rcases hx2 with ⟨-, hJ'⟩ | ⟨hon', -⟩
+        · simp only at hJ'
+          rw [hJ', hx2e]
+          exact WithBot.bot_lt_coe _
+        · exact absurd hon' hone
+  · by_cases hr : IsRoute_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ
+    · rw [hPu.2.1 hh hr] at hρ
+      obtain ⟨y, hy, hye⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Prod.mk.injEq] at hye
+      obtain ⟨hp, hJ'⟩ := hye
+      rcases hdich with heq | ⟨-, hch, -⟩
+      · rw [shift, entryAt_map_D3] at hy
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+        have hxa : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+        have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hxa]
+        obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+        have hon' : (under_E3 e0 ρ).heightPath <+: sd.col.path := by
+          have := (isRoute_abs_E3 hrp ρ).2 ((isRoute_map_E3 _ _ _ _).1 hr)
+          rwa [IsRoute_E3, hrpA] at this
+        have hlen : (under_E3 e0 ρ).col.path.length = e0.col.path.length + 1 + ρ.col.path.length := by
+          simp [under_E3, EntryAddr.heightPath]; omega
+        refine hbound _ _ h1 h2 ?_ heq
+        rw [← hJ']
+        have := cot_E3 (n := n) hL hk hsd hrd h1 hon' hkn
+        rw [replaceAt_eq_shift, hlen] at this
+        convert this using 3 <;> first | omega | rfl
+      · rw [← hJ']; exact chain_route_E3 _ _ _ hch ρ y hr hy
+    · rw [hPu.2.2 hh hr, shift, entryAt_map_D3] at hρ
+      obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Prod.mk.injEq] at hxe
+      obtain ⟨hp, hJ'⟩ := hxe
+      rcases hdich with heq | ⟨hch0, -, -⟩
+      · have hxa : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+        have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hxa]
+        obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+        refine hbound _ _ h1 h2 ?_ heq
+        rw [← hJ', ← shift, profile_shift_E3]
+      · exact absurd (hnochain ρ x hch0 hx ((inHole_map_E3 _ _ _ _).not.1 hh)
+          ((isRoute_map_E3 _ _ _ _).not.1 hr)) id
+
+/-- Every host of an ordinary output satisfies P for its returns. -/
+theorem hostsP_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A) (hP : CondP A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e0' : EntryAddr} {y0 : Nat × Forest}
+    (hy0 : (replaceAt 0 0 (zs_E3 A sd rd n 0) sd.depth A).entryAt e0' = some y0) :
+    ProfHost_E3 (e0'.col.num 0) y0.2 := by
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, hNA⟩ := stop_route_top_D3 hsd
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n 0) sd.depth A hRA e0'
+  by_cases hh : InHole_E3 sd.depth A e0'.col
+  · obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hy0
+    have hE := zs_E1_E3 (n := n) hL hsd hrd n le_rfl
+    rw [Nat.sub_self] at hE
+    obtain ⟨e, ψ, -, hψ2, -, ⟨-, htn, -⟩, x, hxA, -, hc', hx2⟩ := hE _ _ hy0
+    have hnum : e0'.col.num 0 = e.col.num 0 + ψ * period sd := by
+      rw [h2 0, Nat.zero_add, hNA, ← hc', Nat.zero_mul, Nat.add_zero]
+    rw [hnum]
+    rcases hx2 with ⟨-, hJ⟩ | ⟨hon, hJ⟩
+    · rw [hJ]; exact hostSP_E3 sd hP hxA ψ (Or.inr htn)
+    · rw [hJ]; exact hostCP_E3 hL hP hk hsd hrd hxA hon hψ2 (Or.inr htn)
+  · by_cases hr : IsRoute_E3 sd.depth A e0'
+    · rw [hPu.2.1 hh hr] at hy0
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy0
+      have hon : e0'.heightPath <+: sd.col.path := by rw [IsRoute_E3, hrpA] at hr; exact hr
+      have := hostCP_E3 (n := n) hL hP hk hsd hrd hx hon (Nat.zero_le n) (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, replaceAt_zero_E3] at this
+      exact this
+    · rw [hPu.2.2 hh hr] at hy0
+      have := hostSP_E3 sd hP hy0 0 (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, shift_zero] at this
+      exact this
+
 -- T3.2o (txt:367-376): P is preserved by ordinary steps
 theorem condP_ord {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
-    (hk : stepKind A = some .ordinary) (hB : expand A n = some B) : CondP B := by sorry
+    (hk : stepKind A = some .ordinary) (hB : expand A n = some B) : CondP B := by
+  obtain ⟨sd, rd, hsd, hrd, hBeq, -⟩ := ord_output_D3 hL hk hB
+  rw [ordZ_eq_zs_E3] at hBeq
+  intro e0' he0 e' he hret
+  obtain ⟨y0, hy0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff B e0').1 he0)
+  obtain ⟨hcon, q, J', hJ, hres⟩ := hret
+  have hq : q = e0'.col.num 0 := (ColAddr.resolve_num hres).symm
+  subst hq
+  obtain ⟨P, hP'⟩ := hcon
+  have he' : e' = under_E3 e0' ⟨⟨P, e'.col.col⟩, e'.idx⟩ := by
+    simp only [under_E3, hP']
+  have hρ : y0.2.entryAt ⟨⟨P, e'.col.col⟩, e'.idx⟩ = some (e0'.col.num 0, J') := by
+    rw [← under_entryAt_E3 hy0, ← he', hJ]
+  have := hostsP_E3 (n := n) hL hP hk hsd hrd (by rw [← hBeq]; exact hy0) _ _ hρ
+  have h3 : (B.heightAt e').getD Tree.empty = J' := by simp [Tree.heightAt, hJ]
+  have h4 : (B.heightAt e0').getD Tree.empty = y0.2 := by simp [Tree.heightAt, hy0]
+  rw [h3, h4]; exact this
 
 -- T3.2q (txt:390-394, 524-530): read on the stack of a phase-`φ` copy `c` of `a`, a
 -- `g_{κ_φ W}` path from a vertex `x ≥ s_φ` to an endpoint `y < r` is the copy of an old `g_W`
