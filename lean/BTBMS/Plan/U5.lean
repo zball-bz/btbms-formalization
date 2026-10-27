@@ -153,32 +153,125 @@ noncomputable def floorSigma {W : Type} (fr : W → Option Ordinal.{u}) (L : Ord
   | none => L
   | some x => (fr x).getD 0
 
+/-- N5.3 (helper): variables of a renamed base atom. -/
+theorem baseAtom_vars_map {V W : Type} (f : V → W) (b : BaseAtom V) :
+    (b.map f).vars = b.vars.map f := by
+  cases b <;> rfl
+
+/-- N5.3 (helper): variables of a renamed base diagram. -/
+theorem baseVars_map {V W : Type} (f : V → W) (D : List (BaseAtom V)) :
+    baseVars (D.map (BaseAtom.map f)) = (baseVars D).map f := by
+  simp [baseVars, List.flatMap_map, baseAtom_vars_map, List.map_flatMap]
+
+/-- N5.3 (helper): variables of an embedded base diagram. -/
+theorem ofBase_vars {V : Type} (D : List (BaseAtom V)) :
+    (Diagram.ofBase D).vars = baseVars D := by
+  simp [Diagram.vars, Diagram.ofBase, baseVars, List.flatMap_map, Atom.vars]
+
+/-- N5.3 (helper): a renamed base atom holds iff the original holds at the composite. -/
+theorem baseAtom_holds_map' {V W : Type} (P : Prims.{u}) (f : V → W) (a : W → Ordinal.{u})
+    (b : BaseAtom V) : (b.map f).Holds P a ↔ b.Holds P (a ∘ f) := by
+  cases b <;> rfl
+
+/-- N5.3 (helper): a renamed base diagram holds iff the original holds at the composite. -/
+theorem baseHolds_map' {V W : Type} (P : Prims.{u}) (f : V → W) (D : List (BaseAtom V))
+    (a : W → Ordinal.{u}) : BaseHolds P (D.map (BaseAtom.map f)) a ↔ BaseHolds P D (a ∘ f) := by
+  simp only [BaseHolds, List.mem_map, forall_exists_index, and_imp, forall_apply_eq_imp_iff₂,
+    baseAtom_holds_map']
+
+/-- N5.3 (helper): the variables of the floor encoding are the floor and the `some` copies of
+the variables of `D`. -/
+theorem floorDiagram_vars {W : Type} {D : List (BaseAtom W)} {fr : W → Option Ordinal.{u}}
+    {z : Option W} (hz : z ∈ (floorDiagram D fr).vars) : ∀ x, z = some x → x ∈ baseVars D := by
+  rintro x rfl
+  simp only [floorDiagram, ofBase_vars, baseVars, List.flatMap_append, List.mem_append,
+    List.mem_flatMap, List.mem_map, List.mem_filter] at hz
+  rcases hz with ⟨b, ⟨b0, hb0, rfl⟩, hx⟩ | ⟨b, ⟨y, ⟨hy, -⟩, rfl⟩, hx⟩
+  · rw [baseAtom_vars_map] at hx
+    obtain ⟨y, hy, hyx⟩ := List.mem_map.1 hx
+    cases hyx
+    exact List.mem_flatMap.2 ⟨b0, hb0, hy⟩
+  · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false, reduceCtorEq,
+      false_or, Option.some.injEq] at hx
+    subst hx
+    exact List.mem_flatMap.2 hy
+
 /-- N5.3: `BlockAbove` is realizability of its floor encoding (for a floor below the budget). -/
 theorem blockAbove_iff_floor (P : Prims.{u}) {W : Type} (D : List (BaseAtom W))
     (fr : W → Option Ordinal.{u}) {L w : Ordinal.{u}} (hL : L < w) :
     BlockAbove P D fr L w ↔
       (floorDiagram D fr).RealizableBelow P (floorFixed fr) (floorSigma fr L) w := by
-  sorry
+  constructor
+  · rintro ⟨β, hfix, hnew, hlt, hhold⟩
+    refine ⟨fun z => Option.elim z L β, fun z hz => ?_, fun z hz => ?_, ?_⟩
+    · cases z with
+      | none => rfl
+      | some x =>
+        obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 hz
+        simp [floorSigma, ho, hfix x o ho]
+    · cases z with
+      | none => exact hL
+      | some x => exact hlt x (floorDiagram_vars hz x rfl)
+    · rw [floorDiagram, holds_ofBase]
+      intro b hb
+      rcases List.mem_append.1 hb with hb | hb
+      · obtain ⟨b0, hb0, rfl⟩ := List.mem_map.1 hb
+        exact (baseAtom_holds_map' P some _ b0).2 (hhold b0 hb0)
+      · obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hb
+        obtain ⟨hxD, hxn⟩ := List.mem_filter.1 hx
+        exact hnew x hxD (Option.isNone_iff_eq_none.1 hxn)
+  · rintro ⟨a, hfix, hlt, hhold⟩
+    rw [floorDiagram, holds_ofBase] at hhold
+    have hnone : a none = L := hfix none trivial
+    refine ⟨fun x => a (some x), fun x o hx => ?_, fun x hx hn => ?_, fun x hx => ?_, ?_⟩
+    · have := hfix (some x) (by simp [floorFixed, hx])
+      simpa [floorSigma, hx] using this
+    · have := hhold (BaseAtom.lt none (some x)) (List.mem_append.2 (Or.inr
+        (List.mem_map.2 ⟨x, List.mem_filter.2 ⟨hx, by simp [hn]⟩, rfl⟩)))
+      simpa [BaseAtom.Holds, hnone] using this
+    · refine hlt (some x) ?_
+      rw [floorDiagram, ofBase_vars, baseVars, List.flatMap_append]
+      refine List.mem_append.2 (Or.inl ?_)
+      rw [← baseVars, baseVars_map]
+      exact List.mem_map_of_mem hx
+    · intro b hb
+      exact (baseAtom_holds_map' P some a b).1
+        (hhold _ (List.mem_append.2 (Or.inl (List.mem_map_of_mem hb))))
 
 /-- N5.3: capture of a block problem along `J_a ≺_{Σ1} J_b` (frame and floor below `a`). -/
 theorem blockAbove_capture (I : Interface.{u}) {W : Type} {D : List (BaseAtom W)}
     {fr : W → Option Ordinal.{u}} {L a b : Ordinal.{u}} (hab : I.Elem a b) (hL : L < a)
     (hfr : ∀ x ∈ baseVars D, ∀ o, fr x = some o → o < a)
     (h : BlockAbove I.toPrims D fr L b) : BlockAbove I.toPrims D fr L a := by
-  sorry
+  have hLb : L < b := hL.trans_le (I.elem_le hab)
+  refine (blockAbove_iff_floor I.toPrims D fr hL).2 ?_
+  refine I.capture (floorDiagram D fr) (floorFixed fr) (floorSigma fr L) hab ?_
+    ((blockAbove_iff_floor I.toPrims D fr hLb).1 h)
+  intro z hz hfz
+  cases z with
+  | none => exact hL
+  | some x =>
+    obtain ⟨o, ho⟩ := Option.isSome_iff_exists.1 hfz
+    simpa [floorSigma, ho] using hfr x (floorDiagram_vars hz x rfl) o ho
 
 /-- N5.3: `BlockAbove` is antitone in the floor and monotone in the budget. -/
 theorem blockAbove_mono {P : Prims.{u}} {W : Type} {D : List (BaseAtom W)}
     {fr : W → Option Ordinal.{u}} {L L' w w' : Ordinal.{u}} (hL : L ≤ L') (hw : w ≤ w')
     (h : BlockAbove P D fr L' w) : BlockAbove P D fr L w' := by
-  sorry
+  obtain ⟨β, hfix, hnew, hlt, hhold⟩ := h
+  exact ⟨β, hfix, fun x hx hn => hL.trans_lt (hnew x hx hn),
+    fun x hx => (hlt x hx).trans_le hw, hhold⟩
 
 /-- N5.3: a `TargetAbove` witness is a `BlockAbove` witness at the owner value. -/
 theorem blockAbove_of_targetAbove {P : Prims.{u}} (pk : SourcePacket.{u}) {L : Ordinal.{u}}
     (h : pk.TargetAbove P L) :
     BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel) (fun w => (pk.tgtFrame.toFr w).map pk.asg)
       L (pk.asg pk.owner) := by
-  sorry
+  obtain ⟨β, hfix, hnew, hlt, hhold⟩ := h
+  refine ⟨β, fun x o hx => ?_, fun x hx hn => (hnew x hx (Option.map_eq_none_iff.1 hn)).1,
+    hlt, hhold⟩
+  obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hx
+  exact hfix x y hy
 
 /-! ## N5.5 Fresh names -/
 
