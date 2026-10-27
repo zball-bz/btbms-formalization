@@ -11,14 +11,16 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
   Six gaps are recorded:
   - five confirmed: G-001…G-005, of which two are repairable (G-002, G-003) and three are
     exposition only;
-  - one suspected: G-006, awaiting a blind cross-check.
+  - one closed: G-006. Codex supplied the explicit induction predicates and Claude checked
+    them.
+  - S-3 (Claude's proposed simplification of the base case) was refuted by Codex and is rejected.
 - **Bounded evidence:**
   - Claude: cofinality restricted to E ∈ Std, 276,818,685 pairs, no failure.
   - Codex: reference vs independent §1 implementation, 59,995 operations, no mismatch;
     occurrence-graph identity, 93,076 comparisons; finite invariants including 84,291
     admissible caps.
   - Both test suites live in `scratch/` and still need packaging (T-010).
-- **Running:** T-005, Codex answering `tracker/review/CROSSCHECK-1.md` (S-3, G-006).
+- **Running:** T-007, Codex doing the reuse audit (`tracker/review/REUSE-BRIEF.md`).
 
 ## Waiting on the user
 - **D-1:** host-Lean semantic theorem, or object-theory derivation ZFC + Mahlo ⊢ WO(Std) as in KP1Y?
@@ -38,6 +40,6 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Next
-1. Integrate T-005 and update G-006 and S-3.
-2. T-007 reuse audit (Codex), then T-010 packaging (Codex).
+1. Integrate T-007; then T-010 packaging (Codex).
+2. Record the user's answers to D-1/D-2.
 3. After D-1/D-2: P2 repairs, a simplified-proof write-up, then gate G1.

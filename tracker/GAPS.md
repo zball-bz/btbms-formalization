@@ -9,7 +9,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | G-003 | confirmed | repairable | §4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474 | Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written | claude, codex |  |
 | G-004 | confirmed | exposition | §5.2 txt:864-866 | "The hull contains the whole J_b" must mean J_b ∈ H, not J_b ⊆ H | codex | claude |
 | G-005 | confirmed | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
-| G-006 | suspected | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude |  |
+| G-006 | closed | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude | codex |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -58,11 +58,11 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-006 — Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes
 
-**Detail:** Codex judged §2 sound. Sent to Codex as a blind question (CROSSCHECK-1 Q2).
+**Detail:** Codex (blind): the stated numerical orders suffice, but the paper does not print the needed predicates. Barrier needs a joint induction on (c,k) of C_e (cut paths reaching a have query < D_e) and R_e (return bounds). Reverse capping needs actual A together with actual return bounds, plus a first-divergence argument: the first decorated edge differing from the actual scan is at a capped column a reached by an actual path, so C_e gives W < B_a(v) <= B_a(u*), and the scan stops before the capped key. A proof carrying only "earlier entry A holds" would leave a gap. Codex verdict: no unrepaired mathematical gap. Claude checked each step of the repair.
 
-**Fix:** State each induction predicate and well-founded order explicitly.
+**Fix:** Write the joint predicates C_e/R_e, the localized pre-entry-cut barrier and the first-divergence argument as explicit lemmas (codex-crosscheck-1.md, Q2).
 
-**Refs:** claude C-06
+**Refs:** claude C-06, codex CROSSCHECK-1 Q2
 
 
 # Decisions
@@ -79,7 +79,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 |---|---|---|---|
 | S-1 | agreed | Weakly n-Mahlo suffices: strong-limitness is never used; (13) holds for any uncountable cardinal | claude, codex |
 | S-2 | agreed | §9 without the choice recursion: strictly monotone g(B)=min{σ(A): A∈Std, A≥B} (claude) or accessibility induction on the configuration maximum (codex) | claude, codex |
-| S-3 | proposed | Base S_0 needs no capture: s = L*+ω works | claude |
+| S-3 | rejected | Base S_0 needs no capture: s = L*+ω works | claude |
 | S-4 | agreed | Prove §6-§9 against an explicit semantic interface (levels, edges, capture, transport, budgets, (13), (14)); instantiate it with the J-hierarchy separately | claude, codex |
 | S-5 | agreed | Extract the abstract final theorem first: closure + cofinality + seed configurations + strict descent ⇒ well-order | codex |
 | S-6 | agreed | Engineering: one word library (reductions, traces, cancellation, delayed change); one typed continuation-hole operation; P as a separate invariant from L; label-free descent before labels; one finite-name amalgamation and packing lemma | codex |

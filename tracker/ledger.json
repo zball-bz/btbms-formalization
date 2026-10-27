@@ -91,13 +91,16 @@
    "id": "T-005",
    "phase": "P1",
    "owner": "codex",
-   "status": "doing",
+   "status": "done",
    "title": "Blind cross-check: each single-reviewer finding goes to the other reviewer without the conclusion",
    "deps": [
     "T-004"
    ],
    "deliverable": "tracker/review/codex-crosscheck-1.md",
-   "brief": "tracker/review/CROSSCHECK-1.md"
+   "brief": "tracker/review/CROSSCHECK-1.md",
+   "evidence": [
+    "tracker/review/codex-crosscheck-1.md"
+   ]
   },
   {
    "id": "T-006",
@@ -114,9 +117,11 @@
    "id": "T-007",
    "phase": "P1",
    "owner": "codex",
-   "status": "todo",
+   "status": "doing",
    "title": "Reuse audit: kp-simplified-verification, dh-bms-wf-formal, 1Y-Well-Ordering-Lean",
-   "note": "Informs D-1."
+   "note": "Informs D-1.",
+   "deliverable": "tracker/review/reuse-audit.md",
+   "brief": "tracker/review/REUSE-BRIEF.md"
   },
   {
    "id": "T-008",
@@ -1124,7 +1129,7 @@
   },
   {
    "id": "G-006",
-   "status": "suspected",
+   "status": "closed",
    "severity": "repairable",
    "loc": "§2 txt:194-236",
    "summary": "Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes",
@@ -1132,10 +1137,16 @@
     "claude"
    ],
    "refs": [
-    "claude C-06"
+    "claude C-06",
+    "codex CROSSCHECK-1 Q2"
    ],
-   "detail": "Codex judged §2 sound. Sent to Codex as a blind question (CROSSCHECK-1 Q2).",
-   "fix": "State each induction predicate and well-founded order explicitly."
+   "detail": "Codex (blind): the stated numerical orders suffice, but the paper does not print the needed predicates. Barrier needs a joint induction on (c,k) of C_e (cut paths reaching a have query < D_e) and R_e (return bounds). Reverse capping needs actual A together with actual return bounds, plus a first-divergence argument: the first decorated edge differing from the actual scan is at a capped column a reached by an actual path, so C_e gives W < B_a(v) <= B_a(u*), and the scan stops before the capped key. A proof carrying only \"earlier entry A holds\" would leave a gap. Codex verdict: no unrepaired mathematical gap. Claude checked each step of the repair.",
+   "fix": "Write the joint predicates C_e/R_e, the localized pre-entry-cut barrier and the first-divergence argument as explicit lemmas (codex-crosscheck-1.md, Q2).",
+   "confirmed_by": [
+    "codex"
+   ],
+   "fix_by": "codex",
+   "fix_checked_by": "claude"
   }
  ],
  "simplifications": [
@@ -1168,7 +1179,7 @@
   },
   {
    "id": "S-3",
-   "status": "proposed",
+   "status": "rejected",
    "summary": "Base S_0 needs no capture: s = L*+ω works",
    "found_by": [
     "claude"
@@ -1176,7 +1187,7 @@
    "refs": [
     "claude C-03"
    ],
-   "note": "Blind check pending (CROSSCHECK-1 Q1)."
+   "note": "Refuted by Codex (CROSSCHECK-1 Q1): (8) gives L*+ω <= u, not <; e.g. u = ω·2, L* = ω+1 has no limit strictly between. The paper's Σ1 reflection through J_u ≺ J_b (u is a limit of limits) is needed. Codex's variant only unfolds factorization; the paper's base case is essentially minimal."
   },
   {
    "id": "S-4",
