@@ -1132,7 +1132,21 @@ theorem trace_agree {src₁ src₂ qry : List α} {u : Nat} (hpre : src₁.take 
 end Words
 
 /-- L2.5b (`cursor_eq_scanCount`†): the generic cursor at `Key` is the locked `scanCount`. -/
-theorem cursor_eq_scanCount (xs ys : List Key) : scanCount xs ys = cursor xs ys := by sorry
+theorem cursor_eq_scanCount (xs ys : List Key) : scanCount xs ys = cursor xs ys := by
+  induction xs, ys using cursor.induct with
+  | case1 ys => simp [scanCount, cursor]
+  | case2 x xs => simp [scanCount, cursor]
+  | case3 x xs y ys h ih =>
+    have hc : keyCmp x y = .lt := h
+    rw [scanCount, cursor, if_pos h, ← ih, hc]
+  | case4 xs y ys h ih =>
+    have hc : keyCmp y y = .eq := Tree.cmp_self keyLabelCmp y
+    rw [scanCount, cursor, if_neg h, if_pos rfl, ← ih, hc]
+  | case5 x xs y ys h1 h2 ih =>
+    have hc : keyCmp x y = .gt := by
+      rw [← Key.compare_eq_keyCmp]
+      exact compare_gt_iff_gt.2 (lt_of_le_of_ne (not_lt.1 h1) (Ne.symm h2))
+    rw [scanCount, cursor, if_neg h1, if_neg h2, ← ih, hc]
 
 /-! ## N1.2, C1.8a, C1.8, D1.9 — compact words and safe prefixes -/
 
@@ -1264,7 +1278,48 @@ thresholds are arbitrary. -/
 theorem sign_of_agreement (r t : Nat) {A₁ A₂ J : Forest} (hlen : mu J < mu A₁)
     (hagree : (word A₁).take (mu J + 1) = (word A₂).take (mu J + 1)) :
     keyCmp (relKey r A₁) (relKey t J) = keyCmp (relKey r A₂) (relKey t J) ∧
-      keyCmp (relKey r A₁) (relKey t J) ≠ .eq := by sorry
+      keyCmp (relKey r A₁) (relKey t J) ≠ .eq := by
+  -- generic words of keys (labels `Bool × Nat`), in terms of the compact word
+  have hg : ∀ (a : Nat) (A : Forest), (gword (relKey a A) : List (GAtom (Bool × Nat))) =
+      (word A).map (GAtom.map (relLabel a) ∘ toGAtom) := by
+    intro a A
+    rw [relKey_eq_map, gword_map, gword_eq_map_word, List.map_map]
+  -- the same words read over `Lex (Bool × Nat)`, whose `Tree.cmp compare` is `keyCmp`
+  let X₁ : List (GAtom (Lex (Bool × Nat))) := gword (relKey r A₁ : Tree (Lex (Bool × Nat)))
+  let X₂ : List (GAtom (Lex (Bool × Nat))) := gword (relKey r A₂ : Tree (Lex (Bool × Nat)))
+  let Y : List (GAtom (Lex (Bool × Nat))) := gword (relKey t J : Tree (Lex (Bool × Nat)))
+  have hY : Y.length = mu J := by
+    change (gword (relKey t J) : List (GAtom (Bool × Nat))).length = mu J
+    rw [hg, List.length_map]; rfl
+  have hX₁ : X₁.length = mu A₁ := by
+    change (gword (relKey r A₁) : List (GAtom (Bool × Nat))).length = mu A₁
+    rw [hg, List.length_map]; rfl
+  have htake : X₁.take (Y.length + 1) = X₂.take (Y.length + 1) := by
+    rw [hY]
+    change (gword (relKey r A₁) : List (GAtom (Bool × Nat))).take (mu J + 1) =
+      (gword (relKey r A₂) : List (GAtom (Bool × Nat))).take (mu J + 1)
+    rw [hg, hg, ← List.map_take, ← List.map_take, hagree]
+  obtain ⟨hlt, hne₁, hne₂⟩ := list_lt_of_take_eq (by rw [hY, hX₁]; exact hlen) htake
+  have hlt₁ : X₁ < Y ↔ keyCmp (relKey r A₁) (relKey t J) = .lt :=
+    gword_lt_iff (α := Lex (Bool × Nat)) _ _
+  have hlt₂ : X₂ < Y ↔ keyCmp (relKey r A₂) (relKey t J) = .lt :=
+    gword_lt_iff (α := Lex (Bool × Nat)) _ _
+  have heq₁ : keyCmp (relKey r A₁) (relKey t J) ≠ .eq := fun h =>
+    hne₁ (congrArg (gword (α := Lex (Bool × Nat))) (Tree.eq_of_cmp_eq keyLabelCmp h))
+  have heq₂ : keyCmp (relKey r A₂) (relKey t J) ≠ .eq := fun h =>
+    hne₂ (congrArg (gword (α := Lex (Bool × Nat))) (Tree.eq_of_cmp_eq keyLabelCmp h))
+  refine ⟨?_, heq₁⟩
+  have hiff := hlt₁.symm.trans (hlt.trans hlt₂)
+  revert heq₁ heq₂ hiff
+  cases keyCmp (relKey r A₁) (relKey t J) <;> cases keyCmp (relKey r A₂) (relKey t J) <;> simp
+
+/-- L2.5c helper: the coercion into `WithTop` preserves `compare`. -/
+theorem compare_coe_withTop {β : Type} [LinearOrder β] (a b : β) :
+    compare (a : WithTop β) (b : WithTop β) = compare a b := by
+  rcases lt_trichotomy a b with h | h | h
+  · rw [compare_lt_iff_lt.2 h, compare_lt_iff_lt.2 (WithTop.coe_lt_coe.2 h)]
+  · subst h; rw [compare_eq_iff_eq.2 rfl, compare_eq_iff_eq.2 rfl]
+  · rw [compare_gt_iff_gt.2 h, compare_gt_iff_gt.2 (WithTop.coe_lt_coe.2 h)]
 
 -- U1-verify: changed (new declaration)
 /-- L2.5c, key-system form: the sign hypothesis `hsign` of `trace_agree` at `α = WithTop Key`,
@@ -1272,7 +1327,9 @@ for one query key. -/
 theorem sign_of_agreement_compare (r t : Nat) {A₁ A₂ J : Forest} (hlen : mu J < mu A₁)
     (hagree : (word A₁).take (mu J + 1) = (word A₂).take (mu J + 1)) :
     compare ((relKey r A₁ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) =
-      compare ((relKey r A₂ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) := by sorry
+      compare ((relKey r A₂ : Key) : WithTop Key) ((relKey t J : Key) : WithTop Key) := by
+  rw [compare_coe_withTop, compare_coe_withTop, Key.compare_eq_keyCmp, Key.compare_eq_keyCmp]
+  exact (sign_of_agreement r t hlen hagree).1
 
 /-! ## D1.5a — shifts and the continuation hole (S-6) -/
 
