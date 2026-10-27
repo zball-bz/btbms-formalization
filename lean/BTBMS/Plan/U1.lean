@@ -1731,46 +1731,115 @@ def respEdge (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) (
   (c.resolve 0 x).bind fun o => resp E ks o W
 
 theorem edge_iff (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) (x p : Nat) :
-    Edge E ks c W x p ↔ respEdge E ks c W x = some p := by sorry
+    Edge E ks c W x p ↔ respEdge E ks c W x = some p := by
+  unfold Edge respEdge
+  rw [Option.bind_eq_some_iff]
 
 /-- D2.2a: `resp` in terms of the cursor. -/
 theorem resp_eq_some {E : Forest} {ks : KeySys} {o : ColAddr} {W : List (WithTop Key)} {p : Nat} :
-    resp E ks o W = some p ↔ ∃ H, ((E.colAt o).getD [])[cursor (ks o) W]? = some (p, H) := by sorry
+    resp E ks o W = some p ↔ ∃ H, ((E.colAt o).getD [])[cursor (ks o) W]? = some (p, H) := by
+  unfold resp
+  constructor
+  · intro h
+    obtain ⟨⟨q, H⟩, h1, h2⟩ := Option.map_eq_some_iff.1 h
+    exact ⟨H, by rw [h1, show q = p from h2]⟩
+  · rintro ⟨H, h⟩
+    rw [h]; rfl
 
 /-- D2.2a: the number of keys is the number of entries, for actual and capped systems. -/
 theorem length_actualKeys (E : Forest) (c : ColAddr) :
-    (actualKeys E c).length = ((E.colAt c).getD []).length := by sorry
+    (actualKeys E c).length = ((E.colAt c).getD []).length := by
+  simp [actualKeys]
 
 theorem length_capKeys (E : Forest) (sel : List ColAddr) (c : ColAddr) :
-    (capKeys E sel c).length = ((E.colAt c).getD []).length := by sorry
+    (capKeys E sel c).length = ((E.colAt c).getD []).length := by
+  rw [← length_actualKeys E c]
+  simp only [capKeys]
+  split_ifs
+  · rcases List.eq_nil_or_concat (actualKeys E c) with h | ⟨L, b, h⟩
+    · simp [h]
+    · simp [h]
+  · rfl
+
+-- Moved here from the D1.3a section below (brief rule 5; statement unchanged): `edge_lt` and
+-- `cutStart_lt` use it, and nothing in between uses it.
+/-- D2.2a: parents of a column, entrywise. -/
+theorem parents_getElem? (E : Forest) (c : ColAddr) (k : Nat) :
+    (parents E c)[k]? = (E.entryAt ⟨c, k⟩).map Prod.fst := by
+  unfold parents Tree.entryAt
+  cases E.colAt c <;> simp
+
+/-- D2.2a helper: under V the parent of an entry of column `o` is below `o`'s number. -/
+theorem parent_lt_num_of_condV {E : Forest} (hV : CondV E) {o : ColAddr} {k p : Nat} {H : Forest}
+    (he : E.entryAt ⟨o, k⟩ = some (p, H)) : p < o.num 0 := by
+  have hmem : (⟨o, k⟩ : EntryAddr) ∈ E.entryAddrs :=
+    (Tree.mem_entryAddrs_iff E _).2 (by rw [he]; rfl)
+  exact ((ColAddr.resolve_isSome_iff 0 o p).1 (hV _ hmem p H he)).2
 
 /-- D2.2a (txt:179-180): under V every edge decreases the column number. -/
 theorem edge_lt {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr} {W : List (WithTop Key)}
-    {x p : Nat} (h : Edge E ks c W x p) : p < x := by sorry
+    {x p : Nat} (h : Edge E ks c W x p) : p < x := by
+  obtain ⟨o, ho, hr⟩ := h
+  obtain ⟨H, hH⟩ := resp_eq_some.1 hr
+  cases hcol : E.colAt o with
+  | none => rw [hcol] at hH; simp at hH
+  | some col =>
+    rw [hcol, Option.getD_some] at hH
+    have he : E.entryAt ⟨o, cursor (ks o) W⟩ = some (p, H) := by
+      simp [Tree.entryAt, hcol, hH]
+    rw [← ColAddr.resolve_num ho]
+    exact parent_lt_num_of_condV hV he
 
 /-- D2.2a: paths decrease. -/
 theorem path_le {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr} {W : List (WithTop Key)}
-    {x y : Nat} (h : Path E ks c W x y) : y ≤ x := by sorry
+    {x y : Nat} (h : Path E ks c W x y) : y ≤ x := by
+  induction h with
+  | refl => exact le_refl _
+  | tail _ he ih => exact le_trans (edge_lt hV he).le ih
 
 /-- D2.2a: the test starts strictly below the tested column. -/
 theorem cutStart_lt {E : Forest} (hV : CondV E) {c : ColAddr} (hc : c ∈ E.colAddrs) {k : Nat}
-    (hk : k ≤ (parents E c).length) (hpos : 0 < c.num 0) : cutStart E c k < c.num 0 := by sorry
+    (hk : k ≤ (parents E c).length) (hpos : 0 < c.num 0) : cutStart E c k < c.num 0 := by
+  unfold cutStart
+  split
+  · omega
+  · have hlt : k - 1 < (parents E c).length := by omega
+    obtain ⟨p, hp⟩ : ∃ p, (parents E c)[k - 1]? = some p := ⟨_, List.getElem?_eq_getElem hlt⟩
+    rw [hp, Option.getD_some]
+    rw [parents_getElem?] at hp
+    obtain ⟨⟨q, H⟩, he, rfl⟩ := Option.map_eq_some_iff.1 hp
+    exact parent_lt_num_of_condV hV he
 
 /-- D2.2a (stack restriction): edges from numbers below `x₀` depend only on the stack below
 `x₀`. -/
 theorem edge_congr_stack {E : Forest} {ks : KeySys} {c c' : ColAddr} {W : List (WithTop Key)}
     {x₀ x p : Nat} (hst : ∀ q < x₀, c.resolve 0 q = c'.resolve 0 q) (hx : x < x₀) :
-    Edge E ks c W x p ↔ Edge E ks c' W x p := by sorry
+    Edge E ks c W x p ↔ Edge E ks c' W x p := by
+  unfold Edge; rw [hst x hx]
 
 /-- D2.2a (stack restriction for paths, codex-crosscheck-1 Q2). -/
 theorem path_congr_stack {E : Forest} (hV : CondV E) {ks : KeySys} {c c' : ColAddr}
     {W : List (WithTop Key)} {x₀ x y : Nat} (hst : ∀ q < x₀, c.resolve 0 q = c'.resolve 0 q)
-    (hx : x < x₀) : Path E ks c W x y ↔ Path E ks c' W x y := by sorry
+    (hx : x < x₀) : Path E ks c W x y ↔ Path E ks c' W x y := by
+  have key : ∀ {c c' : ColAddr}, (∀ q < x₀, c.resolve 0 q = c'.resolve 0 q) → ∀ {x : Nat},
+      x < x₀ → Path E ks c W x y → Path E ks c' W x y := by
+    intro c c' hst x hx h
+    revert hx
+    induction h using Relation.ReflTransGen.head_induction_on with
+    | refl => intro _; exact Relation.ReflTransGen.refl
+    | head he _ ih =>
+      intro hx
+      exact Relation.ReflTransGen.head ((edge_congr_stack hst hx).1 he)
+        (ih (lt_trans (edge_lt hV he) hx))
+  exact ⟨key hst hx, key (fun q hq => (hst q hq).symm) hx⟩
 
 /-- D2.2a (txt:191-193): A implies parent monotonicity, in every key system. -/
 theorem parents_antitone {E : Forest} (hV : CondV E) {ks : KeySys} (hA : CondAK E ks)
     {c : ColAddr} (hc : c ∈ E.colAddrs) {i p q : Nat} (hi : (parents E c)[i + 1]? = some p)
-    (hq : (parents E c)[i]? = some q) : p ≤ q := by sorry
+    (hq : (parents E c)[i]? = some q) : p ≤ q := by
+  have := hA c hc (i + 1) p hi
+  simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel, hq, Option.getD_some] at this
+  exact path_le hV this
 
 /-! ## D1.3a, D2.3a — the conditions in usable form -/
 
@@ -1779,9 +1848,7 @@ number is visible, `resolve_isSome_iff`). -/
 theorem condV_iff_lt (E : Forest) :
     CondV E ↔ ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → p < e.col.num 0 := by sorry
 
-/-- D2.2a: parents of a column, entrywise. -/
-theorem parents_getElem? (E : Forest) (c : ColAddr) (k : Nat) :
-    (parents E c)[k]? = (E.entryAt ⟨c, k⟩).map Prod.fst := by sorry
+-- D2.2a `parents_getElem?` moved up, before `edge_lt` (brief rule 5).
 
 /-- D2.3a: an owner return is a contained column whose entry's parent resolves to the owner
 column (definitional unfolding with `Contains`). -/
@@ -1792,7 +1859,8 @@ theorem isOwnerReturn_iff (E : Forest) (e₀ e : EntryAddr) :
 /-- D2.3a: an entry of a contained column whose parent is the host number is an owner return. -/
 theorem isOwnerReturn_of_parent {E : Forest} {e₀ : EntryAddr} {c : ColAddr} {k : Nat} {J : Forest}
     (hc : e₀.Contains c) (hk : E.entryAt ⟨c, k⟩ = some (e₀.col.num 0, J)) :
-    IsOwnerReturn E e₀ ⟨c, k⟩ := by sorry
+    IsOwnerReturn E e₀ ⟨c, k⟩ :=
+  ⟨hc, e₀.col.num 0, J, hk, EntryAddr.resolve_host hc⟩
 
 /-! ## L2.2a — the path-nesting induction (G-006) -/
 
