@@ -781,9 +781,98 @@ theorem hullAt_bounded (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ :
 def reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) : Set (Set.Iio κ.ord) :=
   {x | IsLim x.1 ∧ ∀ y : hullAt κ w hw x.1, (y : M w).val < κ.ord → (y : M w).val < x.1}
 
+/-- N4.9b helper: the generators of `H_r` grow with `r`. -/
+theorem hullAt_gen_mono (κ : Cardinal.{u}) (w : Ordinal.{u}) {r r' : Ordinal.{u}} (h : r ≤ r') :
+    {x : M w | x.val < r ∨ x.val = κ.ord} ⊆ {x : M w | x.val < r' ∨ x.val = κ.ord} :=
+  fun _ hx => hx.imp (fun h' => h'.trans_le h) id
+
 /-- N4.9b: `reflPoints` is a club. -/
 theorem isClub_reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
-    (hreg : κ.IsRegular) (hκw : κ.ord < w) : IsClub (reflPoints κ w hw) := by sorry
+    (hreg : κ.IsRegular) (hκw : κ.ord < w) : IsClub (reflPoints κ w hw) := by
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  refine ⟨?_, ?_⟩
+  · rw [dirSupClosed_iff_of_linearOrder]
+    intro d hd hne a ha
+    by_cases had : a ∈ d
+    · exact hd had
+    have hlub : IsLUB (Subtype.val '' d) a.1 := by
+      refine ⟨?_, ?_⟩
+      · rintro _ ⟨x, hx, rfl⟩
+        exact Subtype.coe_le_coe.2 (ha.1 hx)
+      · intro b hb
+        by_cases hbκ : b < κ.ord
+        · exact Subtype.coe_le_coe.2 (ha.2 (show (⟨b, hbκ⟩ : Set.Iio κ.ord) ∈ upperBounds d from
+            fun x hx => Subtype.coe_le_coe.1 (hb ⟨x, hx, rfl⟩)))
+        · exact (a.2.trans_le (not_lt.1 hbκ)).le
+    have hna : a.1 ∉ Subtype.val '' d := by
+      rintro ⟨x, hx, hxa⟩
+      exact had (Subtype.ext hxa ▸ hx)
+    have hlim : IsLim a.1 := isLim_of_isLUB
+      (by rintro _ ⟨x, hx, rfl⟩; exact (hd hx).1) (hne.image _) hlub hna
+    refine ⟨hlim, ?_⟩
+    intro y hy
+    haveI : Nonempty d := hne.to_subtype
+    let s : d → Set (M w) := fun x => {z | z.val < x.1.1 ∨ z.val = κ.ord}
+    have hdir : Directed (· ⊆ ·) s := by
+      intro i j
+      rcases le_total i.1 j.1 with h | h
+      · exact ⟨j, hullAt_gen_mono κ w (Subtype.coe_le_coe.2 h), le_rfl⟩
+      · exact ⟨i, le_rfl, hullAt_gen_mono κ w (Subtype.coe_le_coe.2 h)⟩
+    have hsub : {z : M w | z.val < a.1 ∨ z.val = κ.ord} ⊆ ⋃ i, s i := by
+      rintro z (hz | hz)
+      · obtain ⟨_, ⟨x, hx, rfl⟩, hzx⟩ := (lt_isLUB_iff hlub).1 hz
+        exact Set.mem_iUnion.2 ⟨⟨x, hx⟩, Or.inl hzx⟩
+      · exact Set.mem_iUnion.2 ⟨Classical.arbitrary d, Or.inr hz⟩
+    have hy' : (y : M w) ∈ ⋃ i, (hull w hw (s i) : Set (M w)) := by
+      rw [← hull_iUnion w hw hdir]
+      exact hull_mono w hw hsub y.2
+    obtain ⟨i, hi⟩ := Set.mem_iUnion.1 hy'
+    exact ((hd i.2).2 ⟨y, hi⟩ hy).trans_le (Subtype.coe_le_coe.2 (ha.1 i.2))
+  · intro y
+    have hbd := fun r (hr : r < κ.ord) => hullAt_bounded κ w hw hκ hreg hκw hr
+    let F : Ordinal.{u} → Ordinal.{u} := fun r =>
+      if h : r < κ.ord then Classical.choose (hbd r h) else 0
+    have hF : ∀ r (hr : r < κ.ord), F r = Classical.choose (hbd r hr) := fun r hr => dif_pos hr
+    let g : ℕ → Ordinal.{u} := fun n =>
+      Nat.rec (max y.1 Ordinal.omega0 + 1) (fun _ gn => max (gn + 1) (F gn)) n
+    have hgs : ∀ n, g (n + 1) = max (g n + 1) (F (g n)) := fun n => rfl
+    have hgκ : ∀ n, g n < κ.ord := by
+      intro n
+      induction n with
+      | zero => exact hκl.add_one_lt (max_lt y.2 hκl.omega0_lt)
+      | succ n ih =>
+        rw [hgs, hF _ ih]
+        exact max_lt (hκl.add_one_lt ih) (Classical.choose_spec (hbd _ ih)).2.1
+    have hmono : StrictMono g := strictMono_nat_of_lt_succ fun n => by
+      rw [hgs]
+      exact (Order.lt_add_one_iff.2 le_rfl).trans_le (le_max_left _ _)
+    have hω : Ordinal.omega0 ≤ g 0 := (le_max_right _ _).trans (le_self_add)
+    have hbdd : BddAbove (Set.range g) := ⟨κ.ord, by rintro _ ⟨n, rfl⟩; exact (hgκ n).le⟩
+    have haκ : (⨆ n, g n) < κ.ord := by
+      refine Ordinal.lift_iSup_lt_of_lt_cof ?_ hgκ
+      simpa [hreg.cof_ord] using hκ
+    have hlim : IsLim (⨆ n, g n) := isLim_iSup_nat hmono hω
+    refine ⟨⟨⨆ n, g n, haκ⟩, ⟨hlim, ?_⟩, ?_⟩
+    · intro z hz
+      let s : ℕ → Set (M w) := fun n => {z | z.val < g n ∨ z.val = κ.ord}
+      have hdir : Directed (· ⊆ ·) s :=
+        Monotone.directed_le fun m n h => hullAt_gen_mono κ w (hmono.monotone h)
+      have hsub : {z : M w | z.val < (⨆ n, g n) ∨ z.val = κ.ord} ⊆ ⋃ n, s n := by
+        rintro z (hz | hz)
+        · obtain ⟨n, hn⟩ := (lt_ciSup_iff hbdd).1 hz
+          exact Set.mem_iUnion.2 ⟨n, Or.inl hn⟩
+        · exact Set.mem_iUnion.2 ⟨0, Or.inr hz⟩
+      have hz' : (z : M w) ∈ ⋃ n, (hull w hw (s n) : Set (M w)) := by
+        rw [← hull_iUnion w hw hdir]
+        exact hull_mono w hw hsub z.2
+      obtain ⟨n, hn⟩ := Set.mem_iUnion.1 hz'
+      have h1 := (Classical.choose_spec (hbd _ (hgκ n))).2.2 ⟨z, hn⟩ hz
+      rw [← hF _ (hgκ n)] at h1
+      calc (z : M w).val < F (g n) := h1
+        _ ≤ g (n + 1) := (hgs n).symm ▸ le_max_right _ _
+        _ ≤ ⨆ n, g n := le_ciSup hbdd (n + 1)
+    · show y.1 ≤ ⨆ n, g n
+      exact (le_max_left _ _).trans ((le_self_add).trans (le_ciSup hbdd 0))
 
 /-- N4.9b: every reflection point carries an edge `Edge w κ x`. -/
 theorem edge_of_reflPoint (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
