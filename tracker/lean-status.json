@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "c85067d017e669298d1c32f6b0f69208ac298743c25ef97da232acb40e73fe55",
+ "fingerprint": "3102d22f736f17da29f0cade77a58c7aff30bb41669b3470ff32db708a2ac253",
  "decls": [
   {
    "axioms": [
@@ -104,6 +104,42 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condI_ord"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condP_expand"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condS_ord"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.copyCol_litCap"
   },
   {
@@ -129,6 +165,30 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.headCol_litCap"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.inL_expand"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.inL_safePrefix"
   },
   {
    "axioms": [
@@ -248,6 +308,18 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_idata3_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.phaseCol_headCol"
   },
   {
@@ -321,6 +393,30 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.stack_parent_dichotomy"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.std_condP"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext",
+    "sorryAx"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.std_inL"
   },
   {
    "axioms": [
@@ -788,18 +884,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.condP_expand"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
    "name": "BTBMS.Closure.condS_of_condP"
   },
   {
@@ -812,55 +896,7 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.inL_expand"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.inL_safePrefix"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
    "name": "BTBMS.Closure.isStd_iff_paper"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.std_condP"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.std_inL"
   },
   {
    "axioms": [
@@ -1340,30 +1376,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.condH_ord"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.condI_ord"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.condP_empty"
   },
   {
@@ -1400,18 +1412,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.condS_ord"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.condS_special"
   },
   {
@@ -1425,18 +1425,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.condVIH_special"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U2",
-   "name": "BTBMS.Closure.condV_ord"
   },
   {
    "axioms": [
@@ -5021,6 +5009,39 @@
    "kind": "def",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.Cof"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ColH_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.HCols_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.HRel_D3"
   },
   {
    "axioms": [
@@ -10289,6 +10310,72 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.body_route_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cmpCol_append_left_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cmpCol_self_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cmpCols_append_left_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cmp_put_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cmp_shift_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.colAt_context_of_not_route"
   },
   {
@@ -10312,6 +10399,105 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.colAt_litCap_onStack"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colH_shiftH_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colH_shift_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colH_snoc_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.compare_shiftVal_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condH_iff_hrel_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condH_ord"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condI_iff_irel_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condV_iff_vrel_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.condV_ord"
   },
   {
    "axioms": [
@@ -10377,7 +10563,271 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.empty_le_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.entryLe_shift_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.entryLe_trans_le_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.expand_lt"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hcols_append_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hcols_cons_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hcols_drop_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hcols_nil_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hcols_single_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.headCol_eq"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.head_lt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_colAt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_empty_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_eq_hcols_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_forestAt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_iff_hcols_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_ordStep_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_put_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hrel_shift_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.icols_append_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.icols_cons_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.icols_single_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_ordStep_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_put_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_skip_D3"
   },
   {
    "axioms": [
@@ -10542,6 +10992,17 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.keyWord_lt_iff_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.litCapAux_colAt"
   },
   {
@@ -10587,6 +11048,17 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.mem_colAddrs_of_upward"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ne_empty_of_stepKind_D3"
   },
   {
    "axioms": [
@@ -10696,6 +11168,105 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ordLoop_induct_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ordStep_lt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ordZ_lt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_hdata_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_idata1_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_idata2_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_output_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ord_vdata_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.owner_route_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.parents_litCap_subset"
   },
   {
@@ -10740,6 +11311,28 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.put_le_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.put_lt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.replaceAt_colAt"
   },
   {
@@ -10773,7 +11366,84 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.root_facts_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_bound_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.sdcol_container_none"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.shift_le_shift_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.special_col_lt_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.stop_pathSum_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.stop_route_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.stop_route_top_D3"
   },
   {
    "axioms": [
@@ -10818,6 +11488,72 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.underCol_kerHole_head"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcols_append_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcols_cons_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcols_single_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_ordStep_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_put_D3"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_skip_D3"
   },
   {
    "axioms": [
@@ -13907,17 +14643,6 @@
    ],
    "direct_sorry": true,
    "kind": "theorem",
-   "module": "BTBMS.Plan.Spine",
-   "name": "BTBMS.Closure.expand_lt"
-  },
-  {
-   "axioms": [
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
    "module": "BTBMS.Plan.U1",
    "name": "BTBMS.Scan.isStd_of_mem_stdUpTo"
   },
@@ -15459,7 +16184,27 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colAt_cons_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.colAt_cons_of"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colAt_map_D3"
   },
   {
    "axioms": [
@@ -15519,6 +16264,116 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.entryAt_cons_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.entryAt_map_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_shift_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.forestAt_map_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.getElem_of_getLast_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hostNum_cons_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hostNum_shift_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.icols_drop_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_eq_icols_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_iff_icols_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_shift_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.isQMat_of_prefix"
   },
   {
@@ -15559,7 +16414,57 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.le_shiftVal_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.leftCount_mono_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.leftCount_succ_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.mapCol_shiftVal_zero"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.num_add_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.num_cons_D3"
   },
   {
    "axioms": [
@@ -15619,6 +16524,36 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.put_self_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.put_succ_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.put_zero_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.replaceAt_succ_eq"
   },
   {
@@ -15639,7 +16574,177 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_shiftBase_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_split_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeOK_le_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.shiftVal_dich"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.shiftVal_le_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.shiftVal_mono_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.shiftVal_strictMono_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcol_append_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcol_shiftH_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcol_shift_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcols_drop_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_colAt_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_empty_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_eq_vcols_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_forestAt_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_iff_vcols_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_node_D3"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vrel_shift_D3"
   },
   {
    "axioms": [
@@ -17558,6 +18663,24 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.ICols_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.IRel_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.KernelDefined"
   },
   {
@@ -17576,7 +18699,43 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.VCol_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.VCols_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.VRel_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.context"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hostNum_D3"
   },
   {
    "axioms": [
@@ -18782,7 +19941,34 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.Tree.treeMapCol_append_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.colAt_cons"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.colAt_nil_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.cols_map_D3"
   },
   {
    "axioms": [
@@ -18827,7 +20013,88 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.entryAt_nil_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_append_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_map_fst_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_of_fst_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.forestAt_cons_some"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.head_mapLast_fst_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.hostNum_nil_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.icols_nil_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_empty_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.irel_host_mono_D3"
   },
   {
    "axioms": [
@@ -18863,7 +20130,34 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.nextLayer_map_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.nextLayer_snoc_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.nu_sublist"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.num_nil_D3"
   },
   {
    "axioms": [
@@ -18891,6 +20185,78 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.path_split"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeCol_shift_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeCol_skip_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_shift_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeNum_shift_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeOK_shift_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcol_mono_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcol_sub_D3"
+  },
+  {
+   "axioms": [
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.vcols_nil_D3"
   },
   {
    "axioms": [
@@ -20395,6 +21761,13 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.FirstOK_D3"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.IsTmplCol"
   },
   {
@@ -20403,6 +21776,13 @@
    "kind": "def",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.OnHoleRoute"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.RouteOK_D3"
   },
   {
    "axioms": [],
@@ -20494,6 +21874,27 @@
    "kind": "def",
    "module": "BTBMS.Plan.U2",
    "name": "BTBMS.Closure.phaseOff"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeCol_D3"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_D3"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeNum_D3"
   },
   {
    "axioms": [],
@@ -21724,6 +23125,41 @@
    "axioms": [],
    "direct_sorry": false,
    "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.RouteOK_D3.eq_def"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_mono_D3"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.firstOK_none_D3"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeHost_D3.eq_def"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U2",
+   "name": "BTBMS.Closure.routeNum_D3.eq_def"
+  },
+  {
+   "axioms": [],
+   "direct_sorry": false,
+   "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.Rel.edge.sizeOf_spec"
   },
@@ -21875,6 +23311,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T16:20:21+00:00",
- "head": "0b30aa5"
+ "generated": "2026-10-27T16:22:27+00:00",
+ "head": "f30a963"
 }
