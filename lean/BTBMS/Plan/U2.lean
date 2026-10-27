@@ -2842,9 +2842,35 @@ theorem ownerReturn_origin {A B : Forest} {sd : StopData} {rd : RootData} {n : N
         (kJ' = kJ ∧ kJ.length < b ∨ ∃ a, a < b ∧ FirstDec kJ kJ' a)) ∧
       (kH' = kH → kJ' = kJ) := by sorry
 
+/-- T3.2n helper (branch D3): key-word order is key order. -/
+theorem keyWord_lt_iff_D3 (K K' : Key) : keyWord K < keyWord K' ↔ K < K' := by
+  unfold keyWord
+  rw [← gword, ← gword, gword_lt_iff,
+    Tree.cmp_map (c := keyLabelCmp) (fun x y => (keyLabelCmp_eq x y).symm)]
+  rfl
+
 -- T3.2n (txt:363-366): ordinary outputs satisfy S (no output A is used)
 theorem condS_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondS B := by sorry
+    (hB : expand A n = some B) : CondS B := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  intro e0' he0 e' he hret
+  obtain ⟨e0, e, j, he0A, heA, hretA, hpos, heq⟩ :=
+    ownerReturn_origin hL hk hsd hrd hB he0 he hret
+  have hSA := hL.2.2.2.2 e0 he0A e heA hretA
+  have hlt : keyWord (kappa sd.r (period sd) j (relKey (e.col.num 0) ((A.heightAt e).getD Tree.empty))) <
+      keyWord (kappa sd.r (period sd) j (relKey (e0.col.num 0) ((A.heightAt e0).getD Tree.empty))) :=
+    (keyWord_lt_iff_D3 _ _).2 (kappa_strictMono _ _ _ hSA)
+  rw [← keyWord_lt_iff_D3]
+  rcases hpos with hH | ⟨b, hb1, hb2, -, hJ | ⟨a, hab, hfd⟩⟩
+  · rw [hH, heq hH]; exact hlt
+  · rw [hJ.1]
+    refine lt_of_take_succ hlt ?_
+    have h1 := congrArg (List.take (keyWord (kappa sd.r (period sd) j
+      (relKey (e.col.num 0) ((A.heightAt e).getD Tree.empty)))).length.succ) hb1
+    rw [List.take_take, List.take_take] at h1
+    rwa [min_eq_left (by omega)] at h1
+  · exact lt_of_firstDec hlt hfd ⟨hb1, hb2⟩ hab
 
 -- T3.2o (txt:367-376): P is preserved by ordinary steps
 theorem condP_ord {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
