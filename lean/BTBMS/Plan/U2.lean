@@ -21004,9 +21004,19 @@ theorem restored_parent (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi :
           List.getElem?_append_right le_rfl, Nat.sub_self]; rfl)
   rcases hHle with h | ⟨h, -⟩ <;> simp only at h <;> omega
 
--- T3.8lg (`restored_oldCap`), T3.8lh (`restored_cut`), T3.8lj (`root_current`) and T3.8lk
--- (`root_head`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: their proofs use the
--- G-009/G-010 helpers.
+-- T3.8lg (`restored_oldCap`), T3.8lh (`restored_cut`) and T3.8lj (`root_current`) moved to just
+-- before T3.8l (`KS_ordinary`), brief rule 5: their proofs use the G-009/G-010 helpers.
+
+-- T3.8li (`projection`) moved below the G-009 block, to the G-010 (D7) section (brief rule 5).
+
+-- T3.8lk (txt:547-552): current head root `ρ = s_φ`: high scans conjugate, low scans win
+theorem root_head (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
+    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
+    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
+    (hρ : ρ = S.s (phaseOff S.sd i a))
+    (hold : Success (litCap S.A a k S.sd.r) (localSuffix S.A a)) :
+    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
 
 -- T3.8ll (txt:551-552, 560-561): "wins at once": the first unconsumed root entry beats the next
 -- target entry
@@ -30248,15 +30258,6 @@ theorem root_current (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 
     have hW := (localSuffix_cont_le S.inL S.kind S.hsd S.hrd hAi (Or.inl ha)).1
     rw [hY]
     exact success_conj_rel_G7 hup hupA hoK hoA hρ'.le hρeq hnum hrel hls hKL hBI hVA hold hW
-
--- T3.8lk (txt:547-552): current head root `ρ = s_φ`: high scans conjugate, low scans win
-theorem root_head (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hq : isQMat S.sd a = true → 2 ≤ i)
-    (hc : phaseCol S.sd S.rd i a = some c) (hup : IsUpward S.B c k ρ)
-    (hKL : InL (litCap S.B c k ρ)) (hend : capPos S.B c k < mu S.B)
-    (hρ : ρ = S.s (phaseOff S.sd i a))
-    (hold : Success (litCap S.A a k S.sd.r) (localSuffix S.A a)) :
-    Success (litCap S.B c k ρ) (localSuffix S.B c) := by sorry
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by
