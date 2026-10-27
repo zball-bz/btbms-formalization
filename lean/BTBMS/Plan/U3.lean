@@ -4401,6 +4401,107 @@ in `litCap`), and the closing slot `⟨c, k⟩` for the appended closing entry. 
 def capRole {E : Forest} (w : Closure.AdmCap E) (x : Role) : Role :=
   (w.origin x).getD (.slot ⟨w.col, w.cut⟩)
 
+-- Moved up from the L7.5d helpers (unchanged): L7.5a `frame_repair` uses it.
+/-- L7.5d-3 (G-012): `capRole` is the origin wherever the origin is defined. -/
+theorem capRole_of_origin {E : Forest} (w : Closure.AdmCap E) {x y : Role}
+    (h : w.origin x = some y) : capRole w x = y := by
+  simp [capRole, h]
+
+/-- D7.1b helper: `filterMap` over a range whose values are all defined. -/
+theorem filterMap_range_getElem? {β : Type} (f : Nat → Option β) :
+    ∀ n, (∀ q < n, (f q).isSome) → ∀ q, ((List.range n).filterMap f)[q]? = if q < n then f q else none
+  | 0, _, q => by simp
+  | n + 1, h, q => by
+    rw [List.range_succ, List.filterMap_append]
+    obtain ⟨b, hb⟩ := Option.isSome_iff_exists.1 (h n (by omega))
+    have hl : ((List.range n).filterMap f).length = n := by
+      have := filterMap_range_getElem? f n (fun q hq => h q (by omega))
+      apply Nat.le_antisymm
+      · by_contra hc
+        have h1 := this n
+        rw [if_neg (by omega), List.getElem?_eq_none_iff] at h1
+        omega
+      · by_contra hc
+        have h1 := this (n - 1)
+        rw [if_pos (by omega), List.getElem?_eq_none (by omega)] at h1
+        have := h (n - 1) (by omega)
+        rw [← h1] at this
+        simp at this
+    simp only [List.filterMap_cons, List.filterMap_nil, hb]
+    rw [List.getElem?_append]
+    split_ifs with h1 h2 h3
+    · rw [filterMap_range_getElem? f n (fun q hq => h q (by omega)), if_pos (by omega)]
+    · omega
+    · have : q = n := by omega
+      subst this; simp [hl, hb]
+    · rw [List.getElem?_singleton, if_neg (by omega)]
+
+-- Moved up from after `reps0_length` (unchanged): `blockMap_frame` and `reps0_length` use it.
+-- Moved up again from the integration additions (unchanged): L7.5a `frame_repair` uses it.
+theorem reps0_getElem? (c : ColAddr) (q : Nat) : c.reps0[q]? = c.rep 0 q := by
+  unfold ColAddr.reps0
+  rw [filterMap_range_getElem? _ _ (fun q hq => (rep_isSome_iff c q).2 hq)]
+  split_ifs with h
+  · rfl
+  · cases hr : c.rep 0 q with
+    | none => rfl
+    | some _ =>
+      have := (rep_isSome_iff c q).1 (by rw [hr]; rfl)
+      omega
+
+-- Moved up from the integration additions (unchanged): L7.5a `frame_repair` uses it.
+-- provides: U3, D7.1b (requested by U5 R19): frame roles lie in the prefix `P(E, e)`.
+theorem frameOf_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
+    Role.ord e.col ∈ prefixRoles E e ∧
+      ∀ ov ∈ e.col.reps0, ov.1 ∈ prefixRoles E e ∧ ov.2 ∈ prefixRoles E e := by
+  refine ⟨(Tree.stack_mem_prefix he).1, ?_⟩
+  rintro ⟨o, v⟩ hov
+  obtain ⟨q, hq⟩ := List.mem_iff_getElem?.1 hov
+  rw [reps0_getElem?] at hq
+  exact rep_mem_prefix he hq
+
+/-- L7.5a helper (G-012): a role before `y` in `takeWhile` order has an earlier index. -/
+theorem exists_lt_of_mem_takeWhile_ne_E1 :
+    ∀ {l : List Role} {x y : Role}, x ∈ l.takeWhile (· != y) → y ∈ l →
+      ∃ i j : Nat, l[i]? = some x ∧ l[j]? = some y ∧ i < j
+  | [], _, _, hx, _ => by simp at hx
+  | a :: l, x, y, hx, hy => by
+    by_cases hay : a = y
+    · subst hay; simp at hx
+    · simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, hay, not_false_eq_true, if_true,
+        List.mem_cons] at hx
+      have hy' : y ∈ l := by
+        rcases List.mem_cons.mp hy with h | h
+        · exact absurd h.symm hay
+        · exact h
+      rcases hx with rfl | hx
+      · obtain ⟨j, hj⟩ := List.mem_iff_getElem?.mp hy'
+        exact ⟨0, j + 1, rfl, by simpa using hj, by omega⟩
+      · obtain ⟨i, j, hi, hj, hij⟩ := exists_lt_of_mem_takeWhile_ne_E1 hx hy'
+        exact ⟨i + 1, j + 1, by simpa using hi, by simpa using hj, by omega⟩
+
+/-- L7.5a helper: in a duplicate-free list, an element at an earlier index than `y` lies in
+`takeWhile (· != y)`. -/
+theorem mem_takeWhile_ne_of_lt_E1 :
+    ∀ {l : List Role}, l.Nodup → ∀ {x y : Role} {i j : Nat}, l[i]? = some x → l[j]? = some y →
+      i < j → x ∈ l.takeWhile (· != y)
+  | [], _, _, _, _, _, hi, _, _ => by simp at hi
+  | a :: l, hnd, x, y, i, j, hi, hj, hij => by
+    obtain ⟨j', rfl⟩ : ∃ j', j = j' + 1 := ⟨j - 1, by omega⟩
+    have hay : a ≠ y := by
+      intro hay
+      subst hay
+      have hmem : a ∈ l := List.mem_of_getElem? (by simpa using hj)
+      exact (List.nodup_cons.mp hnd).1 hmem
+    simp only [List.takeWhile_cons, bne_iff_ne, ne_eq, hay, not_false_eq_true, if_true,
+      List.mem_cons]
+    cases i with
+    | zero => left; simpa using hi.symm
+    | succ i' =>
+      right
+      exact mem_takeWhile_ne_of_lt_E1 (List.nodup_cons.mp hnd).2 (by simpa using hi)
+        (by simpa using hj) (by omega)
+
 -- provides: U3, L7.5a (the whole external frame survives same-parent repairs)
 theorem frame_repair {E : Forest} (hE : IsStd E) (w : Closure.AdmCap E) {b : EntryAddr}
     (hb : b ∈ E.entryAddrs) (hbc : b.heightPath <+: w.col.path)
@@ -4408,7 +4509,58 @@ theorem frame_repair {E : Forest} (hE : IsStd E) (w : Closure.AdmCap E) {b : Ent
     let bm := Closure.moveAddr w.moves b
     (frameOf bm).map (capRole w) = frameOf b ∧ capRole w (.slot bm) = .slot b ∧
     (∀ x ∈ prefixRoles w.H bm, capRole w x ∈ prefixRoles E b) ∧
-    Set.InjOn (capRole w) {x | x ∈ prefixRoles w.H bm} := by sorry
+    Set.InjOn (capRole w) {x | x ∈ prefixRoles w.H bm} := by
+  intro bm
+  have hL : Scan.InL E := Closure.std_inL hE
+  obtain ⟨hmem, -, -, horig⟩ := marked_entry_cap hE w hb hbc hout
+  obtain ⟨hOs, hOc⟩ := origin_moveAddr hL w hbc hout
+  obtain ⟨hinj, -, -, -, -, -, hrep, hord⟩ := Closure.origin_spec_full hL w
+  have hcr : ∀ x ∈ prefixRoles w.H bm, w.origin x = some (capRole w x) := by
+    intro x hx
+    obtain ⟨z, hz⟩ := Option.isSome_iff_exists.mp (horig x hx)
+    rw [hz, capRole_of_origin w hz]
+  have hanc : ∀ x ∈ prefixRoles w.H bm, anchorD E (some w) x = capRole w x := by
+    intro x hx
+    simp [anchorD, Closure.anchorOrigin, hcr x hx]
+  have hpre := frameOf_mem_prefix hmem
+  have hbmcol : Role.ord bm.col ∈ w.H.roles := (List.takeWhile_sublist _).subset hpre.1
+  have hrep' := hrep bm.col b.col hbmcol hOc
+  have hmemR : Role.slot bm ∈ w.H.roles :=
+    (Tree.mem_roles_iff _ _).mpr ((Tree.mem_entryAddrs_iff _ _).mp hmem)
+  refine ⟨?_, capRole_of_origin w hOs, ?_, ?_⟩
+  · have hnum : bm.col.num 0 = b.col.num 0 := Closure.moveAddr_num _ _
+    simp only [frameOf, Frame.map, Frame.mk.injEq]
+    refine ⟨capRole_of_origin w hOc, ?_⟩
+    unfold ColAddr.reps0
+    rw [List.map_filterMap, hnum]
+    apply List.filterMap_congr
+    intro q hq
+    have hq' : q < bm.col.num 0 := by rw [hnum]; exact List.mem_range.mp hq
+    rw [← hrep' q hq']
+    cases hr : bm.col.rep 0 q with
+    | none => rfl
+    | some ov =>
+      have hov : ov ∈ bm.col.reps0 := by
+        unfold ColAddr.reps0
+        exact List.mem_filterMap.mpr ⟨q, List.mem_range.mpr hq', hr⟩
+      obtain ⟨h1, h2⟩ := hpre.2 ov hov
+      simp only [Option.map_some, hanc _ h1, hanc _ h2]
+  · intro x hx
+    obtain ⟨i, j, hi, hj, hij⟩ := exists_lt_of_mem_takeWhile_ne_E1 hx hmemR
+    obtain ⟨i', j', hi', hj', hij'⟩ := hord x (.slot bm) ⟨i, j, hi, hj, hij⟩ (horig x hx)
+      (by rw [hOs]; rfl)
+    have e1 : anchorD E (some w) x = capRole w x := hanc x hx
+    have e2 : anchorD E (some w) (.slot bm) = .slot b := by
+      show (w.origin (Role.slot (Closure.moveAddr w.moves b))).getD _ = _
+      rw [hOs]
+      rfl
+    rw [e1] at hi'
+    rw [e2] at hj'
+    exact mem_takeWhile_ne_of_lt_E1 (Tree.roles_nodup E) hi' hj' hij'
+  · intro x hx y hy hxy
+    have hxH : x ∈ w.H.roles := (List.takeWhile_sublist _).subset hx
+    have hyH : y ∈ w.H.roles := (List.takeWhile_sublist _).subset hy
+    exact hinj hxH hyH (by rw [hcr x hx, hcr y hy, hxy])
 
 -- provides: U3, L7.5 (the spine's `joint_repair`†; consumer: U5 L8.8 Case 3)
 theorem joint_repair {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
@@ -4580,47 +4732,6 @@ theorem scanPacket_spec {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i 
 /-! ## Integration additions (nodes D7.1b, L6.2e, L6.2f, D7.2d, L7.6b, L4.3d, L7.5d; requested
 by U5 R10, R18, R19, R22, R23, R25–R27, R29, R30; formerly stubs in `U5.lean`) -/
 
-/-- D7.1b helper: `filterMap` over a range whose values are all defined. -/
-theorem filterMap_range_getElem? {β : Type} (f : Nat → Option β) :
-    ∀ n, (∀ q < n, (f q).isSome) → ∀ q, ((List.range n).filterMap f)[q]? = if q < n then f q else none
-  | 0, _, q => by simp
-  | n + 1, h, q => by
-    rw [List.range_succ, List.filterMap_append]
-    obtain ⟨b, hb⟩ := Option.isSome_iff_exists.1 (h n (by omega))
-    have hl : ((List.range n).filterMap f).length = n := by
-      have := filterMap_range_getElem? f n (fun q hq => h q (by omega))
-      apply Nat.le_antisymm
-      · by_contra hc
-        have h1 := this n
-        rw [if_neg (by omega), List.getElem?_eq_none_iff] at h1
-        omega
-      · by_contra hc
-        have h1 := this (n - 1)
-        rw [if_pos (by omega), List.getElem?_eq_none (by omega)] at h1
-        have := h (n - 1) (by omega)
-        rw [← h1] at this
-        simp at this
-    simp only [List.filterMap_cons, List.filterMap_nil, hb]
-    rw [List.getElem?_append]
-    split_ifs with h1 h2 h3
-    · rw [filterMap_range_getElem? f n (fun q hq => h q (by omega)), if_pos (by omega)]
-    · omega
-    · have : q = n := by omega
-      subst this; simp [hl, hb]
-    · rw [List.getElem?_singleton, if_neg (by omega)]
-
--- Moved up from after `reps0_length` (unchanged): `blockMap_frame` and `reps0_length` use it.
-theorem reps0_getElem? (c : ColAddr) (q : Nat) : c.reps0[q]? = c.rep 0 q := by
-  unfold ColAddr.reps0
-  rw [filterMap_range_getElem? _ _ (fun q hq => (rep_isSome_iff c q).2 hq)]
-  split_ifs with h
-  · rfl
-  · cases hr : c.rep 0 q with
-    | none => rfl
-    | some _ =>
-      have := (rep_isSome_iff c q).1 (by rw [hr]; rfl)
-      omega
-
 -- provides: U3, D7.1b (requested by U5 R18, second conjunct): the block map agrees with the frame
 -- of `e` on every frame variable.
 theorem blockMap_frame (e : EntryAddr) :
@@ -4667,16 +4778,6 @@ theorem reps0_take {c d : ColAddr} (h : d.resolve 0 (c.num 0) = some c) :
     | some _ =>
       have := (rep_isSome_iff c q).1 (by rw [hr]; rfl)
       omega
-
--- provides: U3, D7.1b (requested by U5 R19): frame roles lie in the prefix `P(E, e)`.
-theorem frameOf_mem_prefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
-    Role.ord e.col ∈ prefixRoles E e ∧
-      ∀ ov ∈ e.col.reps0, ov.1 ∈ prefixRoles E e ∧ ov.2 ∈ prefixRoles E e := by
-  refine ⟨(Tree.stack_mem_prefix he).1, ?_⟩
-  rintro ⟨o, v⟩ hov
-  obtain ⟨q, hq⟩ := List.mem_iff_getElem?.1 hov
-  rw [reps0_getElem?] at hq
-  exact rep_mem_prefix he hq
 
 -- provides: U3, L6.2e (requested by U5 R22, stage zero): `H[0]` is the restriction to `P`, and
 -- `f_0` is the identity on `D`.
@@ -5056,11 +5157,6 @@ theorem litCap_rolesBefore_col {E : Forest} {c : ColAddr} {k p : Nat}
   unfold rolesBefore
   rw [hm]
   exact takeWhile_ne_take_append _ _ m h1
-
-/-- L7.5d-3 (G-012): `capRole` is the origin wherever the origin is defined. -/
-theorem capRole_of_origin {E : Forest} (w : Closure.AdmCap E) {x y : Role}
-    (h : w.origin x = some y) : capRole w x = y := by
-  simp [capRole, h]
 
 -- provides: U3, L7.5d (requested by U5 R30): the Case 3 data exist.
 theorem cap_package {P : Prims.{u}} (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
