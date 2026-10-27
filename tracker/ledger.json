@@ -7151,7 +7151,7 @@
    ],
    "detail": "Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases.",
    "fix_by": "claude",
-   "repair": "Lean: projection (T3.8li) and headQuery_oldCap (T3.8lb) proved from the G-010 helpers, head_path_active proved by induction (prove/D7, merged). Open: respEdge_phase_D7, respEdge_head_high_D7, path_head_low_D7, projection_host_D7, headQuery_host_D7."
+   "repair": "Lean: projection (T3.8li), headQuery_oldCap (T3.8lb) and all five G-010 helpers proved (prove/D7, prove/F7)."
   },
   {
    "id": "G-011",
@@ -7168,7 +7168,7 @@
    ],
    "detail": "Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass.",
    "fix_by": "claude",
-   "repair": "Lean: firstDiff_path (L4.2c) proved, including case 4(b3) with a moved cap anchor (prove/D8, merged). Open: helpers admCap_stack_D8 and repairList_stack_D8 (stack correspondence along moves)."
+   "repair": "Lean: firstDiff_path (L4.2c) proved including case 4(b3) (prove/D8); its helpers admCap_stack_D8 and repairList_stack_D8 proved (prove/E8). Remaining dependence only on ordinary contracts."
   },
   {
    "id": "G-012",
