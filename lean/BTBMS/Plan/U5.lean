@@ -6204,6 +6204,42 @@ theorem root_position {H : Forest} (hV : Scan.CondV H) {sd : Scan.StopData}
     show e.heightPath <+: rd.col.path
     rw [hRp]; exact ⟨τ, hτ⟩
 
+/-- L8.8f (helper): truncation after an entry keeps its prefix. -/
+theorem prefixRoles_truncAfter_F4 {t : Forest} {e : EntryAddr} (he : e ∈ t.entryAddrs) :
+    prefixRoles (t.truncAfter e) e = prefixRoles t e := by
+  have hF := Tree.truncAfter_roles_under he
+  have hnd := Tree.roles_nodup (t.truncAfter e)
+  show (t.truncAfter e).roles.takeWhile (· != .slot e) = prefixRoles t e
+  rw [hF] at hnd ⊢
+  exact takeWhile_ne_of_decomp hnd
+
+/-- L8.8f (helper): the prefix of an entry whose slot lies in a persisting initial block. -/
+theorem prefixRoles_persist_F4 {H H' : Forest} {T : Role} (hP : rolesBefore H T <+: H'.roles)
+    {e : EntryAddr} (he : Role.slot e ∈ rolesBefore H T) :
+    prefixRoles H' e = prefixRoles H e := by
+  obtain ⟨X, hX⟩ := hP
+  have h1 : prefixRoles H' e = (rolesBefore H T).takeWhile (· != .slot e) := by
+    show H'.roles.takeWhile _ = _
+    rw [← hX]; exact takeWhile_ne_append_mem_F4 he
+  have h2 : prefixRoles H e = (rolesBefore H T).takeWhile (· != .slot e) := by
+    show H.roles.takeWhile _ = _
+    conv_lhs => rw [← List.takeWhile_append_dropWhile (p := (· != T)) (l := H.roles)]
+    exact takeWhile_ne_append_mem_F4 he
+  rw [h1, h2]
+
+/-- L8.8f (helper): a truncation of `H'` after one of its entries is configured by every
+configuration of `H'`, below the same bound. -/
+theorem truncAfter_sub_F4 {H' : Forest} {e : EntryAddr} (he : e ∈ H'.entryAddrs) :
+    (∀ A ∈ graph (H'.truncAfter e), A ∈ graph H') ∧
+      ∀ x ∈ (H'.truncAfter e).roles, x ∈ H'.roles := by
+  have hg : ∀ A ∈ graph (H'.truncAfter e), A ∈ graph H' := fun A hA =>
+    (List.mem_filter.1 ((graph_truncAfter H' e he A).1 hA)).1
+  refine ⟨hg, fun x hx => ?_⟩
+  have hl : BaseAtom.lim x ∈ graph (H'.truncAfter e) := by
+    simp only [graph, List.mem_append]
+    exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hx)))
+  exact graph_vars_roles H' _ (hg _ hl) x (by simp [BaseAtom.vars])
+
 /-- L8.8f: Case 3, a parent differs or an existing column ends first: a smaller failure, by the
 moving clause if `p ≤ ρ` and by a second capture if `p > ρ` (txt:1382-1470). The data of the
 repaired cap are `Packet.CapData` (U3 L7.5d). -/
@@ -6214,6 +6250,160 @@ theorem case_cap (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n) (pk : Sou
       (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner))
     {c : ColAddr} {k p : Nat} (hfd : pk.rk.firstDiff = .capAt c k p) :
     ∃ pk' L', Fails I.toPrims n pk' L' ∧ failPair pk' < failPair pk := by
+  classical
+  obtain ⟨cd⟩ := cap_package pk hadm hv hfd
+  obtain ⟨a', ha'⟩ : ∃ a', a' = Closure.moveAddr cd.w.moves pk.rk.b := ⟨_, rfl⟩
+  have ha'H : a' ∈ cd.w.H.entryAddrs := ha' ▸ cd.marked_mem
+  have hmslot : cd.w.origin (.slot a') = some (.slot pk.rk.b) := ha' ▸ cd.marked_slot
+  have hmhost : cd.w.origin (.ord a'.col) = some (.ord pk.rk.b.col) := ha' ▸ cd.marked_host
+  have hmpre : ∀ x ∈ prefixRoles cd.w.H a', ∃ y ∈ prefixRoles pk.rk.E pk.rk.b,
+      cd.w.origin x = some y := ha' ▸ cd.marked_prefix
+  have hmframe : ((frameOf a').map cd.nmH).reps = pk.tgtFrame.reps := ha' ▸ cd.marked_frame
+  have hTin : (Role.ord cd.sd.col).inEntry a' = true := ha' ▸ cd.stop_inside
+  have hreadmit : ∀ k H', expand cd.w.H k = some H' → pk.rk.E < H' →
+      (SrcRecord.mk pk.rk.E pk.rk.b (H'.truncAfter a') a' (.repair cd.w.moves)).Admitted :=
+    ha' ▸ cd.readmit
+  have hbE : pk.rk.b ∈ pk.rk.E.entryAddrs := hadm.2.1
+  have hlowu : ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner := hv.2.2.2.2.2.2
+  obtain ⟨hhostlow, -, -, hownlow⟩ := lowNames_spec pk hadm hv
+  have hTlow : ∀ x ∈ prefixRoles pk.rk.E pk.rk.b, pk.tgtChart x ∈ pk.lowNames := fun x hx =>
+    List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inl (List.mem_map_of_mem hx))))
+  have hframe_low : ∀ w x, pk.tgtFrame.toFr w = some x → x ∈ pk.lowNames :=
+    fun w x hx => toFr_tgtFrame_low_D4 pk hadm hv hx
+  have hHL : Scan.InL cd.w.H := cd.w.inL
+  have hTH : Role.ord cd.sd.col ∈ cd.w.H.roles := Scan.stopData_col_mem cd.stop
+  have hbefT := Tree.prefix_slot_before_inEntry ha'H hTH hTin (by intro h; cases h)
+  have hslotT : Role.slot a' ∈ rolesBefore cd.w.H (.ord cd.sd.col) :=
+    hbefT.subset (List.mem_append_right _ (List.mem_singleton_self _))
+  have hpreT : ∀ x ∈ prefixRoles cd.w.H a', x ∈ rolesBefore cd.w.H (.ord cd.sd.col) :=
+    fun x hx => hbefT.subset (List.mem_append_left _ hx)
+  have hcolP : Role.ord a'.col ∈ prefixRoles cd.w.H a' := (frameOf_mem_prefix ha'H).1
+  have hcolT := hpreT _ hcolP
+  have hnmH_own : cd.nmH (.slot a') = pk.owner := by
+    rw [cd.compat _ hslotT _ hmslot, cd.nm_owner]
+  have hnmH_host : cd.nmH (.ord a'.col) = pk.host := by
+    rw [cd.compat _ hcolT _ hmhost, cd.nm_tgt _ (frameOf_mem_prefix hbE).1]; exact hv.2.2.1
+  have hpreLow : ∀ x ∈ prefixRoles cd.w.H a', cd.nmH x ∈ pk.lowNames := by
+    intro x hx
+    obtain ⟨y, hy, hxy⟩ := hmpre x hx
+    rw [cd.compat x (hpreT x hx) y hxy, cd.nm_tgt y hy]; exact hTlow y hy
+  have hαown : (cd.asg' ∘ cd.nmH) (.slot a') = pk.asg pk.owner := by
+    show cd.asg' (cd.nmH _) = _; rw [hnmH_own]; exact cd.asg_old _ (Or.inr rfl)
+  have hαhost : (cd.asg' ∘ cd.nmH) (.ord a'.col) = pk.asg pk.host := by
+    show cd.asg' (cd.nmH _) = _; rw [hnmH_host]; exact cd.asg_old _ (Or.inl hhostlow)
+  -- the step `H' = H[k']` above `E`
+  obtain ⟨k', H', hk1, -, hH', hEH'⟩ := Closure.cofinal_bound hadm.1 hHL
+    (Closure.lt_admCap cd.w) (Scan.lastCol_of_ordinary cd.ordinary)
+  have hadm' := hreadmit k' H' hH' hEH'
+  obtain ⟨rs, hrs, -, -, -, hP, -⟩ := roleSets_eq cd.stop cd.root
+  have hpersist : rolesBefore cd.w.H (.ord cd.sd.col) <+: H'.roles :=
+    hP ▸ persist_prefix hHL hrs hH'
+  have ha'H' : a' ∈ H'.entryAddrs := List.mem_filterMap.2 ⟨.slot a', hpersist.subset hslotT, rfl⟩
+  obtain ⟨hgF', hrF'⟩ := truncAfter_sub_F4 ha'H'
+  have hpreF' : prefixRoles (H'.truncAfter a') a' = prefixRoles cd.w.H a' := by
+    rw [prefixRoles_truncAfter_F4 ha'H', prefixRoles_persist_F4 hpersist hslotT]
+  -- the label (24)-(25)
+  obtain ⟨T', hT', -, -⟩ := Closure.anchorOrigin_prefix (cap := some cd.w) hHL cd.stop
+  have hEP : ePrefix pk.rk.E (some cd.w) cd.sd = rolesBefore pk.rk.E T' := by
+    unfold ePrefix; rw [hT']
+  let bv : Option Name → Ordinal.{u} := fun z => z.elim Ls cd.asg'
+  let Λ1 : Diagram (Option Name) := Diagram.ofBase
+    ((restrictTo (graph pk.rk.E) (ePrefix pk.rk.E (some cd.w) cd.sd)).map
+      (BaseAtom.map fun y => some (cd.nm y)))
+  let Λ2 : Diagram (Option Name) :=
+    [noB pk.rk.tgtKey pk.rk.tgtSel (pk.tgtFrame.map some) (some pk.owner) none]
+  let Λ3 : Diagram (Option Name) := Diagram.ofBase (BaseAtom.lt none (some pk.owner) ::
+    pk.lowNames.map fun x => BaseAtom.lt (some x) none)
+  let Λ4 : Diagram (Option Name) := Diagram.map some pk.aux
+  have hfr_eq : ∀ w, ((pk.tgtFrame.map some).toFr w).map bv = (pk.tgtFrame.toFr w).map pk.asg := by
+    intro w
+    rw [toFr_map]
+    cases hf : pk.tgtFrame.toFr w with
+    | none => rfl
+    | some x =>
+      simp only [Option.map_some]
+      exact congrArg some (cd.asg_old x (Or.inl (hframe_low w x hf)))
+  have hΛ1 : Λ1.Holds I.toPrims bv := by
+    rw [holds_ofBase, baseHolds_map']; exact cd.ePrefix_holds
+  have hΛ2 : Λ2.Holds I.toPrims bv := by
+    intro A hA
+    simp only [Λ2, List.mem_singleton] at hA
+    subst hA
+    show ¬ BlockAbove I.toPrims (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+      (fun x => ((pk.tgtFrame.map some).toFr x).map bv) Ls (cd.asg' pk.owner)
+    rw [cd.asg_old _ (Or.inr rfl)]
+    simp only [hfr_eq]
+    exact h23
+  have hΛ3 : Λ3.Holds I.toPrims bv := by
+    rw [holds_ofBase]
+    intro A hA
+    rcases List.mem_cons.1 hA with rfl | hA
+    · show Ls < cd.asg' pk.owner; rw [cd.asg_old _ (Or.inr rfl)]; exact hLs
+    · obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hA
+      show cd.asg' x < Ls; rw [cd.asg_old _ (Or.inl hx)]; exact hlow x hx
+  have hΛ4 : Λ4.Holds I.toPrims bv := by
+    rw [holds_map_E4]
+    refine (Diagram.holds_congr _ _ _ _ fun n hn => ?_).2 (valid_aux pk hv)
+    exact cd.asg_old n (Or.inl (List.mem_append_right _ hn))
+  have hΛ : (Λ1 ++ Λ2 ++ Λ3 ++ Λ4).Holds I.toPrims bv :=
+    (holds_append_E4 _ _ _ _).2 ⟨(holds_append_E4 _ _ _ _).2
+      ⟨(holds_append_E4 _ _ _ _).2 ⟨hΛ1, hΛ2⟩, hΛ3⟩, hΛ4⟩
+  have hW0 : pk.asg pk.owner < (cd.asg' ∘ cd.nmH) (.ord cd.sd.col) := cd.owner_lt
+  have hlowW : ∀ n ∈ pk.lowNames, bv (some n) < (cd.asg' ∘ cd.nmH) (.ord cd.sd.col) :=
+    fun n hn => by
+      show cd.asg' n < _; rw [cd.asg_old n (Or.inl hn)]; exact ((hlow n hn).trans hLs).trans hW0
+  have hnoneW : bv none < (cd.asg' ∘ cd.nmH) (.ord cd.sd.col) := hLs.trans hW0
+  have hownW : bv (some pk.owner) < (cd.asg' ∘ cd.nmH) (.ord cd.sd.col) := by
+    show cd.asg' _ < _; rw [cd.asg_old _ (Or.inr rfl)]; exact hW0
+  have hΛW : ∀ z ∈ (Λ1 ++ Λ2 ++ Λ3 ++ Λ4).vars, bv z < (cd.asg' ∘ cd.nmH) (.ord cd.sd.col) := by
+    intro z hz
+    simp only [vars_append_E4, List.mem_append] at hz
+    rcases hz with ((hz | hz) | hz) | hz
+    · simp only [Λ1] at hz
+      rw [ofBase_vars, baseVars_map] at hz
+      obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hz
+      obtain ⟨A, hA, hyA⟩ := List.mem_flatMap.1 hy
+      exact cd.ePrefix_below y (mem_of_restrictTo_D4 hA hyA)
+    · simp only [Λ2, Diagram.vars, List.flatMap_cons, List.flatMap_nil, List.append_nil, noB,
+        Atom.vars, List.mem_cons, List.mem_filterMap] at hz
+      rcases hz with rfl | rfl | ⟨w, -, hw⟩
+      · exact hownW
+      · exact hnoneW
+      · rw [toFr_map] at hw
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hw
+        exact hlowW x (hframe_low w x hx)
+    · simp only [Λ3] at hz
+      rw [ofBase_vars] at hz
+      obtain ⟨A, hA, hzA⟩ := List.mem_flatMap.1 hz
+      rcases List.mem_cons.1 hA with rfl | hA
+      · simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hzA
+        rcases hzA with rfl | rfl
+        · exact hnoneW
+        · exact hownW
+      · obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hA
+        simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hzA
+        rcases hzA with rfl | rfl
+        · exact hlowW x hx
+        · exact hnoneW
+    · simp only [Λ4] at hz
+      rw [vars_map_E4] at hz
+      obtain ⟨n, hn, rfl⟩ := List.mem_map.1 hz
+      exact hlowW n (List.mem_append_right _ hn)
+  -- `DLab` at the repaired cap
+  obtain ⟨γ, b', hγ, hγW, -, hbind', hΛ', -, hroot, hmove⟩ := hD pk.rk.E (some cd.w)
+    (cd.asg' ∘ cd.nmH) cd.sd cd.rd hHL cd.ordinary cd.stop cd.root cd.config
+    (Or.inr ⟨hadm.1, fun J hJ => by have := cd.qsize J hJ; omega⟩) (Option Name)
+    (Λ1 ++ Λ2 ++ Λ3 ++ Λ4) (fun x => some (cd.nmH x)) (fun y => some (cd.nm y)) bv
+    (fun _ => False) (fun _ _ => rfl) (fun x hx y hy => by rw [cd.compat x hx y hy])
+    (fun T'' A hT'' hA => by
+      rw [hT'] at hT''
+      cases hT''
+      refine List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ ?_))
+      rw [← hEP] at hA
+      exact List.mem_map_of_mem (List.mem_map_of_mem hA))
+    hΛ hΛW (fun _ _ h => h.elim) k' H' hH'
+  obtain ⟨⟨⟨hΛ1', hΛ2'⟩, hΛ3'⟩, hΛ4'⟩ := (holds_append_E4 _ _ _ _).1 hΛ' |>.imp_left
+    fun h => (holds_append_E4 _ _ _ _).1 h |>.imp_left fun h => (holds_append_E4 _ _ _ _).1 h
   sorry
 
 /-- L8.8g: the least-failure argument (txt:1349-1352): if every failure has a failure with a
