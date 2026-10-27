@@ -4361,14 +4361,14 @@ theorem put_entryAt_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F
       · simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append,
           List.cons_prefix_cons, List.nil_prefix, and_true, Prod.mk.injEq] at hr
         obtain ⟨rfl, rfl⟩ := hr
-        simp only [entryAt_nil_D3, Tree.cols, snoc_entry_eq_E3, Option.map_some, List.length_nil]
+        simp only [entryAt_nil_D3, snoc_entry_eq_E3, Option.map_some, List.length_nil]
         rfl
       · have hne : (j, i) ≠ (cs.length, es.length) := by
           rintro he
           apply hr
           simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append, he]
           exact List.cons_prefix_cons.2 ⟨rfl, List.nil_prefix⟩
-        simp only [entryAt_nil_D3, Tree.cols]
+        simp only [entryAt_nil_D3]
         exact snoc_entry_ne_E3 cs es q _ _ hne
     | cons s P =>
       obtain ⟨c, m⟩ := s
@@ -4389,7 +4389,7 @@ theorem put_entryAt_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F
           rw [show (rpath_E3 k H).length + 1 = 1 + (rpath_E3 k H).length by omega,
             ← List.drop_drop]
           rfl
-        simp only [entryAt_cons_D3, Tree.cols, snoc_entry_eq_E3, Option.bind_some]
+        simp only [entryAt_cons_D3, snoc_entry_eq_E3, Option.bind_some]
         rw [hh, hr, hu]
         refine ⟨fun h => ⟨(ih.1 h).1, fun b => ?_⟩, fun h1 h2 => ?_, ih.2.2⟩
         · rw [num_cons_D3, (ih.1 h).2 (b + cs.length + 1)]
@@ -4408,7 +4408,7 @@ theorem put_entryAt_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F
             List.cons_prefix_cons, not_and]
           exact fun h => absurd h hs
         refine ⟨fun h => absurd h hnh, fun _ h => absurd h hnr, fun _ _ => ?_⟩
-        simp only [entryAt_cons_D3, Tree.cols]
+        simp only [entryAt_cons_D3]
         rw [snoc_entry_ne_E3 cs es q _ H hs]
 
 /-! Words of filled holes and first decreases. -/
@@ -4419,7 +4419,7 @@ theorem gword_put_E3 (Z : Forest) : ∀ (k : Nat) (F : Forest), RouteOK_D3 k F �
     have hc : cols ≠ [] := hR
     rw [put_zero_D3 Z hc, put_zero_D3 _ hc]
     obtain ⟨zc⟩ := Z
-    simp [gwordAt, gwordCols_append_E3, Tree.empty, Tree.cols, gwordCols]
+    simp [gwordAt, gwordCols_append_E3, Tree.empty, Tree.cols]
   | k + 1, F, hR, e => by
     obtain ⟨cs, es, q, H, rfl, hR'⟩ := hR
     rw [put_succ_D3, put_succ_D3]
@@ -5915,9 +5915,814 @@ theorem condS_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some 
     rwa [min_eq_left (by omega)] at h1
   · exact lt_of_firstDec hlt hfd ⟨hb1, hb2⟩ hab
 
+/-! ### T3.2o helpers (branch E3): profiles of shifted and filled heights -/
+
+theorem takeWhile_map_len_E3 {f : Nat → Nat} (hf : Function.Injective f) (p : Nat) :
+    ∀ rest : Column, ((Tree.mapCol f rest).takeWhile (fun x => x.1 == f p)).length =
+      (rest.takeWhile (fun x => x.1 == p)).length
+  | [] => rfl
+  | (q, h) :: rest => by
+    simp only [Tree.mapCol, List.takeWhile_cons]
+    by_cases hq : q = p
+    · subst hq; simp [takeWhile_map_len_E3 hf q rest]
+    · have : f q ≠ f p := fun h => hq (hf h)
+      simp [hq, this]
+
+theorem profileAux_map_E3 {f : Nat → Nat} (hf : Function.Injective f) (d : Nat) (X : Forest) :
+    profileAux d (Tree.map f X) = profileAux d X := by
+  induction d, X using profileAux.induct with
+  | case1 d p rest tail =>
+    simp only [Tree.map, Tree.mapCols, Tree.mapCol, profileAux]
+    rw [takeWhile_map_len_E3 hf p rest]
+  | case2 d p rest tail head tail_1 ih =>
+    simp only [Tree.map, Tree.mapCols, Tree.mapCol] at ih ⊢
+    rw [profileAux, profileAux]; exact ih
+  | case3 d cols hne =>
+    match cols, hne with
+    | [], _ => simp [Tree.map, Tree.mapCols, profileAux]
+    | [] :: cs, _ => simp [Tree.map, Tree.mapCols, Tree.mapCol, profileAux]
+    | ((p, h) :: rest) :: cs, hne => exact absurd rfl (hne p h rest cs)
+
+theorem profile_shift_E3 (r d : Nat) (X : Forest) : profile (shift r d X) = profile X := by
+  have hf : Function.Injective (shiftVal r d) := (StrictMono.injective (fun _ _ h =>
+    shiftVal_strictMono_D3 r d h))
+  obtain ⟨cols⟩ := X
+  cases cols with
+  | nil => rfl
+  | cons c cs =>
+    show (profileAux 0 (Tree.map (shiftVal r d) (Tree.node (c :: cs))) : WithBot (Nat ×ₗ Nat)) =
+      profileAux 0 (Tree.node (c :: cs))
+    rw [profileAux_map_E3 hf]
+
+/-- One more singleton level above a height. -/
+def sig_E3 : WithBot (Nat ×ₗ Nat) → WithBot (Nat ×ₗ Nat)
+  | ⊥ => ((toLex (0, 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+  | (x : Nat ×ₗ Nat) => ((toLex ((ofLex x).1 + 1, (ofLex x).2) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+
+theorem profile_single_E3 (p : Nat) (Y : Forest) : profile (.node [[(p, Y)]]) = sig_E3 (profile Y) := by
+  obtain ⟨ycols⟩ := Y
+  cases ycols with
+  | nil =>
+    show (profileAux 0 (Tree.node [[(p, Tree.node [])]]) : WithBot (Nat ×ₗ Nat)) = sig_E3 ⊥
+    simp [profileAux, sig_E3]
+  | cons c cs =>
+    show (profileAux 0 (Tree.node [[(p, Tree.node (c :: cs))]]) : WithBot (Nat ×ₗ Nat)) = _
+    rw [spx_profileAux_cons 0 p (by simp [Tree.cols]), spx_profileAux_one]
+    rfl
+
+theorem lt_sig_E3 (x : WithBot (Nat ×ₗ Nat)) : x < sig_E3 x := by
+  cases x with
+  | bot => exact WithBot.bot_lt_coe _
+  | coe x =>
+    simp only [sig_E3]
+    rw [WithBot.coe_lt_coe, ← toLex_ofLex x, Prod.Lex.lt_iff]
+    left; simp
+
+theorem sig_mono_E3 {x y : WithBot (Nat ×ₗ Nat)} (h : x ≤ y) : sig_E3 x ≤ sig_E3 y := by
+  cases x with
+  | bot =>
+    cases y with
+    | bot => exact le_rfl
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_le_coe]
+      apply le_of_lt
+      rw [Prod.Lex.lt_iff]; left; simp
+  | coe x =>
+    cases y with
+    | bot => exact absurd h (by simp)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_le_coe] at h ⊢
+      rw [← toLex_ofLex x, ← toLex_ofLex y, Prod.Lex.le_iff] at h
+      rw [Prod.Lex.le_iff]
+      simp only [ofLex_toLex] at h ⊢
+      omega
+
+theorem sig_strictMono_E3 : StrictMono sig_E3 := by
+  intro x y h
+  cases x with
+  | bot =>
+    cases y with
+    | bot => exact absurd h (lt_irrefl _)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_lt_coe, ← toLex_ofLex y, Prod.Lex.lt_iff]
+      simp only [ofLex_toLex]
+      left; omega
+  | coe x =>
+    cases y with
+    | bot => exact absurd h (by simp)
+    | coe y =>
+      simp only [sig_E3]
+      rw [WithBot.coe_lt_coe] at h ⊢
+      rw [← toLex_ofLex x, ← toLex_ofLex y, Prod.Lex.lt_iff] at h
+      rw [Prod.Lex.lt_iff]
+      simp only [ofLex_toLex] at h ⊢
+      omega
+
+theorem sig_iter_mono_E3 (k : Nat) {x y : WithBot (Nat ×ₗ Nat)} (h : x ≤ y) :
+    sig_E3^[k] x ≤ sig_E3^[k] y := by
+  induction k generalizing x y with
+  | zero => exact h
+  | succ k ih => rw [Function.iterate_succ_apply, Function.iterate_succ_apply]; exact ih (sig_mono_E3 h)
+
+theorem sig_iter_coe_E3 (k a b : Nat) :
+    sig_E3^[k] (((toLex (a, b) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) =
+      ((toLex (a + k, b) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+  induction k generalizing a with
+  | zero => rfl
+  | succ k ih =>
+    rw [Function.iterate_succ_apply]
+    simp only [sig_E3, ofLex_toLex]
+    rw [ih]; congr 3; omega
+
+/-- A singleton chain of depth `k`: one column with one entry at each level above depth `k`, and a
+single column at depth `k`. -/
+def Chain_E3 : Nat → Forest → Prop
+  | 0, S => S.cols.length = 1
+  | k + 1, X => ∃ p Y, X = .node [[(p, Y)]] ∧ Chain_E3 k Y
+
+theorem chain_routeOK_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → RouteOK_D3 k X
+  | 0, X, h => by
+    show X.cols ≠ []
+    intro hc; simp [Chain_E3, hc] at h
+  | k + 1, _, ⟨p, Y, rfl, h⟩ => ⟨[], [], p, Y, rfl, chain_routeOK_E3 k Y h⟩
+
+theorem chain_map_E3 (f : Nat → Nat) : ∀ (k : Nat) (X : Forest),
+    Chain_E3 k (Tree.map f X) ↔ Chain_E3 k X
+  | 0, X => by simp only [Chain_E3, cols_length_map_E3]
+  | k + 1, .node cols => by
+    simp only [Chain_E3]
+    constructor
+    · rintro ⟨p, Y, hX, h⟩
+      simp only [Tree.map, Tree.node.injEq] at hX
+      match cols, hX with
+      | [[(q, Y0)]], hX =>
+        simp only [Tree.mapCols, Tree.mapCol, List.cons.injEq, Prod.mk.injEq, and_true] at hX
+        obtain ⟨-, rfl⟩ := hX
+        exact ⟨q, Y0, rfl, (chain_map_E3 f k Y0).1 h⟩
+      | [], hX => simp [Tree.mapCols] at hX
+      | [[]], hX => simp [Tree.mapCols, Tree.mapCol] at hX
+      | [x :: y :: zs], hX => simp [Tree.mapCols, Tree.mapCol] at hX
+      | c :: d :: ds, hX => simp [Tree.mapCols] at hX
+    · rintro ⟨p, Y, hX, h⟩
+      cases hX
+      exact ⟨f p, Tree.map f Y, by simp [Tree.map, Tree.mapCols, Tree.mapCol],
+        (chain_map_E3 f k Y).2 h⟩
+
+theorem nextLayer_single_E3 (p : Nat) (Y : Forest) : nextLayer (.node [[(p, Y)]]) = Y := by
+  simp [nextLayer, lastEntry?, Tree.cols]
+
+theorem chain_skip_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → ∀ j, j ≤ k →
+    Chain_E3 (k - j) (skipLayers X j)
+  | k, X, h, 0, _ => by simpa [skipLayers] using h
+  | 0, X, h, j + 1, hj => absurd hj (by omega)
+  | k + 1, _, ⟨p, Y, rfl, h⟩, j + 1, hj => by
+    rw [skipLayers, nextLayer_single_E3, show k + 1 - (j + 1) = k - j by omega]
+    exact chain_skip_E3 k Y h j (by omega)
+
+theorem put_single_E3 (Z : Forest) (k p : Nat) (Y : Forest) :
+    replaceAt 0 0 Z (k + 1) (.node [[(p, Y)]]) = .node [[(p, replaceAt 0 0 Z k Y)]] := by
+  have := put_succ_D3 Z k [] [] p Y
+  simpa using this
+
+theorem chain_put_E3 (Z : Forest) : ∀ (k : Nat) (X : Forest), Chain_E3 k X →
+    profile (replaceAt 0 0 Z k X) = sig_E3^[k] (profile Z)
+  | 0, .node cols, h => by
+    simp only [Chain_E3, Tree.cols] at h
+    match cols, h with
+    | [c], _ =>
+      rw [put_zero_D3 Z (by simp)]
+      simp only [List.dropLast_singleton, List.nil_append, Function.iterate_zero, id, eta_E3]
+  | k + 1, _, ⟨p, Y, rfl, h⟩ => by
+    rw [put_single_E3, profile_single_E3, chain_put_E3 Z k Y h, Function.iterate_succ_apply']
+
+theorem chain_self_E3 {k : Nat} {X : Forest} (h : Chain_E3 k X) :
+    profile X = sig_E3^[k] (profile (.node [routeCol_D3 k X])) := by
+  conv_lhs => rw [← put_self_D3 k X (chain_routeOK_E3 k X h)]
+  exact chain_put_E3 _ k X h
+
+/-- Route containers of a filled chain have smaller profiles than the filled chain. -/
+theorem chain_route_E3 (Z : Forest) : ∀ (k : Nat) (X : Forest), Chain_E3 k X →
+    ∀ (ρ : EntryAddr) (x : Nat × Forest), IsRoute_E3 k X ρ → X.entryAt ρ = some x →
+      profile (replaceAt 0 0 Z (k - ρ.col.path.length - 1) x.2) < profile (replaceAt 0 0 Z k X)
+  | 0, X, _, ρ, x, hr, _ => by
+    exfalso; have := hr.length_le; simp [rpath_E3, EntryAddr.heightPath] at this
+  | k + 1, _, ⟨p, Y, rfl, h⟩, ⟨⟨P, c⟩, i⟩, x, hr, hx => by
+    have hrp : rpath_E3 (k + 1) (.node [[(p, Y)]]) = (0, 0) :: rpath_E3 k Y := by
+      have := rpath_snoc_E3 k [] [] p Y; simpa using this
+    rw [put_single_E3, profile_single_E3]
+    cases P with
+    | nil =>
+      simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.nil_append, List.cons_prefix_cons,
+        Prod.mk.injEq, List.nil_prefix, and_true] at hr
+      obtain ⟨rfl, rfl⟩ := hr
+      simp only [entryAt_nil_D3] at hx
+      simp at hx; subst hx
+      simpa using lt_sig_E3 _
+    | cons s P =>
+      obtain ⟨c0, i0⟩ := s
+      simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append, List.cons_prefix_cons,
+        Prod.mk.injEq] at hr
+      obtain ⟨⟨rfl, rfl⟩, hr⟩ := hr
+      rw [entryAt_cons_D3] at hx
+      simp only [List.getElem?_cons_zero, Option.bind_some] at hx
+      have := chain_route_E3 Z k Y h ⟨⟨P, c⟩, i⟩ x hr hx
+      simp only [List.length_cons] at this ⊢
+      rw [show k + 1 - (P.length + 1) - 1 = k - P.length - 1 by omega]
+      exact lt_trans this (lt_sig_E3 _)
+
+/-- In a chain every entry is a route container or lies in the hole. -/
+theorem chain_entries_E3 : ∀ (k : Nat) (X : Forest), Chain_E3 k X → ∀ (ρ : EntryAddr) (x : Nat × Forest),
+    X.entryAt ρ = some x → IsRoute_E3 k X ρ ∨ InHole_E3 k X ρ.col
+  | 0, X, h, ⟨⟨P, c⟩, i⟩, x, _ => by
+    right
+    have h0 : hcol_E3 0 X = 0 := by simp only [hcol_E3, skipLayers]; simp only [Chain_E3] at h; omega
+    cases P with
+    | nil => exact Or.inl ⟨rfl, by rw [h0]; omega⟩
+    | cons s P => exact Or.inr ⟨s.1, s.2, P, rfl, by rw [h0]; omega⟩
+  | k + 1, _, ⟨p, Y, rfl, h⟩, ⟨⟨P, c⟩, i⟩, x, hx => by
+    have hrp : rpath_E3 (k + 1) (.node [[(p, Y)]]) = (0, 0) :: rpath_E3 k Y := by
+      have := rpath_snoc_E3 k [] [] p Y; simpa using this
+    have hhc : hcol_E3 (k + 1) (.node [[(p, Y)]]) = hcol_E3 k Y := by
+      have := hcol_snoc_E3 k [] [] p Y; simpa using this
+    cases P with
+    | nil =>
+      left
+      rw [entryAt_nil_D3] at hx
+      rcases c with _ | c
+      · rcases i with _ | i
+        · simp [IsRoute_E3, EntryAddr.heightPath, hrp]
+        · simp at hx
+      · simp at hx
+    | cons s P =>
+      obtain ⟨c0, i0⟩ := s
+      rw [entryAt_cons_D3] at hx
+      rcases c0 with _ | c0
+      · rcases i0 with _ | i0
+        · simp only [List.getElem?_cons_zero, Option.bind_some] at hx
+          rcases chain_entries_E3 k Y h ⟨⟨P, c⟩, i⟩ x hx with h1 | h1
+          · left
+            simp only [IsRoute_E3, EntryAddr.heightPath, hrp, List.cons_append,
+              List.cons_prefix_cons, true_and] at h1 ⊢
+            exact h1
+          · right
+            simp only [InHole_E3, hrp, hhc, List.cons_append, List.cons.injEq, true_and] at h1 ⊢
+            exact h1
+        · simp at hx
+      · simp at hx
+
+theorem profileAux_col_E3 (d : Nat) (c : Column) (cs : List Column) :
+    profileAux d (.node (c :: cs)) = profileAux d (.node [c]) := by
+  rcases c with _ | ⟨⟨p, h⟩, rest⟩
+  · simp [profileAux]
+  · obtain ⟨hc⟩ := h
+    cases hc <;> simp [profileAux]
+
+theorem takeWhile_fst_len_E3 (p : Nat) : ∀ (l l' : Column), l.map Prod.fst = l'.map Prod.fst →
+    (l.takeWhile (fun x => x.1 == p)).length = (l'.takeWhile (fun x => x.1 == p)).length
+  | [], [], _ => rfl
+  | [], _ :: _, h => by simp at h
+  | _ :: _, [], h => by simp at h
+  | x :: l, y :: l', h => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    simp only [List.takeWhile_cons, h.1]
+    split <;> simp [takeWhile_fst_len_E3 p l l' h.2]
+
+theorem profileAux_entry_E3 (d : Nat) (x : Nat × Forest) (l l' : Column)
+    (h : l.map Prod.fst = l'.map Prod.fst) (tl tl' : List Column) :
+    profileAux d (.node ((x :: l) :: tl)) = profileAux d (.node ((x :: l') :: tl')) := by
+  obtain ⟨p, ⟨hc⟩⟩ := x
+  cases hc with
+  | nil => simp only [profileAux]; rw [takeWhile_fst_len_E3 p l l' h]
+  | cons c cs => simp only [profileAux]
+
+/-- A filling changes the profile only through a chain. -/
+theorem put_profile_E3 (Z : Forest) : ∀ (k : Nat) (G : Forest), RouteOK_D3 k G →
+    profile (replaceAt 0 0 Z k G) = profile G ∨ Chain_E3 k G
+  | 0, .node cols, hR => by
+    have hc : cols ≠ [] := hR
+    match cols, hc with
+    | [c], _ => exact Or.inr rfl
+    | c :: c' :: cs, _ =>
+      left
+      rw [put_zero_D3 Z (by simp)]
+      simp only [List.dropLast_cons_cons, List.cons_append]
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      rw [profileAux_col_E3, profileAux_col_E3 0 c (c' :: cs)]
+  | k + 1, G, hR => by
+    obtain ⟨cs, es, q, Y, rfl, hR'⟩ := hR
+    rw [put_succ_D3]
+    rcases cs with _ | ⟨c, cs⟩
+    · rcases es with _ | ⟨x, es⟩
+      · rcases put_profile_E3 Z k Y hR' with h | h
+        · left
+          have e1 : (Tree.node ([] ++ [[] ++ [(q, replaceAt 0 0 Z k Y)]]) : Forest) =
+            .node [[(q, replaceAt 0 0 Z k Y)]] := rfl
+          have e2 : (Tree.node ([] ++ [[] ++ [(q, Y)]]) : Forest) = .node [[(q, Y)]] := rfl
+          rw [e1, e2, profile_single_E3, profile_single_E3, h]
+        · exact Or.inr ⟨q, Y, rfl, h⟩
+      · left
+        show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+        simp only [List.nil_append, List.cons_append]
+        exact congrArg _ (profileAux_entry_E3 0 x _ _ (by simp) _ _)
+    · left
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      simp only [List.cons_append]
+      rw [profileAux_col_E3, profileAux_col_E3 0 c (cs ++ [es ++ [(q, Y)]])]
+
+/-- The bottom of a chain: a head `P ⌢ V` against the stopping column `P ⌢ [(s, ∅)]`. -/
+theorem bot_E3 {P V : Column} {rest : List Column} {s : Nat} (hP : P ≠ []) (hPs : ∀ x ∈ P, s ≤ x.1)
+    (hV : ∀ v ∈ V.head?, v.1 < s) (hN : spxNoninc (P ++ [(s, Tree.empty)])) :
+    profile (.node ((P ++ V) :: rest)) = profile (.node [P ++ [(s, Tree.empty)]]) ∨
+      ((∀ x ∈ P, x = (s, Tree.empty)) ∧
+        profile (.node ((P ++ V) :: rest)) = ((toLex (0, P.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) ∧
+        profile (.node [P ++ [(s, Tree.empty)]]) =
+          ((toLex (0, P.length + 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) := by
+  obtain ⟨⟨q0, h0⟩, P', rfl⟩ := List.exists_cons_of_ne_nil hP
+  have hq0 : s ≤ q0 := hPs (q0, h0) (by simp)
+  have hVt : V.takeWhile (fun x => x.1 == q0) = [] := by
+    cases V with
+    | nil => rfl
+    | cons v vs =>
+      have : v.1 < s := hV v (by simp)
+      simp [show v.1 ≠ q0 by omega]
+  obtain ⟨hc⟩ := h0
+  cases hc with
+  | cons c cs =>
+    left
+    show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+    simp only [List.cons_append, profileAux]
+  | nil =>
+    by_cases hall : ∀ x ∈ P', (x.1 == q0) = true
+    · by_cases hs : s = q0
+      · subst hs
+        right
+        have hrun := spx_run_empty s (P' ++ [(s, Tree.empty)])
+          (show spxNoninc ((s, Tree.empty) :: (P' ++ [(s, Tree.empty)])) from hN)
+        rw [List.takeWhile_append_of_pos hall] at hrun
+        refine ⟨?_, ?_, ?_⟩
+        · intro x hx
+          simp only [List.mem_cons] at hx
+          rcases hx with rfl | hx
+          · rfl
+          · exact hrun x (List.mem_append_left _ hx)
+        · show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = _
+          simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall, hVt]
+          simp; omega
+        · show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = _
+          simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall]
+          simp; omega
+      · left
+        show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+        simp only [List.cons_append, profileAux, List.takeWhile_append_of_pos hall, hVt]
+        simp [show s ≠ q0 from hs]
+    · left
+      show (profileAux 0 _ : WithBot (Nat ×ₗ Nat)) = profileAux 0 _
+      simp only [List.cons_append, profileAux]
+      have hlen : (P'.takeWhile (fun x => x.1 == q0)).length ≠ P'.length := by
+        intro h
+        apply hall
+        have heq := (List.takeWhile_prefix (l := P') (fun x => x.1 == q0)).eq_of_length h
+        have := List.all_takeWhile (l := P') (p := fun x => x.1 == q0)
+        rw [heq, List.all_eq_true] at this
+        exact this
+      rw [List.takeWhile_append, List.takeWhile_append, if_neg hlen, if_neg hlen]
+
+theorem noninc_ge_E3 {col : Column} (h : spxNoninc col) :
+    ∀ (k i : Nat) (x y : Nat × Forest), col[i]? = some x → col[i + k]? = some y → y.1 ≤ x.1
+  | 0, i, x, y, hx, hy => by rw [Nat.add_zero, hx] at hy; cases hy; exact le_rfl
+  | k + 1, i, x, y, hx, hy => by
+    obtain ⟨z, hz⟩ : ∃ z, col[i + 1]? = some z := by
+      have := (List.getElem?_eq_some_iff.1 hy).1
+      exact ⟨_, List.getElem?_eq_getElem (by omega)⟩
+    have h1 := noninc_ge_E3 h k (i + 1) z y hz (by rw [show i + 1 + k = i + (k + 1) by omega]; exact hy)
+    have h2 := h i x z hx hz
+    rcases h2 with h2 | ⟨h2, -⟩ <;> omega
+
+theorem noninc_shift_E3 {col : Column} (h : spxNoninc col) (r d : Nat) :
+    spxNoninc (Tree.mapCol (shiftVal r d) col) := by
+  intro i x y hx hy
+  rw [treeMapCol_eq_map, List.getElem?_map] at hx hy
+  obtain ⟨x0, hx0, rfl⟩ := Option.map_eq_some_iff.1 hx
+  obtain ⟨y0, hy0, rfl⟩ := Option.map_eq_some_iff.1 hy
+  exact entryLe_shift_D3 r d (h i x0 y0 hx0 hy0)
+
+/-- Under I, a query-free stop at positive depth has at least two columns (otherwise the step is
+special). -/
+theorem fq_E3 {A : Forest} {sd : StopData} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hsd : stopData A = some sd) (hpos : 0 < sd.depth) (hc0 : sd.col.col = 0) : sd.Q ≠ [] := by
+  intro hQ
+  obtain ⟨oe, col, p, -, hoe, hcol, -, hlast, hidx, hnum⟩ := ownerEntry_data hsd hpos
+  obtain ⟨-, -, -, h4, -⟩ := stopData_core hsd
+  have hent : A.entryAt oe = some (p, skipLayers A sd.depth) := by
+    simp only [Tree.entryAt, hcol, Option.bind_some]
+    rw [List.getLast?_eq_getElem?, show col.length - 1 = oe.idx by omega] at hlast
+    exact hlast
+  have hne : skipLayers A sd.depth ≠ Tree.empty := by
+    intro h; rw [h] at h4; simp [Tree.empty, Tree.cols] at h4
+  have hmem : sd.Q ++ [(sd.r, Tree.empty)] ∈ (skipLayers A sd.depth).cols := List.mem_of_getLast? h4
+  obtain ⟨q, H, rest, hc, hle⟩ := hL.2.1 oe ((Tree.mem_entryAddrs_iff A oe).2 (by rw [hent]; rfl))
+    p _ hent hne _ hmem
+  rw [hQ, List.nil_append] at hc
+  simp only [List.cons.injEq, Prod.mk.injEq] at hc
+  obtain ⟨-, -, -, -, hrt, -⟩ := rootData_spec hsd (Option.isSome_iff_exists.1 (rootData_of_ordinary hk)).choose_spec
+  have hsp : specialStop sd = true := by
+    simp only [specialStop, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff, beq_iff_eq]
+    refine ⟨⟨hpos, hQ⟩, ?_⟩
+    omega
+  have := (stepKind_special_iff A).2 ⟨sd, hsd, hsp⟩
+  rw [hk] at this; cases this
+
+/-- A continuation never raises the profile. -/
+theorem cot_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e : EntryAddr} {x : Nat × Forest} (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path)
+    {ψ : Nat} (hψ : ψ ≤ n) :
+    profile (replaceAt sd.r (ψ * period sd) (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1) x.2)
+      ≤ profile x.2 := by
+  obtain ⟨hl, -, -, -, hR, -, hrc, -, hhc, -⟩ := onR_pack_E3 hsd hx hon
+  obtain ⟨-, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+  have hNs := spx_condH_col hL.2.2.1 hcolsd
+  have hRG := (routeOK_shift_D3 sd.r (ψ * period sd) _ _).2 hR
+  rw [replaceAt_eq_shift]
+  rcases put_profile_E3 (zs_E3 A sd rd n ψ) _ _ hRG with h | hch
+  · rw [h, profile_shift_E3]
+  · rw [chain_put_E3 _ _ _ hch, ← profile_shift_E3 sd.r (ψ * period sd) x.2, chain_self_E3 hch]
+    apply sig_iter_mono_E3
+    rw [routeCol_shift_D3, hrc, Tree.treeMapCol_append_D3]
+    have hcm : Tree.mapCol (shiftVal sd.r (ψ * period sd)) [(sd.r, Tree.empty)] =
+        [(sd.r + ψ * period sd, Tree.empty)] := by
+      simp [Tree.mapCol, shiftVal]; rfl
+    rw [hcm]
+    by_cases hψn : ψ < n
+    · rw [zs_step_E3 A sd rd hψn]
+      obtain ⟨V, rest, hsh, hV⟩ := ordStep_shape_E3 hL hsd hrd ψ (zs_E3 A sd rd n (ψ + 1))
+      rw [hsh]
+      have hQ : sd.Q ≠ [] := by
+        apply fq_E3 hL hk hsd (by omega)
+        have h0 := chain_skip_E3 _ _ hch _ le_rfl
+        simp only [Nat.sub_self, Chain_E3] at h0
+        have : hcol_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2) = 0 := by
+          simp only [hcol_E3]; omega
+        rw [shift, hcol_map_E3, ← hhc, hhcA] at this; exact this
+      have hPs : ∀ y ∈ Tree.mapCol (shiftVal sd.r (ψ * period sd)) sd.Q, sd.r + ψ * period sd ≤ y.1 := by
+        intro y hy
+        rw [treeMapCol_eq_map] at hy
+        obtain ⟨y0, hy0, rfl⟩ := List.mem_map.1 hy
+        obtain ⟨i, hi⟩ := List.getElem?_of_mem hy0
+        have := noninc_ge_E3 hNs (sd.Q.length - i) i y0 (sd.r, Tree.empty)
+          (by rw [List.getElem?_append_left (List.getElem?_eq_some_iff.1 hi).1]; exact hi)
+          (by rw [show i + (sd.Q.length - i) = sd.Q.length by
+                have := (List.getElem?_eq_some_iff.1 hi).1; omega]; simp)
+        simp only [shiftVal, if_pos this]; omega
+      have hN := noninc_shift_E3 hNs sd.r (ψ * period sd)
+      rw [Tree.treeMapCol_append_D3, hcm] at hN
+      rcases bot_E3 (by simpa [treeMapCol_eq_map] using hQ) hPs
+        (fun v hv => lt_of_lt_of_le (hV v hv) (by omega)) hN with h | ⟨-, h1, h2⟩
+      · exact le_of_eq h
+      · rw [h1, h2, WithBot.coe_le_coe, Prod.Lex.le_iff]; right; simp
+    · rw [show ψ = n by omega, zs_top_E3]
+      exact bot_le
+
+/-- Every return to the host `a'` in `H'` has a smaller profile. -/
+def ProfHost_E3 (a' : Nat) (H' : Forest) : Prop :=
+  ∀ ρ J', H'.entryAt ρ = some (a', J') → profile J' < profile H'
+
+theorem condP_pair_E3 {A : Forest} (hP : CondP A) {e0 e : EntryAddr} {x0 x : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (hx : A.entryAt e = some x) (hret : IsOwnerReturn A e0 e) :
+    profile x.2 < profile x0.2 := by
+  have := hP e0 ((Tree.mem_entryAddrs_iff A e0).2 (by rw [hx0]; rfl)) e
+    ((Tree.mem_entryAddrs_iff A e).2 (by rw [hx]; rfl)) hret
+  simpa [Tree.heightAt, hx0, hx] using this
+
+theorem hostSP_E3 {A : Forest} (sd : StopData) (hP : CondP A) {e0 : EntryAddr} {x0 : Nat × Forest}
+    (hx0 : A.entryAt e0 = some x0) (ψ : Nat) (hψ : ψ = 0 ∨ sd.r ≤ e0.col.num 0) :
+    ProfHost_E3 (e0.col.num 0 + ψ * period sd) (shift sd.r (ψ * period sd) x0.2) := by
+  intro ρ J' hρ
+  rw [shift, entryAt_map_D3] at hρ
+  obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+  simp only [Prod.mk.injEq] at hxe
+  obtain ⟨hp, rfl⟩ := hxe
+  have hδ : ψ * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hψ with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  have hp' : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+  have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hp']
+  obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+  have := condP_pair_E3 hP hx0 h1 h2
+  rw [← shift, profile_shift_E3, profile_shift_E3]; exact this
+
+/-- The bottom of a filled chain at phase `ψ < n`: the profile is unchanged, or the query is a run
+of `(r, ∅)` entries and the run loses its closing entry. -/
+theorem bottom_dich_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e : EntryAddr} {x : Nat × Forest} (hx : A.entryAt e = some x) (hon : e.heightPath <+: sd.col.path)
+    {ψ : Nat} (hψ : ψ < n)
+    (hch : Chain_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2)) :
+    profile (replaceAt 0 0 (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1)
+      (shift sd.r (ψ * period sd) x.2)) = profile x.2 ∨
+    ((∀ y ∈ sd.Q, y = (sd.r, Tree.empty)) ∧ 1 ≤ sd.Q.length ∧
+      profile (replaceAt 0 0 (zs_E3 A sd rd n ψ) (sd.depth - e.col.path.length - 1)
+        (shift sd.r (ψ * period sd) x.2)) =
+        ((toLex (sd.depth - e.col.path.length - 1, sd.Q.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))) := by
+  obtain ⟨hl, -, -, -, hR, -, hrc, -, hhc, -⟩ := onR_pack_E3 hsd hx hon
+  obtain ⟨-, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+  have hNs := spx_condH_col hL.2.2.1 hcolsd
+  rw [chain_put_E3 _ _ _ hch, ← profile_shift_E3 sd.r (ψ * period sd) x.2, chain_self_E3 hch,
+    routeCol_shift_D3, hrc, Tree.treeMapCol_append_D3]
+  have hcm : Tree.mapCol (shiftVal sd.r (ψ * period sd)) [(sd.r, Tree.empty)] =
+      [(sd.r + ψ * period sd, Tree.empty)] := by
+    simp [Tree.mapCol, shiftVal]; rfl
+  rw [hcm, zs_step_E3 A sd rd hψ]
+  obtain ⟨V, rest, hsh, hV⟩ := ordStep_shape_E3 hL hsd hrd ψ (zs_E3 A sd rd n (ψ + 1))
+  rw [hsh]
+  have hQ : sd.Q ≠ [] := by
+    apply fq_E3 hL hk hsd (by omega)
+    have h0 := chain_skip_E3 _ _ hch _ le_rfl
+    simp only [Nat.sub_self, Chain_E3] at h0
+    have : hcol_E3 (sd.depth - e.col.path.length - 1) (shift sd.r (ψ * period sd) x.2) = 0 := by
+      simp only [hcol_E3]; omega
+    rw [shift, hcol_map_E3, ← hhc, hhcA] at this; exact this
+  have hPs : ∀ y ∈ Tree.mapCol (shiftVal sd.r (ψ * period sd)) sd.Q, sd.r + ψ * period sd ≤ y.1 := by
+    intro y hy
+    rw [treeMapCol_eq_map] at hy
+    obtain ⟨y0, hy0, rfl⟩ := List.mem_map.1 hy
+    obtain ⟨i, hi⟩ := List.getElem?_of_mem hy0
+    have := noninc_ge_E3 hNs (sd.Q.length - i) i y0 (sd.r, Tree.empty)
+      (by rw [List.getElem?_append_left (List.getElem?_eq_some_iff.1 hi).1]; exact hi)
+      (by rw [show i + (sd.Q.length - i) = sd.Q.length by
+            have := (List.getElem?_eq_some_iff.1 hi).1; omega]; simp)
+    simp only [shiftVal, if_pos this]; omega
+  have hN := noninc_shift_E3 hNs sd.r (ψ * period sd)
+  rw [Tree.treeMapCol_append_D3, hcm] at hN
+  rcases bot_E3 (by simpa [treeMapCol_eq_map] using hQ) hPs
+    (fun v hv => lt_of_lt_of_le (hV v hv) (by omega)) hN with h | ⟨hall, h1, -⟩
+  · left; rw [h]
+  · right
+    refine ⟨?_, List.length_pos_iff.2 hQ, ?_⟩
+    · intro y hy
+      have := hall _ (by rw [treeMapCol_eq_map]; exact List.mem_map_of_mem hy)
+      simp only [Prod.mk.injEq] at this
+      obtain ⟨h1, h2⟩ := this
+      have hy1 : y.1 = sd.r := by unfold shiftVal at h1; split_ifs at h1 <;> omega
+      have hy2 : y.2 = Tree.empty := by
+        match hY : y.2 with
+        | .node [] => rfl
+        | .node (c :: cs) => rw [hY] at h2; simp [Tree.map, Tree.mapCols, Tree.empty] at h2
+      exact Prod.ext hy1 hy2
+    · rw [h1, sig_iter_coe_E3, treeMapCol_eq_map, List.length_map]; simp
+
+/-- Route containers of phase `k`: P for their returns. The profile is unchanged (then the old
+returns bound the new ones), or the host is a filled chain: then its route containers are smaller
+by the chain, and (`k < n`) the query is a run of `(r, ∅)` whose copies have empty heights, while
+the low returns are copies of chain levels strictly below the host. -/
+theorem hostCP_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A) (hP : CondP A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e0 : EntryAddr} {x0 : Nat × Forest} (hx0 : A.entryAt e0 = some x0)
+    (hon : e0.heightPath <+: sd.col.path) {k : Nat} (hkn : k ≤ n)
+    (hkk : k = 0 ∨ sd.r ≤ e0.col.num 0) :
+    ProfHost_E3 (e0.col.num 0 + k * period sd)
+      (replaceAt sd.r (k * period sd) (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) x0.2) := by
+  have hE : E1_E3 A sd rd n k (zs_E3 A sd rd n k) := by
+    have := zs_E1_E3 (n := n) hL hsd hrd (n - k) (by omega)
+    rwa [show n - (n - k) = k by omega] at this
+  have hd := period_pos_E3 hsd hrd
+  obtain ⟨hl, hhp, hxH, hnum, hR, hN, hrc, hrp, hhc, hat⟩ := onR_pack_E3 hsd hx0 hon
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  have hδ : k * period sd = 0 ∨ sd.r ≤ e0.col.num 0 := by
+    rcases hkk with h | h
+    · left; rw [h, Nat.zero_mul]
+    · exact Or.inr h
+  have hRG := (routeOK_shift_D3 sd.r (k * period sd) _ _).2 hR
+  -- the host's profile: unchanged, or a filled chain
+  have hdich : profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) = profile x0.2 ∨
+      (Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 ∧ Chain_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ∧ (k = n ∨ (k < n ∧ (∀ y ∈ sd.Q, y = (sd.r, Tree.empty)) ∧
+        1 ≤ sd.Q.length ∧ profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) =
+          ((toLex (sd.depth - e0.col.path.length - 1, sd.Q.length) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))))) := by
+    rcases put_profile_E3 (zs_E3 A sd rd n k) _ _ hRG with h | hch
+    · left; rw [h, profile_shift_E3]
+    · have hch0 : Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 := (chain_map_E3 _ _ _).1 hch
+      by_cases hkn' : k < n
+      · rcases bottom_dich_E3 hL hk hsd hrd hx0 hon hkn' hch with h | h
+        · exact Or.inl h
+        · exact Or.inr ⟨hch0, hch, Or.inr ⟨hkn', h⟩⟩
+      · exact Or.inr ⟨hch0, hch, Or.inl (by omega)⟩
+  intro ρ J' hρ
+  rw [replaceAt_eq_shift] at hρ ⊢
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n k) _ _ hRG ρ
+  -- a return whose profile is bounded by an old return of `e0`
+  have hbound : ∀ e x, A.entryAt e = some x → IsOwnerReturn A e0 e → profile J' ≤ profile x.2 →
+      profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) = profile x0.2 → profile J' < profile (replaceAt 0 0 (zs_E3 A sd rd n k) (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2)) := by
+    intro e x hx hret hle heq
+    rw [heq]; exact lt_of_le_of_lt hle (condP_pair_E3 hP hx0 hx hret)
+  have hnochain : ∀ ρ' x', Chain_E3 (sd.depth - e0.col.path.length - 1) x0.2 → x0.2.entryAt ρ' = some x' →
+      ¬ InHole_E3 (sd.depth - e0.col.path.length - 1) x0.2 ρ'.col → ¬ IsRoute_E3 (sd.depth - e0.col.path.length - 1) x0.2 ρ' → False := by
+    intro ρ' x' hch hx' h1 h2
+    rcases chain_entries_E3 _ x0.2 hch ρ' x' hx' with h | h
+    · exact h2 h
+    · exact h1 h
+  by_cases hh : InHole_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ.col
+  · obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hρ
+    obtain ⟨e, ψ, hψ1, hψ2, hψq, ⟨htr, htn, htl⟩, x, hxA, hx1, hc', hx2⟩ := hE _ _ hρ
+    have hkn' : k < n := by
+      by_contra hc
+      rw [show k = n by omega, zs_top_E3, Tree.empty, empty_entryAt_E3] at hρ
+      cases hρ
+    simp only at hx1
+    have hcase : x.1 = e0.col.num 0 ∧ ((k = 0 ∧ e0.col.num 0 < sd.r) ∨ (ψ = k ∧ InQ_E3 sd e)) := by
+      unfold shiftVal at hx1
+      split_ifs at hx1 with hxr
+      · by_cases hψk : ψ = k
+        · subst hψk; exact ⟨by omega, Or.inr ⟨rfl, hψq rfl⟩⟩
+        · exfalso
+          have : (k + 1) * period sd ≤ ψ * period sd := Nat.mul_le_mul_right _ (by omega)
+          have : sd.t = sd.r + period sd := by simp only [period]; omega
+          rw [Nat.succ_mul] at *
+          omega
+      · have hk0 : k = 0 := by
+          rcases hkk with h | h
+          · exact h
+          · exfalso; omega
+        subst hk0
+        exact ⟨by omega, Or.inl ⟨rfl, by omega⟩⟩
+    obtain ⟨hxa, hcase⟩ := hcase
+    have hcon : e0.Contains e.col := by
+      rcases hcase with ⟨-, hlow⟩ | ⟨-, hq⟩
+      · exact (low_route_E3 hL.1 hsd hrd hx0 hon hlow).trans htr
+      · rcases hq with ⟨h1, -⟩ | ⟨i, -, hi⟩
+        · show e0.heightPath <+: e.col.path; rw [h1]; exact hon
+        · exact hon.trans ((List.prefix_append _ _).trans hi)
+    have hret : IsOwnerReturn A e0 e := by
+      have : A.entryAt ⟨e.col, e.idx⟩ = some (e0.col.num 0, x.2) := by rw [← hxa]; exact hxA
+      exact isOwnerReturn_of_parent hcon this
+    have hle : profile J' ≤ profile x.2 := by
+      rcases hx2 with ⟨-, hJ'⟩ | ⟨hon', hJ'⟩
+      · simp only at hJ'; rw [hJ', profile_shift_E3]
+      · simp only at hJ'; rw [hJ']; exact cot_E3 hL hk hsd hrd hxA hon' hψ2
+    rcases hdich with heq | ⟨hch0, hch, hkn2 | ⟨-, hQr, hQ1, hprof⟩⟩
+    · exact hbound e x hxA hret hle heq
+    · omega
+    · rw [hprof]
+      obtain ⟨P, hP'⟩ := hcon
+      have hρe : x0.2.entryAt ⟨⟨P, e.col.col⟩, e.idx⟩ = some x := by
+        rw [← under_entryAt_E3 hx0]
+        have : under_E3 e0 ⟨⟨P, e.col.col⟩, e.idx⟩ = e := by simp only [under_E3, hP']
+        rw [this, hxA]
+      by_cases hone : e.heightPath <+: sd.col.path
+      · -- a chain level strictly below the host
+        obtain ⟨hle', -, hxe, -, -, -, hrce, -⟩ := onR_pack_E3 hsd hxA hone
+        have hlen : e.col.path.length = e0.col.path.length + 1 + P.length := by
+          rw [← hP']; simp [EntryAddr.heightPath]; omega
+        have hj : x.2 = skipLayers x0.2 (P.length + 1) := by
+          rw [hxe, hxH, skipLayers_add, hlen, show e0.col.path.length + 1 + (P.length + 1) =
+            e0.col.path.length + 1 + P.length + 1 by omega]
+        have hchx := chain_skip_E3 _ _ hch0 (P.length + 1) (by omega)
+        rw [← hj] at hchx
+        have hself := chain_self_E3 hchx
+        rw [show sd.depth - e0.col.path.length - 1 - (P.length + 1) = sd.depth - e.col.path.length - 1 by
+          omega, hrce] at hself
+        have hrep : sd.Q ++ [(sd.r, Tree.empty)] = List.replicate (sd.Q.length + 1) (sd.r, Tree.empty) := by
+          have hQe : sd.Q = List.replicate sd.Q.length (sd.r, Tree.empty) := List.eq_replicate_iff.2 ⟨rfl, hQr⟩
+          rw [List.replicate_succ', ← hQe]
+        have htow : profile (Tree.node [sd.Q ++ [(sd.r, Tree.empty)]]) =
+            ((toLex (0, sd.Q.length + 1) : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat)) := by
+          rw [hrep]
+          have := spx_profile_tower [] sd.r sd.Q.length
+          simpa [spxTower] using this
+        rw [htow, sig_iter_coe_E3] at hself
+        refine lt_of_le_of_lt hle ?_
+        rw [hself, WithBot.coe_lt_coe, Prod.Lex.lt_iff]
+        left; simp only [ofLex_toLex]; omega
+      · -- the query region: empty heights
+        have hq : InQ_E3 sd e := by
+          rcases htl with h | h
+          · exact h
+          · exfalso
+            refine hnochain _ x hch0 hρe ?_ ?_
+            · intro hh'
+              apply h
+              have := (inHole_abs_E3 hrp hhc ⟨P, e.col.col⟩).2 hh'
+              simpa [hP'] using this
+            · intro hr'
+              apply hone
+              have := (isRoute_abs_E3 hrp ⟨⟨P, e.col.col⟩, e.idx⟩).2 hr'
+              rw [IsRoute_E3, hrpA] at this
+              show e.col.path ++ _ <+: _
+              rw [← hP']
+              simpa [EntryAddr.heightPath] using this
+        have hx2e : x.2 = Tree.empty := by
+          obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+          rcases hq with ⟨h1, h2⟩ | ⟨i, hi, hc⟩
+          · have : A.entryAt ⟨sd.col, e.idx⟩ = sd.Q[e.idx]? := by
+              simp only [Tree.entryAt, hcolsd, Option.bind_some]; rw [List.getElem?_append_left h2]
+            have he : e = ⟨sd.col, e.idx⟩ := by rw [← h1]
+            rw [← he, hxA] at this
+            have := hQr x (List.mem_of_getElem? this.symm)
+            rw [this]
+          · exfalso
+            have hqi : A.entryAt ⟨sd.col, i⟩ = some (sd.r, Tree.empty) := by
+              simp only [Tree.entryAt, hcolsd, Option.bind_some]; rw [List.getElem?_append_left hi]
+              exact hQr _ (List.getElem_mem hi) ▸ List.getElem?_eq_getElem hi
+            have := N_inside_E3 hqi hc hxA
+            simp [N_E3, gwordAt_empty_E3] at this
+        rcases hx2 with ⟨-, hJ'⟩ | ⟨hon', -⟩
+        · simp only at hJ'
+          rw [hJ', hx2e]
+          exact WithBot.bot_lt_coe _
+        · exact absurd hon' hone
+  · by_cases hr : IsRoute_E3 (sd.depth - e0.col.path.length - 1) (shift sd.r (k * period sd) x0.2) ρ
+    · rw [hPu.2.1 hh hr] at hρ
+      obtain ⟨y, hy, hye⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Prod.mk.injEq] at hye
+      obtain ⟨hp, hJ'⟩ := hye
+      rcases hdich with heq | ⟨-, hch, -⟩
+      · rw [shift, entryAt_map_D3] at hy
+        obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy
+        have hxa : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+        have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hxa]
+        obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+        have hon' : (under_E3 e0 ρ).heightPath <+: sd.col.path := by
+          have := (isRoute_abs_E3 hrp ρ).2 ((isRoute_map_E3 _ _ _ _).1 hr)
+          rwa [IsRoute_E3, hrpA] at this
+        have hlen : (under_E3 e0 ρ).col.path.length = e0.col.path.length + 1 + ρ.col.path.length := by
+          simp [under_E3, EntryAddr.heightPath]; omega
+        refine hbound _ _ h1 h2 ?_ heq
+        rw [← hJ']
+        have := cot_E3 (n := n) hL hk hsd hrd h1 hon' hkn
+        rw [replaceAt_eq_shift, hlen] at this
+        convert this using 3 <;> first | omega | rfl
+      · rw [← hJ']; exact chain_route_E3 _ _ _ hch ρ y hr hy
+    · rw [hPu.2.2 hh hr, shift, entryAt_map_D3] at hρ
+      obtain ⟨x, hx, hxe⟩ := Option.map_eq_some_iff.1 hρ
+      simp only [Prod.mk.injEq] at hxe
+      obtain ⟨hp, hJ'⟩ := hxe
+      rcases hdich with heq | ⟨hch0, -, -⟩
+      · have hxa : x.1 = e0.col.num 0 := shiftVal_host_E3 hδ hp
+        have hx' : x0.2.entryAt ρ = some (e0.col.num 0, x.2) := by rw [hx, ← hxa]
+        obtain ⟨h1, h2⟩ := under_return_E3 hx0 hx'
+        refine hbound _ _ h1 h2 ?_ heq
+        rw [← hJ', ← shift, profile_shift_E3]
+      · exact absurd (hnochain ρ x hch0 hx ((inHole_map_E3 _ _ _ _).not.1 hh)
+          ((isRoute_map_E3 _ _ _ _).not.1 hr)) id
+
+/-- Every host of an ordinary output satisfies P for its returns. -/
+theorem hostsP_E3 {A : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A) (hP : CondP A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    {e0' : EntryAddr} {y0 : Nat × Forest}
+    (hy0 : (replaceAt 0 0 (zs_E3 A sd rd n 0) sd.depth A).entryAt e0' = some y0) :
+    ProfHost_E3 (e0'.col.num 0) y0.2 := by
+  obtain ⟨hrpA, hhcA⟩ := stop_rpath_E3 hsd
+  obtain ⟨hRA, hNA⟩ := stop_route_top_D3 hsd
+  have hPu := put_entryAt_E3 (zs_E3 A sd rd n 0) sd.depth A hRA e0'
+  by_cases hh : InHole_E3 sd.depth A e0'.col
+  · obtain ⟨h1, h2⟩ := hPu.1 hh
+    rw [h1] at hy0
+    have hE := zs_E1_E3 (n := n) hL hsd hrd n le_rfl
+    rw [Nat.sub_self] at hE
+    obtain ⟨e, ψ, -, hψ2, -, ⟨-, htn, -⟩, x, hxA, -, hc', hx2⟩ := hE _ _ hy0
+    have hnum : e0'.col.num 0 = e.col.num 0 + ψ * period sd := by
+      rw [h2 0, Nat.zero_add, hNA, ← hc', Nat.zero_mul, Nat.add_zero]
+    rw [hnum]
+    rcases hx2 with ⟨-, hJ⟩ | ⟨hon, hJ⟩
+    · rw [hJ]; exact hostSP_E3 sd hP hxA ψ (Or.inr htn)
+    · rw [hJ]; exact hostCP_E3 hL hP hk hsd hrd hxA hon hψ2 (Or.inr htn)
+  · by_cases hr : IsRoute_E3 sd.depth A e0'
+    · rw [hPu.2.1 hh hr] at hy0
+      obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.1 hy0
+      have hon : e0'.heightPath <+: sd.col.path := by rw [IsRoute_E3, hrpA] at hr; exact hr
+      have := hostCP_E3 (n := n) hL hP hk hsd hrd hx hon (Nat.zero_le n) (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, replaceAt_zero_E3] at this
+      exact this
+    · rw [hPu.2.2 hh hr] at hy0
+      have := hostSP_E3 sd hP hy0 0 (Or.inl rfl)
+      rw [Nat.zero_mul, Nat.add_zero, shift_zero] at this
+      exact this
+
 -- T3.2o (txt:367-376): P is preserved by ordinary steps
 theorem condP_ord {A B : Forest} {n : Nat} (hL : InL A) (hP : CondP A)
-    (hk : stepKind A = some .ordinary) (hB : expand A n = some B) : CondP B := by sorry
+    (hk : stepKind A = some .ordinary) (hB : expand A n = some B) : CondP B := by
+  obtain ⟨sd, rd, hsd, hrd, hBeq, -⟩ := ord_output_D3 hL hk hB
+  rw [ordZ_eq_zs_E3] at hBeq
+  intro e0' he0 e' he hret
+  obtain ⟨y0, hy0⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff B e0').1 he0)
+  obtain ⟨hcon, q, J', hJ, hres⟩ := hret
+  have hq : q = e0'.col.num 0 := (ColAddr.resolve_num hres).symm
+  subst hq
+  obtain ⟨P, hP'⟩ := hcon
+  have he' : e' = under_E3 e0' ⟨⟨P, e'.col.col⟩, e'.idx⟩ := by
+    simp only [under_E3, hP']
+  have hρ : y0.2.entryAt ⟨⟨P, e'.col.col⟩, e'.idx⟩ = some (e0'.col.num 0, J') := by
+    rw [← under_entryAt_E3 hy0, ← he', hJ]
+  have := hostsP_E3 (n := n) hL hP hk hsd hrd (by rw [← hBeq]; exact hy0) _ _ hρ
+  have h3 : (B.heightAt e').getD Tree.empty = J' := by simp [Tree.heightAt, hJ]
+  have h4 : (B.heightAt e0').getD Tree.empty = y0.2 := by simp [Tree.heightAt, hy0]
+  rw [h3, h4]; exact this
 
 -- T3.2q (txt:390-394, 524-530): read on the stack of a phase-`φ` copy `c` of `a`, a
 -- `g_{κ_φ W}` path from a vertex `x ≥ s_φ` to an endpoint `y < r` is the copy of an old `g_W`
