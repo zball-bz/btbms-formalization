@@ -1,6 +1,6 @@
 # Status snapshot
 
-Generated 2026-10-27T10:49:00+00:00 at commit `2e90d99`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T11:04:44+00:00 at commit `3d727dc`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P2 Repair & simplify (blueprint)**
 
@@ -13,10 +13,7 @@ Phase: **P2 Repair & simplify (blueprint)**
 ## doing (1)
 - T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
 
-## review (1)
-- T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)
-
-## done (13)
+## done (14)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker
 - T-002 [claude] Blind review of the paper (Claude)
 - T-003 [codex] Blind review of the paper (Codex)
@@ -30,3 +27,4 @@ Phase: **P2 Repair & simplify (blueprint)**
 - T-013 [claude] Formalize the main statement in Lean (definitions, order, operation, Std, Mahlo, theorem with sorry)
 - T-014 [codex] Independent statement-fidelity review of the Lean statement
 - T-015 [user] Gate G2: sign off the Lean statement; then it is locked
+- T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)

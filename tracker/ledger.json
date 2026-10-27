@@ -275,7 +275,7 @@
    "id": "T-019",
    "phase": "P3",
    "owner": "codex",
-   "status": "review",
+   "status": "done",
    "title": "Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)",
    "deps": [
     "T-015"
@@ -284,7 +284,7 @@
    "evidence": [
     "tracker/review/codex-lock-review.md"
    ],
-   "note": "Statement split faithful. Lock/status defects found (G-008); fixed by Claude, awaiting Codex fix check."
+   "note": "Statement split faithful. Lock/status defects G-008 found by Codex over 4 rounds, fixed by Claude, closed after Codex follow-up 4."
   }
  ],
  "nodes": [
@@ -1136,7 +1136,7 @@
   },
   {
    "id": "G-008",
-   "status": "repaired",
+   "status": "closed",
    "severity": "repairable",
    "loc": "checks/lock/, scripts/lean-status.sh, tracker/refresh.py (tooling, not the paper)",
    "summary": "Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed",
@@ -1149,9 +1149,10 @@
    "refs": [
     "codex-lock-review.md"
    ],
-   "detail": "Codex exploits: mainTheorem : True with an admitted Coe True MainTheorem instance passed check.sh with no axioms; axiom auditShortcut : MainTheorem passed and showed as proved; changing a resolved Mathlib file in a relocated copy kept the lock intact; stale status showed a sorry theorem as proved. Claude replayed the coercion, axiom, fixed-universe and opaque exploits in a scratch copy (non-blind: explicit counterexamples). Codex fix check (follow-up): changes 1, 2, 5 fixed; 3, 4 partial: (A) status generation did not run the export audit, so clean True exports showed as proved; (B) a directory symlink into lean/.lake hid a sorry from the fingerprint; (C) malformed or >argv-size extraction output kept an older success record. Follow-up 2: A and C fixed; B partial: any directory named .lake was skipped, so lean/BTBMS/.lake/Hidden.lean (import BTBMS.«.lake».Hidden) could acquire a sorry unseen. Follow-up 3: nested case fixed; import BTBMS.«..».«.lake».Hidden (and «../.lake») still reached lean/.lake/Hidden.lean.",
+   "detail": "Codex exploits: mainTheorem : True with an admitted Coe True MainTheorem instance passed check.sh with no axioms; axiom auditShortcut : MainTheorem passed and showed as proved; changing a resolved Mathlib file in a relocated copy kept the lock intact; stale status showed a sorry theorem as proved. Claude replayed the coercion, axiom, fixed-universe and opaque exploits in a scratch copy (non-blind: explicit counterexamples). Codex fix check (follow-up): changes 1, 2, 5 fixed; 3, 4 partial: (A) status generation did not run the export audit, so clean True exports showed as proved; (B) a directory symlink into lean/.lake hid a sorry from the fingerprint; (C) malformed or >argv-size extraction output kept an older success record. Follow-up 2: A and C fixed; B partial: any directory named .lake was skipped, so lean/BTBMS/.lake/Hidden.lean (import BTBMS.«.lake».Hidden) could acquire a sorry unseen. Follow-up 3: nested case fixed; import BTBMS.«..».«.lake».Hidden (and «../.lake») still reached lean/.lake/Hidden.lean. Follow-up 4 (codex): fixed; 8 pipeline replays + 26-case policy matrix; recommends closing.",
    "fix": "LockCheck compares the stored ConstantInfo.type of mainTheorem/paperTheorem syntactically with MainTheorem.{u}/PaperTheorem.{u}, rejects axiom declarations in BTBMS and axioms outside {propext, Classical.choice, Quot.sound, sorryAx}; check.sh --final also rejects sorryAx. lock.py hashes every package resolved from lake-manifest.json and the toolchain bin/ and src/. lean-status.json carries an input fingerprint; refresh.py ignores stale or failed status; extra axioms are classified, opaque bodies scanned. Follow-up: scripts/lean_status.py publishes atomically, writes an in-progress record first, runs build, LockCheck audit and extraction, validates the JSON, re-checks the fingerprint; refresh.py requires state ok, build_ok, audit_ok, a matching fingerprint and an intact lock. Symlinks in any hashed tree, including lean/, are refused. Follow-up 2: only a hashed tree root's own .lake/.git are skipped; nested ones are hashed. Row and axiom-item types validated. Follow-up 3: LockCheck rejects any module in the import closure with a non-identifier name component, so every source is read from its standard path inside a hashed tree.",
-   "fix_by": "claude"
+   "fix_by": "claude",
+   "fix_checked_by": "codex"
   }
  ],
  "simplifications": [

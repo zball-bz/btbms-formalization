@@ -393,3 +393,42 @@ The project need not support these import names. Explicit rejection is sufficien
 All mutations and generated evidence were confined to scratch copies. The real reviewed sources remained unchanged, and `blueprint/` was not read.
 
 STATUS: COMPLETE
+
+## Follow-up 4
+
+Reviewed **3d727dc3db9fa2e2dd59f698c2dfcf46b19bd5a8** independently. **Verdict: fixed. No remaining required T-019 change was found within the approved package/source layout and the previously stated trusted-compiler/compiled-artifact boundary. I recommend closing G-008.** This supersedes the remaining-B dispositions above; it does not assert that the admitted mathematical theorem has been proved.
+
+### Why the restriction closes the reported path cases
+
+`LockCheck.lean:28–32` validates the actual parsed `Lean.Name` components. Every string component must be nonempty, must not start with a digit, and may contain only alphanumeric characters, underscore or apostrophe; numeric Name components are rejected. The installed `Char.isAlphanum` uses ASCII letter/digit ranges. Hence accepted components contain no dot, slash, backslash, colon, whitespace or other path-manipulating character. They cannot represent `..`, `.lake`, `.git`, an absolute path, or a separator-containing traversal such as `../.lake`.
+
+Lean's `modToFilePath` joins those components to the module's source base (`Lean/Util/Path.lean:45–51`). With the approved package configurations' ordinary source roots, the accepted components stay on the standard paths covered by the source walk. Existing symlink rejection prevents ordinary visible names from aliasing an excluded source. The conservative restriction may reject otherwise legal Unicode/punctuation module names; rejecting unsupported layouts is an acceptable repair and does not restrict Unicode declarations or the mathematics inside files.
+
+Crucially, `LockCheck.lean:40–42` checks **all modules in the import closure**, before the later BTBMS-only axiom-declaration scan. A normally named intermediate module cannot conceal a bad transitive import. The status generator already requires this audit to pass before publishing an acceptable record. Because the audited checker is itself included in the fingerprint, old reports made under the permissive checker do not remain current after this change.
+
+### Full-pipeline replays
+
+I used unchanged source copies in `scratch/codex/lock-fu4-work/` and the real Lean/Lake/status pipeline:
+
+| Case | Result |
+|---|---|
+| Baseline integrity check and status collection | Pass; main theorem correctly remains proved modulo sorry |
+| Baseline `check.sh --final` | Exit 1, correctly rejects the existing `sorryAx` |
+| `BTBMS.«..».«.lake».PartProbe` | Audit/status exit 1; unsupported module name; progress unknown |
+| `BTBMS.«../.lake».SlashProbe` | Audit/status exit 1; unsupported module name; progress unknown |
+| `BTBMS.«.lake».NestedProbe` | Audit/status exit 1; deliberately unsupported name; progress unknown |
+| Normal `BTBMS.AuditBridge` importing the traversal module | Audit/status exit 1; transitive bad import is caught |
+| Normal `BTBMS.AuditPlain.Module_2` with a proved helper | Pass; the helper is reported proved |
+| Editing that ordinary helper to `by sorry` after collection | Fingerprint mismatch; saved progress becomes unknown/stale |
+
+The negative runs were checked for the actual `unsupported module name` audit error, not merely an unrelated build failure. Evidence: `scratch/codex/lock-fu4-replay-results.json`, `lock-fu4-replay.py`, and the corresponding logs.
+
+An additional **26-case kernel-checked policy matrix** passed using the exact copied predicate. It covers both traversal spellings, separators, absolute paths, empty/dotted/numeric/digit-start components and ordinary underscore/apostrophe identifiers. The cases and proof log are in `scratch/codex/lock-fu4-policy-cases.json`, `lock-fu4-policy-probe.lean` and `lock-fu4-policy-probe.log`.
+
+### Disposition
+
+The stored-type, axiom-policy, status-audit integration, failure-safe writer, opaque-hole handling and now the supported-source-path restriction address the required changes recorded in this review. **No additional repair is required before using the tooling for the agreed workflow.** Final mathematical proof acceptance still requires the genuine `--final` audit to pass; it currently fails as expected because the main proof is intentionally admitted.
+
+All real reviewed sources remained unchanged. Only this appended review and scratch evidence were written, and `blueprint/` remained unread.
+
+STATUS: COMPLETE
