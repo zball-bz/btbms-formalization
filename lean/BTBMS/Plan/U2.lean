@@ -4391,12 +4391,197 @@ theorem adm_entries {K : Forest} :
       rw [← mapEntry_col]; exact h2
     · rw [hx, ← h3, hy]; simp [hyx]
 
+theorem bwd_moved_ord (m : Move) (hij : m.i ≤ m.j) (rest : List (Nat × Nat)) (cc : Nat) :
+    m.mapRole m.bwdIdx (.ord ⟨m.col.path ++ (m.col.col, m.i) :: rest, cc⟩) =
+      .ord ⟨m.col.path ++ (m.col.col, m.j) :: rest, cc⟩ := by
+  simp only [Move.mapRole, mapPath_through]
+  have hb : m.bwdIdx m.i = m.j := by unfold Move.bwdIdx; rw [if_pos le_rfl]; omega
+  rw [hb]
+
+/-- helper: the stop data of an admissible cap and the origins of its stopping column. -/
+theorem adm_stop {E : Forest} {c : ColAddr} {k p : Nat} {col : Column} (hcol : E.colAt c = some col) :
+    ∀ ms : List Move, MovesValid (litCap E c k p) ms →
+      ∃ c', stopData (applyMoves (litCap E c k p) ms) =
+          some { depth := c.path.length, col := c', t := c.num 0, r := p, Q := col.take k } ∧
+        backRole ms (.ord c') = .ord c ∧ ∀ n, backRole ms (.slot ⟨c', n⟩) = .slot ⟨c, n⟩ := by
+  intro ms
+  induction ms using List.reverseRecOn with
+  | nil => intro _; exact ⟨c, stopData_litCap' hcol k p, rfl, fun _ => rfl⟩
+  | append_singleton ms m ih =>
+    intro hv
+    obtain ⟨hv, hm⟩ := movesValid_append hv
+    obtain ⟨c', hsd, hord, hslot⟩ := ih hv
+    obtain ⟨rest, hpath, hsd'⟩ := stopData_applyMove hm hsd
+    obtain ⟨-, -, -, -, -, hij, -⟩ := hm
+    rw [applyMoves_snoc]
+    refine ⟨_, hsd', ?_, fun n => ?_⟩
+    · rw [backRole_append]
+      simp only at hpath ⊢
+      rw [bwd_moved_ord m hij.le, ← hpath]; exact hord
+    · rw [backRole_append]
+      simp only at hpath ⊢
+      rw [bwd_moved_slot m hij.le, ← hpath]; exact hslot n
+
+theorem container_eq (o c : ColAddr) {k ck ik : Nat} (hp : o.path = c.path.take k)
+    (hk : c.path[k]? = some (ck, ik)) :
+    o.container c = if ck = o.col then some ⟨o, ik⟩ else none := by
+  have hkl : k < c.path.length := (List.getElem?_eq_some_iff.1 hk).1
+  have hn : o.path.length = k := by rw [hp]; simp; omega
+  unfold ColAddr.container
+  rw [hn, List.drop_eq_getElem_cons hkl, (List.getElem?_eq_some_iff.1 hk).2]
+  simp only
+  by_cases h : ck = o.col
+  · rw [if_pos ⟨hp.symm, h⟩, if_pos h]
+  · rw [if_neg (fun h' => h h'.2), if_neg h]
+
+theorem container_bwdC (m : Move) {c o : ColAddr} (h : c.OnStack o) :
+    (bwdC m o).container (bwdC m c) = (o.container c).map (m.mapEntry m.bwdIdx) := by
+  rcases h with ⟨k, ck, ik, hk, hp, hc⟩ | ⟨hp, hc⟩
+  · have hkl : k < c.path.length := (List.getElem?_eq_some_iff.1 hk).1
+    have hfst := mapPath_getElem_fst m.bwdIdx m c.path k
+    rw [hk] at hfst
+    obtain ⟨⟨ck', ik'⟩, hk', hck'⟩ := Option.map_eq_some_iff.1 hfst
+    simp only at hck'; subst hck'
+    have hp' : (bwdC m o).path = (bwdC m c).path.take k := by
+      simp only [bwdC]; rw [hp, mapPath_take]
+    rw [container_eq o c hp hk, container_eq (bwdC m o) (bwdC m c) hp' hk']
+    by_cases hck : ck' = o.col
+    · rw [if_pos hck, if_pos (show ck' = (bwdC m o).col from hck)]
+      simp only [bwdC, Option.map_some, Option.some.injEq]
+      unfold Move.mapEntry; dsimp only
+      -- compare the backward entry index with `ik'`
+      rcases mapPath_cases m c.path with ⟨e, D, hD⟩ | hoff
+      · rw [hD, mapPath_through] at hk'
+        rw [hD] at hk hp
+        rcases lt_trichotomy k m.col.path.length with hlt | heq | hgt
+        · rw [List.getElem?_append_left hlt] at hk hk'
+          rw [hk] at hk'; obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hk')
+          rw [if_neg]
+          intro h'
+          have := congrArg (fun c : ColAddr => c.path.length) h'
+          simp only [mapPath_length, hp, List.length_take, List.length_append, List.length_cons] at this
+          omega
+        · subst heq
+          simp only [List.getElem?_append_right le_rfl, Nat.sub_self, List.getElem?_cons_zero,
+            Option.some.injEq, Prod.mk.injEq] at hk hk'
+          obtain ⟨rfl, rfl⟩ := hk
+          obtain ⟨-, rfl⟩ := hk'
+          have hop : o.path = m.col.path := by rw [hp]; simp
+          rw [if_pos]
+          rw [hop, mapPath_off _ _ _ (fun e D he => by have := congrArg List.length he; simp at this)]
+          rw [← hck]
+        · rw [List.getElem?_append_right hgt.le,
+            show k - m.col.path.length = (k - m.col.path.length - 1) + 1 by omega] at hk hk'
+          simp only [List.getElem?_cons_succ] at hk hk'
+          rw [hk] at hk'; obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hk')
+          rw [if_neg]
+          intro h'
+          have := congrArg (fun c : ColAddr => c.path.length) h'
+          simp only [mapPath_length, hp, List.length_take, List.length_append, List.length_cons] at this
+          omega
+      · rw [mapPath_off _ _ _ hoff] at hk'
+        rw [hk] at hk'; obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj hk')
+        rw [if_neg]
+        intro h'
+        rw [colAddr_mapPath_eq_iff] at h'
+        apply hoff ik (c.path.drop (k + 1))
+        have h1 : o.path = m.col.path := congrArg ColAddr.path h'
+        have h2 : o.col = m.col.col := congrArg ColAddr.col h'
+        conv_lhs => rw [path_split_at hkl]
+        rw [(List.getElem?_eq_some_iff.1 hk).2, ← hp, h1, hck, h2]
+    · rw [if_neg hck, if_neg (show ¬ ck' = (bwdC m o).col from hck)]; rfl
+  · unfold ColAddr.container
+    simp only [bwdC, hp, List.drop_length]
+    rfl
+
+theorem rep_bwdC (m : Move) (c : ColAddr) (q : Nat) :
+    (bwdC m c).rep 0 q = (c.rep 0 q).map (fun ov => (m.mapRole m.bwdIdx ov.1, m.mapRole m.bwdIdx ov.2)) := by
+  simp only [ColAddr.rep, resolve_bwdC]
+  cases h : c.resolve 0 q with
+  | none => rfl
+  | some o =>
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
+    have hst := ((ColAddr.resolve_spec 0 c o q).1 h).1
+    rw [container_bwdC m hst]
+    refine ⟨rfl, ?_⟩
+    cases o.container c with
+    | none => rfl
+    | some e => rfl
+
+/-- helper: undo a list of moves on a column address. -/
+def backC (ms : List Move) (c : ColAddr) : ColAddr := ms.foldr (fun m c => bwdC m c) c
+
+theorem backRole_ord_eq : ∀ (ms : List Move) (c : ColAddr), backRole ms (.ord c) = .ord (backC ms c)
+  | [], _ => rfl
+  | m :: ms, c => by
+    show m.mapRole m.bwdIdx (backRole ms (.ord c)) = _
+    rw [backRole_ord_eq ms c]; rfl
+
+theorem rep_backC : ∀ (ms : List Move) (c : ColAddr) (q : Nat),
+    (backC ms c).rep 0 q = (c.rep 0 q).map (fun ov => (backRole ms ov.1, backRole ms ov.2))
+  | [], c, q => by simp [backC, backRole]
+  | m :: ms, c, q => by
+    show (bwdC m (backC ms c)).rep 0 q = _
+    rw [rep_bwdC, rep_backC ms c q, Option.map_map]
+    rfl
+
+theorem heightAt_ne_of_col {E : Forest} {c : ColAddr} {e : EntryAddr} (hc : (E.colAt c).isSome)
+    (he : e.heightPath <+: c.path) : ∃ H, E.heightAt e = some H ∧ H ≠ Tree.empty := by
+  obtain ⟨rest, hrest⟩ := he
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 hc
+  simp only [Tree.colAt, Option.bind_eq_some_iff] at hcol
+  obtain ⟨G, hG, hGc⟩ := hcol
+  rw [← hrest, Tree.forestAt_append, Tree.forestAt_heightPath, Option.bind_eq_some_iff] at hG
+  obtain ⟨H, hH, hG⟩ := hG
+  refine ⟨H, hH, ?_⟩
+  rintro rfl
+  cases rest with
+  | nil =>
+    rw [forestAt_nil_path] at hG; obtain rfl := Option.some.inj hG
+    simp [Tree.empty, Tree.cols] at hGc
+  | cons x rest => rw [forestAt_empty_node_cons] at hG; simp at hG
+
 /-- helper (D3.1d, representatives clause of `origin_spec_full`). -/
 theorem origin_reps {E : Forest} (w : AdmCap E) :
     ∀ c c', Role.ord c ∈ w.H.roles → w.origin (.ord c) = some (.ord c') → ∀ q, q < c.num 0 →
       (c.rep 0 q).map (fun ov => (Packet.anchorD E (some w) ov.1, Packet.anchorD E (some w) ov.2)) =
         c'.rep 0 q := by
-  sorry
+  intro c c' hc h q _
+  rw [originBody_eq, backRole_ord_eq, if_neg (by simp)] at h
+  obtain rfl := Role.ord.inj (Option.some.inj h)
+  rw [rep_backC]
+  have hcs : (w.H.colAt c).isSome := (Tree.mem_roles_iff _ _).1 hc
+  obtain ⟨col, hcol, hk, -⟩ := isUpward_iff_exists.1 w.upward
+  obtain ⟨cs, hsd, -, hslot⟩ := adm_stop (k := w.cut) (p := w.par) hcol w.moves w.movesValid
+  have hanD : ∀ x, backRole w.moves x ≠ .slot ⟨w.col, w.cut⟩ →
+      Packet.anchorD E (some w) x = backRole w.moves x := by
+    intro x hx
+    simp only [Packet.anchorD, anchorOrigin, originBody_eq, if_neg hx, Option.getD_some]
+  simp only [ColAddr.rep]
+  cases hr : c.resolve 0 q with
+  | none => rfl
+  | some o =>
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq]
+    refine ⟨hanD _ (by rw [backRole_ord_eq]; simp), ?_⟩
+    cases hco : o.container c with
+    | none => exact hanD _ (by rw [backRole_ord_eq]; simp)
+    | some e =>
+      apply hanD
+      intro heq
+      rw [← hslot w.cut] at heq
+      have heq' := backRole_injective _ heq
+      obtain rfl := Role.slot.inj heq'
+      have hcont := ((ColAddr.container_spec o c _).1 hco).2
+      obtain ⟨H, hH, hne⟩ := heightAt_ne_of_col hcs hcont
+      obtain ⟨hcolsd, -⟩ := stopData_spec hsd
+      have hentry : w.H.entryAt ⟨cs, w.cut⟩ = some (w.par, Tree.empty) := by
+        simp only [Tree.entryAt]
+        show ((applyMoves (litCap E w.col w.cut w.par) w.moves).colAt cs).bind _ = _
+        rw [hcolsd]
+        simp only [Option.bind_some]
+        rw [List.getElem?_append_right (by simp), List.length_take_of_le hk]; simp
+      rw [heightAt_of_entryAt hentry] at hH
+      exact hne (Option.some.inj hH).symm
 
 theorem modify_split {α : Type} {l : List α} {n : Nat} {x : α} (h : l[n]? = some x) (f : α → α) :
     l = l.take n ++ x :: l.drop (n + 1) ∧ l.modify n f = l.take n ++ f x :: l.drop (n + 1) := by
@@ -4935,37 +5120,6 @@ theorem origin_spec_full {E : Forest} (hE : InL E) (w : AdmCap E) :
     · rw [h']
 
 /-! ### D3.1d helpers: the stopping column of an admissible cap -/
-
-theorem bwd_moved_ord (m : Move) (hij : m.i ≤ m.j) (rest : List (Nat × Nat)) (cc : Nat) :
-    m.mapRole m.bwdIdx (.ord ⟨m.col.path ++ (m.col.col, m.i) :: rest, cc⟩) =
-      .ord ⟨m.col.path ++ (m.col.col, m.j) :: rest, cc⟩ := by
-  simp only [Move.mapRole, mapPath_through]
-  have hb : m.bwdIdx m.i = m.j := by unfold Move.bwdIdx; rw [if_pos le_rfl]; omega
-  rw [hb]
-
-/-- helper: the stop data of an admissible cap and the origins of its stopping column. -/
-theorem adm_stop {E : Forest} {c : ColAddr} {k p : Nat} {col : Column} (hcol : E.colAt c = some col) :
-    ∀ ms : List Move, MovesValid (litCap E c k p) ms →
-      ∃ c', stopData (applyMoves (litCap E c k p) ms) =
-          some { depth := c.path.length, col := c', t := c.num 0, r := p, Q := col.take k } ∧
-        backRole ms (.ord c') = .ord c ∧ ∀ n, backRole ms (.slot ⟨c', n⟩) = .slot ⟨c, n⟩ := by
-  intro ms
-  induction ms using List.reverseRecOn with
-  | nil => intro _; exact ⟨c, stopData_litCap' hcol k p, rfl, fun _ => rfl⟩
-  | append_singleton ms m ih =>
-    intro hv
-    obtain ⟨hv, hm⟩ := movesValid_append hv
-    obtain ⟨c', hsd, hord, hslot⟩ := ih hv
-    obtain ⟨rest, hpath, hsd'⟩ := stopData_applyMove hm hsd
-    obtain ⟨-, -, -, -, -, hij, -⟩ := hm
-    rw [applyMoves_snoc]
-    refine ⟨_, hsd', ?_, fun n => ?_⟩
-    · rw [backRole_append]
-      simp only at hpath ⊢
-      rw [bwd_moved_ord m hij.le, ← hpath]; exact hord
-    · rw [backRole_append]
-      simp only at hpath ⊢
-      rw [bwd_moved_slot m hij.le, ← hpath]; exact hslot n
 
 -- provides: U2, D3.1d (requested by U3 R15): the query of an admissible cap is the cut prefix of
 -- `E`'s column, with origins at the same indices.
