@@ -4931,7 +4931,26 @@ structure ChildData (pk : SourcePacket.{u}) where
 -- provides: U3, L4.3d (requested by U5 R29): the Case 2 data exist.
 theorem childEnds_package (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
     {π : List (Nat × Nat)} (hfd : pk.rk.firstDiff = .childEnds π) : Nonempty (ChildData pk) := by
-  sorry
+  obtain ⟨A₁, hL₁, -, -, hroles, hgraph, ⟨sd₁, hsd₁, hin₁, hsp₁⟩, hbranch, k, A₂, hexp, -, -, hadm₂⟩ :=
+    reduce_childEnds hadm hfd
+  have hin : ∀ x : Role, pk.rk.a.heightPath <+: x.path → x.inEntry pk.rk.a = true := by
+    intro x hx
+    simp [Role.inEntry, List.isPrefixOf_iff_prefix.mpr hx]
+  refine ⟨{
+    F₁ := pk.rk.F.setHeight pk.rk.a A₁, k := k, F₂ := pk.rk.F.setHeight pk.rk.a A₂, sd₁ := sd₁,
+    kind' := pk.rk.kind.toDesc, inL := hL₁, roles_pre := hroles, graph_sub := hgraph,
+    stop := hsd₁, stop_inside := hin _ hin₁, step := hexp, branch := ?_,
+    persist := (prefixGraph_setHeight _ _ _ hadm.2.2.1).1, admitted := hadm₂ }⟩
+  rcases hbranch with hsp | ⟨hord, sd, rd, hsd, hQ, hrd, hrdin⟩
+  · right
+    obtain ⟨e, he, hein⟩ := hsp₁ hsp
+    refine ⟨hsp, e, he, hin _ hein, ?_⟩
+    rintro rfl
+    have := hein.length_le
+    simp [EntryAddr.heightPath] at this
+  · left
+    obtain rfl : sd = sd₁ := Option.some.inj (hsd.symm.trans hsd₁)
+    exact ⟨hord, hQ, rd, hrd, hin _ hrdin⟩
 
 /-- L7.5d (moved from U5 `Req.CapData`; requested by U5 R30): the data of §8.5 Case 3: the repaired
 first-difference cap, the charts of its `E`-prefix and of `Γ(H)`, an extended assignment, the
