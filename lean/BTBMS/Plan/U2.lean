@@ -2089,6 +2089,58 @@ theorem resolve_headCol (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i �
     rw [← he]
     exact hZ.2 e'.idx (container_root_head hz)
 
+-- G9 (helper): a container of the stopping column contains it through its last entry
+theorem container_sdcol_last (S : OrdStep) {o : ColAddr} {e : EntryAddr}
+    (h : o.container S.sd.col = some e) : e.idx + 1 = (parents S.A o).length := by
+  obtain ⟨-, -, -, hroute, -⟩ := stopData_spec S.hsd
+  obtain ⟨hpath, -⟩ := (Scan.mem_routeCols_iff _ _).mp hroute
+  unfold ColAddr.container at h
+  cases hd : S.sd.col.path.drop o.path.length with
+  | nil => rw [hd] at h; cases h
+  | cons p rest =>
+    obtain ⟨k, j⟩ := p
+    rw [hd] at h
+    simp only at h
+    split_ifs at h with hc
+    cases h
+    obtain ⟨htake, hk⟩ := hc
+    have hlt : o.path.length < S.sd.col.path.length := by
+      by_contra hcon
+      rw [List.drop_eq_nil_of_le (by omega)] at hd
+      cases hd
+    obtain ⟨F, hF, hlast⟩ := hpath o.path.length hlt
+    rw [htake] at hF
+    have hget : S.sd.col.path[o.path.length]? = some (k, j) := by
+      rw [← List.head?_drop, hd]; rfl
+    rw [hget] at hlast
+    unfold Tree.lastStep? at hlast
+    cases hcl : F.cols.getLast? with
+    | none => rw [hcl] at hlast; cases hlast
+    | some col =>
+      rw [hcl] at hlast
+      simp only [Option.bind_some] at hlast
+      split_ifs at hlast with hemp
+      simp only [Option.some.injEq, Prod.mk.injEq] at hlast
+      obtain ⟨h1, h2⟩ := hlast
+      have hcol : S.A.colAt o = some col := by
+        unfold Tree.colAt
+        rw [hF]
+        simp only [Option.bind_some]
+        rw [← hk, ← h1, ← List.getLast?_eq_getElem?]
+        exact hcl
+      simp only [parents, hcol, Option.getD_some, List.length_map]
+      have : col.length ≠ 0 := by simpa using hemp
+      omega
+
+-- G9 (helper): numbers of iterated placements
+theorem num_iterate_underCol (g : ColAddr) (n : Nat) (z : ColAddr) :
+    ((underCol g)^[n] z).num 0 = n * g.num 0 + z.num 0 := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [Function.iterate_succ_apply', num_underCol, ih, Nat.succ_mul]
+    omega
+
 -- G9.4b: for `h < φ`, the phase-`h` copies of the stopping column's stack columns between `r` and
 -- `t` are on the stack of `c` at numbers `x + h d`, and they contain `c` exactly when the old
 -- columns contain the stopping column, through the same (last) entry
@@ -2099,7 +2151,86 @@ theorem resolve_copyCol (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i �
     (ho : S.sd.col.resolve 0 x = some o) :
     c.resolve 0 (x + h * S.d) = some (S.copyCol h o) ∧
       (S.copyCol h o).container c = (o.container S.sd.col).map (fun e => ⟨S.copyCol h o, e.idx⟩) ∧
-      ∀ e, o.container S.sd.col = some e → e.idx + 1 = (parents S.A o).length := by sorry
+      ∀ e, o.container S.sd.col = some e → e.idx + 1 = (parents S.A o).length := by
+  obtain ⟨hst, hnum⟩ := (ColAddr.resolve_spec 0 _ _ _).mp ho
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  obtain ⟨b₀, hb₀⟩ := Option.isSome_iff_exists.mp ha.2.2.2
+  have hcdef : c = underCol S.sd.col ((underCol kh)^[i - 1] b₀) := by
+    rw [phaseCol_eq_iterate S hkh hb₀] at hc
+    exact (Option.some.inj hc).symm
+  obtain ⟨hoker, hoq⟩ := kerCol_of_onStack_tail S hkh hsdq hst (by omega)
+  obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hoker
+  have hne : o ≠ S.rd.col := by
+    intro h; rw [h] at hnum; omega
+  refine ⟨?_, ?_, fun e he => container_sdcol_last S he⟩
+  · -- resolution
+    rw [ColAddr.resolve_spec]
+    rcases Nat.eq_zero_or_pos h with h0 | hpos
+    · subst h0
+      simp only [OrdStep.copyCol, if_true, Nat.zero_mul, Nat.add_zero]
+      exact ⟨by rw [hcdef]; exact (onStack_underCol _ _ _).mpr (Or.inl hst), hnum⟩
+    · have hcopy : S.copyCol h o = underCol S.sd.col ((underCol kh)^[h - 1] o') := by
+        simp only [OrdStep.copyCol, if_neg (show h ≠ 0 by omega)]
+        rw [phaseCol_eq_iterate S hkh ho']
+        rfl
+      have hφ : phaseOff S.sd i a ≤ i := by unfold phaseOff; split_ifs <;> omega
+      have hsplit : (underCol kh)^[i - 1] b₀ =
+          (underCol kh)^[h - 1] ((underCol kh)^[i - h] b₀) := by
+        rw [← Function.iterate_add_apply]
+        congr 1
+        omega
+      obtain ⟨j, hj⟩ : ∃ j, i - h = j + 1 := ⟨i - h - 1, by omega⟩
+      have hkho' : kh.OnStack o' :=
+        (onStack_kerCol_tail S hkh hsdq o').mpr ⟨o, hst, by omega, hoq, ho'⟩
+      have hZ : ((underCol kh)^[i - h] b₀).OnStack o' := by
+        rw [hj, Function.iterate_succ_apply']
+        exact (onStack_underCol kh _ _).mpr (Or.inl hkho')
+      rw [hcopy]
+      refine ⟨?_, ?_⟩
+      · rw [hcdef, hsplit]
+        exact (onStack_underCol _ _ _).mpr
+          (Or.inr ⟨_, iterate_underCol_onStack kh (h - 1) hZ, rfl⟩)
+      · have h1 := num_kerCol_tail S hkh hsdq
+        have h2 := num_kerCol_tail S ho' hoq
+        rw [num_underCol, num_iterate_underCol]
+        simp only [OrdStep.d, period]
+        rw [← ht] at h1
+        have : (h - 1) * kh.num 0 + kh.num 0 = h * kh.num 0 := by
+          rw [← Nat.succ_mul]; congr 1; omega
+        have hd : kh.num 0 = S.sd.t - S.sd.r := by omega
+        rw [← hd]
+        omega
+  · -- containment
+    rcases Nat.eq_zero_or_pos h with h0 | hpos
+    · subst h0
+      simp only [OrdStep.copyCol, if_true]
+      rw [hcdef, container_underCol_of_onStack hst]
+      cases hce : o.container S.sd.col with
+      | none => rfl
+      | some e =>
+        simp only [Option.map_some, Option.some.injEq]
+        rw [← container_col hce]
+    · have hcopy : S.copyCol h o = underCol S.sd.col ((underCol kh)^[h - 1] o') := by
+        simp only [OrdStep.copyCol, if_neg (show h ≠ 0 by omega)]
+        rw [phaseCol_eq_iterate S hkh ho']
+        rfl
+      have hφ : phaseOff S.sd i a ≤ i := by unfold phaseOff; split_ifs <;> omega
+      have hsplit : (underCol kh)^[i - 1] b₀ =
+          (underCol kh)^[h - 1] ((underCol kh)^[i - h] b₀) := by
+        rw [← Function.iterate_add_apply]
+        congr 1
+        omega
+      obtain ⟨j, hj⟩ : ∃ j, i - h = j + 1 := ⟨i - h - 1, by omega⟩
+      have hkho' : kh.OnStack o' :=
+        (onStack_kerCol_tail S hkh hsdq o').mpr ⟨o, hst, by omega, hoq, ho'⟩
+      rw [hcopy, hcdef, hsplit, container_underCol, iterate_underCol_container, hj,
+        Function.iterate_succ_apply', container_underCol_of_onStack hkho',
+        container_kerCol S hkh ho' hsdq]
+      simp only [if_neg hne, Option.map_map]
+      rfl
 
 -- G9.4c: contents in `K` of a copy: parents shifted by `τ_h`, keys `κ_h`-related before the
 -- active index `u` (all keys when the copy does not contain `c`)
