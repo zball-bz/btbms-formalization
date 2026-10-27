@@ -669,9 +669,70 @@ theorem transfer_top {w ν : Ordinal.{u}} (S : lang.ElementarySubstructure (M w)
 
 /-! ## N4.9: (13) and (14) for the reflection hierarchy -/
 
+/-- N4.9a helper: the fixed values of a diagram below a coordinate `o` lie below some `m`
+with `0 < m < o`. -/
+theorem exists_bound_list {V : Type} (L : List V) (P : V → Prop) (σ : V → Ordinal.{u})
+    {o : Ordinal.{u}} (ho : IsLim o) (h : ∀ x ∈ L, P x → σ x < o) :
+    ∃ m, 0 < m ∧ m < o ∧ ∀ x ∈ L, P x → σ x < m := by
+  induction L with
+  | nil => exact ⟨1, zero_lt_one, Ordinal.one_lt_omega0.trans ho.omega0_lt, by simp⟩
+  | cons y L ih =>
+    obtain ⟨m, hm0, hmo, hm⟩ := ih fun x hx => h x (List.mem_cons_of_mem _ hx)
+    by_cases hy : P y
+    · have hy' : σ y + 1 < o := ho.add_one_lt (h y List.mem_cons_self hy)
+      refine ⟨max m (σ y + 1), lt_max_of_lt_left hm0, max_lt hmo hy', ?_⟩
+      intro x hx hPx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact lt_max_of_lt_right (Order.lt_add_one_iff.2 le_rfl)
+      · exact lt_max_of_lt_left (hm x hx hPx)
+    · refine ⟨m, hm0, hmo, ?_⟩
+      intro x hx hPx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact absurd hPx hy
+      · exact hm x hx hPx
+
+/-- N4.9a helper: a coordinate is positive. -/
+theorem isLim_pos {o : Ordinal.{u}} (h : IsLim o) : 0 < o :=
+  Ordinal.omega0_pos.trans h.omega0_lt
+
+/-- N4.9a helper: the points of `M w` below `m` number at most `|m|`. -/
+theorem mk_setOf_val_lt_le (w m : Ordinal.{u}) :
+    Cardinal.mk {x : M w | x.val < m} ≤ Cardinal.lift.{u + 1} m.card := by
+  rw [← Cardinal.mk_Iio_ordinal]
+  refine Cardinal.mk_le_of_injective
+    (f := fun x : {x : M w | x.val < m} => (⟨x.1.val, x.2⟩ : Set.Iio m)) ?_
+  intro a b h
+  exact Subtype.ext (Carrier.ext (congrArg Subtype.val h))
+
 /-- N4.9a (13): `Elem κ w` for an uncountable cardinal `κ` and a limit `w > κ` (S-1). -/
 theorem card_elem (κ : Cardinal.{u}) (w : Ordinal.{u}) (hκ : ℵ₀ < κ) (hw : IsLim w)
-    (hκw : κ.ord < w) : prims.Elem κ.ord w := by sorry
+    (hκw : κ.ord < w) : prims.Elem κ.ord w := by
+  classical
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  refine elem_iff.2 ⟨hκl, hw, hκw.le, ?_⟩
+  intro V D F σ hσ hreal
+  obtain ⟨m, hm0, hmκ, hm⟩ := exists_bound_list D.vars F σ hκl hσ
+  have hw0 : 0 < w := isLim_pos hw
+  let S := hull w hw0 {x : M w | x.val < m}
+  have hmem : ∀ o (ho : o < m), (⟨o, ho.trans (hmκ.trans hκw)⟩ : M w) ∈ S :=
+    fun o ho => subset_hull w hw0 _ ho
+  obtain ⟨ν, π, -, -, hfix, hcard⟩ := condensation S
+  have hνκ : ν < κ.ord := by
+    rw [Cardinal.lt_ord, ← Cardinal.lift_lt.{_, u + 1}, hcard]
+    refine (card_hull_le w hw0 _).trans_lt (max_lt (Cardinal.aleph0_lt_lift.2 hκ) ?_)
+    exact (mk_setOf_val_lt_le w m).trans_lt (Cardinal.lift_lt.2 (Cardinal.lt_ord.1 hmκ))
+  have hpt : ∀ o (ho : o < m), (π ⟨⟨o, ho.trans (hmκ.trans hκw)⟩, hmem o ho⟩).val = o :=
+    fun o ho => hfix _ fun o' ho' => ⟨⟨⟨o', _⟩, hmem o' (ho'.trans ho)⟩, rfl⟩
+  let p : V → S := fun x => if h : x ∈ D.vars ∧ F x then
+      ⟨⟨σ x, (hm x h.1 h.2).trans (hmκ.trans hκw)⟩, hmem (σ x) (hm x h.1 h.2)⟩
+    else ⟨⟨0, hm0.trans (hmκ.trans hκw)⟩, hmem 0 hm0⟩
+  have hp : ∀ x ∈ D.vars, F x → (p x : M w).val = σ x ∧ (π (p x)).val = σ x := by
+    intro x hx hF
+    have h : x ∈ D.vars ∧ F x := ⟨hx, hF⟩
+    have hpx : p x = ⟨_, hmem (σ x) (hm x hx hF)⟩ := dif_pos h
+    rw [hpx]
+    exact ⟨rfl, hpt _ (hm x hx hF)⟩
+  exact Diagram.realizableBelow_mono _ _ _ _ hνκ.le (transfer_top S π D F σ σ p hp hreal)
 
 /-- N4.9b: the hulls `H_r = hull(Iio r ∪ {κ})` in `M_w`. -/
 noncomputable def hullAt (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (r : Ordinal.{u}) :
