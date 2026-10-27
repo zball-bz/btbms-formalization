@@ -5352,23 +5352,126 @@ theorem sStrict_of_dLab (I : Interface.{u}) (n : Nat) (hD : DLab I.toPrims n) :
 
 /-! ## §9: strict descent, the abstract theorem, `σ` -/
 
+/-- T9.1b helper: the graph of the first outer columns of a forest is part of the graph of the
+forest, and its roles are a prefix of the forest's roles (the `graph` analogue of
+`freeBlock_prefix`). -/
+theorem graph_prefix_cols_F2 {cs cs' : List Column} (h : cs = cs'.take cs.length) :
+    (∀ a ∈ graph (Tree.node cs), a ∈ graph (Tree.node cs')) ∧
+      (Tree.node cs).roles <+: (Tree.node cs').roles := by
+  have hcs : cs' = cs ++ cs'.drop cs.length := by
+    conv_lhs => rw [← List.take_append_drop cs.length cs']
+    rw [← h]
+  have hget : ∀ (i : Nat) y, cs[i]? = some y → cs'[i]? = some y := by
+    intro i y hy
+    rw [h, List.getElem?_take] at hy
+    split_ifs at hy
+    exact hy
+  have hroles : (Tree.node cs).roles <+: (Tree.node cs').roles := by
+    refine ⟨Tree.rolesCols [] (0 + cs.length) (cs'.drop cs.length), ?_⟩
+    simp only [Tree.roles, Tree.rolesF]
+    conv_rhs => rw [hcs]
+    rw [rolesCols_append]
+  refine ⟨fun a ha => ?_, hroles⟩
+  have hcolA : ∀ c, c ∈ (Tree.node cs).colAddrs → c ∈ (Tree.node cs').colAddrs :=
+    fun c hc => (hroles.filterMap _).subset hc
+  have hentA : ∀ e, e ∈ (Tree.node cs).entryAddrs → e ∈ (Tree.node cs').entryAddrs :=
+    fun e he => (hroles.filterMap _).subset he
+  have htail : (Tree.node cs).roles.tail <+: (Tree.node cs').roles.tail := by
+    obtain ⟨t, ht⟩ := hroles
+    rw [← ht]
+    cases (Tree.node cs).roles with
+    | nil => exact List.nil_prefix
+    | cons x xs => exact ⟨t, rfl⟩
+  simp only [graph, List.mem_append, List.mem_map, List.mem_filterMap, List.mem_flatMap] at ha ⊢
+  rcases ha with (((⟨r, hr, rfl⟩ | ⟨xy, hxy, rfl⟩) | ⟨c, hc, hca⟩) | ⟨e, he, hea⟩)
+  · exact Or.inl (Or.inl (Or.inl ⟨r, hroles.subset hr, rfl⟩))
+  · exact Or.inl (Or.inl (Or.inr ⟨xy, (zip_prefix hroles htail).subset hxy, rfl⟩))
+  · refine Or.inl (Or.inr ⟨c, hcolA c hc, ?_⟩)
+    split_ifs at hca with hs
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 hs
+    rw [colAt_mono_cols hget _ hx]
+    simpa using hca
+  · refine Or.inr ⟨e, hentA e he, ?_⟩
+    cases hx : (Tree.node cs).entryAt e with
+    | none => rw [hx] at hea; simp at hea
+    | some x => rw [hx] at hea; rw [entryAt_mono_cols hget e hx]; exact hea
+
+/-- T9.1 helper (N5.4): roles of a configured expression have positive values (limits). -/
+theorem config_pos_F2 {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}} (h : IsConfig P E α)
+    {x : Role} (hx : x ∈ E.roles) : 0 < α x :=
+  Ordinal.omega0_pos.trans (config_lim h hx).2
+
 /-- T9.1b: deletion removes the empty last outer column, the largest role. -/
 theorem deletion_config {P : Prims.{u}} {A A' : Forest} {k : Nat} {α : Role → Ordinal.{u}}
     (hk : Scan.stepKind A = some .deletion) (hA' : expand A k = some A')
     (hα : IsConfig P A α) : IsConfig P A' α ∧ cfgMax A' α < cfgMax A α := by
-  sorry
+  rw [Scan.expand_deletion hk] at hA'
+  cases hA'
+  obtain ⟨cs, hcs⟩ := List.getLast?_eq_some_iff.1 ((Scan.stepKind_deletion_iff A).1 hk)
+  obtain ⟨cols⟩ := A
+  simp only [Tree.cols] at hcs ⊢
+  subst hcs
+  rw [List.dropLast_concat]
+  have hpre : cs = (cs ++ [[]]).take cs.length := by simp
+  obtain ⟨hsub, -⟩ := graph_prefix_cols_F2 hpre
+  refine ⟨config_of_sub hsub hα, ?_⟩
+  -- the deleted column `A_{|cs|}` is the last role, hence the largest value
+  have hroles : (Tree.node (cs ++ [[]])).roles =
+      (Tree.node cs).roles ++ [Role.ord ⟨[], 0 + cs.length⟩] := by
+    simp only [Tree.roles, Tree.rolesF]
+    rw [rolesCols_append]
+    simp [Tree.rolesCols, Tree.rolesCol]
+  have hlast : Role.ord ⟨[], 0 + cs.length⟩ ∈ (Tree.node (cs ++ [[]])).roles := by
+    rw [hroles]; simp
+  have hpw := config_pairwise hα
+  rw [hroles] at hpw
+  have hlt : ∀ x ∈ (Tree.node cs).roles, α x < α (.ord ⟨[], 0 + cs.length⟩) := fun x hx =>
+    (List.pairwise_append.1 hpw).2.2 x hx _ (List.mem_singleton_self _)
+  exact lt_of_lt_of_le (cfgMax_lt _ _ (config_pos_F2 hα hlast) hlt) (le_cfgMax _ _ hlast)
+
+/-- T9.1c helper: the maximum `foldr max 0` of a list of ordinals bounds its members and is
+below every positive strict upper bound. -/
+theorem foldr_max_F2 (l : List Ordinal.{u}) :
+    (∀ x ∈ l, x ≤ l.foldr max 0) ∧ ∀ θ, 0 < θ → (∀ x ∈ l, x < θ) → l.foldr max 0 < θ := by
+  induction l with
+  | nil => exact ⟨fun _ h => absurd h List.not_mem_nil, fun _ h _ => h⟩
+  | cons y l ih =>
+    refine ⟨fun x hx => ?_, fun θ hθ h => ?_⟩
+    · simp only [List.foldr_cons]
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact le_max_left _ _
+      · exact (ih.1 x hx).trans (le_max_right _ _)
+    · simp only [List.foldr_cons]
+      exact max_lt (h y List.mem_cons_self) (ih.2 θ hθ fun x hx => h x (List.mem_cons_of_mem _ hx))
 
 /-- T9.1c: special case of (27): `max γ < α(U_e) ≤ max α`. -/
 theorem descent_special (I : Interface.{u}) {A A' : Forest} {k : Nat} {α : Role → Ordinal.{u}}
     (hL : Scan.InL A) (hk : Scan.stepKind A = some .special) (hα : IsConfig I.toPrims A α)
     (hA' : expand A k = some A') : ∃ γ, IsConfig I.toPrims A' γ ∧ cfgMax A' γ < cfgMax A α := by
-  sorry
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (Scan.stopData_of_stepKind hk (by decide))
+  obtain ⟨e, he⟩ := Option.isSome_iff_exists.1 (Scan.ownerEntry_of_special hk hsd)
+  obtain ⟨-, -, -, col, p, Fl, hcol, -, hidx, -⟩ := Scan.ownerEntry_spec hk hsd he
+  have heA : e ∈ A.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]
+    simp [Tree.entryAt, hcol, List.getElem?_eq_getElem (show e.idx < col.length by omega)]
+  have hslot : Role.slot e ∈ A.roles := slot_mem_roles heA
+  have hpos := config_pos_F2 hα hslot
+  -- [L8.7] with the floor `L := max α` over the prefix `P(A, e)`
+  have hmax := foldr_max_F2 ((prefixRoles A e).map α)
+  have hLle : ∀ x ∈ prefixRoles A e, α x ≤ ((prefixRoles A e).map α).foldr max 0 :=
+    fun x hx => hmax.1 _ (List.mem_map_of_mem hx)
+  have hLlt : ((prefixRoles A e).map α).foldr max 0 < α (.slot e) :=
+    hmax.2 _ hpos fun y hy => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hy
+      exact config_lt_of_before hα hslot hx
+  obtain ⟨γ, hγ, hpre, hnew⟩ := specialDesc I A A' k α sd e _ hL hk hsd he hα hA' hLle hLlt
+  refine ⟨γ, hγ, lt_of_lt_of_le (cfgMax_lt _ _ hpos fun x hx => ?_) (le_cfgMax _ _ hslot)⟩
+  by_cases hxp : x ∈ prefixRoles A e
+  · rw [hpre x hxp]; exact config_lt_of_before hα hslot hxp
+  · exact (hnew x hx hxp).2
 
-/-- T9.1d: ordinary case of (27): `max γ < α(T) ≤ max α`, with `n` above every query size. -/
-theorem descent_ordinary (I : Interface.{u}) {A A' : Forest} {k : Nat} {α : Role → Ordinal.{u}}
-    (hA : IsStd A) (hk : Scan.stepKind A = some .ordinary) (hα : IsConfig I.toPrims A α)
-    (hA' : expand A k = some A') : ∃ γ, IsConfig I.toPrims A' γ ∧ cfgMax A' γ < cfgMax A α := by
-  sorry
+-- T9.1d `descent_ordinary` moved to the end of this file, after `dCore_all` (D8.1), which its
+-- proof uses (brief rule 5; nothing in between uses it).
 
 /-- N5.1a: every nonempty standard expression has a configuration (induction on `IsStd`). -/
 theorem std_configured {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) {A : Forest}
@@ -5430,6 +5533,79 @@ theorem sigma_lt {P : Prims.{u}} (hD : StrictDescent P) {E E' : Forest} {k : Nat
 
 -- All former stubs (`Descent.Req`) are provided by their owner units at integration; see
 -- `blueprint/INTEGRATION.md`, table "Requires resolution".
+
+/-! ## D8.1, T9.1, T9.1a: the induction (18), strict descent and the assembly
+
+Moved here from `Plan/Spine.lean` §c.12–§c.13 (brief rule 5; names and statements unchanged):
+their proofs use L8.4–L8.8 and D8.1a of this file, and nothing between the two places uses
+them. `specialDesc` (L8.7) stays in the spine: L8.8 (`sStrict_of_dLab`, via `case_childEnds`)
+needs it earlier in this file. -/
+
+-- provides: U5, L8.4–L8.8 and (18)
+theorem sStrict_all (I : Interface.{u}) (n : Nat) : SStrict I.toPrims n := by
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+    cases n with
+    | zero => exact sStrict_zero I
+    | succ k =>
+      exact sStrict_of_dLab I (k + 1) (dLab_of_wFit I (k + 1) (wFit_of_sStrict I (k + 1) ih))
+-- provides: U5, L8.5
+theorem wFit_all (I : Interface.{u}) (n : Nat) : WFit I.toPrims n :=
+  wFit_of_sStrict I n fun m _ => sStrict_all I m
+-- provides: U5, L8.6
+theorem dLab_all (I : Interface.{u}) (n : Nat) : DLab I.toPrims n := dLab_of_wFit I n (wFit_all I n)
+-- provides: U5, L8.6 (label-free core)
+theorem dCore_all (I : Interface.{u}) (n : Nat) : DCore I.toPrims n :=
+  dCore_of_dLab _ n (dLab_all I n)
+
+/-- T9.1d helper: a member of a list of naturals is at most its sum. -/
+theorem le_sum_of_mem_F2 {l : List Nat} {x : Nat} (h : x ∈ l) : x ≤ l.sum := by
+  induction l with
+  | nil => exact absurd h List.not_mem_nil
+  | cons y l ih =>
+    rw [List.sum_cons]
+    rcases List.mem_cons.1 h with rfl | h
+    · omega
+    · have := ih h; omega
+
+/-- T9.1d: ordinary case of (27): `max γ < α(T) ≤ max α`, with `n` above every query size. -/
+theorem descent_ordinary (I : Interface.{u}) {A A' : Forest} {k : Nat} {α : Role → Ordinal.{u}}
+    (hA : IsStd A) (hk : Scan.stepKind A = some .ordinary) (hα : IsConfig I.toPrims A α)
+    (hA' : expand A k = some A') : ∃ γ, IsConfig I.toPrims A' γ ∧ cfgMax A' γ < cfgMax A α := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (Scan.stopData_of_stepKind hk (by decide))
+  have hT : Role.ord sd.col ∈ A.roles := Scan.stopData_col_mem hsd
+  have hin : AllowedInput ((sd.Q.map fun J => J.2.size).sum + 1) A :=
+    ⟨Closure.std_inL hA, hk, sd, hsd, Or.inr ⟨hA, fun J hJ =>
+      Nat.lt_succ_of_le (le_sum_of_mem_F2 (List.mem_map_of_mem hJ))⟩⟩
+  obtain ⟨γ, hγ, hlt⟩ := dCore_all I _ A A' k α sd hin hsd hα hA'
+  exact ⟨γ, hγ, lt_of_lt_of_le (cfgMax_lt _ _ (config_pos_F2 hα hT) hlt) (le_cfgMax _ _ hT)⟩
+
+-- provides: U5, T9.1 (27)
+theorem strictDescent (I : Interface.{u}) : StrictDescent I.toPrims := by
+  intro A A' k α hA hne hα hA' _
+  have hL := Closure.std_inL hA
+  obtain ⟨sk, hsk⟩ := Option.isSome_iff_exists.1 (Scan.stepKind_isSome hne hL.1 hL.2.1)
+  cases sk with
+  | deletion => exact ⟨α, deletion_config hsk hA' hα⟩
+  | special => exact descent_special I hL hsk hα hA'
+  | ordinary => exact descent_ordinary I hA hsk hα hA'
+
+-- provides: U5, T9.1 (assembly of all units into the S-5 hypotheses)
+theorem finalHyps (I : Interface.{u}) (hM : ∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) :
+    FinalHyps (Configured I.toPrims) where
+  order := inferInstance
+  empty_least := fun _ h => Forest.empty_lt h
+  closure := fun _ h => Closure.std_inL h
+  cofinal := fun _ _ hB hE hlt => by
+    obtain ⟨n, E', h1, h2, -⟩ := Closure.cofinal hB hE hlt
+    exact ⟨n, E', h1, h2⟩
+  seed := fun m => by
+    obtain ⟨α, hα⟩ := seed_config I m (hM (m - 1))
+    exact ⟨_, α, hα, rfl⟩
+  descent := fun A A' n _ hA hne hC hA' hne' => by
+    obtain ⟨α, hα, rfl⟩ := hC
+    obtain ⟨γ, hγ, hlt⟩ := strictDescent I A A' n α hA hne hα hA' hne'
+    exact ⟨_, hlt, γ, hγ, rfl⟩
 
 end Descent
 

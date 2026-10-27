@@ -5053,18 +5053,86 @@ theorem capping_iff {E : Forest} (hV : CondV E) (hS : CondS E) {sel : List ColAd
 /-- L2.4c (txt:232-236): the owner root scan is not exhausted. -/
 theorem owner_root_nonexhaust {E : Forest} (hV : CondV E) (hA : CondA E) (hS : CondS E)
     {sd : StopData} {rd : RootData} (hsd : stopData E = some sd) (hrd : rootData E = some rd)
-    (ho : rd.owner = true) : rd.cursor < ((E.colAt rd.col).getD []).length := by sorry
+    (ho : rd.owner = true) : rd.cursor < ((E.colAt rd.col).getD []).length := by
+  obtain ⟨u, hcont, hu⟩ := (rootData_owner_iff hsd hrd).1 ho
+  obtain ⟨hcolsd, -, ht, -⟩ := stopData_spec hsd
+  obtain ⟨hres, -, -, -, -, -, hcur, -⟩ := rootData_spec hsd hrd
+  -- the closing slot `N` is an owner return of the active root entry `⟨rd.col, u⟩`
+  have hentN : E.entryAt ⟨sd.col, sd.Q.length⟩ = some (sd.r, Tree.empty) := by
+    simp [Tree.entryAt, hcolsd]
+  have hret : IsOwnerReturn E ⟨rd.col, u⟩ ⟨sd.col, sd.Q.length⟩ :=
+    ⟨hcont, sd.r, Tree.empty, hentN, hres⟩
+  have hR : (E.colAt rd.col).isSome := by
+    cases h : E.colAt rd.col with
+    | none => rw [h] at hu; simp at hu
+    | some _ => rfl
+  have he₀ : (⟨rd.col, u⟩ : EntryAddr) ∈ E.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff]
+    obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 hR
+    rw [hcol] at hu
+    simp only [Option.getD_some] at hu
+    simp [Tree.entryAt, hcol, List.getElem?_eq_getElem (show u < col.length by omega)]
+  have he : (⟨sd.col, sd.Q.length⟩ : EntryAddr) ∈ E.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hentN]; rfl
+  -- [L2.3] `B_N(|Q|) < B_R(u)`, and `Z = W(N) < B_N(|Q|)` (txt:235)
+  have hbar := barrier hV hA hS he₀ he hret
+  simp only at hbar
+  have hlenN : (actualKeys E sd.col).length = sd.Q.length + 1 := by
+    rw [length_actualKeys, hcolsd]; simp
+  have hZ : cutQuery (actualKeys E sd.col) sd.Q.length <
+      cutQuery (actualKeys E rd.col) (u + 1) :=
+    lt_trans (cutQuery_lt_succ _ (by omega)) hbar
+  have hlenR : u < (actualKeys E rd.col).length := by rw [length_actualKeys]; omega
+  have hle := cursor_le_of_lt_cutQuery (cutQuery_noninc _ _) hlenR hZ
+  rw [cutQuery, cursor_nu] at hle
+  -- the scan of `Z` against the root column is the root scan
+  have htake : (actualKeys E sd.col).take sd.Q.length =
+      (queryKeys sd).map (fun k : Key => (k : WithTop Key)) := by
+    simp [actualKeys, hcolsd, queryKeys, ht, List.map_map, Function.comp_def]
+  have hroot : actualKeys E rd.col = (rootKeys E rd).map (fun k : Key => (k : WithTop Key)) := by
+    simp [actualKeys, rootKeys, List.map_map, Function.comp_def]
+  rw [htake, hroot, cursor_map WithTop.coe_strictMono, ← hcur] at hle
+  omega
 
 /-- L2.4c: the paper's operation is defined on nonempty V, I, A, S inputs. -/
 theorem paperOp_isSome {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E)
-    (hA : CondA E) (hS : CondS E) (n : Nat) : (paperOp E n).isSome := by sorry
+    (hA : CondA E) (hS : CondS E) (n : Nat) : (paperOp E n).isSome := by
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE hV hI)
+  cases k with
+  | deletion => rw [paperOp_deletion hk]; rfl
+  | special =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind hk (by decide))
+    obtain ⟨oe, hoe⟩ := Option.isSome_iff_exists.1 (ownerEntry_of_special hk hsd)
+    obtain ⟨-, -, -, col, p, Fl, hcol, hlast, -, -⟩ := ownerEntry_spec hk hsd hoe
+    rw [paperOp_special hk hsd hoe hcol hlast]; rfl
+  | ordinary =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind hk (by decide))
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.1 (rootData_of_ordinary hk)
+    rw [paperOp_ordinary hk hsd hrd]
+    split
+    · rename_i h
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, List.isEmpty_iff, List.drop_eq_nil_iff] at h
+      have := owner_root_nonexhaust hV hA hS hsd hrd h.1.1
+      omega
+    · rfl
+
+-- provides: U1, L2.4 (every operation is defined under V, I, A, S)
+-- Moved here from `Plan/Spine.lean` (brief rule 5): its proof needs `paperOp_isSome` and
+-- `owner_root_nonexhaust` (L2.4c); nothing in between uses it.
+theorem expand_isSome {E : Forest} (hV : CondV E) (hI : CondI E) (hA : CondA E) (hS : CondS E)
+    (n : Nat) : (expand E n).isSome := by
+  by_cases hE : E = Tree.empty
+  · subst hE; rw [expand_empty]; rfl
+  · rw [expand_eq_paperOp hE hV hI]; exact paperOp_isSome hE hV hI hA hS n
 
 /-- L2.4c (task form of `expand_isSome`). -/
 theorem expand_ne_none {E : Forest} (hV : CondV E) (hI : CondI E) (hA : CondA E) (hS : CondS E)
-    (n : Nat) : expand E n ≠ none := by sorry
+    (n : Nat) : expand E n ≠ none :=
+  Option.isSome_iff_ne_none.1 (expand_isSome hV hI hA hS n)
 
 /-- L2.4c: every operation on the class L is defined. -/
-theorem inL_expand_ne_none {E : Forest} (h : InL E) (n : Nat) : expand E n ≠ none := by sorry
+theorem inL_expand_ne_none {E : Forest} (h : InL E) (n : Nat) : expand E n ≠ none :=
+  expand_ne_none h.1 h.2.1 h.2.2.2.1 h.2.2.2.2 n
 
 end Scan
 
