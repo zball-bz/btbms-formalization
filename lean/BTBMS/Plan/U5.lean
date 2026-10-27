@@ -3627,7 +3627,12 @@ theorem dLab_iff (P : Prims.{u}) (n : Nat) :
           (0 < k → ∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col),
             x ∉ rolesBefore (Closure.anchor E cap) (.ord rd.col) → ¬ Fix (ν x) →
               γ x < α (.ord rd.col)) := by
-  sorry
+  constructor
+  · intro h E cap α sd rd V Λ ν eν b Fix hyp
+    exact h E cap α sd rd hyp.inL hyp.ordinary hyp.stop hyp.root hyp.config hyp.query V Λ ν eν b
+      Fix hyp.bind hyp.origin hyp.pre hyp.holds hyp.below hyp.fixBelow
+  · intro h E cap α sd rd hL hk hsd hrd hα hq V Λ ν eν b Fix hb ho hp hh hbe hf
+    exact h E cap α sd rd V Λ ν eν b Fix ⟨hL, hk, hsd, hrd, hα, hq, hb, ho, hp, hh, hbe, hf⟩
 
 /-- L8.6a: the role sets of an ordinary input are those of its branch data. -/
 theorem roleSets_eq {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
@@ -3635,7 +3640,8 @@ theorem roleSets_eq {H : Forest} {sd : Scan.StopData} {rd : Scan.RootData}
     ∃ rs, roleSets H = some rs ∧ rs.T = .ord sd.col ∧ rs.R = .ord rd.col ∧
       rs.N = .slot (Scan.closingSlot sd) ∧ rs.P = rolesBefore H (.ord sd.col) ∧
       rs.D = rolesBefore H (.ord rd.col) ++ [.ord rd.col] ++ rs.K := by
-  sorry
+  simp only [roleSets, hsd, hrd, Option.bind_eq_bind, Option.bind_some]
+  exact ⟨_, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 /-- L8.6a: labels read every pre-stop role (via the `lim` atoms of the `E`-prefix graph), so the
 `Fix` bound applies to all of them; hence a fixed label variable reads only pre-root roles. -/
@@ -3644,7 +3650,16 @@ theorem nu_mem_vars {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Closur
     {Λ : Diagram V} {ν eν : Role → V} {b : V → Ordinal.{u}} {Fix : V → Prop}
     (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) :
     ∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col), ν x ∈ Λ.vars := by
-  sorry
+  intro x hx
+  obtain ⟨T', hT', -, horig⟩ := Closure.anchorOrigin_prefix hyp.inL hyp.stop
+  obtain ⟨y, hy, hyb, hyE⟩ := horig x hx
+  have hlim : BaseAtom.lim y ∈ restrictTo (graph E) (rolesBefore E T') := by
+    refine List.mem_filter.2 ⟨?_, by simpa [BaseAtom.vars] using hyb⟩
+    simp only [graph, List.mem_append]
+    exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hyE)))
+  have hΛ := hyp.pre T' _ hT' hlim
+  rw [← hyp.origin x hx y hy]
+  exact List.mem_flatMap.2 ⟨_, hΛ, by simp [Atom.vars, BaseAtom.map, BaseAtom.vars]⟩
 
 /-- L8.6b, (20): the final control edge `R(C, W, p)` with `p < W < C` (txt:1253-1254). -/
 theorem control_edge (I : Interface.{u}) {H : Forest} {α : Role → Ordinal.{u}}
