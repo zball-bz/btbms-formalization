@@ -2389,6 +2389,93 @@ theorem host_crossing_none_D8 {E : Forest} (hE : InL E) {sd : StopData}
   have hp0 := capped_path_of_actual hV (sel := routeCols E) (fun _ h => h) hc hcut hreach
   exact actual_path_of_capped hV (fun _ h => h) hc hcut (hp0.trans hp1)
 
+/-- G011-D1 (owner U2). Block form of a column `colH` with active index `eH` against a column
+`colE` with active index `eE`: `colH` ends at `eH`, agrees with `colE` before `eH`, and the
+entries `eH … eE` of `colE` all carry the label of `colH[eH]` (a deleted same-parent block
+followed by the active entry). `eH = eE` is the unmoved case. -/
+def BlockForm_D8 (colH colE : Column) (eH eE : Nat) : Prop :=
+  colH.length = eH + 1 ∧ eH ≤ eE ∧ eE < colE.length ∧ colH.take eH = colE.take eH ∧
+    ∀ x, eH ≤ x → x ≤ eE → (colE[x]?).map Prod.fst = (colH[eH]?).map Prod.fst
+
+/-- G011-L5 (L4.2b item 1 with R7 on the `E` side). Two columns in block form give the same
+response: `E`'s actual response under the `E`-barrier at its active entry equals the response of
+`H`'s column capped at its active entry. -/
+theorem resp_blockForm_D8 {E H : Forest} {oE oH : ColAddr} {eE eH : Nat}
+    (hnum : oH.num 0 = oE.num 0)
+    (hbf : BlockForm_D8 ((H.colAt oH).getD []) ((E.colAt oE).getD []) eH eE)
+    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤)
+    (hbar : W < cutQuery (actualKeys E oE) (eE + 1)) :
+    resp E (actualKeys E) oE W = (parents H oH)[cursor (cappedAt (actualKeys H oH) eH) W]? := by
+  obtain ⟨hlH, hle, hlE, htake, hlab⟩ := hbf
+  set colH := (H.colAt oH).getD []
+  set colE := (E.colAt oE).getD []
+  set f : Nat × Forest → WithTop Key := fun x => ((relKey (oE.num 0) x.2 : Key) : WithTop Key)
+  have hksE : actualKeys E oE = colE.map f := rfl
+  have hksH : actualKeys H oH = colH.map f := by
+    show colH.map _ = colH.map f; simp only [f, hnum]
+  obtain ⟨q, hq⟩ : ∃ q, (colH[eH]?).map Prod.fst = some q := by
+    have : eH < colH.length := by omega
+    exact ⟨_, by rw [List.getElem?_eq_getElem this]; rfl⟩
+  -- R7 on the `E` side
+  have hlenE : eE < (actualKeys E oE).length := by rw [hksE, List.length_map]; exact hlE
+  obtain ⟨hc1, hc2⟩ := cursor_cappedAt (actualKeys E oE) W eE hlenE hW hT hbar
+  -- the capped `E` list is `pre ++ blk ++ [⊤]`
+  set pre := (colH.map f).take eH
+  set blk := ((colE.map f).drop eH).take (eE - eH)
+  have hsplit : (actualKeys E oE).take eE ++ [⊤] = pre ++ blk ++ [⊤] := by
+    have h1 : (colE.map f).take eE = (colE.map f).take eH ++ blk := by
+      simp only [blk]
+      rw [List.take_drop, show eH + (eE - eH) = eE by omega]
+      conv_lhs => rw [← List.take_append_drop eH ((colE.map f).take eE)]
+      rw [List.take_take, Nat.min_eq_left hle, List.drop_take]
+    have h2 : (colE.map f).take eH = pre := by
+      simp only [pre, ← List.map_take, htake]
+    rw [hksE, h1, h2, List.append_assoc]
+  have hcapH : cappedAt (actualKeys H oH) eH = pre ++ [⊤] := by simp [cappedAt, hksH, pre]
+  have hblk : blk.length = eE - eH := by simp [blk]; omega
+  have hpre : pre.length = eH := by simp [pre]; omega
+  -- parents
+  set ppre := (colH.take eH).map Prod.fst
+  have hpH : parents H oH = ppre ++ [q] := by
+    have hlt : eH < colH.length := by omega
+    have hc : colH = colH.take eH ++ [colH[eH]] := by
+      rw [List.take_append_getElem hlt, List.take_of_length_le (by omega)]
+    have hq' : colH[eH].1 = q := by
+      rw [List.getElem?_eq_getElem hlt] at hq; simpa using hq
+    show colH.map Prod.fst = _
+    rw [hc, List.map_append, List.map_singleton, hq']
+  have hpE : (parents E oE).take (eE + 1) = ppre ++ List.replicate (blk.length + 1) q := by
+    have hpl : ppre.length = eH := by simp [ppre]; omega
+    apply List.ext_getElem?
+    intro x
+    rcases Nat.lt_or_ge x (eE + 1) with hx | hx
+    · rw [List.getElem?_take_of_lt hx, show parents E oE = colE.map Prod.fst from rfl,
+        List.getElem?_map]
+      rcases Nat.lt_or_ge x eH with hxe | hxe
+      · rw [List.getElem?_append_left (by omega)]
+        simp only [ppre, List.getElem?_map, List.getElem?_take_of_lt hxe]
+        have := congrArg (·[x]?) htake
+        simp only [List.getElem?_take_of_lt hxe] at this
+        rw [this]
+      · rw [List.getElem?_append_right (by omega), hpl, List.getElem?_replicate,
+          if_pos (by omega), hlab x hxe (by omega), hq]
+    · rw [List.getElem?_eq_none (by simp; omega), List.getElem?_eq_none (by simp; omega)]
+  have hcur : cursor (actualKeys E oE) W ≤ eE := hc1
+  have hresp : resp E (actualKeys E) oE W =
+      ((parents E oE).take (eE + 1))[cursor (actualKeys E oE) W]? := by
+    simp only [resp, List.getElem?_take_of_lt (by omega : cursor (actualKeys E oE) W < eE + 1)]
+    simp [parents, List.getElem?_map]
+  rw [hresp, hpE, hc2, hsplit, hpH, hcapH]
+  exact capped_block_resp pre blk ppre q W hT (by simp [ppre, hpre]; omega)
+
+/-- G011-L11 helper: the containing entry of a column also contains every column inside the
+height of an entry it contains. -/
+theorem container_trans_D8 {o d : ColAddr} {e : EntryAddr} {u : Nat}
+    (ho : o.container e.col = some ⟨o, u⟩) (hd : e.heightPath <+: d.path) :
+    o.container d = some ⟨o, u⟩ := by
+  obtain ⟨-, h2⟩ := (ColAddr.container_spec _ _ _).1 ho
+  exact (ColAddr.container_spec _ _ _).2 ⟨rfl, h2.trans ((List.prefix_append _ _).trans hd)⟩
+
 /-- G011-L8 for an admissible-cap anchor (step 4(b3) with a moved cap anchor, F13): the decorated
 host path of `w.H` transferred to `E` through the stack correspondence of the cap (G011-L1). -/
 theorem host_crossing_cap_D8 {E : Forest} (hE : InL E) (w : Closure.AdmCap E) {sd : StopData}
@@ -3000,6 +3087,65 @@ theorem low_edge_eq_none_D8 {rk : SrcRecord} (h : rk.Admitted) {i j : Nat}
       rw [← hFeq] at hcl
       simp only [resp, actualKeys, hcl]
 
+/-- G011-L1 (owner U2; requested by U3 L4.2c steps 4(b3), 4(c)). The stack of an admissible cap
+against `E`: below the host number `sd.t`, the stopping column of `w.H` and the cap column
+`w.col` resolve to columns that are either both closed and equal, or both containing (active
+entries `eH`, `eE`) and in block form. -/
+theorem admCap_stack_D8 {E : Forest} (hE : InL E) (w : Closure.AdmCap E) {sd : StopData}
+    (hsd : stopData w.H = some sd) :
+    ∀ q, q < sd.t → ∃ oH oE, sd.col.resolve 0 q = some oH ∧ w.col.resolve 0 q = some oE ∧
+      ((oH.container sd.col = none ∧ oE.container w.col = none ∧ w.H.colAt oH = E.colAt oE) ∨
+       (∃ eH eE, oH.container sd.col = some ⟨oH, eH⟩ ∧ oE.container w.col = some ⟨oE, eE⟩ ∧
+         BlockForm_D8 ((w.H.colAt oH).getD []) ((E.colAt oE).getD []) eH eE)) := by
+  sorry
+
+/-- G011-L10 helper (the levels of the root column): a column of the root column's stack (or the
+root column itself) that contains the stopping column is the root column or contains it. -/
+theorem contains_root_D8 {T R o : ColAddr} (hRT : T.resolve 0 (R.num 0) = some R)
+    (ho : R.OnStack o ∨ o = R) {e : Nat} (hcont : o.container T = some ⟨o, e⟩) :
+    o = R ∨ ∃ u, o.container R = some ⟨o, u⟩ := by
+  rcases ho with ho | rfl
+  · right
+    obtain ⟨hTR, -⟩ := (ColAddr.resolve_spec 0 T R _).1 hRT
+    obtain ⟨-, tl, htl⟩ := (ColAddr.container_spec _ _ _).1 hcont
+    simp only [EntryAddr.heightPath] at htl
+    -- `o`'s level on `T`'s path
+    have hT : T.path = o.path ++ (o.col, e) :: tl := by rw [← htl]; simp
+    rcases ho with ⟨m, ck, ik, hm, hp, hle⟩ | ⟨hp, hlt⟩
+    · -- `o` sits at level `m` of `R`'s path
+      have hmR : m < R.path.length := (List.getElem?_eq_some_iff.1 hm).1
+      -- `R`'s path is a prefix of `T`'s
+      have hRpre : R.path <+: T.path := by
+        rcases hTR with ⟨m', ck', ik', hm', hp', -⟩ | ⟨hp', -⟩
+        · rw [hp']; exact List.take_prefix _ _
+        · rw [hp']
+      have hTm : T.path[m]? = some (ck, ik) := by
+        obtain ⟨tl', htl'⟩ := hRpre
+        rw [← htl', List.getElem?_append_left hmR, hm]
+      have hol : o.path.length = m := by rw [hp, List.length_take]; omega
+      have hTo : T.path[o.path.length]? = some (o.col, e) := by rw [hT]; simp
+      rw [hol, hTm] at hTo
+      simp only [Option.some.injEq, Prod.mk.injEq] at hTo
+      obtain ⟨rfl, rfl⟩ := hTo
+      refine ⟨ik, (ColAddr.container_spec _ _ _).2 ⟨rfl, ?_⟩⟩
+      show o.path ++ [(o.col, ik)] <+: R.path
+      have h1 : R.path.take (m + 1) = R.path.take m ++ [(o.col, ik)] := by
+        rw [List.take_add_one, hm]; rfl
+      rw [hp, ← h1]
+      exact List.take_prefix _ _
+    · -- `o` is an earlier column of `R`'s forest: it cannot contain `T`
+      exfalso
+      rcases hTR with ⟨m', ck', ik', hm', hp', hle'⟩ | ⟨hp', hlt'⟩
+      · have hm'l := (List.getElem?_eq_some_iff.1 hm').1
+        have hl : o.path.length = m' := by rw [hp, hp', List.length_take]; omega
+        have hTo : T.path[o.path.length]? = some (o.col, e) := by rw [hT]; simp
+        rw [hl, hm'] at hTo
+        simp only [Option.some.injEq, Prod.mk.injEq] at hTo
+        omega
+      · have : T.path.length = o.path.length := by rw [hp, hp']
+        rw [hT] at this; simp at this
+  · left; rfl
+
 /-- G011-L10 for an admissible-cap anchor (L4.2c step 4(c), "H versus E" through the stack
 correspondence of the cap, G011-L1). -/
 theorem low_edge_eq_cap_D8 {rk : SrcRecord} (h : rk.Admitted) {w : Closure.AdmCap rk.E}
@@ -3012,7 +3158,177 @@ theorem low_edge_eq_cap_D8 {rk : SrcRecord} (h : rk.Admitted) {w : Closure.AdmCa
     respEdge rk.F (actualKeys rk.F) (srcCol_D8 rk c) (cutQuery (actualKeys rk.F (srcCol_D8 rk c)) k)
         y =
       respEdge rk.E (actualKeys rk.E) c (cutQuery (actualKeys rk.E c) k) y := by
-  sorry
+  have hk' := h.2.2.2.2.2.2
+  obtain ⟨hA, hsrcA⟩ : SrcRecord.AnchorAt rk.E (some w) i j rk.b ∧
+      SrcRecord.anchorSrc rk.E (some w) i = some rk.a := by
+    rcases hkind with hkind | hkind <;> rw [hkind] at hk' <;> exact ⟨hk'.1, hk'.2.1⟩
+  have hEL : InL rk.E := Closure.std_inL h.1
+  obtain ⟨sd, hsd, hr, ht, hrt⟩ := anchor_hosts_D8 h.1 hA hsrcA
+  obtain ⟨sd', rd, -, hsd', hrd, hor, hreach, -⟩ := hA
+  rw [hsd] at hsd'; cases hsd'
+  simp only [Closure.anchorOrigin, Closure.anchor] at hor hsd hrd hsrcA
+  have hj : j < sd.Q.length := by
+    obtain ⟨-, x, y, -, hy, -⟩ := hreach
+    have := List.getElem?_eq_some_iff.1 hy
+    simpa [queryKeys] using this.1
+  obtain ⟨hst, -, hlen, -, hq⟩ := Closure.admCap_query hEL w hsd
+  have hbw : rk.b = ⟨w.col, j⟩ := by
+    have := (hq j (hlen ▸ hj)).1
+    rw [hor, Option.some.injEq, Role.slot.injEq] at this
+    exact this
+  have ha : rk.a = ⟨rd.col, i⟩ := by
+    simp only [SrcRecord.anchorSrc, Closure.anchor, hrd, Option.map_some] at hsrcA
+    exact (Option.some.inj hsrcA).symm
+  obtain ⟨hres, -⟩ := rootData_path hsd hrd
+  obtain ⟨haH, hFeq, hAle⟩ := srcCtx_D8 h hkind
+  simp only [Closure.anchor] at haH hFeq hAle
+  obtain ⟨ρ, colB, colA, hρ, hsrcc, hB, hcA, -, -, ⟨q', H', hAk, -⟩, -, -⟩ := capSetup_D8 h hfd
+  obtain ⟨hc'F, hkE, -, hW, -⟩ := query_transfer_D8 h hfd
+  obtain ⟨-, hcE⟩ := capAt_col_D8 h hfd
+  set r := rk.a.col.num 0
+  set t := rk.b.col.num 0
+  set c' := srcCol_D8 rk c
+  have hFL : InL rk.F := h.2.2.2.1
+  have hkF : k ≤ (parents rk.F c').length := by
+    simp [parents, hcA]; exact (List.getElem?_eq_some_iff.1 hAk).1.le
+  have hcc : c = ⟨rk.b.heightPath ++ ρ, c.col⟩ := by
+    obtain ⟨cp, cc⟩ := c; simp only at hρ ⊢; rw [hρ]
+  have hac : rk.a.heightPath <+: c'.path := by
+    rw [show c' = ⟨rk.a.heightPath ++ ρ, c.col⟩ from hsrcc]; exact ⟨ρ, rfl⟩
+  have hbc : rk.b.heightPath <+: c.path := by rw [hcc]; exact ⟨ρ, rfl⟩
+  have hc'r : c'.resolve 0 r = some rk.a.col := resolve_host_D8 hac
+  have hct : c.resolve 0 t = some w.col := by
+    have := resolve_host_D8 hbc
+    rw [show w.col = rk.b.col by rw [hbw]]; exact this
+  have hTr : sd.col.resolve 0 r = some rk.a.col := by rw [hr, hres, ha]
+  -- the source stack below `r` is the stopping column's stack in `H`
+  have hsame : ∀ y, y ≤ r → c'.resolve 0 y = sd.col.resolve 0 y := by
+    intro y hy
+    rcases Nat.lt_or_ge y r with hlt | hge
+    · rw [← ColAddr.resolve_of_resolve_lt hc'r hlt, ← ColAddr.resolve_of_resolve_lt hTr hlt]
+    · have : y = r := by omega
+      rw [this, hc'r, hTr]
+  have hcE' : c.resolve 0 y = w.col.resolve 0 y := by
+    rw [← ColAddr.resolve_of_resolve_lt hct (show y < t by omega)]
+  have hysd : y < sd.t := by omega
+  obtain ⟨oH, oE, hoH, hoE, halt⟩ := admCap_stack_D8 hEL w hsd y hysd
+  have hres' : c'.resolve 0 y = some oH := by rw [hsame y hyr, hoH]
+  have hresE : c.resolve 0 y = some oE := by rw [hcE', hoE]
+  have hon : oH.num 0 = y := ColAddr.resolve_num hoH
+  have honE : oE.num 0 = y := ColAddr.resolve_num hoE
+  unfold respEdge
+  rw [hres', hresE]
+  simp only [Option.bind_some]
+  -- A: κ fixes the low keys
+  have hA' : cursor (actualKeys rk.F oH) (cutQuery (actualKeys rk.E c) k) =
+      cursor (actualKeys rk.F oH) (cutQuery (actualKeys rk.F c') k) := by
+    rw [hW]
+    conv_lhs => rw [← kappaW_actualKeys_low_D8 (F := rk.F) (o := oH) (r := r) (t := t) (by omega)]
+    exact cursor_map (kappaW_strictMono_D8 (show r ≤ t by omega)) _ _
+  have hrespA : resp rk.F (actualKeys rk.F) oH (cutQuery (actualKeys rk.F c') k) =
+      resp rk.F (actualKeys rk.F) oH (cutQuery (actualKeys rk.E c) k) := by
+    simp only [resp, hA']
+  rw [hrespA]
+  set W := cutQuery (actualKeys rk.E c) k
+  -- B: `F` versus `H`, on the active columns of `a` with the cursor bound
+  have hB : ∀ u, ((oH = rk.a.col ∧ u = rk.a.idx) ∨ oH.container rk.a.col = some ⟨oH, u⟩) →
+      cursor (actualKeys w.H oH) W ≤ u ∧
+        resp rk.F (actualKeys rk.F) oH W = resp w.H (actualKeys w.H) oH W := by
+    intro u hou
+    have hcont' : oH.container c' = some ⟨oH, u⟩ := by
+      rw [ColAddr.container_spec]
+      refine ⟨rfl, ?_⟩
+      rcases hou with ⟨rfl, rfl⟩ | hco
+      · exact hac
+      · obtain ⟨-, h2⟩ := (ColAddr.container_spec _ _ _).1 hco
+        exact h2.trans ((List.prefix_append _ _).trans hac)
+    have hbar : cutQuery (actualKeys rk.F c') k < cutQuery (actualKeys rk.F oH) (u + 1) :=
+      cut_barrier_read hFL hc'F hkF hsrc hres' hcont'
+    have huF : u < (actualKeys rk.F oH).length := by
+      rw [length_actualKeys]
+      exact idx_lt_of_mem_entryAddrs (mem_entryAddrs_of_contains hc'F
+        ((ColAddr.container_spec _ _ _).1 hcont').2)
+    have hcur := cursor_le_of_lt_cutQuery (cutQuery_noninc _ _) huF hbar
+    rw [← hA'] at hcur
+    rw [hFeq] at hcur ⊢
+    obtain ⟨h1, h2⟩ := src_host_resp_D8 haH hAle hou hcur
+    exact ⟨by rw [h1]; exact hcur, h2.symm⟩
+  rcases halt with ⟨hnc, -, hcol⟩ | ⟨eH, eE, hcH, hcEw, hbf⟩
+  · -- closed: `oH` does not contain the stopping column, hence not `a`'s column either
+    have hBF : resp rk.F (actualKeys rk.F) oH W = resp w.H (actualKeys w.H) oH W := by
+      by_cases hact : ∃ u, (oH = rk.a.col ∧ u = rk.a.idx) ∨ oH.container rk.a.col = some ⟨oH, u⟩
+      · obtain ⟨u, hou⟩ := hact
+        exact (hB u hou).2
+      · have hy : y < r := by
+          rcases Nat.lt_or_ge y r with hlt | hge
+          · exact hlt
+          · exfalso; apply hact
+            refine ⟨rk.a.idx, Or.inl ⟨?_, rfl⟩⟩
+            have : y = r := by omega
+            rw [this, hTr] at hoH; exact (Option.some.inj hoH).symm
+        have hst' : rk.a.col.OnStack oH := by
+          have := ColAddr.resolve_of_resolve_lt hTr hy
+          rw [hoH] at this
+          exact ((ColAddr.resolve_spec 0 _ oH y).1 this).1
+        have hno : ∀ u, ¬ (⟨oH, u⟩ : EntryAddr).heightPath <+: rk.a.col.path := by
+          intro u hu
+          exact hact ⟨u, Or.inr ((ColAddr.container_spec _ _ _).2 ⟨rfl, hu⟩)⟩
+        have hcl := colAt_truncSet_closed_D8 haH rk.srcHeight hst' hno
+        rw [← hFeq] at hcl
+        simp only [resp, actualKeys, hcl]
+    rw [hBF]
+    simp only [resp, actualKeys, hcol, hon, honE]
+  · -- route: block form, the cursor bound from B, and the `E`-barrier
+    have hroot : oH = rk.a.col ∨ ∃ u, oH.container rk.a.col = some ⟨oH, u⟩ := by
+      have hR : sd.col.resolve 0 (rk.a.col.num 0) = some rk.a.col := hTr
+      refine contains_root_D8 hR ?_ hcH
+      rcases Nat.lt_or_ge y r with hlt | hge
+      · left
+        have := ColAddr.resolve_of_resolve_lt hTr hlt
+        rw [hoH] at this
+        exact ((ColAddr.resolve_spec 0 _ oH y).1 this).1
+      · right
+        have : y = r := by omega
+        rw [this, hTr] at hoH; exact (Option.some.inj hoH).symm
+    obtain ⟨u, hou⟩ : ∃ u, (oH = rk.a.col ∧ u = rk.a.idx) ∨
+        oH.container rk.a.col = some ⟨oH, u⟩ := by
+      rcases hroot with h1 | ⟨u, h2⟩
+      · exact ⟨rk.a.idx, Or.inl ⟨h1, rfl⟩⟩
+      · exact ⟨u, Or.inr h2⟩
+    obtain ⟨hcurH, hBF⟩ := hB u hou
+    rw [hBF]
+    -- `u` is an entry of `oH` in `H`, whose column ends at `eH`
+    have huH : u ≤ eH := by
+      have hmem : (⟨oH, u⟩ : EntryAddr) ∈ w.H.entryAddrs := by
+        rcases hou with ⟨rfl, rfl⟩ | hco
+        · exact haH
+        · exact mem_entryAddrs_of_contains (Tree.mem_entryAddrs_iff _ _ |>.1 haH |> fun _ =>
+            (Tree.mem_colAddrs_iff _ _).2 (by
+              have := (Tree.mem_entryAddrs_iff _ _).1 haH
+              simp only [Tree.entryAt] at this
+              cases h' : w.H.colAt rk.a.col with
+              | none => rw [h'] at this; simp at this
+              | some _ => rfl)) ((ColAddr.container_spec _ _ _).1 hco).2
+      have := idx_lt_of_mem_entryAddrs hmem
+      rw [hbf.1] at this
+      simpa using this
+    have hcEc : oE.container c = some ⟨oE, eE⟩ := by
+      rw [hbw] at hbc
+      exact container_trans_D8 (e := ⟨w.col, j⟩) hcEw hbc
+    have hbarE : W < cutQuery (actualKeys rk.E oE) (eE + 1) := by
+      have := cut_barrier_read hEL hcE hkE htgt hresE hcEc
+      simpa using this
+    have hT := cutQuery_actualKeys_ne_top_D8 rk.E c k
+    rw [resp_blockForm_D8 (by rw [hon, honE]) hbf (cutQuery_noninc _ _) hT hbarE]
+    -- the decorated cursor of `H` is its actual cursor (`cursor_raise` to `⊤`)
+    have hlH : (actualKeys w.H oH).length = eH + 1 := by rw [length_actualKeys, hbf.1]
+    have hsplit : actualKeys w.H oH = (actualKeys w.H oH).take eH ++ [(actualKeys w.H oH)[eH]] := by
+      rw [List.take_append_getElem (by omega), List.take_of_length_le (by omega)]
+    have hcr := cursor_raise ((actualKeys w.H oH).take eH) ((actualKeys w.H oH)[eH]'(by omega)) ⊤ []
+      W le_top (by rw [← hsplit, List.length_take]; omega)
+    simp only [cappedAt]
+    rw [hcr, ← hsplit]
+    simp [resp, parents, List.getElem?_map]
 
 /-- G011-L10 (L4.2c step 4(c), scan and descendant records). At every vertex `y ≤ r` reached by
 both chains, the source edge (in `F`, query `W'`) equals the target edge (in `E`, query `W`). -/
@@ -3028,85 +3344,6 @@ theorem low_edge_eq_D8 {rk : SrcRecord} (h : rk.Admitted) {cap : Option (Closure
   cases cap with
   | none => exact low_edge_eq_none_D8 h hkind hfd hyr hsrc htgt
   | some w => exact low_edge_eq_cap_D8 h hkind hfd hyr hsrc htgt
-
-/-- G011-D1 (owner U2). Block form of a column `colH` with active index `eH` against a column
-`colE` with active index `eE`: `colH` ends at `eH`, agrees with `colE` before `eH`, and the
-entries `eH … eE` of `colE` all carry the label of `colH[eH]` (a deleted same-parent block
-followed by the active entry). `eH = eE` is the unmoved case. -/
-def BlockForm_D8 (colH colE : Column) (eH eE : Nat) : Prop :=
-  colH.length = eH + 1 ∧ eH ≤ eE ∧ eE < colE.length ∧ colH.take eH = colE.take eH ∧
-    ∀ x, eH ≤ x → x ≤ eE → (colE[x]?).map Prod.fst = (colH[eH]?).map Prod.fst
-
-/-- G011-L5 (L4.2b item 1 with R7 on the `E` side). Two columns in block form give the same
-response: `E`'s actual response under the `E`-barrier at its active entry equals the response of
-`H`'s column capped at its active entry. -/
-theorem resp_blockForm_D8 {E H : Forest} {oE oH : ColAddr} {eE eH : Nat}
-    (hnum : oH.num 0 = oE.num 0)
-    (hbf : BlockForm_D8 ((H.colAt oH).getD []) ((E.colAt oE).getD []) eH eE)
-    {W : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x) (hT : ∀ y ∈ W, y ≠ ⊤)
-    (hbar : W < cutQuery (actualKeys E oE) (eE + 1)) :
-    resp E (actualKeys E) oE W = (parents H oH)[cursor (cappedAt (actualKeys H oH) eH) W]? := by
-  obtain ⟨hlH, hle, hlE, htake, hlab⟩ := hbf
-  set colH := (H.colAt oH).getD []
-  set colE := (E.colAt oE).getD []
-  set f : Nat × Forest → WithTop Key := fun x => ((relKey (oE.num 0) x.2 : Key) : WithTop Key)
-  have hksE : actualKeys E oE = colE.map f := rfl
-  have hksH : actualKeys H oH = colH.map f := by
-    show colH.map _ = colH.map f; simp only [f, hnum]
-  obtain ⟨q, hq⟩ : ∃ q, (colH[eH]?).map Prod.fst = some q := by
-    have : eH < colH.length := by omega
-    exact ⟨_, by rw [List.getElem?_eq_getElem this]; rfl⟩
-  -- R7 on the `E` side
-  have hlenE : eE < (actualKeys E oE).length := by rw [hksE, List.length_map]; exact hlE
-  obtain ⟨hc1, hc2⟩ := cursor_cappedAt (actualKeys E oE) W eE hlenE hW hT hbar
-  -- the capped `E` list is `pre ++ blk ++ [⊤]`
-  set pre := (colH.map f).take eH
-  set blk := ((colE.map f).drop eH).take (eE - eH)
-  have hsplit : (actualKeys E oE).take eE ++ [⊤] = pre ++ blk ++ [⊤] := by
-    have h1 : (colE.map f).take eE = (colE.map f).take eH ++ blk := by
-      simp only [blk]
-      rw [List.take_drop, show eH + (eE - eH) = eE by omega]
-      conv_lhs => rw [← List.take_append_drop eH ((colE.map f).take eE)]
-      rw [List.take_take, Nat.min_eq_left hle, List.drop_take]
-    have h2 : (colE.map f).take eH = pre := by
-      simp only [pre, ← List.map_take, htake]
-    rw [hksE, h1, h2, List.append_assoc]
-  have hcapH : cappedAt (actualKeys H oH) eH = pre ++ [⊤] := by simp [cappedAt, hksH, pre]
-  have hblk : blk.length = eE - eH := by simp [blk]; omega
-  have hpre : pre.length = eH := by simp [pre]; omega
-  -- parents
-  set ppre := (colH.take eH).map Prod.fst
-  have hpH : parents H oH = ppre ++ [q] := by
-    have hlt : eH < colH.length := by omega
-    have hc : colH = colH.take eH ++ [colH[eH]] := by
-      rw [List.take_append_getElem hlt, List.take_of_length_le (by omega)]
-    have hq' : colH[eH].1 = q := by
-      rw [List.getElem?_eq_getElem hlt] at hq; simpa using hq
-    show colH.map Prod.fst = _
-    rw [hc, List.map_append, List.map_singleton, hq']
-  have hpE : (parents E oE).take (eE + 1) = ppre ++ List.replicate (blk.length + 1) q := by
-    have hpl : ppre.length = eH := by simp [ppre]; omega
-    apply List.ext_getElem?
-    intro x
-    rcases Nat.lt_or_ge x (eE + 1) with hx | hx
-    · rw [List.getElem?_take_of_lt hx, show parents E oE = colE.map Prod.fst from rfl,
-        List.getElem?_map]
-      rcases Nat.lt_or_ge x eH with hxe | hxe
-      · rw [List.getElem?_append_left (by omega)]
-        simp only [ppre, List.getElem?_map, List.getElem?_take_of_lt hxe]
-        have := congrArg (·[x]?) htake
-        simp only [List.getElem?_take_of_lt hxe] at this
-        rw [this]
-      · rw [List.getElem?_append_right (by omega), hpl, List.getElem?_replicate,
-          if_pos (by omega), hlab x hxe (by omega), hq]
-    · rw [List.getElem?_eq_none (by simp; omega), List.getElem?_eq_none (by simp; omega)]
-  have hcur : cursor (actualKeys E oE) W ≤ eE := hc1
-  have hresp : resp E (actualKeys E) oE W =
-      ((parents E oE).take (eE + 1))[cursor (actualKeys E oE) W]? := by
-    simp only [resp, List.getElem?_take_of_lt (by omega : cursor (actualKeys E oE) W < eE + 1)]
-    simp [parents, List.getElem?_map]
-  rw [hresp, hpE, hc2, hsplit, hpH, hcapH]
-  exact capped_block_resp pre blk ppre q W hT (by simp [ppre, hpre]; omega)
 
 /-- G011-L11 helper: a height replacement changes the column of the replaced entry, and every
 column containing it, only at the height of the active entry. -/
@@ -3202,14 +3439,6 @@ theorem repairList_stack_D8 {E : Forest} {b : EntryAddr} (hb : b ∈ E.entryAddr
          BlockForm_D8 (((Closure.applyMoves (E.truncAfter b) ms).colAt oX).getD [])
            ((E.colAt oE).getD []) eX eE)) := by
   sorry
-
-/-- G011-L11 helper: the containing entry of a column also contains every column inside the
-height of an entry it contains. -/
-theorem container_trans_D8 {o d : ColAddr} {e : EntryAddr} {u : Nat}
-    (ho : o.container e.col = some ⟨o, u⟩) (hd : e.heightPath <+: d.path) :
-    o.container d = some ⟨o, u⟩ := by
-  obtain ⟨-, h2⟩ := (ColAddr.container_spec _ _ _).1 ho
-  exact (ColAddr.container_spec _ _ _).2 ⟨rfl, h2.trans ((List.prefix_append _ _).trans hd)⟩
 
 /-- G011-L11 (L4.2c step 4(c), repair records). The same for repair records (`r = t`, κ = id),
 through the repair list's block form. -/
