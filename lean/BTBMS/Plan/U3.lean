@@ -9798,6 +9798,221 @@ theorem scan_valid4_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j
       simp only [Option.map_some, ScanSetup.pkSrcChart, if_pos hxR', if_pos hvR', hx, hv]
   · rfl
 
+section ScanLow_E8
+
+/-- L7.6a helper: relocating a column moves the roles under its entries. -/
+theorem transColumn_under_E8 (c c' : ColAddr) (k : Nat) (r : Role) :
+    transColumn c c' id (Role.under (c.path ++ [(c.col, k)]) r) =
+      Role.under (c'.path ++ [(c'.col, k)]) r := by
+  have hne : ∀ d : ColAddr, d.path = c.path ++ (c.col, k) :: d.path.drop (c.path.length + 1) →
+      relocCol c c' id d = ⟨c'.path ++ (c'.col, k) :: d.path.drop (c.path.length + 1), d.col⟩ := by
+    intro d hd
+    have h1 : d ≠ c := by
+      intro h; rw [h] at hd; have := congrArg List.length hd; simp at this
+    unfold relocCol
+    rw [if_neg h1, if_pos (by rw [List.isPrefixOf_iff_prefix, hd]; exact List.prefix_append _ _)]
+    rw [hd]
+    simp
+  cases r with
+  | ord d =>
+    simp only [Role.under, transColumn]
+    rw [hne ⟨c.path ++ [(c.col, k)] ++ d.path, d.col⟩ (by simp)]
+    simp
+  | slot e =>
+    simp only [Role.under, transColumn]
+    have h1 : (⟨c.path ++ [(c.col, k)] ++ e.col.path, e.col.col⟩ : ColAddr) ≠ c := by
+      intro h; have := congrArg (fun x : ColAddr => x.path.length) h
+      simp at this
+    rw [if_neg h1, hne ⟨c.path ++ [(c.col, k)] ++ e.col.path, e.col.col⟩ (by simp)]
+    simp
+
+/-- L7.6a helper: relocating a column maps its entry roles to those of the new column. -/
+theorem rolesCol_transColumn_E8 (c c' : ColAddr) :
+    ∀ (L : Column) (i : Nat), (Tree.rolesCol c.path c.col i L).map (transColumn c c' id) =
+      Tree.rolesCol c'.path c'.col i L
+  | [], _ => rfl
+  | (p, h) :: rest, i => by
+    simp only [Tree.rolesCol, List.map_cons, List.map_append, Tree.rolesF_eq_map_under,
+      List.map_map]
+    rw [rolesCol_transColumn_E8 c c' rest (i + 1)]
+    have hs : transColumn c c' id (.slot ⟨⟨c.path, c.col⟩, i⟩) = .slot ⟨⟨c'.path, c'.col⟩, i⟩ := by
+      simp [transColumn]
+    rw [hs]
+    congr 2
+    apply List.map_congr_left
+    intro r _
+    exact transColumn_under_E8 c c' i r
+
+/-- L7.6a helper: the column of `cE` in `E` agrees with the query before `|Q|`. -/
+theorem scan_col_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) :
+    ∃ colE, S.E.colAt S.cE = some colE ∧ ∀ j' < S.sd.Q.length, colE[j']? = S.sd.Q[j']? := by
+  obtain ⟨⟨hstd, -, -, hsd, -, -, -⟩, -⟩ := hS
+  have hcolH := (Scan.stopData_spec hsd).1
+  simp only [ScanSetup.cE, ScanSetup.TE, ScanSetup.chi]
+  simp only [ScanSetup.H] at hsd hcolH
+  revert hsd hcolH
+  generalize S.cap = cap
+  intro hsd hcolH
+  cases cap with
+  | none =>
+    simp only [anchorD, Closure.anchorOrigin, Option.getD_some]
+    simp only [Closure.anchor] at hcolH
+    exact ⟨_, hcolH, fun j' hj' => List.getElem?_append_left hj'⟩
+  | some w =>
+    obtain ⟨-, -, hlen, hT, hq⟩ := Closure.admCap_query (Closure.std_inL hstd) w hsd
+    have hTd : anchorD S.E (some w) (.ord S.sd.col) = .ord w.col := by
+      simp [anchorD, Closure.anchorOrigin, hT]
+    simp only [hTd]
+    cases hc : S.E.colAt w.col with
+    | none =>
+      exfalso
+      have hup := w.upward
+      unfold Closure.IsUpward at hup
+      rw [hc] at hup
+      exact hup
+    | some colE =>
+      refine ⟨colE, rfl, fun j' hj' => ?_⟩
+      have := (hq j' (hlen ▸ hj')).2
+      rw [hc, Option.getD_some] at this
+      exact this.symm
+
+/-- L7.6a helper: the prefix of entry `j` of a column: the roles before the column, the column,
+and the roles of its entries before `j`. -/
+theorem col_prefix_E8 {t : Forest} {c : ColAddr} {col : Column} (h : t.colAt c = some col)
+    {j : Nat} (hj : j < col.length) :
+    prefixRoles t ⟨c, j⟩ = rolesBefore t (.ord c) ++
+      Role.ord c :: Tree.rolesCol c.path c.col 0 (col.take j) := by
+  obtain ⟨A, B, hr⟩ := roles_col_decomp h
+  rw [rolesBefore_of_decomp_E8 hr]
+  have hsplit : Tree.rolesCol c.path c.col 0 col = Tree.rolesCol c.path c.col 0 (col.take j) ++
+      Role.slot ⟨c, j⟩ :: (Tree.rolesF (c.path ++ [(c.col, j)]) col[j].2 ++
+        Tree.rolesCol c.path c.col (j + 1) (col.drop (j + 1))) := by
+    conv_lhs => rw [← List.take_append_drop j col, List.drop_eq_getElem_cons hj]
+    rw [Tree.rolesCol_append, List.length_take, Nat.min_eq_left hj.le, Nat.zero_add]
+    rfl
+  refine rolesBefore_of_decomp_E8 (rest := Tree.rolesF (c.path ++ [(c.col, j)]) col[j].2 ++
+    (Tree.rolesCol c.path c.col (j + 1) (col.drop (j + 1)) ++ B)) ?_
+  rw [hr, hsplit]; simp
+
+theorem mem_zip_tail_iff_E8 {β : Type} {l : List β} {a b : β} :
+    (a, b) ∈ l.zip l.tail ↔ ∃ s t, l = s ++ a :: b :: t := by
+  induction l with
+  | nil => simp
+  | cons x l ih =>
+    cases l with
+    | nil =>
+      simp only [List.tail_cons, List.zip_nil_right, List.not_mem_nil, false_iff, not_exists]
+      intro s t h
+      have := congrArg List.length h
+      simp at this
+      omega
+    | cons y l =>
+      simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons, Prod.mk.injEq] at ih ⊢
+      rw [ih]
+      constructor
+      · rintro (⟨rfl, rfl⟩ | ⟨s, t, h⟩)
+        · exact ⟨[], l, rfl⟩
+        · exact ⟨x :: s, t, by rw [h]; rfl⟩
+      · rintro ⟨s, t, h⟩
+        cases s with
+        | nil =>
+          simp only [List.nil_append, List.cons.injEq] at h
+          exact Or.inl ⟨h.1.symm, h.2.1.symm⟩
+        | cons z s =>
+          simp only [List.cons_append, List.cons.injEq] at h
+          exact Or.inr ⟨s, t, h.2⟩
+
+theorem lt_chain_graph_E8 {E : Forest} {pre l post : List Role}
+    (h : E.roles = pre ++ l ++ post) :
+    ∀ xy ∈ l.zip l.tail, BaseAtom.lt xy.1 xy.2 ∈ graph E := by
+  rintro ⟨a, b⟩ hab
+  obtain ⟨s, t, rfl⟩ := mem_zip_tail_iff_E8.1 hab
+  simp only [graph, List.mem_append]
+  refine Or.inl (Or.inl (Or.inr (List.mem_map.2 ⟨(a, b), ?_, rfl⟩)))
+  exact mem_zip_tail_iff_E8.2 ⟨pre ++ s, t ++ post, by rw [h]; simp⟩
+
+theorem chain_pairwise_E8 {P : Prims.{u}} {V : Type} {D : List (BaseAtom V)}
+    {β : V → Ordinal.{u}} {l : List V} (hl : ∀ xy ∈ l.zip l.tail, BaseAtom.lt xy.1 xy.2 ∈ D)
+    (hD : BaseHolds P D β) : l.Pairwise fun x y => β x < β y := by
+  induction l with
+  | nil => exact List.Pairwise.nil
+  | cons x rest ih =>
+    cases rest with
+    | nil => exact List.pairwise_singleton _ _
+    | cons y rest' =>
+      have hxy : β x < β y := hD _ (hl (x, y) (by simp))
+      have ih' := ih fun xy h => hl xy (by
+        simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons] at h ⊢
+        exact Or.inr h)
+      refine List.pairwise_cons.2 ⟨fun z hz => ?_, ih'⟩
+      rcases List.mem_cons.1 hz with rfl | hz
+      · exact hxy
+      · exact hxy.trans (List.rel_of_pairwise_cons ih' hz)
+
+/-- L7.6a step 10 helper (S5): `R` followed by the bank is strictly increasing at the bank
+values. -/
+theorem bank_chain_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) :
+    ∃ colR, S.H.colAt S.rd.col = some colR ∧ S.rd.cursor < colR.length ∧
+      (S.R :: Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take (S.rd.cursor + 1))).Pairwise
+        fun a b => S.bankVal a < S.bankVal b := by
+  obtain ⟨⟨-, -, -, hsd, hrd, hcur, -⟩, -, -, -, h5, -⟩ := hS
+  obtain ⟨-, -, -, -, -, hmem, -, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  obtain ⟨pre, post, hr⟩ := roles_col_decomp hcolR
+  have hpre : S.preRoot = pre := rolesBefore_of_decomp_E8 hr
+  simp only [ScanSetup.rootLen, rootLenOf, hcolR, Option.getD_some] at hcur
+  refine ⟨colR, hcolR, hcur, ?_⟩
+  set BK := Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take (S.rd.cursor + 1)) with hBK
+  have hsplit : Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR =
+      BK ++ Tree.rolesCol S.rd.col.path S.rd.col.col (colR.take (S.rd.cursor + 1)).length
+        (colR.drop (S.rd.cursor + 1)) := by
+    conv_lhs => rw [← List.take_append_drop (S.rd.cursor + 1) colR]
+    rw [Tree.rolesCol_append, Nat.zero_add]
+  have hr' : S.H.roles = S.preRoot ++ (S.R :: BK) ++
+      (Tree.rolesCol S.rd.col.path S.rd.col.col (colR.take (S.rd.cursor + 1)).length
+        (colR.drop (S.rd.cursor + 1)) ++ post) := by
+    rw [hr, hsplit, hpre]; simp [ScanSetup.R]
+  have hbank : ∀ x ∈ BK, x ∈ S.bankRoles := by
+    intro x hx
+    refine List.mem_filter.2 ⟨by rw [hr']; simp [hx], List.any_eq_true.2 ?_⟩
+    obtain ⟨k, -, hk, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 x hx
+    simp only [List.length_take] at hk
+    exact ⟨k, List.mem_range.2 (by omega), hin⟩
+  refine chain_pairwise_E8 (D := S.bankGraph) (fun xy hxy => ?_) h5
+  have hlt := lt_chain_graph_E8 hr' xy hxy
+  obtain ⟨a, b⟩ := xy
+  obtain ⟨s, t, hst⟩ := mem_zip_tail_iff_E8.1 hxy
+  have hb : b ∈ BK := by
+    cases s with
+    | nil => simp only [List.nil_append, List.cons.injEq] at hst; rw [hst.2]; simp
+    | cons z s =>
+      simp only [List.cons_append, List.cons.injEq] at hst
+      rw [hst.2]; simp
+  have ha : a = S.R ∨ a ∈ BK := by
+    have : a ∈ S.R :: BK := by rw [hst]; simp
+    simpa using this
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hlt, ?_⟩, ?_⟩
+  · simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+      decide_eq_true_eq, List.mem_append, List.mem_singleton]
+    refine ⟨?_, Or.inr (hbank b hb)⟩
+    rcases ha with rfl | ha
+    · exact Or.inl (Or.inr rfl)
+    · exact Or.inr (hbank a ha)
+  · simp only [BaseAtom.vars, List.any_cons, List.any_nil, Bool.or_false, Bool.or_eq_true,
+      decide_eq_true_eq]
+    exact Or.inr (List.mem_cons_of_mem _ (hbank b hb))
+
+/-- L7.6a helper: `P_R ⊆ P⁻` (the root column lies on the stopping column's stack). -/
+theorem preRoot_sub_preStop_E8 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    (hrd : Scan.rootData S.H = some S.rd) {y : Role} (hy : y ∈ S.preRoot) : y ∈ S.preStop := by
+  obtain ⟨hres, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨v, hv⟩ : ∃ v, S.sd.col.rep 0 S.sd.r = some (Role.ord S.rd.col, v) := by
+    unfold ColAddr.rep; rw [hres]; exact ⟨_, rfl⟩
+  have hR := (stop_reps_E8 hsd hv).1
+  exact rolesBefore_sub_prefix (List.takeWhile_prefix _) hR hy
+
+end ScanLow_E8
+
 /-- L7.6a step 5 (Valid clause 1): the target chart is injective on `P(E, b)`. -/
 theorem scan_valid1_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
     (hj : j < S.sd.Q.length) (β : Role → Ordinal.{u}) :
@@ -9826,7 +10041,160 @@ theorem scan_valid7_E8 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j
     {β : Role → Ordinal.{u}} (h17a : S.Lmax j β < S.ownerVal i) :
     ∀ x ∈ (S.scanPacket i j β).lowNames,
       (S.scanPacket i j β).asg x < (S.scanPacket i j β).asg (S.scanPacket i j β).owner := by
-  sorry
+  have hS' := hS
+  obtain ⟨⟨-, -, -, hsd, hrd, -, -⟩, ⟨-, -, hPE⟩, ⟨-, hauxlt⟩, -⟩ := hS'
+  obtain ⟨hi, hj⟩ := reach_idx_E8 hij
+  rw [scan_owner_E8 S hS hij β]
+  obtain ⟨hb, hTE, -, -, -⟩ := scan_target_E8 S hS (i := i) hj
+  obtain ⟨colE, hcolE, hagree⟩ := scan_col_E8 S hS
+  obtain ⟨colR, hcolR, hcurR, hchain⟩ := bank_chain_E8 S hS
+  obtain ⟨-, -, -, -, -, -, hcur, -⟩ := Scan.rootData_spec hsd hrd
+  have hic : i ≤ S.rd.cursor := by rw [hcur]; exact Scan.trace_fst_le_cursor _ _ hij.1
+  have hiR : i < colR.length := by omega
+  obtain ⟨hTc, hRc⟩ := scan_hosts_E8 S hS
+  have hstopv : S.pkAsg β S.stopNm = S.asg S.stopNm :=
+    pkAsg_used_E8 S β (by simp [ScanSetup.usedNames])
+  -- the bank chain: `R` and the roles of root entries `< i` are below `u_i`
+  set BKi := Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take i) with hBKi
+  have hBK : Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take (S.rd.cursor + 1)) =
+      BKi ++ Role.slot ⟨S.rd.col, i⟩ :: (Tree.rolesF (S.rd.col.path ++ [(S.rd.col.col, i)])
+        colR[i].2 ++ Tree.rolesCol S.rd.col.path S.rd.col.col (i + 1)
+          ((colR.take (S.rd.cursor + 1)).drop (i + 1))) := by
+    have hl : i < (colR.take (S.rd.cursor + 1)).length := by simp; omega
+    conv_lhs => rw [← List.take_append_drop i (colR.take (S.rd.cursor + 1)),
+      List.drop_eq_getElem_cons hl]
+    rw [Tree.rolesCol_append, List.take_take, Nat.min_eq_left (by omega : i ≤ S.rd.cursor + 1),
+      List.length_take, Nat.min_eq_left (by omega : i ≤ colR.length), Nat.zero_add]
+    simp only [List.getElem_take]
+    rfl
+  rw [hBK] at hchain
+  have hslotH : Role.slot ⟨S.rd.col, i⟩ ∈ S.H.roles := by
+    rw [Tree.mem_roles_iff]
+    simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+  have hslotB : Role.slot ⟨S.rd.col, i⟩ ∈ S.bankRoles :=
+    List.mem_filter.2 ⟨hslotH, List.any_eq_true.2 ⟨i, List.mem_range.2 (by omega),
+      by simp [Role.inEntry]⟩⟩
+  have hvalslot : S.bankVal (.slot ⟨S.rd.col, i⟩) = S.ownerVal i := by
+    simp [ScanSetup.bankVal, ScanSetup.R, hslotB, ScanSetup.ownerVal]
+  have hρu : S.asg S.stopNm < S.ownerVal i := by
+    have := List.rel_of_pairwise_cons hchain (List.mem_append_right _ List.mem_cons_self)
+    rw [hvalslot] at this
+    simpa [ScanSetup.bankVal] using this
+  have hBKlt : ∀ y ∈ BKi, S.bankVal y < S.ownerVal i := by
+    intro y hy
+    have h2 := (List.pairwise_append.1 (List.pairwise_cons.1 hchain).2).2.2 y hy _
+      List.mem_cons_self
+    rwa [hvalslot] at h2
+  intro x hx
+  simp only [SourcePacket.lowNames, List.mem_append, List.mem_map] at hx
+  rcases hx with (⟨y, hy, rfl⟩ | ⟨y, hy, rfl⟩) | hx
+  · -- the target prefix
+    have hjE : j < colE.length := (List.getElem?_eq_some_iff.1
+      ((hagree j hj).trans (List.getElem?_eq_getElem hj))).1
+    have hpre := col_prefix_E8 hcolE hjE
+    have hnd : (prefixRoles S.E ⟨S.cE, j⟩).Nodup :=
+      (Tree.roles_nodup S.E).sublist (List.takeWhile_sublist _)
+    have hPEd : rolesBefore S.E (.ord S.cE) = S.PE := by
+      simp only [ScanSetup.PE, hTE]
+    rw [hPEd] at hpre
+    show S.pkAsg β (S.pkTgtChart y) < _
+    have hy' : y ∈ prefixRoles S.E ⟨S.cE, j⟩ := by
+      have : (S.scanPacket i j β).rk.b = ⟨S.cE, j⟩ := hb
+      rw [← this]; exact hy
+    rw [hpre] at hy' hnd
+    rcases List.mem_append.1 hy' with hyP | hyT
+    · simp only [ScanSetup.pkTgtChart, if_pos hyP]
+      rw [pkAsg_used_E8 S β (by
+        simp only [ScanSetup.usedNames, List.mem_append]
+        exact Or.inl (Or.inl (Or.inl (List.mem_map_of_mem hyP))))]
+      exact (hPE y hyP).trans hρu
+    · rcases List.mem_cons.1 hyT with rfl | hyF
+      · rw [← hTE, hTc, hstopv]; exact hρu
+      · have hnd' := List.nodup_append.1 hnd
+        have hyP : y ∉ S.PE := fun h => hnd'.2.2 _ h _ (List.mem_cons_of_mem _ hyF) rfl
+        have hyT' : y ≠ S.TE := by
+          rw [hTE]; intro h; subst h
+          exact (List.nodup_cons.1 hnd'.2.1).1 hyF
+        simp only [ScanSetup.pkTgtChart, if_neg hyP, if_neg hyT', ScanSetup.pkAsg, if_true]
+        -- `toH y` is a fitted role
+        have htake : colE.take j = S.sd.Q.take j := by
+          apply List.ext_getElem?
+          intro k
+          simp only [List.getElem?_take]
+          split_ifs with hk
+          · exact hagree k (by omega)
+          · rfl
+        have hmap := rolesCol_transColumn_E8 S.cE S.sd.col (colE.take j) 0
+        have hz : S.toH y ∈ Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) := by
+          rw [← htake, ← hmap]; exact List.mem_map_of_mem hyF
+        have hzF : S.toH y ∈ S.fittedRoles j := by
+          obtain ⟨post, -, hQ⟩ := stop_roles_E8 hsd
+          obtain ⟨k, -, hk, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 _ hz
+          simp only [List.length_take, Nat.zero_add] at hk
+          refine List.mem_filter.2 ⟨?_, List.any_eq_true.2 ⟨k, List.mem_range.2 (by omega), hin⟩⟩
+          have hsplit : Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q =
+              Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q.take j) ++
+                Tree.rolesCol S.sd.col.path S.sd.col.col (0 + (S.sd.Q.take j).length)
+                  (S.sd.Q.drop j) := by
+            rw [← Tree.rolesCol_append, List.take_append_drop]
+          rw [hQ, hsplit]
+          exact List.mem_append_left _ hz
+        obtain ⟨-, hL2⟩ := foldr_max_spec (L := S.asg S.stopNm) ((S.fittedRoles j).map β)
+        exact lt_of_le_of_lt (hL2 _ (List.mem_map_of_mem hzF)) h17a
+  · -- the source prefix
+    have hpre := col_prefix_E8 hcolR hiR
+    have hF : prefixRoles (S.scanPacket i j β).rk.F (S.scanPacket i j β).rk.a =
+        prefixRoles S.H ⟨S.rd.col, i⟩ := by
+      have haH : (⟨S.rd.col, i⟩ : EntryAddr) ∈ S.H.entryAddrs := by
+        rw [Tree.mem_entryAddrs_iff]; simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem hiR]
+      exact (Tree.truncAfter_spec S.H _ haH).2.2.2.2.2
+    rw [hF, hpre] at hy
+    have hnd : (prefixRoles S.H ⟨S.rd.col, i⟩).Nodup :=
+      (Tree.roles_nodup S.H).sublist (List.takeWhile_sublist _)
+    rw [hpre] at hnd
+    show S.pkAsg β (S.pkSrcChart y) < _
+    rcases List.mem_append.1 hy with hyP | hyT
+    · have hyP : y ∈ S.preRoot := hyP
+      simp only [ScanSetup.pkSrcChart, if_pos hyP]
+      obtain ⟨hchi, -, hv, -⟩ := scan_pre_val_E8 S hS β (preRoot_sub_preStop_E8 hsd hrd hyP)
+      rw [hv]
+      exact (hPE _ hchi).trans hρu
+    · rcases List.mem_cons.1 hyT with rfl | hyB
+      · have : S.pkSrcChart (Role.ord S.rd.col) = S.stopNm := hRc
+        rw [this, hstopv]; exact hρu
+      · have hnd' := List.nodup_append.1 hnd
+        have hyP : y ∉ S.preRoot := fun h => hnd'.2.2 _ (show y ∈ rolesBefore S.H (.ord S.rd.col)
+          from h) _ (List.mem_cons_of_mem _ hyB) rfl
+        have hyR : y ≠ S.R := by
+          simp only [ScanSetup.R]; intro h; subst h
+          exact (List.nodup_cons.1 hnd'.2.1).1 hyB
+        have hyBank : y ∈ S.bankRoles := by
+          refine List.mem_filter.2 ⟨?_, List.any_eq_true.2 ?_⟩
+          · obtain ⟨A, B, hr⟩ := roles_col_decomp hcolR
+            rw [hr]
+            refine List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_append_left _ ?_))
+            have hsplit : Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR =
+                Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take i) ++
+                  Tree.rolesCol S.rd.col.path S.rd.col.col (0 + (colR.take i).length)
+                    (colR.drop i) := by
+              rw [← Tree.rolesCol_append, List.take_append_drop]
+            rw [hsplit]
+            exact List.mem_append_left _ hyB
+          · obtain ⟨k, -, hk, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 _ hyB
+            simp only [List.length_take, Nat.zero_add] at hk
+            exact ⟨k, List.mem_range.2 (by omega), hin⟩
+        simp only [ScanSetup.pkSrcChart, if_neg hyP, if_neg hyR]
+        rw [pkAsg_used_E8 S β (by
+          simp only [ScanSetup.usedNames, List.mem_append]
+          exact Or.inl (Or.inr (List.mem_map_of_mem hyBank)))]
+        have := hBKlt y hyB
+        simpa [ScanSetup.bankVal, hyR, hyBank] using this
+  · -- the auxiliary names
+    show S.pkAsg β x < _
+    rw [pkAsg_used_E8 S β (by
+      simp only [ScanSetup.usedNames]
+      exact List.mem_append_right _ hx)]
+    exact (hauxlt x hx).trans hρu
 
 end ScanValid_E8
 
