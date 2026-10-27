@@ -8,20 +8,8 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "42f77953ac2d63712bd00a866685b8577ecc265aad80379bded678e29d404952",
+ "fingerprint": "d5a33b167f7192cbed737e5ca30e2fe16c20e1b4a897be9230df7151134d84a2",
  "decls": [
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "def",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.iso"
-  },
   {
    "axioms": [
     "Classical.choice",
@@ -141,102 +129,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U3",
    "name": "BTBMS.Packet.origin_moveAddr"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.good"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.good_edge"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.good_elem"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.isLim_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.Collapse.iso_val"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.condensation"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.transfer"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": false,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.transfer_top"
   },
   {
    "axioms": [
@@ -3656,18 +3548,6 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.capture"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.card_elem"
   },
   {
@@ -3692,163 +3572,7 @@
    "direct_sorry": true,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_elem_high"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_elem_low"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_extend"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_lim"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_lt"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.edge_of_reflPoint"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.edge_restrict"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_iff"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_le"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_lim"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_mid"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_refl"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.elem_trans"
   },
   {
    "axioms": [
@@ -3873,114 +3597,6 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.isClub_reflPoints"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_blockFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_diagramFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_limFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_realFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_realFml_some"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_realTopFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_reflFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.realize_transFml"
-  },
-  {
-   "axioms": [
-    "Classical.choice",
-    "Quot.sound",
-    "propext",
-    "sorryAx"
-   ],
-   "direct_sorry": true,
-   "kind": "theorem",
-   "module": "BTBMS.Plan.U4",
-   "name": "BTBMS.Hier.Refl.transport"
   },
   {
    "axioms": [
@@ -7040,6 +6656,17 @@
    "direct_sorry": false,
    "kind": "def",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.iso"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "def",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.Collapse.noConfusionType"
   },
   {
@@ -9405,7 +9032,62 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.good"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.good_edge"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.good_elem"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.Collapse.injective"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.isLim_iff"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.Collapse.iso_val"
   },
   {
    "axioms": [
@@ -9559,6 +9241,72 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.agreeBelow_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.baseAtom_holds_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.baseAtom_holds_map"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.blockVar_new"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.blockVar_some"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.capture"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.card_hull_le"
   },
   {
@@ -9592,7 +9340,172 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.condensation"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_elem_high"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_elem_low"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_extend"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_iff"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_lim"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_lt"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.edge_restrict"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_iff"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_le"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_lim"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_mid"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_refl"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.elem_trans"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.exists_collapse"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.fixAsg_of_mem"
   },
   {
    "axioms": [
@@ -9669,7 +9582,95 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.isSuccLimit_iff_carrier"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.lang_card_le"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.lev_eq"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_atomFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_baseFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_blockFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_boundFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_diagramFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_edge_var"
   },
   {
    "axioms": [
@@ -9691,7 +9692,183 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_elem_var"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_fixBelowFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_foldr_inf_formula"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_limFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_ltB"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_lt_var"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_realFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_realFml_iff"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_realFml_some"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_realTopFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_reflFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.realize_transFml"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.reflectsD_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.reflects_congr_below"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.splitVar_fix"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.splitVar_free"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.splitVar_tgt"
   },
   {
    "axioms": [
@@ -9713,7 +9890,51 @@
    "direct_sorry": false,
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.transfer"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.transfer_top"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.transport"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
    "name": "BTBMS.Hier.Refl.transportsD_congr"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.transports_congr_below"
   },
   {
    "axioms": [
@@ -9857,6 +10078,17 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U4",
    "name": "BTBMS.StationaryIn.exists_mem_club"
+  },
+  {
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "FirstOrder.Language.Formula.iInf.congr_simp"
   },
   {
    "axioms": [
@@ -10807,6 +11039,66 @@
    "kind": "theorem",
    "module": "BTBMS.Plan.U1",
    "name": "BTBMS.keyLabelCmp_relLabel"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc1_0"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc2_0"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc2_1"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc3_0"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc3_1"
+  },
+  {
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ],
+   "direct_sorry": false,
+   "kind": "theorem",
+   "module": "BTBMS.Plan.U4",
+   "name": "BTBMS.Hier.Refl.snoc3_2"
   },
   {
    "axioms": [
@@ -16602,6 +16894,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T15:12:47+00:00",
- "head": "a76ad15"
+ "generated": "2026-10-27T15:13:21+00:00",
+ "head": "681be6a"
 }
