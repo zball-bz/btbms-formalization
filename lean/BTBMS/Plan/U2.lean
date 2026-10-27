@@ -20969,10 +20969,8 @@ theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i �
     (hc : phaseCol S.sd S.rd i S.rd.col = some c) (q : Nat) :
     expand (litCap S.B c S.m (S.s (i - 1))) q = expand S.A (i - 1 + q) := by sorry
 
--- T3.8le (txt:617-620): no closing parent below `s_{i−1}` is an upward `L` cap at `k = m`
-theorem seam_parent (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c S.m ρ)
-    (hKL : InL (litCap S.B c S.m ρ)) : S.s (i - 1) ≤ ρ := by sorry
+-- T3.8le (`seam_parent`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
+-- the G-010 phase-copy lemmas.
 
 -- T3.8lf (txt:623-624): restored-suffix cuts force `ρ < r`
 theorem restored_parent (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -28947,6 +28945,333 @@ theorem cut_location (S : OrdStep) {c : ColAddr} {k ρ : Nat} (hup : IsUpward S.
           cases hr
       · exact Or.inr (Or.inr ⟨i, a, hi1, hin, ha, fun h => by
           by_contra h'; exact hq ⟨h, by omega⟩, hc⟩)
+
+/-! ## G6 — the seam (T3.8le), helpers -/
+
+-- G6 (helper): `Ordering.then` of two comparisons that are not `gt` is not `gt`
+theorem then_ne_gt_G6 {a b : Ordering} (ha : a ≠ .gt) (hb : b ≠ .gt) : a.then b ≠ .gt := by
+  cases a <;> simp_all [Ordering.then]
+
+section G6Trees
+variable {α : Type}
+mutual
+-- G6 (helper): relabelling by an inflationary map does not decrease a tree
+theorem cmp_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (s : Tree α) : Tree.cmp c s (Tree.map f s) ≠ .gt :=
+  match s with
+  | .node a => by rw [Tree.map, Tree.cmp]; exact cmpCols_map_infl_G6 hf a
+
+theorem cmpCols_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (a : List (List (α × Tree α))) : Tree.cmpCols c a (Tree.mapCols f a) ≠ .gt :=
+  match a with
+  | [] => by simp [Tree.mapCols, Tree.cmpCols]
+  | x :: xs => by
+    rw [Tree.mapCols, Tree.cmpCols]
+    exact then_ne_gt_G6 (cmpCol_map_infl_G6 hf x) (cmpCols_map_infl_G6 hf xs)
+
+theorem cmpCol_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (a : List (α × Tree α)) : Tree.cmpCol c a (Tree.mapCol f a) ≠ .gt :=
+  match a with
+  | [] => by simp [Tree.mapCol, Tree.cmpCol]
+  | (p, h) :: es => by
+    rw [Tree.mapCol, Tree.cmpCol]
+    exact then_ne_gt_G6 (then_ne_gt_G6 (hf p) (cmp_map_infl_G6 hf h)) (cmpCol_map_infl_G6 hf es)
+end
+end G6Trees
+
+-- G6 (helper; T3.2p.2, "`κ_1` is inflationary"): `K ≤ κ_j K`
+theorem key_le_kappa_G6 (r d j : Nat) (K : Key) : K ≤ kappa r d j K := by
+  show keyCmp K (kappa r d j K) ≠ .gt
+  unfold keyCmp kappa
+  apply cmp_map_infl_G6
+  intro x
+  obtain ⟨b, p⟩ := x
+  unfold kappaLabel keyLabelCmp
+  split_ifs with h
+  · obtain ⟨rfl, -⟩ := h
+    have h1 : compare false false = .eq := compare_eq_iff_eq.mpr rfl
+    simp only [h1, Ordering.then]
+    intro h'
+    rw [Nat.compare_eq_gt] at h'
+    omega
+  · simp [Ordering.then]
+
+-- G6 (helper): `W ≤ κ_j W` for queries
+theorem le_kappaQ_G6 (r d j : Nat) (W : List (WithTop Key)) : W ≤ kappaQ r d j W := by
+  rw [← not_lt]
+  induction W with
+  | nil => simp [kappaQ]
+  | cons w ws ih =>
+    simp only [kappaQ, List.map_cons] at ih ⊢
+    rw [List.cons_lt_cons_iff]
+    rintro (h | ⟨-, h'⟩)
+    · have hle : w ≤ WithTop.map (kappa r d j) w := by
+        cases w with
+        | top => exact le_refl _
+        | coe K => exact WithTop.coe_le_coe.mpr (key_le_kappa_G6 r d j K)
+      exact absurd h (not_lt.mpr hle)
+    · exact ih h'
+
+
+-- G6 (helper): `κ_0` is the identity on queries
+theorem kappaQ_zero_G6 (r d : Nat) (W : List (WithTop Key)) : kappaQ r d 0 W = W := by
+  unfold kappaQ
+  conv_rhs => rw [← List.map_id W]
+  congr 1
+  funext w
+  cases w with
+  | top => rfl
+  | coe K => simp only [WithTop.map_coe, kappa_zero_E3]; rfl
+
+-- G6 (helper): the root column in the system capped at the stopping column's active containers
+-- is an admissible root capping, and every column placed under the stopping column reads the root
+-- of `B` alike
+theorem activeKeys_root_G6 (S : OrdStep) {c : ColAddr} (hc : ∃ b, c = underCol S.sd.col b) :
+    RootCap_F7 S (activeKeys_D7 S.A S.sd.col S.rd.col) ∧
+      activeKeys_D7 S.B c S.rd.col = activeKeys_D7 S.A S.sd.col S.rd.col ∧
+      parents S.B S.rd.col = parents S.A S.rd.col := by
+  obtain ⟨b, hb⟩ := hc
+  obtain ⟨hres, -, -, -, -, hown, hlast⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack S.hsd Z hsdR
+  rw [← hB] at hpar htake hnone
+  have hcR : S.rd.col.container c = S.rd.col.container S.sd.col := by
+    rw [hb]; exact container_underCol_of_onStack hsdR b
+  refine ⟨?_, ?_, hpar⟩
+  · cases hRs : S.rd.col.container S.sd.col with
+    | none => left; simp only [activeKeys_D7, hRs]
+    | some e =>
+      have hl := hlast e hRs
+      unfold Packet.rootLenOf at hl
+      have ho : S.rd.owner = true := hown.mpr (by rw [hRs]; rfl)
+      have hkd := S.kernelDefined ho
+      have hlenR := length_actualKeys S.A S.rd.col
+      have hcA : S.rd.cursor < (actualKeys S.A S.rd.col).length := by
+        unfold unconsumed rootCol at hkd
+        rw [hlenR]
+        by_contra hcon
+        exact hkd (List.drop_eq_nil_of_le (by omega))
+      right
+      refine ⟨e.idx, by omega, by omega, ?_⟩
+      simp only [activeKeys_D7, hRs]
+  · cases hRs : S.rd.col.container S.sd.col with
+    | none =>
+      simp only [activeKeys_D7, hcR, hRs, actualKeys, hnone hRs]
+    | some e =>
+      simp only [activeKeys_D7, hcR, hRs]
+      congr 1
+      have h1 := htake e hRs
+      simp only [actualKeys, ← List.map_take]
+      congr 1
+      cases hBo : S.B.colAt S.rd.col with
+      | none =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rfl
+        | some _ => rw [hBo, hAo] at h1; cases h1
+      | some C1 =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rw [hBo, hAo] at h1; cases h1
+        | some C2 =>
+          rw [hBo, hAo] at h1
+          simpa using h1
+
+-- G6 (helper): the root's response, in `A` read from the stopping column and in `B` read from a
+-- column placed under it, both in the systems capped at the active containers
+theorem respEdge_root_G6 (S : OrdStep) {c : ColAddr} (hc : ∃ b, c = underCol S.sd.col b)
+    (W : List (WithTop Key)) :
+    respEdge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W S.sd.r =
+        (parents S.A S.rd.col)[cursor (activeKeys_D7 S.A S.sd.col S.rd.col) W]? ∧
+      respEdge S.B (activeKeys_D7 S.B c) c W S.sd.r =
+        (parents S.A S.rd.col)[cursor (activeKeys_D7 S.A S.sd.col S.rd.col) W]? := by
+  obtain ⟨-, hks, hpar⟩ := activeKeys_root_G6 S hc
+  obtain ⟨b, hb⟩ := hc
+  obtain ⟨hres, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hcR : c.resolve 0 S.sd.r = some S.rd.col := by
+    rw [hb]
+    exact (ColAddr.resolve_spec 0 _ _ _).mpr ⟨(onStack_underCol _ _ _).mpr (Or.inl hsdR), hrnum⟩
+  refine ⟨?_, ?_⟩
+  · unfold respEdge
+    rw [hres]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents]
+  · unfold respEdge
+    rw [hcR]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents, hks, hpar]
+
+-- G6 (helper; T3.2p.2): at the old complete query every admissible root capping stops at `c_A`
+theorem rootCap_termZ_G6 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks) :
+    cursor ks S.termZ = S.rd.cursor := by
+  have hcur := rdcursor_eq_F7 S
+  rcases hks with rfl | ⟨u, hu1, hu2, rfl⟩
+  · exact hcur.symm
+  · obtain ⟨-, -, h2⟩ := rootCap_headHyp_F7 S (Or.inl rfl)
+    have hlt : S.termZ < cutQuery (actualKeys S.A S.rd.col) (u + 1) :=
+      lt_of_lt_of_le (h2 (by omega)) (cutQuery_mono _ (by omega))
+    rw [← (cursor_cappedAt _ S.termZ u hu2 (cutQuery_noninc _ _) (termZ_ne_top_F7 S) hlt).2, hcur]
+
+
+-- G6 (helper): the final test of `A` at its closing slot, in the system capped at the stopping
+-- column's active containers: the old terminal path reaches `r` at the complete query
+theorem final_path_A_G6 (S : OrdStep) :
+    Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ (cutStart S.A S.sd.col S.m) S.sd.r := by
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hAK : CondAK S.A (capKeys S.A (routeCols S.A)) :=
+    capping_forward S.inL.1 S.inL.2.2.2.1 S.inL.2.2.2.2 (fun _ h => h)
+  have hpar : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcol]
+  have hclen : ((S.A.colAt S.sd.col).getD []).length = S.m + 1 := by
+    rw [hcol]; simp [OrdStep.m]
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  have hpm : (parents S.A S.sd.col)[S.m]? = some S.sd.r := by
+    rw [hpar, List.getElem?_append_right (by simp [OrdStep.m])]
+    simp [OrdStep.m]
+  have hA := hAK S.sd.col hmem S.m S.sd.r hpm
+  rw [cutQuery_capKeys _ _ _ (by rw [hclen]; omega)] at hA
+  exact path_congr_F7 (fun x o ho => activeKeys_stopCol_F7 S ho) hA
+
+-- G6 (helper; T3.2q, high case): at a high query the decorated paths of a phase copy with
+-- `φ ≥ 1` never enter `[r, s_φ)`: the head `s_φ` answers with the old root response `< r`
+theorem path_avoid_G6 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W) {x y : Nat}
+    (hx : x < S.sd.r ∨ S.s φ ≤ x)
+    (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x y) :
+    y < S.sd.r ∨ S.s φ ≤ y := by
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  induction hpath using Relation.ReflTransGen.head_induction_on with
+  | refl => exact hx
+  | @head x x' hxx' _ ih =>
+    apply ih
+    have hx'x : x' < x := edge_lt hVB hxx'
+    rw [edge_iff] at hxx'
+    rcases hx with hxr | hsx
+    · left; omega
+    · rcases Nat.eq_or_lt_of_le hsx with hxs | hxs
+      · subst hxs
+        rw [respEdge_head_high_D7 S hj hp hφ hW hT hhigh] at hxx'
+        exact Or.inl (respEdge_root_lt_D7 S hj hp hφ hxx')
+      · obtain ⟨z, rfl⟩ : ∃ z, x = z + φ * S.d := ⟨x - φ * S.d, by simp only [OrdStep.s] at hxs; omega⟩
+        have hzr : S.sd.r < z := by simp only [OrdStep.s] at hxs; omega
+        rw [(respEdge_phase_active_D7 S hj hp hT z).1 hzr] at hxx'
+        obtain ⟨z', -, rfl⟩ := Option.map_eq_some_iff.mp hxx'
+        rcases shiftVal_dich S.sd.r (φ * S.d) z' with h | h
+        · exact Or.inl h
+        · exact Or.inr (by simpa [OrdStep.s] using h)
+
+-- G6 (helper): head 1 is the stopping column, and `B` reads its stack like `A` in the systems
+-- capped at its active containers
+theorem respEdge_head1_G6 (S : OrdStep) (hc1 : phaseCol S.sd S.rd 1 S.rd.col = some S.sd.col)
+    {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) (x : Nat) :
+    respEdge S.B (activeKeys_D7 S.B S.sd.col) S.sd.col W x =
+      respEdge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W x := by
+  have hp : PhasePair_D7 S 1 S.sd.col S.sd.col 0 := Or.inr ⟨rfl, hc1, rfl⟩
+  have h1 : 1 ≤ 1 ∧ 1 ≤ S.n := ⟨le_rfl, S.pos⟩
+  have H := respEdge_phase_active_D7 S h1 hp hT x
+  rw [kappaQ_zero_G6, Nat.zero_mul, Nat.add_zero, shiftVal_zero_fun, Option.map_id] at H
+  rcases Nat.lt_trichotomy x S.sd.r with h | rfl | h
+  · exact H.2 h
+  · obtain ⟨-, -, -, hb⟩ := phasePair_root_D7 S hp
+    obtain ⟨hA, hB⟩ := respEdge_root_G6 S hb W
+    rw [hA, hB]
+  · exact H.1 h
+
+
+-- T3.8le (txt:617-620): no closing parent below `s_{i−1}` is an upward `L` cap at `k = m`
+-- (moved here from after T3.8ld, brief rule 5: its proof uses the G-010 phase-copy lemmas)
+theorem seam_parent (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c S.m ρ)
+    (hKL : InL (litCap S.B c S.m ρ)) : S.s (i - 1) ≤ ρ := by
+  by_contra hlt
+  rw [not_le] at hlt
+  have hVA : CondV S.A := S.inL.1
+  have hp : PhasePair_D7 S i S.sd.col c (i - 1) := Or.inr ⟨rfl, hc, rfl⟩
+  have hZn : Noninc S.termZ := cutQuery_noninc _ _
+  have hZT := termZ_ne_top_F7 S
+  -- the final test of the cap, read in `B`
+  have hKA := capping_forward hKL.1 hKL.2.2.2.1 hKL.2.2.2.2
+    (sel := routeCols (litCap S.B c S.m ρ)) (fun _ h => h)
+  obtain ⟨hcK, -⟩ := litCap_parents_self hup
+  have hB := (aAt_litCap_final_D7 hup).mp ((condAK_iff _ _).mp hKA c hcK S.m)
+  obtain ⟨hmB, hparB, hkeyB⟩ := headQuery_prefix_D7 S hi hc
+  have hQ : cutQuery (actualKeys S.B c) S.m = kappaQ S.sd.r S.d (i - 1) S.termZ := by
+    unfold cutQuery OrdStep.termZ cutQuery
+    rw [hkeyB]
+    unfold kappaQ
+    rw [nu_map (kappaQry_strictMono _ _ _)]
+  rw [hQ] at hB
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hlenA : (parents S.A S.sd.col).length = S.m + 1 := by
+    simp [parents, hcol, OrdStep.m]
+  obtain ⟨hra, hnum⟩ := phasePair_num_D7 S hi hp
+  obtain ⟨hst, hproj⟩ := cutStart_phase_D7 S hra hnum (by omega) hparB
+  -- the old path to `ρ < r`
+  have hold : ρ < S.sd.r ∧
+      Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ (cutStart S.A S.sd.col S.m) ρ := by
+    rcases Nat.eq_or_lt_of_le hi.1 with hi1 | hi2
+    · subst hi1
+      have hc1 : c = S.sd.col := by
+        obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+        rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S), Option.some.injEq] at hc
+        exact hc.symm
+      subst hc1
+      have hρr : ρ < S.sd.r := by simpa [OrdStep.s] using hlt
+      refine ⟨hρr, ?_⟩
+      have hp0 : S.proj 0 (cutStart S.B S.sd.col S.m) = cutStart S.B S.sd.col S.m := by
+        unfold OrdStep.proj
+        split_ifs with h1 h2
+        · simp
+        · rw [h2]; simp [OrdStep.s]
+        · rfl
+      simp only [Nat.sub_self] at hproj hB
+      rw [hp0] at hproj
+      rw [kappaQ_zero_G6, hproj] at hB
+      have hc1 : phaseCol S.sd S.rd 1 S.rd.col = some S.sd.col := hc
+      have he : ∀ a b, Edge S.B (activeKeys_D7 S.B S.sd.col) S.sd.col S.termZ a b ↔
+          Edge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ a b := fun a b => by
+        rw [edge_iff, edge_iff, respEdge_head1_G6 S hc1 hZT]
+      exact Relation.ReflTransGen.mono (fun a b => (he a b).mp) _ _ hB
+    · have hφ : 1 ≤ i - 1 := by omega
+      have hρ := path_avoid_G6 S hi hp hφ hZn hZT (le_kappaQ_G6 _ _ _ _) hst hB
+      have hρr : ρ < S.sd.r := by omega
+      refine ⟨hρr, ?_⟩
+      have := head_path_active_D7 S hi hp hφ hZn hZT hst (Or.inl hρr.le) hB
+      have hpρ : S.proj (i - 1) ρ = ρ := by
+        unfold OrdStep.proj
+        rw [if_neg (by omega), if_neg (by omega)]
+      rwa [hpρ, hproj] at this
+  obtain ⟨hρr, hpathA⟩ := hold
+  -- both `r` and `ρ` lie on the old terminal path, so `ρ` is reached from `r`
+  have hr := path_functional hVA (final_path_A_G6 S) hpathA hρr.le
+  rcases Relation.ReflTransGen.cases_head hr with h0 | ⟨u, hru, huρ⟩
+  · omega
+  · have hρu := path_le hVA huρ
+    rw [edge_iff] at hru
+    obtain ⟨hRC, -⟩ := activeKeys_root_G6 S (phasePair_root_D7 S hp).2.2.2
+    rw [(respEdge_root_G6 S (phasePair_root_D7 S hp).2.2.2 _).1, rootCap_termZ_G6 S hRC] at hru
+    -- the next entry of the head is the first unconsumed root entry, which upwardness beats
+    obtain ⟨-, -, hupB⟩ := isUpward_iff_parents_D7.mp hup
+    have hhc : S.headCol i = c := by simp [OrdStep.headCol, hc]
+    have hpar := (head_content_F7 S hi).1
+    rw [hhc] at hpar
+    have hlm : (((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((i - 1) * S.d))).length =
+        S.m := by
+      rw [List.length_map, List.length_take]; omega
+    have hm : (parents S.B c)[S.m]? = some u := by
+      rw [hpar, List.getElem?_append_right (by omega), hlm, Nat.sub_self, List.getElem?_drop,
+        Nat.add_zero, hru]
+    have := hupB u hm
+    omega
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by
