@@ -2050,7 +2050,8 @@ theorem parents_antitone {E : Forest} (hV : CondV E) {ks : KeySys} (hA : CondAK 
 /-- D1.3a: V is "every parent is smaller than its column's printed number" (every smaller
 number is visible, `resolve_isSome_iff`). -/
 theorem condV_iff_lt (E : Forest) :
-    CondV E ↔ ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → p < e.col.num 0 := by sorry
+    CondV E ↔ ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → p < e.col.num 0 := by
+  simp only [CondV, ColAddr.resolve_isSome_iff, Nat.zero_le, true_and]
 
 /-- D2.2a: parents of a column, entrywise. -/
 theorem parents_getElem? (E : Forest) (c : ColAddr) (k : Nat) :
@@ -2449,7 +2450,28 @@ namespace Scan
 printed number of its host column. -/
 theorem firstParent_host {E : Forest} (hV : CondV E) (hI : CondI E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {h : Forest} (hh : E.heightAt e = some h) (hne : h ≠ Tree.empty) :
-    ∃ H₀ rest, h.cols.head? = some ((e.col.num 0, H₀) :: rest) := by sorry
+    ∃ H₀ rest, h.cols.head? = some ((e.col.num 0, H₀) :: rest) := by
+  obtain ⟨⟨p, h'⟩, hpe, hph⟩ := Option.map_eq_some_iff.mp hh
+  simp only at hph
+  rw [hph] at hpe
+  obtain ⟨hcols⟩ := h
+  cases hcols with
+  | nil => exact absurd rfl hne
+  | cons col₀ restCols =>
+    obtain ⟨q, H₀, rest, rfl, hq⟩ := hI e he p _ hpe hne col₀ (List.mem_cons_self ..)
+    -- the first entry of the height, `e₀ = ⟨⟨e.heightPath, 0⟩, 0⟩`
+    have he₀ : E.entryAt ⟨⟨e.heightPath, 0⟩, 0⟩ = some (q, H₀) := by
+      rw [Tree.entryAt_eq_bind, Tree.forestAt_heightPath, hh]
+      rfl
+    have hmem : (⟨⟨e.heightPath, 0⟩, 0⟩ : EntryAddr) ∈ E.entryAddrs :=
+      (Tree.mem_entryAddrs_iff E _).mpr (by rw [he₀]; rfl)
+    have hlt := (condV_iff_lt E).mp hV _ hmem q H₀ he₀
+    have hnum : (⟨e.heightPath, 0⟩ : ColAddr).num 0 = e.col.num 0 + 1 := by
+      simp only [ColAddr.num, EntryAddr.heightPath, List.map_append, List.sum_append, List.map_cons,
+        List.map_nil, List.sum_cons, List.sum_nil]
+      omega
+    rw [hnum] at hlt
+    exact ⟨H₀, rest, by simp only [Tree.cols, List.head?_cons]; congr; omega⟩
 
 /-- D1.5b helper: a `map` after `mapLast`. -/
 theorem map_mapLast {γ δ ε : Type} (f g : γ → δ) (h : δ → ε) (l : List γ) :
