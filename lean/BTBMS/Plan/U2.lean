@@ -100,13 +100,114 @@ def FirstDec (X X' : List α) (a : Nat) : Prop :=
   X'.take a = X.take a ∧ a ≤ X'.length ∧
     ((X'.length = a ∧ a < X.length) ∨ ∃ x x', X[a]? = some x ∧ X'[a]? = some x' ∧ x' < x)
 
+/-- S-6 helper: the list order through its decision position `i`: `X` and `Y` agree before
+`i`, `Y` has a letter `y` at `i`, and `X` ends at `i` or has a smaller letter there. -/
+theorem ker_lt_iff : ∀ (X Y : List α),
+    X < Y ↔ ∃ i y, X.take i = Y.take i ∧ Y[i]? = some y ∧
+      (X[i]? = none ∨ ∃ x, X[i]? = some x ∧ x < y)
+  | [], [] => by simp
+  | [], y :: Y => by
+    simp only [List.nil_lt_cons, true_iff]
+    exact ⟨0, y, rfl, rfl, Or.inl rfl⟩
+  | x :: X, [] => by
+    simp only [List.not_lt_nil, false_iff, not_exists, not_and]
+    intro i y _ h; simp at h
+  | x :: X, y :: Y => by
+    rw [List.cons_lt_cons_iff, ker_lt_iff X Y]
+    constructor
+    · rintro (h | ⟨rfl, i, z, h1, h2, h3⟩)
+      · exact ⟨0, y, rfl, rfl, Or.inr ⟨x, rfl, h⟩⟩
+      · exact ⟨i + 1, z, by simp [h1], by simpa using h2, by simpa using h3⟩
+    · rintro ⟨i, z, h1, h2, h3⟩
+      cases i with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at h2
+        subst h2
+        rcases h3 with h3 | ⟨x', h3, h4⟩
+        · simp at h3
+        · simp only [List.getElem?_cons_zero, Option.some.injEq] at h3
+          subst h3; exact Or.inl h4
+      | succ i =>
+        simp only [List.take_succ_cons, List.cons.injEq, List.getElem?_cons_succ] at h1 h2 h3
+        exact Or.inr ⟨h1.1, i, z, h1.2, h2, h3⟩
+
+/-- S-6 helper: agreement before `j` gives agreement at every `i < j`. -/
+theorem ker_getElem?_of_take {l₁ l₂ : List α} {i j : Nat} (h : l₁.take j = l₂.take j)
+    (hij : i < j) : l₁[i]? = l₂[i]? := by
+  rw [← List.getElem?_take_of_lt hij, h, List.getElem?_take_of_lt hij]
+
+/-- S-6 helper: agreement before `j` gives agreement before every `i ≤ j`. -/
+theorem ker_take_of_take {l₁ l₂ : List α} {i j : Nat} (h : l₁.take j = l₂.take j)
+    (hij : i ≤ j) : l₁.take i = l₂.take i := by
+  rw [← Nat.min_eq_left hij, ← List.take_take, h, List.take_take]
+
+/-- S-6 helper: the decision position of `X < Y` is at most `|X|`. -/
+theorem ker_lt_pos_le {X Y : List α} {i : Nat} {y : α} (h1 : X.take i = Y.take i)
+    (h2 : Y[i]? = some y) (h3 : X[i]? = none ∨ ∃ x, X[i]? = some x ∧ x < y) : i ≤ X.length := by
+  rcases h3 with h3 | ⟨x, h3, _⟩
+  · have hY : i < Y.length := by
+      by_contra h; rw [List.getElem?_eq_none (by omega)] at h2; cases h2
+    have := congrArg List.length h1
+    rw [List.length_take, List.length_take] at this
+    omega
+  · by_contra h; rw [List.getElem?_eq_none (by omega)] at h3; cases h3
+
+/-- S-6 helper: a comparison `X < Y` decided at `i` survives any change of `Y` after `i`. -/
+theorem ker_lt_of_agree {X Y Y' : List α} {i : Nat} {y : α} (h1 : X.take i = Y.take i)
+    (h2 : Y[i]? = some y) (h3 : X[i]? = none ∨ ∃ x, X[i]? = some x ∧ x < y)
+    (hY : Y'.take (i + 1) = Y.take (i + 1)) : X < Y' := by
+  rw [ker_lt_iff]
+  refine ⟨i, y, ?_, ?_, h3⟩
+  · rw [h1, ker_take_of_take hY (Nat.le_succ i)]
+  · rw [ker_getElem?_of_take hY (Nat.lt_succ_self i), h2]
+
 -- T3.2b (txt:304-307, first part)
 theorem lt_of_firstDec {X Y X' Y' : List α} {a b : Nat} (hXY : X < Y) (hX : FirstDec X X' a)
-    (hY : Y'.take b = Y.take b ∧ b ≤ Y'.length) (hab : a < b) : X' < Y' := by sorry
+    (hY : Y'.take b = Y.take b ∧ b ≤ Y'.length) (hab : a < b) : X' < Y' := by
+  obtain ⟨hXa, haX', hdec⟩ := hX
+  obtain ⟨hYb, hbY'⟩ := hY
+  obtain ⟨δ, y, h1, h2, h3⟩ := (ker_lt_iff X Y).1 hXY
+  rw [ker_lt_iff]
+  rcases Nat.lt_or_ge δ a with hδ | hδ
+  · -- decided before the change of `X`
+    refine ⟨δ, y, ?_, ?_, ?_⟩
+    · rw [ker_take_of_take hXa (le_of_lt hδ), h1, ker_take_of_take hYb (by omega)]
+    · rw [ker_getElem?_of_take hYb (by omega), h2]
+    · rw [ker_getElem?_of_take hXa hδ]; exact h3
+  · -- `X'` decreases at `a ≤ δ`, before any change of `Y`
+    have hYa : a < Y.length := by
+      have := ker_lt_pos_le h1 h2 h3
+      have hY : δ < Y.length := by
+        by_contra h; rw [List.getElem?_eq_none (by omega)] at h2; cases h2
+      omega
+    obtain ⟨y', hy'⟩ : ∃ y', Y[a]? = some y' := ⟨Y[a], List.getElem?_eq_getElem hYa⟩
+    refine ⟨a, y', ?_, ?_, ?_⟩
+    · rw [hXa, ker_take_of_take h1 hδ, ker_take_of_take hYb (le_of_lt hab)]
+    · rw [ker_getElem?_of_take hYb hab, hy']
+    · rcases hdec with ⟨hlen, _⟩ | ⟨x, x', hx, hx', hlt⟩
+      · left; exact List.getElem?_eq_none (by omega)
+      · right
+        refine ⟨x', hx', ?_⟩
+        rcases Nat.lt_or_ge a δ with hlt' | hge
+        · have : X[a]? = Y[a]? := ker_getElem?_of_take h1 hlt'
+          rw [hx, hy'] at this
+          cases this
+          exact hlt
+        · have had : a = δ := by omega
+          subst had
+          rw [hy'] at h2
+          cases h2
+          rcases h3 with h3 | ⟨x₀, h3, h4⟩
+          · rw [h3] at hx; cases hx
+          · rw [h3] at hx; cases hx
+            exact lt_trans hlt h4
 
 -- T3.2b (txt:306-307, second part: changes of `Y` only after position `|X|`)
 theorem lt_of_take_succ {X Y Y' : List α} (hXY : X < Y)
-    (h : Y'.take (X.length + 1) = Y.take (X.length + 1)) : X < Y' := by sorry
+    (h : Y'.take (X.length + 1) = Y.take (X.length + 1)) : X < Y' := by
+  obtain ⟨δ, y, h1, h2, h3⟩ := (ker_lt_iff X Y).1 hXY
+  have hδ := ker_lt_pos_le h1 h2 h3
+  exact ker_lt_of_agree h1 h2 h3 (ker_take_of_take h (by omega))
 
 /-- L3.4: the kernel's iterates on words: `kerIter P σ q = P Σ(P) ⋯ Σ^{q-1}(P)`. -/
 def kerIter (P : List α) (σ : α → α) : Nat → List α
@@ -139,27 +240,134 @@ theorem kerIter_prefix (P : List α) (σ : α → α) (hP : P ≠ []) (q : Nat) 
 theorem kerIter_length (P : List α) (σ : α → α) (q : Nat) :
     (kerIter P σ q).length = q * P.length := ker_kerIter_len P σ q
 
+/-- helper: a proper extension is larger. -/
+theorem ker_lt_append {t : List α} (ht : t ≠ []) :
+    ∀ l : List α, l < l ++ t
+  | [] => by
+    obtain ⟨x, xs, rfl⟩ := List.exists_cons_of_ne_nil ht
+    exact List.nil_lt_cons _ _
+  | x :: l => by
+    rw [List.cons_append, List.cons_lt_cons_iff]
+    exact Or.inr ⟨rfl, ker_lt_append ht l⟩
+
+theorem ker_kerIter_prefix_succ (P : List α) (σ : α → α) :
+    ∀ m, kerIter P σ m <+: kerIter P σ (m + 1)
+  | 0 => List.nil_prefix
+  | q + 1 => by
+    show P ++ (kerIter P σ q).map σ <+: P ++ (kerIter P σ (q + 1)).map σ
+    exact (List.prefix_append_right_inj P).2 ((ker_kerIter_prefix_succ P σ q).map σ)
+
+theorem ker_kerIter_prefix_le (P : List α) (σ : α → α) {n n' : Nat} (h : n ≤ n') :
+    kerIter P σ n <+: kerIter P σ n' := by
+  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le h
+  clear h
+  induction k with
+  | zero => exact List.prefix_refl _
+  | succ k ih => exact ih.trans (ker_kerIter_prefix_succ P σ (n + k))
+
+
+/-- L3.4 helper: `F(U) = P ⌢ σ(U)` turns agreement on `t` letters into agreement on `|P| + t`. -/
+theorem ker_F_take (P : List α) (σ : α → α) {U V : List α} {t : Nat} (h : U.take t = V.take t) :
+    (P ++ U.map σ).take (P.length + t) = (P ++ V.map σ).take (P.length + t) := by
+  rw [List.take_length_add_append, List.take_length_add_append, ← List.map_take, h,
+    List.map_take]
+
+/-- L3.4 helper: if `Y < F(Y)`, every iterate longer than `|Y|` covers `Y`. -/
+theorem ker_cover (P : List α) {σ : α → α} (hP : P ≠ []) {Y : List α}
+    (h : Y < P ++ Y.map σ) {q : Nat} (hq : Y.length < q * P.length) : Y < kerIter P σ q := by
+  obtain ⟨δ, z, h1, h2, h3⟩ := (ker_lt_iff Y _).1 h
+  have hδ := ker_lt_pos_le h1 h2 h3
+  have hPpos := List.length_pos_of_ne_nil hP
+  -- the iterates agree with `Y` before `min δ (q' |P|)`
+  have hagree : ∀ q', Y.take (min δ (q' * P.length)) =
+      (kerIter P σ q').take (min δ (q' * P.length)) := by
+    intro q'
+    induction q' with
+    | zero => simp
+    | succ q' ih =>
+      have hF := ker_F_take P σ ih
+      have hm : min δ ((q' + 1) * P.length) ≤ min δ (P.length + min δ (q' * P.length)) := by
+        rw [Nat.succ_mul]; omega
+      apply ker_take_of_take _ hm
+      rw [ker_take_of_take h1 (Nat.min_le_left _ _)]
+      exact ker_take_of_take hF (Nat.min_le_right _ _)
+  cases q with
+  | zero => simp at hq
+  | succ q =>
+    have hF := ker_F_take P σ (hagree q)
+    apply ker_lt_of_agree h1 h2 h3
+    symm
+    apply ker_take_of_take hF
+    rw [Nat.succ_mul] at hq
+    omega
+
 -- L3.4b (txt:427-436): success iff some iterate covers
 theorem word_criterion (P : List α) {σ : α → α} (hP : P ≠ []) (hσ : StrictMono σ)
-    (Y : List α) : Y < P ++ Y.map σ ↔ ∃ q, Y < kerIter P σ q := by sorry
+    (Y : List α) : Y < P ++ Y.map σ ↔ ∃ q, Y < kerIter P σ q := by
+  have hPpos := List.length_pos_of_ne_nil hP
+  constructor
+  · intro h
+    refine ⟨Y.length + 1, ker_cover P hP h ?_⟩
+    rw [Nat.succ_mul]
+    have : Y.length ≤ Y.length * P.length := Nat.le_mul_of_pos_right _ hPpos
+    omega
+  · rintro ⟨q, hq⟩
+    obtain ⟨δ, z, h1, h2, h3⟩ := (ker_lt_iff Y _).1 hq
+    cases q with
+    | zero => simp [kerIter] at h2
+    | succ q =>
+      have hδK : δ < (kerIter P σ (q + 1)).length := by
+        by_contra h; rw [List.getElem?_eq_none (by omega)] at h2; cases h2
+      have hpre := ker_kerIter_prefix_le P σ (Nat.le_succ q)
+      set t := min δ (kerIter P σ q).length with ht
+      have hYt : Y.take t = (kerIter P σ q).take t := by
+        rw [ker_take_of_take h1 (Nat.min_le_left _ _)]
+        obtain ⟨u, hu⟩ := hpre
+        rw [← hu, List.take_append_of_le_length (Nat.min_le_right _ _)]
+      have hF := ker_F_take P σ hYt
+      have hlen := kerIter_length P σ (q + 1)
+      have hlen' := kerIter_length P σ q
+      apply ker_lt_of_agree h1 h2 h3
+      apply ker_take_of_take hF
+      rw [Nat.succ_mul] at hlen
+      omega
 
 -- L3.4c: success is downward closed in the target
 theorem success_anti (P : List α) {σ : α → α} (hP : P ≠ []) (hσ : StrictMono σ)
-    {Y Y' : List α} (hle : Y' ≤ Y) (h : Y < P ++ Y.map σ) : Y' < P ++ Y'.map σ := by sorry
+    {Y Y' : List α} (hle : Y' ≤ Y) (h : Y < P ++ Y.map σ) : Y' < P ++ Y'.map σ := by
+  obtain ⟨q, hq⟩ := (word_criterion P hP hσ Y).1 h
+  exact (word_criterion P hP hσ Y').2 ⟨q, lt_of_le_of_lt hle hq⟩
 
 -- L3.4d: the explicit iteration bound `q |P| > |w(Y)|`
 theorem cover_of_success (P : List α) {σ : α → α} (hP : P ≠ []) (hσ : StrictMono σ)
     {Y : List α} (h : Y < P ++ Y.map σ) {q : Nat} (hq : Y.length < q * P.length) :
-    Y < kerIter P σ q := by sorry
+    Y < kerIter P σ q := ker_cover P hP h hq
 
 -- L3.4e: equality `F(Y) = Y` is impossible by length
 theorem kernel_ne (P : List α) (σ : α → α) (hP : P ≠ []) (Y : List α) : P ++ Y.map σ ≠ Y := by
-  sorry
+  intro h
+  have := congrArg List.length h
+  rw [List.length_append, List.length_map] at this
+  have := List.length_pos_of_ne_nil hP
+  omega
 
 -- L3.7 (txt:482-487): delayed change
 theorem delayed_change {L R L' R' : List α} {lam : Nat} (hRL : R < L) (hlen : R.length ≤ lam)
     (hagree : L'.take lam = L.take lam) (hL' : lam ≤ L'.length) (hR : R' < R) : R' < L' := by
-  sorry
+  obtain ⟨δ, y, h1, h2, h3⟩ := (ker_lt_iff R L).1 hRL
+  have hδ := ker_lt_pos_le h1 h2 h3
+  apply lt_of_lt_of_le hR
+  rcases Nat.lt_or_ge δ lam with hlt | hge
+  · exact le_of_lt (ker_lt_of_agree h1 h2 h3 (ker_take_of_take hagree hlt))
+  · -- `R` is a prefix of `L'`
+    have hRe : R.take δ = R := List.take_of_length_le (by omega)
+    have hRL' : R = L'.take δ := by rw [← hRe, h1, ker_take_of_take hagree (by omega)]
+    obtain ⟨t, ht⟩ := List.take_prefix δ L'
+    rw [hRL']
+    conv_rhs => rw [← ht]
+    by_cases h0 : t = []
+    · rw [h0, List.append_nil]
+    · exact le_of_lt (ker_lt_append h0 _)
 
 -- T3.2p (txt:377-382): the reset identity `ν(Z ⌢ [K_c]) = B_c`, iterated through the suffix
 theorem reset_nu (ks Z : List α) {c : Nat} (hc : c < ks.length)
@@ -2163,31 +2371,6 @@ theorem ker_word_iterate {E : Forest} {sd : StopData} {rd : RootData} (hV : Cond
   | n + 1 => by
     rw [Function.iterate_succ_apply', word_kernel hV hsd hrd hkd, ker_word_iterate hV hsd hrd hkd n]
     rfl
-
-/-- helper: a proper extension is larger. -/
-theorem ker_lt_append {α : Type} [LinearOrder α] {t : List α} (ht : t ≠ []) :
-    ∀ l : List α, l < l ++ t
-  | [] => by
-    obtain ⟨x, xs, rfl⟩ := List.exists_cons_of_ne_nil ht
-    exact List.nil_lt_cons _ _
-  | x :: l => by
-    rw [List.cons_append, List.cons_lt_cons_iff]
-    exact Or.inr ⟨rfl, ker_lt_append ht l⟩
-
-theorem ker_kerIter_prefix_succ {α : Type} (P : List α) (σ : α → α) :
-    ∀ m, kerIter P σ m <+: kerIter P σ (m + 1)
-  | 0 => List.nil_prefix
-  | q + 1 => by
-    show P ++ (kerIter P σ q).map σ <+: P ++ (kerIter P σ (q + 1)).map σ
-    exact (List.prefix_append_right_inj P).2 ((ker_kerIter_prefix_succ P σ q).map σ)
-
-theorem ker_kerIter_prefix_le {α : Type} (P : List α) (σ : α → α) {n n' : Nat} (h : n ≤ n') :
-    kerIter P σ n <+: kerIter P σ n' := by
-  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le h
-  clear h
-  induction k with
-  | zero => exact List.prefix_refl _
-  | succ k ih => exact ih.trans (ker_kerIter_prefix_succ P σ (n + k))
 
 /-- helper: KerRoute is downward closed. -/
 theorem ker_route_pred : ∀ (k : Nat) (F : Forest), KerRoute (k + 1) F → KerRoute k F
