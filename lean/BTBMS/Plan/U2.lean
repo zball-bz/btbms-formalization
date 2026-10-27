@@ -15671,8 +15671,60 @@ theorem head_path_rev {A B : Forest} {sd : StopData} {rd : RootData} {n j : Nat}
   sorry
 
 -- T3.2r (txt:377-403): ordinary outputs satisfy A (decorated A, then uncapping by S)
+/-! ### T3.2r helpers (branch G3): decorated A of an ordinary output, class by class -/
+
+/-- T3.2r (G3), class (a): tests of a context column (a column outside the hole; its stack is
+context, its keys are the old ones up to a capped last key). -/
+theorem condAK_ctx_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    (hB : expand A n = some B) (hn : 1 ≤ n) {c : ColAddr} (hc : c ∈ B.colAddrs)
+    (hctx : c ∈ (context A sd Tree.empty).colAddrs) (i : Nat) :
+    AAt B (capKeys B (routeCols B)) c i := by
+  sorry
+
+/-- T3.2r (G3), classes (b), (c): tests of a phase copy of a template column (pure copies above
+`r`, head substitution `head_path_rev` across `r`, shared context below `r`). -/
+theorem condAK_tmpl_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    (hB : expand A n = some B) (hn : 1 ≤ n) {j : Nat} (hj : 1 ≤ j ∧ j ≤ n) {a c : ColAddr}
+    (ha : IsTmplCol A sd rd a) (hc : phaseCol sd rd j a = some c) (i : Nat) :
+    AAt B (capKeys B (routeCols B)) c i := by
+  sorry
+
+/-- T3.2r (G3), classes (d), (e), (f): tests of a head (query prefix: copies of the old terminal
+tests; first restored entry: the terminal's last test, then the high root response; later restored
+entries: the old root tests at the reset boundary). -/
+theorem condAK_head_G3 {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
+    (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
+    (hB : expand A n = some B) (hn : 1 ≤ n) {j : Nat} (hj : 1 ≤ j ∧ j ≤ n) {c : ColAddr}
+    (hc : phaseCol sd rd j rd.col = some c) (i : Nat) :
+    AAt B (capKeys B (routeCols B)) c i := by
+  sorry
+
+/-- T3.2r (G3): decorated A of an ordinary output with `n ≥ 1`, in the system capping the last
+keys of `B`'s terminal route. -/
+theorem condAK_ord_G3 {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
+    (hB : expand A n = some B) (hn : 1 ≤ n) : CondAK B (capKeys B (routeCols B)) := by
+  obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.mp (stopData_of_stepKind hk (by decide))
+  obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hk)
+  rw [condAK_iff]
+  intro c hc i
+  rcases classify_cols hL hk hsd hrd hB hc with ⟨hctx, -⟩ | ⟨j, a, hj1, hj2, ha, hca, -⟩
+  · exact condAK_ctx_G3 hL hk hsd hrd hB hn hc hctx i
+  · rcases ha with rfl | ha
+    · exact condAK_head_G3 hL hk hsd hrd hB hn ⟨hj1, hj2⟩ hca i
+    · exact condAK_tmpl_G3 hL hk hsd hrd hB hn ⟨hj1, hj2⟩ ha hca i
+
+-- T3.2r (txt:377-403): ordinary outputs satisfy A (decorated A, then uncapping by S); at `n = 0`
+-- the output is a safe prefix (T3.2g, T3.2e)
 theorem condA_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
-    (hB : expand A n = some B) : CondA B := by sorry
+    (hB : expand A n = some B) : CondA B := by
+  rcases Nat.eq_zero_or_pos n with rfl | hn
+  · obtain ⟨j, -, rfl⟩ := expand_safePrefix (ne_empty_of_stepKind_D3 hk) hL.1 hL.2.1
+      (Or.inr ⟨hk, rfl⟩) hB
+    exact safePrefix_condA hL j
+  · exact capping_reverse (condV_ord hL hk hB) (condS_ord hL hk hB) (fun _ h => h)
+      (condAK_ord_G3 hL hk hB hn)
 
 /-! T3.2s helpers: column-local conditions, and replacing the last column at the end of a route. -/
 
