@@ -71,7 +71,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 |---|---|---|---|---|
 | D-1 | user | decided | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | H: host-Lean theorem. Hypothesis "for every n an n-Mahlo cardinal exists" is an explicit premise (Lean cannot prove even one Mahlo cardinal exists), stated in the same universe as the J-hierarchy. Decided by the user 2026-10-27. |
 | D-2 | claude | decided | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? | Default, user may override: main theorem with weakly n-Mahlo cardinals (stronger theorem, simpler definition); the paper's n-Mahlo version as a corollary. This delivers both statements. |
-| D-3 | claude | decided | Operation domain in Lean | Total FS mirroring BTBM.FS, with an agreement lemma on nonempty V∧I inputs (G-001). |
+| D-3 | claude | decided | Operation domain in Lean | Lean `expand : Forest → Nat → Option Forest` mirrors BTBM.FS exactly, returning none exactly where the reference throws (owner-root exhausted scan with n ≥ 1; invisible root). ∅[n] = some ∅ as in the reference. IsStd closes the seeds under defined operations, as in the paper. |
 
 # Simplifications
 

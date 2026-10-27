@@ -5,7 +5,7 @@
   "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
   "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
   "root": "claude",
-  "phase": "P2 Repair & simplify",
+  "phase": "P3 Lean outline",
   "phases": [
    {
     "id": "P1",
@@ -133,7 +133,7 @@
    "status": "todo",
    "title": "Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals",
    "deps": [],
-   "note": "Survey the pinned Mathlib (eba3d887) and CU (7f5a7d0) used by 1Y at Lean 4.33.1: ordinals, ZFSet, regular/inaccessible, IsClub/IsStationary (Club.lean present in source but not yet built), collapse, L, satisfaction."
+   "note": "Statement-level needs covered (Cardinal.IsRegular, IsInaccessible, IsClub/IsStationary on Set.Iio κ.ord). Proof-level survey (CU collapse/condensation, ZFSet) still to do."
   },
   {
    "id": "T-009",
@@ -171,10 +171,53 @@
    "id": "T-012",
    "phase": "P3",
    "owner": "claude",
-   "status": "todo",
+   "status": "done",
    "title": "Set up the Lean 4.33.1 project with pinned Mathlib + narrow CU imports (no edits to the 1Y vendor tree)",
+   "deps": [],
+   "evidence": [
+    "lean/lakefile.toml",
+    "lean/lake-manifest.json",
+    "lean/lean-toolchain"
+   ],
+   "note": "Lean 4.33.1 + Mathlib eba3d887 from /home/dev/ggg/.deps/lean-4.33.1 (copy of the 1Y vendor tree with its builds; the 1Y tree is untouched)."
+  },
+  {
+   "id": "T-013",
+   "phase": "P3",
+   "owner": "claude",
+   "status": "review",
+   "title": "Formalize the main statement in Lean (definitions, order, operation, Std, Mahlo, theorem with sorry)",
+   "deliverable": "lean/BTBMS/Statement.lean",
+   "evidence": [
+    "lean/BTBMS/Syntax.lean",
+    "lean/BTBMS/Expansion.lean",
+    "lean/BTBMS/Mahlo.lean",
+    "lean/BTBMS/Statement.lean",
+    "lean/BTBMS/Sanity.lean",
+    "checks/lean/run.sh"
+   ],
+   "note": "Differential test vs BTBM.ts: 100,000 standard cases, 200,000 random V cases incl. 597 throws, 200,013 order/key/seed cases, 0 mismatches. The random test caught one port bug (the owner-root throw is only for n ≥ 1), fixed."
+  },
+  {
+   "id": "T-014",
+   "phase": "P3",
+   "owner": "codex",
+   "status": "doing",
+   "title": "Independent statement-fidelity review of the Lean statement",
    "deps": [
-    "T-008"
+    "T-013"
+   ],
+   "deliverable": "tracker/review/codex-statement-review.md",
+   "brief": "tracker/review/STATEMENT-BRIEF.md"
+  },
+  {
+   "id": "T-015",
+   "phase": "P3",
+   "owner": "user",
+   "status": "todo",
+   "title": "Gate G2: sign off the Lean statement; then it is locked",
+   "deps": [
+    "T-014"
    ]
   }
  ],
@@ -1322,7 +1365,7 @@
    "owner": "claude",
    "status": "decided",
    "question": "Operation domain in Lean",
-   "answer": "Total FS mirroring BTBM.FS, with an agreement lemma on nonempty V∧I inputs (G-001)."
+   "answer": "Lean `expand : Forest → Nat → Option Forest` mirrors BTBM.FS exactly, returning none exactly where the reference throws (owner-root exhausted scan with n ≥ 1; invisible root). ∅[n] = some ∅ as in the reference. IsStd closes the seeds under defined operations, as in the paper."
   }
  ]
 }

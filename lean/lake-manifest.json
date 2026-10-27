@@ -1,0 +1,90 @@
+{
+ "lakeDir": ".lake",
+ "version": "1.2.0",
+ "name": "BTBMS",
+ "fixedToolchain": false,
+ "packagesDir": ".lake/packages",
+ "packages": [
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "plausible",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/plausible"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "LeanSearchClient",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/LeanSearchClient"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "importGraph",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/importGraph"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "proofwidgets",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.lean",
+   "dir": "../../.deps/lean-4.33.1/proofwidgets"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "aesop",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/aesop"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "Qq",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/Qq"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover-community",
+   "name": "batteries",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/batteries"
+  },
+  {
+   "type": "path",
+   "scope": "leanprover",
+   "name": "Cli",
+   "manifestFile": "lake-manifest.json",
+   "inherited": true,
+   "configFile": "lakefile.toml",
+   "dir": "../../.deps/lean-4.33.1/Cli"
+  },
+  {
+   "dir": "../../.deps/lean-4.33.1/mathlib",
+   "scope": "",
+   "configFile": "lakefile.lean",
+   "inherited": false,
+   "type": "path",
+   "manifestFile": "lake-manifest.json",
+   "name": "mathlib"
+  }
+ ]
+}
