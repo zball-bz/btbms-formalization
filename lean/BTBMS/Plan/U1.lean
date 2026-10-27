@@ -326,27 +326,109 @@ def nuStep (acc : List α) (x : α) : List α :=
 theorem nu_eq_foldl (l : List α) : nu l = l.foldl nuStep [] := rfl
 
 /-- D2.1a. -/
-theorem nu_append_singleton (l : List α) (x : α) : nu (l ++ [x]) = nuStep (nu l) x := by sorry
+theorem nu_append_singleton (l : List α) (x : α) : nu (l ++ [x]) = nuStep (nu l) x := by
+  rw [nu_eq_foldl, nu_eq_foldl, List.foldl_append]; rfl
 
-/-- D2.1a: `ν(W)` is nonincreasing (txt:159). -/
-theorem nu_noninc (l : List α) : Noninc (nu l) := by sorry
+omit [LinearOrder α] in
+/-- D2.1a helper: every letter of `l.takeWhile p` satisfies `p`. -/
+theorem mem_takeWhile_imp_of {p : α → Bool} :
+    ∀ {l : List α} {y : α}, y ∈ l.takeWhile p → p y = true
+  | [], _, h => by simp at h
+  | a :: l, y, h => by
+    rw [List.takeWhile_cons] at h
+    split at h
+    · rcases List.mem_cons.1 h with rfl | h
+      · assumption
+      · exact mem_takeWhile_imp_of h
+    · simp at h
 
-/-- D2.1a: a nonincreasing word is reduced. -/
-theorem nu_of_noninc {l : List α} (h : Noninc l) : nu l = l := by sorry
+omit [LinearOrder α] in
+/-- D2.1a helper: `l.takeWhile p = l` when every letter satisfies `p`. -/
+theorem takeWhile_eq_self_of {p : α → Bool} {l : List α} (h : ∀ a ∈ l, p a = true) :
+    l.takeWhile p = l := by
+  simpa using List.takeWhile_append_of_pos (l₂ := []) h
 
-/-- D2.1a. -/
-theorem nu_append_nu (l m : List α) : nu (nu l ++ m) = nu (l ++ m) := by sorry
+/-- D2.1a helper: on a nonincreasing word, deleting the terminal letters `< x` keeps exactly the
+letters `≥ x`. -/
+theorem reverse_dropWhile_reverse {acc : List α} (h : Noninc acc) (x : α) :
+    (acc.reverse.dropWhile fun y => decide (y < x)).reverse =
+      acc.takeWhile fun y => decide (x ≤ y) := by
+  induction acc with
+  | nil => rfl
+  | cons a rest ih =>
+    rw [Noninc, List.pairwise_cons] at h
+    obtain ⟨ha, hrest⟩ := h
+    rw [List.reverse_cons, List.dropWhile_append, List.takeWhile_cons]
+    by_cases hxa : x ≤ a
+    · have hna : ¬ a < x := not_lt.2 hxa
+      rw [if_pos (decide_eq_true hxa)]
+      split
+      · rename_i hemp
+        have h0 : rest.takeWhile (fun y => decide (x ≤ y)) = [] := by
+          rw [← ih hrest]; simpa using hemp
+        rw [h0]; simp [hna]
+      · rw [List.reverse_append, ih hrest]; rfl
+    · have hax : a < x := lt_of_not_ge hxa
+      have hall : ∀ b ∈ rest.reverse, decide (b < x) = true := by
+        intro b hb
+        exact decide_eq_true (lt_of_le_of_lt (ha b (List.mem_reverse.1 hb)) hax)
+      have hd : (rest.reverse.dropWhile fun y => decide (y < x)) = [] := by
+        simpa using List.dropWhile_append_of_pos (l₂ := []) hall
+      simp [hd, hax, hxa]
 
 /-- D2.1a: on a nonincreasing word, a step keeps the letters `≥ x` and appends `x`. -/
 theorem nuStep_eq_takeWhile {acc : List α} (h : Noninc acc) (x : α) :
-    nuStep acc x = acc.takeWhile (fun y => decide (x ≤ y)) ++ [x] := by sorry
+    nuStep acc x = acc.takeWhile (fun y => decide (x ≤ y)) ++ [x] := by
+  rw [nuStep, reverse_dropWhile_reverse h]
+
+/-- D2.1a: `ν(W)` is nonincreasing (txt:159). -/
+theorem nu_noninc (l : List α) : Noninc (nu l) := by
+  induction l using List.reverseRecOn with
+  | nil => exact List.Pairwise.nil
+  | append_singleton l x ih =>
+    rw [nu_append_singleton, nuStep_eq_takeWhile ih, Noninc, List.pairwise_append]
+    refine ⟨ih.sublist (List.takeWhile_sublist _), List.pairwise_singleton _ _, ?_⟩
+    intro a ha b hb
+    rw [List.mem_singleton] at hb
+    subst hb
+    simpa using mem_takeWhile_imp_of ha
+
+/-- D2.1a: a nonincreasing word is reduced. -/
+theorem nu_of_noninc {l : List α} (h : Noninc l) : nu l = l := by
+  induction l using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton l x ih =>
+    rw [Noninc, List.pairwise_append] at h
+    obtain ⟨h1, -, h3⟩ := h
+    rw [nu_append_singleton, ih h1, nuStep_eq_takeWhile h1,
+      takeWhile_eq_self_of fun a ha => decide_eq_true (h3 a ha x (List.mem_singleton_self x))]
+
+/-- D2.1a. -/
+theorem nu_append_nu (l m : List α) : nu (nu l ++ m) = nu (l ++ m) := by
+  induction m using List.reverseRecOn with
+  | nil => simp [nu_of_noninc (nu_noninc l)]
+  | append_singleton m x ih =>
+    rw [← List.append_assoc, ← List.append_assoc, nu_append_singleton, nu_append_singleton, ih]
 
 /-- D2.1a (txt:163-164): an append strictly increases a reduced word. -/
-theorem lt_nuStep {acc : List α} (h : Noninc acc) (x : α) : acc < nuStep acc x := by sorry
+theorem lt_nuStep {acc : List α} (h : Noninc acc) (x : α) : acc < nuStep acc x := by
+  rw [nuStep_eq_takeWhile h]
+  conv_lhs => rw [← List.takeWhile_append_dropWhile (p := fun y => decide (x ≤ y)) (l := acc)]
+  apply List.append_left_lt
+  cases hd : acc.dropWhile (fun y => decide (x ≤ y)) with
+  | nil => exact List.nil_lt_cons _ _
+  | cons d D =>
+    have := List.head_dropWhile_not (fun y => decide (x ≤ y)) (l := acc) (by simp [hd])
+    simp only [hd, List.head_cons, decide_eq_false_iff_not, not_le] at this
+    exact List.cons_lt_cons_iff.2 (Or.inl this)
 
 /-- D2.1a: every letter of `nuStep acc x` is at least `x`. -/
 theorem le_of_mem_nuStep {acc : List α} (h : Noninc acc) {x y : α} (hy : y ∈ nuStep acc x) :
-    x ≤ y := by sorry
+    x ≤ y := by
+  rw [nuStep_eq_takeWhile h, List.mem_append] at hy
+  rcases hy with hy | hy
+  · simpa using mem_takeWhile_imp_of hy
+  · rw [List.mem_singleton] at hy; exact hy ▸ le_refl x
 
 theorem cutQuery_zero (ks : List α) : cutQuery ks 0 = [] := rfl
 
@@ -354,34 +436,73 @@ theorem boundary_eq_cutQuery (ks : List α) (i : Nat) : boundary ks i = cutQuery
 
 /-- D2.1a. -/
 theorem cutQuery_succ {ks : List α} {k : Nat} (hk : k < ks.length) :
-    cutQuery ks (k + 1) = nuStep (cutQuery ks k) ks[k] := by sorry
+    cutQuery ks (k + 1) = nuStep (cutQuery ks k) ks[k] := by
+  rw [cutQuery, ← List.take_append_getElem hk, nu_append_singleton]; rfl
 
 theorem cutQuery_noninc (ks : List α) (k : Nat) : Noninc (cutQuery ks k) := nu_noninc _
 
+-- provides: U1, D2.1 (boundaries strictly increase). Moved here from `Plan/Spine.lean` (brief
+-- rule 5): its proof needs `cutQuery_succ` and `lt_nuStep`; nothing in between uses it.
+theorem cutQuery_lt_succ {α : Type} [LinearOrder α] (ks : List α) {k : Nat} (hk : k < ks.length) :
+    cutQuery ks k < cutQuery ks (k + 1) := by
+  rw [cutQuery_succ hk]; exact lt_nuStep (cutQuery_noninc ks k) _
+
 /-- D2.1 (with `cutQuery_lt_succ`): boundaries strictly increase up to the full cut. -/
 theorem cutQuery_strictMono {ks : List α} {j k : Nat} (hjk : j < k) (hk : k ≤ ks.length) :
-    cutQuery ks j < cutQuery ks k := by sorry
+    cutQuery ks j < cutQuery ks k := by
+  induction k with
+  | zero => omega
+  | succ k ih =>
+    rcases Nat.lt_succ_iff_lt_or_eq.1 hjk with h | h
+    · exact lt_trans (ih h (by omega)) (cutQuery_lt_succ ks (by omega))
+    · subst h; exact cutQuery_lt_succ ks (by omega)
+
+/-- D2.1 helper: a cut beyond the column is the full cut. -/
+theorem cutQuery_eq_min (ks : List α) (k : Nat) : cutQuery ks k = cutQuery ks (min k ks.length) := by
+  unfold cutQuery
+  rcases le_total k ks.length with h | h
+  · rw [Nat.min_eq_left h]
+  · rw [Nat.min_eq_right h, List.take_of_length_le h, List.take_length]
 
 /-- D2.1: boundaries are monotone (constant beyond the full cut). -/
 theorem cutQuery_mono (ks : List α) {j k : Nat} (hjk : j ≤ k) : cutQuery ks j ≤ cutQuery ks k := by
-  sorry
+  rw [cutQuery_eq_min ks j, cutQuery_eq_min ks k]
+  rcases Nat.lt_or_eq_of_le (min_le_min_right ks.length hjk) with h | h
+  · exact le_of_lt (cutQuery_strictMono h (Nat.min_le_right _ _))
+  · rw [h]
 
 theorem boundary_ne_nil {ks : List α} {i : Nat} (hi : i < ks.length) : boundary ks i ≠ [] := by
-  sorry
+  rw [boundary_eq_cutQuery, cutQuery_succ hi, nuStep]; simp
+
+/-- D2.1a helper: a step commutes with a strictly increasing map. -/
+theorem nuStep_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (acc : List α)
+    (x : α) : nuStep (acc.map f) (f x) = (nuStep acc x).map f := by
+  unfold nuStep
+  rw [← List.map_reverse, List.dropWhile_map, ← List.map_reverse, List.map_append]
+  have : ((fun y => decide (y < f x)) ∘ f) = fun y => decide (y < x) := by
+    funext y; simp [hf.lt_iff_lt]
+  rw [this]; rfl
 
 -- U1-verify: changed (new declarations)
 /-- D2.1a: `ν` commutes with a strictly increasing map (used for the maps `κ_j` of txt:331-333
 and for the coercion `Key → WithTop Key`). -/
 theorem nu_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (l : List α) :
-    nu (l.map f) = (nu l).map f := by sorry
+    nu (l.map f) = (nu l).map f := by
+  induction l using List.reverseRecOn with
+  | nil => rfl
+  | append_singleton l x ih =>
+    rw [List.map_append, List.map_singleton, nu_append_singleton, nu_append_singleton, ih,
+      nuStep_map hf]
 
 /-- D2.1a: cut queries commute with a strictly increasing map. -/
 theorem cutQuery_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (ks : List α)
-    (k : Nat) : cutQuery (ks.map f) k = (cutQuery ks k).map f := by sorry
+    (k : Nat) : cutQuery (ks.map f) k = (cutQuery ks k).map f := by
+  rw [cutQuery, cutQuery, ← List.map_take, nu_map hf]
 
 /-- D2.1a: boundaries commute with a strictly increasing map. -/
 theorem boundary_map {β : Type} [LinearOrder β] {f : α → β} (hf : StrictMono f) (ks : List α)
-    (i : Nat) : boundary (ks.map f) i = (boundary ks i).map f := by sorry
+    (i : Nat) : boundary (ks.map f) i = (boundary ks i).map f := by
+  rw [boundary, boundary, ← List.map_take, nu_map hf]
 
 /-- L2.3b (word observation, txt:211-213): if `D = ν(P ⌢ [K])`, `W` is nonincreasing, `W < D`
 and `J < K`, then `ν(W ⌢ [J]) < D`. -/
@@ -436,6 +557,14 @@ of the reduced source. -/
 theorem cursor_eq_length_iff (src : List α) {W : List α} (hW : Noninc W) :
     cursor src W = src.length ↔ nu src ≤ W := by sorry
 
+-- provides: U1, L2.1 (scan boundary lemma, reduced query). Moved here from `Plan/Spine.lean`
+-- (brief rule 5): its proof needs `cursor_take` and `cursor_eq_length_iff`; nothing in between
+-- uses it.
+theorem cursor_spec {α : Type} [LinearOrder α] (ks W : List α)
+    (hW : W.Pairwise fun x y => y ≤ x) :
+    cutQuery ks (cursor ks W) ≤ W ∧
+      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by sorry
+
 /-- L2.1 ("the unique i", txt:165-167). -/
 theorem cursor_unique {ks W : List α} (hW : Noninc W) {i : Nat} (hi : i ≤ ks.length)
     (hlo : cutQuery ks i ≤ W) (hhi : i < ks.length → W < cutQuery ks (i + 1)) :
@@ -457,6 +586,11 @@ theorem cursor_mono (ks : List α) {W Z : List α} (hW : Noninc W) (hZ : Noninc 
 change the final source cursor. -/
 theorem cursor_delete (src A B : List α) {x y : α} (hxy : x < y) :
     cursor src (A ++ x :: y :: B) = cursor src (A ++ y :: B) := by sorry
+
+-- provides: U1, L2.1 (reducing a query does not change the final source cursor). Moved here from
+-- `Plan/Spine.lean` (brief rule 5): its proof needs `cursor_delete`; nothing in between uses it.
+theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
+    cursor ks (nu W) = cursor ks W := by sorry
 
 /-- L2.5a: the final state of the trace is `(cursor, qcursor)`. -/
 theorem trace_last (src qry : List α) :
