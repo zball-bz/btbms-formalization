@@ -1009,19 +1009,40 @@ def localStruct (E : Forest) (e : EntryAddr) : List (BaseAtom Role) :=
 theorem elem_col_succ {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs)
     (hs : (E.colAt ⟨c.path, c.col + 1⟩).isSome) :
     BaseAtom.elem (.ord c) (.ord ⟨c.path, c.col + 1⟩) ∈ graph E := by
-  sorry
+  simp only [graph, List.mem_append]
+  exact Or.inl (Or.inr (List.mem_filterMap.2 ⟨c, hc, by simp [hs]⟩))
+
+/-- L8.2a (helper): both head edges of an entry `e` with parent `p` and representatives
+`(o, v)` of `p` are atoms of `Γ(E)`. -/
+theorem edge_mem_graph {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) {p : Nat}
+    {h : Forest} (hx : E.entryAt e = some (p, h)) {o v : Role} (hr : e.col.rep 0 p = some (o, v)) :
+    BaseAtom.edge (.slot e) (.ord e.col) o ∈ graph E ∧
+      BaseAtom.edge (.slot e) (.ord e.col) v ∈ graph E := by
+  simp only [graph, List.mem_append]
+  constructor <;> refine Or.inr (List.mem_flatMap.2 ⟨e, he, ?_⟩) <;> simp [hx, hr]
 
 /-- L8.2a: under V an entry's column steps to its slot (`edge U_e A_c _`). -/
 theorem step_col_slot {E : Forest} (hV : Scan.CondV E) {e : EntryAddr} (he : e ∈ E.entryAddrs) :
     ∃ o, BaseAtom.edge (.slot e) (.ord e.col) o ∈ graph E := by
-  sorry
+  obtain ⟨⟨p, h⟩, hx⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff E e).1 he)
+  have hs : (e.col.rep 0 p).isSome := by
+    simp only [ColAddr.rep, Option.isSome_map]; exact hV e he p h hx
+  obtain ⟨⟨o, v⟩, hr⟩ := Option.isSome_iff_exists.1 hs
+  exact ⟨_, (edge_mem_graph he hx hr).1⟩
 
 /-- L8.2a: under V and I a slot with nonempty height steps to the height's first column: the
 first parent there is the host number, read as `P(host) = U_e` (txt:1194-1195). -/
 theorem step_slot_child {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) {h : Forest} (hh : E.heightAt e = some h) (hne : h ≠ Tree.empty) :
     BaseAtom.edge (.slot ⟨⟨e.heightPath, 0⟩, 0⟩) (.ord ⟨e.heightPath, 0⟩) (.slot e) ∈ graph E := by
-  sorry
+  obtain ⟨H₀, rest, hhd⟩ := Scan.firstParent_host hV hI he hh hne
+  have hx : E.entryAt ⟨⟨e.heightPath, 0⟩, 0⟩ = some (e.col.num 0, H₀) := by
+    simp only [Tree.entryAt, Tree.colAt, Tree.forestAt_heightPath, hh, Option.bind_some]
+    rw [← List.head?_eq_getElem?, hhd]
+    rfl
+  have he₀ : (⟨⟨e.heightPath, 0⟩, 0⟩ : EntryAddr) ∈ E.entryAddrs :=
+    (Tree.mem_entryAddrs_iff E _).2 (by rw [hx]; rfl)
+  exact (edge_mem_graph he₀ hx (rep_inside e ⟨e.heightPath, 0⟩ (List.prefix_refl _)).2.1).2
 
 /-- L8.2b: the owner path (txt:1194-1200), syntactically: every role inside the height of `e`
 is reached from `U_e` by elementarity steps touching `e`. -/
