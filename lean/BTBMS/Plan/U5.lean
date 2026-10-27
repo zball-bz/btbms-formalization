@@ -6126,6 +6126,29 @@ theorem case_childEnds (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n)
   rw [Prod.Lex.toLex_lt_toLex]
   exact Or.inr ⟨hhost', hlt'⟩
 
+/-- L8.8e (helper): the columns on the visible stack of a column with a first entry come before
+it in reading order. -/
+theorem stack_before_F4 {t : Forest} {c : ColAddr} {x : Nat × Forest} {col : Column}
+    (hc : t.colAt c = some (x :: col)) {o : ColAddr} (hon : c.OnStack o) :
+    Role.ord o ∈ rolesBefore t (.ord c) := by
+  obtain ⟨pre', post', hr'⟩ := roles_col_D4 c.path t c.col (x :: col) hc
+  obtain ⟨p, h⟩ := x
+  have hent : t.entryAt ⟨⟨c.path, c.col⟩, 0⟩ = some (p, h) := by simp [Tree.entryAt, hc]
+  obtain ⟨pre, post, hd, -, -, hstk, -⟩ := Tree.roles_decomp c.path t c.col 0 p h hent
+  have h1 := Tree.prefixRoles_of_decomp hd
+  have h2 : prefixRoles t ⟨⟨c.path, c.col⟩, 0⟩ = pre' ++ [.ord c] :=
+    Tree.prefixRoles_of_decomp (rest := Tree.rolesF (c.path ++ [(c.col, 0)]) h ++
+      Tree.rolesCol c.path c.col 1 col ++ post') (by rw [hr']; simp [Tree.rolesCol])
+  have hbef : rolesBefore t (.ord c) = pre' := rolesBefore_of_decomp_D4 hr'
+  have hne : o ≠ c := by
+    rintro rfl; exact absurd (ColAddr.num_lt_of_onStack 0 hon) (lt_irrefl _)
+  have hy := hstk o hon
+  rw [← h1, h2] at hy
+  rw [hbef]
+  rcases List.mem_append.1 hy with hy | hy
+  · exact hy
+  · simp only [List.mem_singleton] at hy; exact absurd (Role.ord.inj hy) hne
+
 /-- L8.8e: position of the root of an anchored step relative to a containing marked entry `e`:
 strictly inside `e`, or at or before the host column `A_{e.col}` in reading order
 (txt:1454-1455). -/
@@ -6134,7 +6157,52 @@ theorem root_position {H : Forest} (hV : Scan.CondV H) {sd : Scan.StopData}
     {e : EntryAddr} (he : e ∈ H.entryAddrs) (hin : (Role.ord sd.col).inEntry e = true) :
     (Role.ord rd.col).inEntry e = true ∨ rd.col = e.col ∨
       Role.ord rd.col ∈ rolesBefore H (.ord e.col) := by
-  sorry
+  obtain ⟨hres, -, -, -⟩ := Scan.rootData_col hsd hrd
+  obtain ⟨hon, -⟩ := (ColAddr.resolve_spec 0 sd.col rd.col sd.r).1 hres
+  have hT : e.heightPath <+: sd.col.path := by
+    rcases (inEntry_iff _ _).1 hin with h | h
+    · cases h
+    · exact h
+  obtain ⟨⟨p, h⟩, hent⟩ := Option.isSome_iff_exists.1 ((Tree.mem_entryAddrs_iff H e).1 he)
+  obtain ⟨col, hcol, hidx⟩ : ∃ col, H.colAt e.col = some col ∧ col[e.idx]? = some (p, h) := by
+    simp only [Tree.entryAt, Option.bind_eq_some_iff] at hent
+    exact hent
+  obtain ⟨y, col', rfl⟩ : ∃ y col', col = y :: col' := by
+    cases col with
+    | nil => simp at hidx
+    | cons y col' => exact ⟨y, col', rfl⟩
+  have hstack : ∀ o, e.col.OnStack o → Role.ord o ∈ rolesBefore H (.ord e.col) :=
+    fun o ho => stack_before_F4 hcol ho
+  obtain ⟨τ, hτ⟩ := hT
+  have colext : ∀ c d : ColAddr, c.path = d.path → c.col = d.col → c = d := by
+    rintro ⟨_, _⟩ ⟨_, _⟩ h1 h2; simp_all
+  rcases hon with ⟨k, ck, ik, hk, hRp, hRc⟩ | ⟨hRp, hRc⟩
+  · rcases lt_trichotomy k e.col.path.length with hkd | rfl | hkd
+    · right; right
+      apply hstack
+      left
+      refine ⟨k, ck, ik, ?_, ?_, hRc⟩
+      · rw [← hτ] at hk
+        simpa [EntryAddr.heightPath, List.getElem?_append_left hkd] using hk
+      · rw [hRp, ← hτ]
+        simp [EntryAddr.heightPath, List.take_append_of_le_length hkd.le]
+    · rw [← hτ] at hk
+      simp [EntryAddr.heightPath] at hk
+      obtain ⟨rfl, rfl⟩ := hk
+      have hRp' : rd.col.path = e.col.path := by rw [hRp, ← hτ]; simp [EntryAddr.heightPath]
+      rcases Nat.lt_or_ge rd.col.col e.col.col with hlt | hge
+      · right; right; exact hstack _ (Or.inr ⟨hRp', hlt⟩)
+      · right; left; exact colext _ _ hRp' (by omega)
+    · left
+      rw [inEntry_iff]; right
+      show e.heightPath <+: rd.col.path
+      have hlen : e.heightPath.length ≤ k := by simp [EntryAddr.heightPath]; omega
+      rw [hRp, ← hτ, List.take_append, List.take_of_length_le hlen]
+      exact List.prefix_append _ _
+  · left
+    rw [inEntry_iff]; right
+    show e.heightPath <+: rd.col.path
+    rw [hRp]; exact ⟨τ, hτ⟩
 
 /-- L8.8f: Case 3, a parent differs or an existing column ends first: a smaller failure, by the
 moving clause if `p ≤ ρ` and by a second capture if `p > ρ` (txt:1382-1470). The data of the
