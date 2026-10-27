@@ -1,11 +1,13 @@
 # Status snapshot
 
-Generated 2026-10-27T14:55:20+00:00 at commit `7c50a1b`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T14:57:31+00:00 at commit `490a99b`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P4 Formalize**
 
-## todo (2)
+## todo (1)
 - T-008 [claude] Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals
+
+## doing (1)
 - T-022 [claude] Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes
 
 ## blocked (1)

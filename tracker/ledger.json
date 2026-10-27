@@ -381,11 +381,12 @@
    "id": "T-022",
    "phase": "P4",
    "owner": "claude",
-   "status": "todo",
+   "status": "doing",
    "deps": [
     "T-018"
    ],
-   "title": "Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes"
+   "title": "Prove the plan in Lean: batches of nodes in separate worktrees, verified by lake build; done when checks/lock/check.sh --final passes",
+   "note": "Rolling pool of at most 8 prover agents, one worktree each (/home/dev/ggg/btbms-wt-<k>, branch prove/<id>); rules in tracker/PROVER-BRIEF.md; root merges each branch, rebuilds and regenerates status. Batch 1: A1 order laws, A2 addresses, A3 shift/hole laws, A4 limit+Mahlo+diagram congruence, A5/A6 Part C, A7 assembly, A8 CapData."
   }
  ],
  "nodes": [
