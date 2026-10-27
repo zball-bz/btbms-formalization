@@ -1605,7 +1605,17 @@ lexicographically smaller host-owner pair, there is none. -/
 theorem least_failure {P : Prims.{u}} {n : Nat}
     (hstep : ∀ pk L, Fails P n pk L → ∃ pk' L', Fails P n pk' L' ∧ failPair pk' < failPair pk) :
     SStrict P n := by
-  sorry
+  intro pk hadm hv hsize L hL
+  by_contra hT
+  have key : ∀ p : Ordinal.{u} ×ₗ Ordinal.{u}, ∀ (pk : SourcePacket.{u}) (L : Ordinal.{u}),
+      failPair pk = p → ¬ Fails P n pk L := by
+    intro p
+    induction p using WellFoundedLT.induction with
+    | _ p ih =>
+      intro pk L hp hF
+      obtain ⟨pk', L', hF', hlt⟩ := hstep pk L hF
+      exact ih (failPair pk') (hp ▸ hlt) pk' L' rfl hF'
+  exact key _ pk L rfl ⟨hadm, hv, hsize, hL, hT⟩
 
 /-- L8.8, `D_{<n} ⇒ S_n` (txt:1348-1474). -/
 theorem sStrict_of_dLab (I : Interface.{u}) (n : Nat) (hD : DLab I.toPrims n) :
