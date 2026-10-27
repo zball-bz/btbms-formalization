@@ -1062,6 +1062,11 @@ theorem sign_indep_list {r d φ h h' : Nat} (hh : h < φ) (hh' : h' < φ) (W : L
     (W.map (kappa r d φ) < (Js.map (relKey (r + d))).map (kappa r d h) ↔
       W.map (kappa r d φ) < (Js.map (relKey (r + d))).map (kappa r d h')) := by sorry
 
+-- T3.8ln (txt:530, 549-551; moved here from after T3.8lo, used by G9.8a `phase_exit`): parents of phase-`φ` material are `< r` or `≥ s_φ`
+theorem phase_parent_dichotomy (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) {x : Nat × Forest}
+    (hx : x ∈ (S.B.colAt c).getD []) : x.1 < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ x.1 := by sorry
+
 /-! ## G-009 helpers for T3.8lo (from `blueprint/repairs/lean/G009.lean`)
 
 The low-head detour invariant behind T3.8lo (`blueprint/repairs/G-009.md`). Notation:
@@ -1307,6 +1312,87 @@ theorem litCap_parents_self {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpw
   refine ⟨by rw [Tree.mem_colAddrs_iff, hcol]; rfl, ?_⟩
   simp only [parents, hcol, Option.getD_some, List.length_map, List.length_append, hlen,
     List.length_singleton]
+
+-- G9 (helper): a path sum through a step `(ci, e)` after a prefix `pre`
+theorem pathSum_ge (pre rest : List (Nat × Nat)) (ci e : Nat) :
+    (pre.map (·.1 + 1)).sum + ci + 1 ≤ ((pre ++ (ci, e) :: rest).map (·.1 + 1)).sum := by
+  simp only [List.map_append, List.map_cons, List.sum_append, List.sum_cons]
+  omega
+
+-- G9 (helper): every template column lies above the root, `r < num a`
+theorem tmplCol_num_gt (S : OrdStep) {a : ColAddr} (ha : IsTmplCol S.A S.sd S.rd a) :
+    S.sd.r < a.num 0 := by
+  obtain ⟨-, -, hne, hker⟩ := ha
+  obtain ⟨-, -, hidx, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  have hnum : ∀ b : ColAddr, b.num 0 = (b.path.map (·.1 + 1)).sum + b.col := by
+    intro b; simp [ColAddr.num]
+  by_cases hQ : isQMat S.sd a = true
+  · -- Q-material lies inside a height of the stopping column, above `t > r`
+    cases hd : a.path.drop S.sd.col.path.length with
+    | nil => simp [isQMat, hd] at hQ
+    | cons p rest =>
+      obtain ⟨ci, j⟩ := p
+      simp only [isQMat, hd, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hQ
+      obtain ⟨htk, hci, -⟩ := hQ
+      have hpath : a.path = S.sd.col.path ++ (ci, j) :: rest := by
+        rw [← htk, ← hd, List.take_append_drop]
+      have h1 := pathSum_ge S.sd.col.path rest ci j
+      rw [← hpath] at h1
+      have h2 := hnum a
+      have h3 := hnum S.sd.col
+      omega
+  · simp only [Bool.not_eq_true] at hQ
+    unfold kerCol at hker
+    simp only [hQ, Bool.false_eq_true, if_false] at hker
+    by_cases hR : a.path.take S.rd.col.path.length = S.rd.col.path
+    · rw [if_pos hR] at hker
+      cases hd : a.path.drop S.rd.col.path.length with
+      | nil =>
+        rw [hd] at hker
+        have hpath : a.path = S.rd.col.path := by
+          rw [← List.take_append_drop S.rd.col.path.length a.path, hR, hd, List.append_nil]
+        have hcol : S.rd.idx ≤ a.col := by
+          split_ifs at hker with h1 h2
+          · omega
+          · omega
+          · simp at hker
+        have hcol' : a.col ≠ S.rd.col.col := by
+          intro h
+          apply hne
+          show (⟨a.path, a.col⟩ : ColAddr) = ⟨S.rd.col.path, S.rd.col.col⟩
+          rw [hpath, h]
+        have h2 := hnum a
+        have h3 := hnum S.rd.col
+        rw [hpath] at h2
+        omega
+      | cons p rest =>
+        obtain ⟨ci, e⟩ := p
+        rw [hd] at hker
+        have hci : S.rd.idx ≤ ci := by
+          simp only at hker
+          split_ifs at hker with h1 h2
+          · omega
+          · omega
+          · simp at hker
+        have hpath : a.path = S.rd.col.path ++ (ci, e) :: rest := by
+          rw [← hR, ← hd, List.take_append_drop]
+        have h1 := pathSum_ge S.rd.col.path rest ci e
+        rw [← hpath] at h1
+        have h2 := hnum a
+        have h3 := hnum S.rd.col
+        omega
+    · rw [if_neg hR] at hker
+      simp at hker
+
+-- G9 (helper, T3.2i `num_phaseCol`): a phase copy lies above its head, `s_φ < num c`
+theorem phaseCol_num_gt (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i)
+    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) :
+    S.s (phaseOff S.sd i a) < c.num 0 := by
+  have hn := num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inr ha) hi hc
+  have := tmplCol_num_gt S ha
+  simp only [OrdStep.s, OrdStep.d]
+  omega
 
 /-! ## G9.4 — the stack of a phase copy (address algebra, T3.2i) -/
 
@@ -1632,7 +1718,72 @@ theorem phase_exit (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1 
       Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ)
         (cutStart (litCap S.B c k ρ) c k) (S.s (phaseOff S.sd i a)) ∧
       Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ)
-        (S.s (phaseOff S.sd i a)) ρ := by sorry
+        (S.s (phaseOff S.sd i a)) ρ := by
+  have hV : CondV (litCap S.B c k ρ) := hKL.1
+  have hA : CondA (litCap S.B c k ρ) := hKL.2.2.2.1
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  obtain ⟨hcmem, -⟩ := litCap_parents_self hup
+  have hpar : parents (litCap S.B c k ρ) c =
+      (((S.B.colAt c).getD []).take k).map Prod.fst ++ [ρ] := by
+    simp [parents, hcol]
+  -- the cut path: A of `K` at `(c, k)`
+  have hcut : Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ)
+      (cutStart (litCap S.B c k ρ) c k) ρ := by
+    have hk : (parents (litCap S.B c k ρ) c)[k]? = some ρ := by
+      rw [hpar, List.getElem?_append_right (by rw [List.length_map, hlen]), List.length_map, hlen,
+        Nat.sub_self]
+      rfl
+    exact hA c hcmem k ρ hk
+  -- `s_φ ≤ x₀`
+  have hx0 : S.s (phaseOff S.sd i a) ≤ cutStart (litCap S.B c k ρ) c k := by
+    rcases Nat.eq_zero_or_pos k with hk0 | hk0
+    · subst hk0
+      simp only [cutStart, if_true]
+      have := phaseCol_num_gt S hi.1 ha hc
+      omega
+    · have hne : k ≠ 0 := by omega
+      have hlt : k - 1 < (((S.B.colAt c).getD []).take k).length := by omega
+      have hget : (parents (litCap S.B c k ρ) c)[k - 1]? =
+          some ((((S.B.colAt c).getD []).take k)[k - 1]'hlt).1 := by
+        rw [hpar, List.getElem?_append_left (by simpa using hlt), List.getElem?_map,
+          List.getElem?_eq_getElem hlt]
+        rfl
+      have hx0eq : cutStart (litCap S.B c k ρ) c k =
+          ((((S.B.colAt c).getD []).take k)[k - 1]'hlt).1 := by
+        simp only [cutStart, hne, if_false, hget, Option.getD_some]
+      rw [hx0eq]
+      have hmem : (((S.B.colAt c).getD []).take k)[k - 1]'hlt ∈ (S.B.colAt c).getD [] :=
+        List.mem_of_mem_take (List.getElem_mem hlt)
+      rcases phase_parent_dichotomy S hi ha hc hmem with h | h
+      · exfalso
+        have := path_le hV hcut
+        rw [hx0eq] at this
+        omega
+      · exact h
+  -- the cut path passes `s_φ`: above `s_φ` every stack parent is `< r` or `≥ s_φ`
+  have hpass : ∀ x, Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) x ρ →
+      S.s (phaseOff S.sd i a) ≤ x →
+      Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) x
+        (S.s (phaseOff S.sd i a)) := by
+    intro x hx
+    induction hx using Relation.ReflTransGen.head_induction_on with
+    | refl => intro h; omega
+    | @head x x' hxx' hx'ρ ih =>
+      intro hsx
+      rcases Nat.eq_or_lt_of_le hsx with heq | hlt
+      · rw [← heq]
+        exact Relation.ReflTransGen.refl
+      · obtain ⟨o, ho, hresp⟩ := hxx'
+        have hmem : x' ∈ parents (litCap S.B c k ρ) o := by
+          rw [resp_eq_parents] at hresp
+          exact List.mem_of_getElem? hresp
+        rcases stack_parent_dichotomy S hi ha hq hc hup hlt ho x' hmem with h | h
+        · exfalso
+          have := path_le hV hx'ρ
+          omega
+        · exact Relation.ReflTransGen.head ⟨o, ho, hresp⟩ (ih h)
+  have hP1 := hpass _ hcut hx0
+  exact ⟨hx0, hP1, path_functional hV hP1 hcut hρ2.le⟩
 
 -- G9.8b: a head `s_h` whose response is a parent `≥ r` is low
 theorem low_of_head_edge (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
@@ -1781,11 +1932,6 @@ theorem prev_root_response (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat}
     rw [hU] at hhead'
     simp only [List.head?_cons, Option.map_some, Option.some.injEq] at hhead'
     exact ⟨u, us, rfl, hhead' ▸ hu₁⟩
-
--- T3.8ln (txt:530, 549-551): parents of phase-`φ` material are `< r` or `≥ s_φ`
-theorem phase_parent_dichotomy (S : OrdStep) {i : Nat} {a c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (ha : IsTmplCol S.A S.sd S.rd a) (hc : phaseCol S.sd S.rd i a = some c) {x : Nat × Forest}
-    (hx : x ∈ (S.B.colAt c).getD []) : x.1 < S.sd.r ∨ S.s (phaseOff S.sd i a) ≤ x.1 := by sorry
 
 -- T3.8lp (txt:553-561): previous-phase root `r < ρ < s_φ`: the root response is `≥ r`, the next
 -- target parent is `< r`, so the kernel wins at once
