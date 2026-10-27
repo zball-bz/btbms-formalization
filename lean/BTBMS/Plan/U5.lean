@@ -59,6 +59,80 @@ theorem steps_mono {V : Type} {D D' : List (BaseAtom V)} (hDD' : ∀ a ∈ D, a 
   · exact Or.inr (Or.inl ⟨c, hDD' _ hm⟩)
   · exact Or.inr (Or.inr ⟨c, hDD' _ hm⟩)
 
+/-! ## N5.4 Order facts of configurations and maxima -/
+
+/-- N5.4: a diagram containing the strict chain of a list strictly orders its values. -/
+theorem chain_pairwise {P : Prims.{u}} {V : Type} {D : List (BaseAtom V)} {β : V → Ordinal.{u}}
+    {l : List V} (hl : ∀ xy ∈ l.zip l.tail, BaseAtom.lt xy.1 xy.2 ∈ D) (hD : BaseHolds P D β) :
+    l.Pairwise fun x y => β x < β y := by
+  induction l with
+  | nil => exact List.Pairwise.nil
+  | cons x rest ih =>
+    cases rest with
+    | nil => exact List.pairwise_singleton _ _
+    | cons y rest' =>
+      have hxy : β x < β y := hD _ (hl (x, y) (by simp))
+      have ih' := ih fun xy h => hl xy (by
+        simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons] at h ⊢
+        exact Or.inr h)
+      refine List.pairwise_cons.2 ⟨fun z hz => ?_, ih'⟩
+      rcases List.mem_cons.1 hz with rfl | hz
+      · exact hxy
+      · exact hxy.trans (List.rel_of_pairwise_cons ih' hz)
+
+/-- N5.4: every role of a configured expression has a limit value. -/
+theorem config_lim {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}} (h : IsConfig P E α)
+    {x : Role} (hx : x ∈ E.roles) : IsLim (α x) :=
+  h (BaseAtom.lim x) (by simp only [graph, List.mem_append]; exact Or.inl (Or.inl (Or.inl
+    (List.mem_map_of_mem hx))))
+
+/-- N5.4: configurations are strictly increasing in reading order. -/
+theorem config_pairwise {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}}
+    (h : IsConfig P E α) : E.roles.Pairwise fun x y => α x < α y :=
+  chain_pairwise (D := graph E) (fun xy hxy => by
+    simp only [graph, List.mem_append]
+    exact Or.inl (Or.inl (Or.inr (List.mem_map_of_mem hxy)))) h
+
+/-- N5.4: a role strictly before a role `y` of `E` has a smaller value. -/
+theorem config_lt_of_before {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}}
+    (h : IsConfig P E α) {x y : Role} (hy : y ∈ E.roles) (hx : x ∈ rolesBefore E y) :
+    α x < α y := by
+  have hsplit := List.takeWhile_append_dropWhile (p := (· != y)) (l := E.roles)
+  have hpw := config_pairwise h
+  rw [← hsplit] at hpw
+  have hyd : y ∈ E.roles.dropWhile (· != y) := by
+    have hy' : y ∈ E.roles.takeWhile (· != y) ++ E.roles.dropWhile (· != y) := by
+      rw [hsplit]; exact hy
+    rcases List.mem_append.1 hy' with hy' | hy'
+    · have := List.all_eq_true.1 List.all_takeWhile y hy'
+      simp at this
+    · exact hy'
+  exact (List.pairwise_append.1 hpw).2.2 x hx y hyd
+
+/-- N5.4: a configuration restricts along a role prefix with fewer atoms. -/
+theorem config_of_sub {P : Prims.{u}} {E F : Forest} {α : Role → Ordinal.{u}}
+    (hsub : ∀ a ∈ graph F, a ∈ graph E) (h : IsConfig P E α) : IsConfig P F α :=
+  fun a ha => h a (hsub a ha)
+
+/-- N5.4. -/
+theorem holds_ofBase {P : Prims.{u}} {V : Type} (D : List (BaseAtom V)) (a : V → Ordinal.{u}) :
+    (Diagram.ofBase D).Holds P a ↔ BaseHolds P D a := by
+  simp [Diagram.Holds, Diagram.ofBase, BaseHolds, Atom.Holds]
+
+/-- N5.4: frame variables of a renamed frame. -/
+theorem toFr_map {V W : Type} (fr : Frame V) (f : V → W) (w : BlkVar) :
+    (fr.map f).toFr w = (fr.toFr w).map f := by
+  cases w <;> simp [Frame.toFr, Frame.map, List.getElem?_map, Option.map_map, Function.comp_def]
+
+/-- N5.4: `o + ω` is a coordinate above any infinite `o`. [V-fix] The hypothesis was `0 < o`,
+which is false at `o = 1` (`1 + ω = ω`, not `> ω`). -/
+theorem isLim_add_omega {o : Ordinal.{u}} (h : Ordinal.omega0 ≤ o) :
+    IsLim (o + Ordinal.omega0) ∧ o < o + Ordinal.omega0 :=
+  ⟨isLim_add_omega0 h, lt_add_of_pos_right _ Ordinal.omega0_pos⟩
+
+-- N5.4 at integration: `le_cfgMax`, `cfgMax_lt` are U3 D6.1a; `baseHolds_map` is U3 N3.1;
+-- `baseHolds_congr` is U4 N4.1b (duplicates removed).
+
 /-! ## N5.3 Block problems: floor encoding, capture, monotonicity -/
 
 /-- N5.3: the floor-variable encoding of a block problem over `Option W` (`none` = the floor):
@@ -105,54 +179,6 @@ theorem blockAbove_of_targetAbove {P : Prims.{u}} (pk : SourcePacket.{u}) {L : O
     BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel) (fun w => (pk.tgtFrame.toFr w).map pk.asg)
       L (pk.asg pk.owner) := by
   sorry
-
-/-! ## N5.4 Order facts of configurations and maxima -/
-
-/-- N5.4: a diagram containing the strict chain of a list strictly orders its values. -/
-theorem chain_pairwise {P : Prims.{u}} {V : Type} {D : List (BaseAtom V)} {β : V → Ordinal.{u}}
-    {l : List V} (hl : ∀ xy ∈ l.zip l.tail, BaseAtom.lt xy.1 xy.2 ∈ D) (hD : BaseHolds P D β) :
-    l.Pairwise fun x y => β x < β y := by
-  sorry
-
-/-- N5.4: every role of a configured expression has a limit value. -/
-theorem config_lim {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}} (h : IsConfig P E α)
-    {x : Role} (hx : x ∈ E.roles) : IsLim (α x) := by
-  sorry
-
-/-- N5.4: configurations are strictly increasing in reading order. -/
-theorem config_pairwise {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}}
-    (h : IsConfig P E α) : E.roles.Pairwise fun x y => α x < α y := by
-  sorry
-
-/-- N5.4: a role strictly before a role `y` of `E` has a smaller value. -/
-theorem config_lt_of_before {P : Prims.{u}} {E : Forest} {α : Role → Ordinal.{u}}
-    (h : IsConfig P E α) {x y : Role} (hy : y ∈ E.roles) (hx : x ∈ rolesBefore E y) :
-    α x < α y := by
-  sorry
-
-/-- N5.4: a configuration restricts along a role prefix with fewer atoms. -/
-theorem config_of_sub {P : Prims.{u}} {E F : Forest} {α : Role → Ordinal.{u}}
-    (hsub : ∀ a ∈ graph F, a ∈ graph E) (h : IsConfig P E α) : IsConfig P F α := by
-  sorry
-
-/-- N5.4. -/
-theorem holds_ofBase {P : Prims.{u}} {V : Type} (D : List (BaseAtom V)) (a : V → Ordinal.{u}) :
-    (Diagram.ofBase D).Holds P a ↔ BaseHolds P D a := by
-  sorry
-
-/-- N5.4: frame variables of a renamed frame. -/
-theorem toFr_map {V W : Type} (fr : Frame V) (f : V → W) (w : BlkVar) :
-    (fr.map f).toFr w = (fr.toFr w).map f := by
-  sorry
-
-/-- N5.4: `o + ω` is a coordinate above any infinite `o`. [V-fix] The hypothesis was `0 < o`,
-which is false at `o = 1` (`1 + ω = ω`, not `> ω`). -/
-theorem isLim_add_omega {o : Ordinal.{u}} (h : Ordinal.omega0 ≤ o) :
-    IsLim (o + Ordinal.omega0) ∧ o < o + Ordinal.omega0 := by
-  sorry
-
--- N5.4 at integration: `le_cfgMax`, `cfgMax_lt` are U3 D6.1a; `baseHolds_map` is U3 N3.1;
--- `baseHolds_congr` is U4 N4.1b (duplicates removed).
 
 /-! ## N5.5 Fresh names -/
 
