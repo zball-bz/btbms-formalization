@@ -4029,13 +4029,34 @@ theorem stage_zero_inv {P : Prims.{u}} {n : Nat} {E : Forest} {cap : Option (Clo
     (hyp : DLabHyps P n E cap α sd rd V Λ ν eν b Fix) {rs : RoleSets}
     (hrs : roleSets (Closure.anchor E cap) = some rs) :
     ∃ G, StageInv P (Closure.anchor E cap) rs α Λ ν b Fix 0 G α b := by
-  sorry
+  have hL := hyp.inL
+  obtain ⟨G, hG⟩ := Option.isSome_iff_exists.1
+    (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 0)
+  obtain ⟨hGr, hGsub, -⟩ := stage_zero hL hrs hG
+  obtain ⟨rs', hrs', hT, -, -, hP, -⟩ := roleSets_eq hyp.stop hyp.root
+  rw [hrs] at hrs'; cases hrs'
+  refine ⟨G, hG, config_of_sub hGsub hyp.config, ?_, rfl, fun _ _ => rfl, fun _ _ => rfl,
+    fun _ _ => rfl, ?_, hyp.holds, ?_, fun h => absurd h (lt_irrefl 0)⟩
+  · intro x hx
+    rw [hGr, hP] at hx
+    rw [hT]
+    exact config_lt_of_before hyp.config (Scan.stopData_col_mem hyp.stop) hx
+  · intro x hx
+    rw [hP] at hx
+    exact hyp.bind x hx
+  · rw [hT]; exact hyp.below
 
 /-- L8.6e: the pre-stop roles persist at their addresses in every `H[m]` (`ι_m = id`). -/
 theorem persist_prefix {H : Forest} (hL : Scan.InL H) {rs : RoleSets}
     (hrs : roleSets H = some rs) {m : Nat} {G : Forest} (hG : expand H m = some G) :
     rs.P <+: G.roles := by
-  sorry
+  induction m generalizing G with
+  | zero => rw [(stage_zero hL hrs hG).1]
+  | succ m ih =>
+    obtain ⟨G₀, hG₀⟩ := Option.isSome_iff_exists.1
+      (Scan.expand_isSome hL.1 hL.2.1 hL.2.2.2.1 hL.2.2.2.2 m)
+    rw [(stage_succ hL hrs hG₀ hG).1]
+    exact (ih hG₀).trans (List.prefix_append _ _)
 
 /-- L8.6f: control transport of the whole stage problem from `t = W` to `t = p`, captured into
 `J_W` (txt:1281-1287). -/
