@@ -2340,9 +2340,31 @@ Requires entry of another unit; the requester is named in each docstring. -/
 
 namespace Tree
 
+mutual
+/-- D1.4b helper: `roles_map` under an arbitrary prefix. -/
+theorem rolesF_map {α β : Type} (f : α → β) :
+    (π : List (Nat × Nat)) → (t : Tree α) → rolesF π (t.map f) = rolesF π t
+  | π, .node cols => by simp only [Tree.map, rolesF]; exact rolesCols_map f π 0 cols
+theorem rolesCols_map {α β : Type} (f : α → β) :
+    (π : List (Nat × Nat)) → (c : Nat) → (cs : List (List (α × Tree α))) →
+      rolesCols π c (Tree.mapCols f cs) = rolesCols π c cs
+  | _, _, [] => rfl
+  | π, c, col :: rest => by
+    simp only [Tree.mapCols, rolesCols]
+    rw [rolesCol_map f π c 0 col, rolesCols_map f π (c + 1) rest]
+theorem rolesCol_map {α β : Type} (f : α → β) :
+    (π : List (Nat × Nat)) → (c i : Nat) → (es : List (α × Tree α)) →
+      rolesCol π c i (Tree.mapCol f es) = rolesCol π c i es
+  | _, _, _, [] => rfl
+  | π, c, i, (_, h) :: rest => by
+    simp only [Tree.mapCol, rolesCol]
+    rw [rolesF_map f (π ++ [(c, i)]) h, rolesCol_map f π c (i + 1) rest]
+end
+
 /-- D1.4b (moved from U3 L6.2a `roles_map`; requested by U5 R14): roles depend only on the
 shape of a tree. -/
-theorem roles_map {α β : Type} (f : α → β) (t : Tree α) : (t.map f).roles = t.roles := by sorry
+theorem roles_map {α β : Type} (f : α → β) (t : Tree α) : (t.map f).roles = t.roles :=
+  rolesF_map f [] t
 
 /-- D1.2e (requested by U5 R12): the roles of an entry `e` are its slot, right after the prefix
 `P(E, e)`, followed by the roles of its height placed under `e`'s height path; no later role lies
@@ -2384,11 +2406,15 @@ theorem setHeight_basic (t : Forest) (e : EntryAddr) (h : Forest) (he : e ∈ t.
 end Tree
 
 /-- D1.4b (requested by U5 R14): a relative key has the roles of its height. -/
-theorem relKey_roles (a : Nat) (B : Forest) : (relKey a B).roles = B.roles := by sorry
+theorem relKey_roles (a : Nat) (B : Forest) : (relKey a B).roles = B.roles := by
+  rw [relKey_eq_map]; exact Tree.roles_map _ B
 
 /-- D1.4b (requested by U5 R14): a relative key is empty exactly when its height is. -/
 theorem relKey_eq_empty {a : Nat} {B : Forest} : relKey a B = Tree.empty ↔ B = Tree.empty := by
-  sorry
+  obtain ⟨cols⟩ := B
+  cases cols with
+  | nil => simp [relKey, Tree.map, Tree.mapCols, Tree.empty]
+  | cons c cs => simp [relKey, Tree.map, Tree.mapCols, Tree.empty]
 
 namespace Scan
 
