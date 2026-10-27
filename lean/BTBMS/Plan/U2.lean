@@ -2950,6 +2950,172 @@ theorem ker_context_offroute {A : Forest} {sd : StopData} (hsd : stopData A = so
               simp [ker_forestAt_cons, Tree.empty, Tree.cols] at hcol
   · exact ker_context_forestAt_diverge hsd X hj2 hj1 hj3 hj4
 
+/-! ### T3.2i helpers: the hole region of a placement -/
+
+/-- T3.2i helper: `c` is the hole `h`, lies right of it in its forest, or lies under such a
+column (the region replaced by a placement at `h`). -/
+def KerUnder (h c : ColAddr) : Prop :=
+  (c.path = h.path ∧ h.col ≤ c.col) ∨ ∃ c0 e0 rest, c.path = h.path ++ (c0, e0) :: rest ∧ h.col ≤ c0
+
+theorem ker_under_underCol (h y : ColAddr) : KerUnder h (underCol h y) := by
+  obtain ⟨yp, yc⟩ := y
+  cases yp with
+  | nil => left; simp [underCol]
+  | cons x rest =>
+    obtain ⟨c0, e0⟩ := x
+    right; exact ⟨h.col + c0, e0, rest, rfl, by omega⟩
+
+theorem ker_under_cons (x : Nat × Nat) (p : List (Nat × Nat)) (hc : Nat) (rest : List (Nat × Nat))
+    (c : Nat) : KerUnder ⟨x :: p, hc⟩ ⟨x :: rest, c⟩ ↔ KerUnder ⟨p, hc⟩ ⟨rest, c⟩ := by
+  unfold KerUnder
+  simp only [List.cons_append, List.cons.injEq, true_and]
+
+/-- T3.2i helper: columns in the hole region come from the filling. -/
+theorem ker_under_exhaust (Z : Forest) {k : Nat} {G : Forest} (hG : KerRoute k G) {c : ColAddr}
+    (hu : KerUnder (kerHoleAt k G) c) (hc : c ∈ (replaceAt 0 0 Z k G).colAddrs) :
+    ∃ y, y ∈ Z.colAddrs ∧ c = underCol (kerHoleAt k G) y := by
+  obtain ⟨L, hL1, hL2⟩ := ker_hole_forest Z k G hG
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ c).1 hc)
+  obtain ⟨cp, cc⟩ := c
+  have hnc : (Tree.node (L ++ Z.cols)).cols = L ++ Z.cols := rfl
+  rcases hu with ⟨hp, hle⟩ | ⟨c0, e0, rest, hp, hle⟩
+  · have hle' : (kerHoleAt k G).col ≤ cc := hle
+    simp only at hp
+    subst hp
+    unfold Tree.colAt at hcol
+    rw [hL1, Option.bind_some, hnc, List.getElem?_append_right (by omega), hL2] at hcol
+    refine ⟨⟨[], cc - (kerHoleAt k G).col⟩, ?_, ?_⟩
+    · rw [Tree.mem_colAddrs_iff]
+      unfold Tree.colAt
+      rw [show Tree.forestAt Z ([] : List (Nat × Nat)) = some Z from rfl, Option.bind_some]
+      simp only at hcol ⊢
+      rw [hcol]; rfl
+    · show _ = ⟨(kerHoleAt k G).path, (kerHoleAt k G).col + (cc - (kerHoleAt k G).col)⟩
+      rw [Nat.add_sub_cancel' hle']
+  · simp only at hp
+    subst hp
+    unfold Tree.colAt at hcol
+    rw [Tree.forestAt_append, hL1, Option.bind_some, ker_forestAt_cons, hnc,
+      List.getElem?_append_right (by omega), hL2] at hcol
+    refine ⟨⟨(c0 - (kerHoleAt k G).col, e0) :: rest, cc⟩, ?_, ?_⟩
+    · rw [Tree.mem_colAddrs_iff]
+      unfold Tree.colAt
+      rw [ker_forestAt_cons]
+      simp only at hcol ⊢
+      rw [hcol]; rfl
+    · show _ = ⟨(kerHoleAt k G).path ++
+        ((kerHoleAt k G).col + (c0 - (kerHoleAt k G).col), e0) :: rest, cc⟩
+      rw [Nat.add_sub_cancel' hle]
+
+/-- T3.2i helper: outside the hole region, which addresses are columns does not depend on the
+filling. -/
+theorem ker_off_isSome (Z : Forest) : ∀ (k : Nat) (G : Forest), KerRoute k G → ∀ c : ColAddr,
+    ¬ KerUnder (kerHoleAt k G) c →
+      ((replaceAt 0 0 Z k G).colAt c).isSome = (G.colAt c).isSome
+  | 0, .node cols, h, ⟨cp, cc⟩, hu => by
+    have hne : cols ≠ [] := h
+    rw [ker_replaceAt_zero_zero Z cols hne]
+    simp only [KerUnder, kerHoleAt, Tree.cols, List.nil_append, not_or, not_and, not_le,
+      not_exists] at hu
+    obtain ⟨hu1, hu2⟩ := hu
+    cases cp with
+    | nil =>
+      have := hu1 rfl
+      unfold Tree.colAt
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_dropLast, if_pos (by omega)]
+    | cons x rest =>
+      obtain ⟨c0, e0⟩ := x
+      have := hu2 c0 e0 rest rfl
+      unfold Tree.colAt
+      rw [ker_forestAt_cons, ker_forestAt_cons]
+      simp only [Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_dropLast, if_pos (by omega)]
+  | k + 1, G, ⟨col, p, H, hc, hl, hk⟩, ⟨cp, cc⟩, hu => by
+    rw [ker_kerHoleAt_succ hc hl] at hu
+    cases cp with
+    | nil =>
+      obtain ⟨cols⟩ := G
+      rw [ker_replaceAt_zero_succ]
+      unfold Tree.colAt
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+      cases h1 : (mapLast id (mapLast id fun x : Nat × Forest => (x.1, replaceAt 0 0 Z k x.2))
+          cols)[cc]? with
+      | none =>
+        rw [List.getElem?_eq_none_iff, ker_length_mapLast] at h1
+        rw [List.getElem?_eq_none h1]
+      | some x =>
+        have : cc < cols.length := by
+          have := (List.getElem?_eq_some_iff.1 h1).1; rw [ker_length_mapLast] at this; exact this
+        rw [List.getElem?_eq_getElem this]; rfl
+    | cons x rest =>
+      obtain ⟨c0, e0⟩ := x
+      by_cases hx : (c0, e0) = (G.cols.length - 1, col.length - 1)
+      · rw [hx] at hu ⊢
+        rw [ker_under_cons] at hu
+        have ih := ker_off_isSome Z k H hk ⟨rest, cc⟩ hu
+        unfold Tree.colAt at ih ⊢
+        simp only at ih ⊢
+        rw [ker_forestAt_cons' (replaceAt 0 0 Z (k + 1) G) _ rest, ker_forestAt_cons' G _ rest,
+          ker_replaceAt_forestAt_last Z k hc hl, ker_forestAt_lastStep hc hl, Option.bind_some,
+          Option.bind_some]
+        exact ih
+      · unfold Tree.colAt
+        rw [ker_forestAt_cons, ker_forestAt_cons, ker_replaceAt_step_other Z k hc c0 e0 hx]
+
+/-- T3.2i helper: in `A`, the region of the stopping column holds only the stopping column and
+its query heights. -/
+theorem ker_under_stop {A : Forest} {sd : StopData} (hsd : stopData A = some sd) {a : ColAddr}
+    (ha : a ∈ A.colAddrs) (hu : KerUnder sd.col a) : a = sd.col ∨ isQMat sd a = true := by
+  obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest hsd
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff A a).1 ha)
+  obtain ⟨ap, ac⟩ := a
+  unfold Tree.colAt at hcol
+  rcases hu with ⟨hp, hle⟩ | ⟨c0, e0, rest, hp, hle⟩
+  · simp only at hp hle hcol
+    subst hp
+    rw [hG, Option.bind_some] at hcol
+    left
+    have : ac < sd.col.col + 1 := by
+      rw [← hGlen]; by_contra h; rw [List.getElem?_eq_none (by omega)] at hcol; cases hcol
+    have hac : ac = sd.col.col := by omega
+    subst hac; rfl
+  · simp only at hp hle hcol
+    subst hp
+    rw [Tree.forestAt_append, hG, Option.bind_some, ker_forestAt_cons] at hcol
+    cases hgc : G.cols[c0]? with
+    | none => rw [hgc] at hcol; cases hcol
+    | some gc =>
+      rw [hgc, Option.bind_some] at hcol
+      have hc0 : c0 < sd.col.col + 1 := by
+        rw [← hGlen]; by_contra h; rw [List.getElem?_eq_none (by omega)] at hgc; cases hgc
+      have hc0' : c0 = sd.col.col := by omega
+      subst hc0'
+      rw [hGc] at hgc
+      cases hgc
+      right
+      rcases Nat.lt_or_ge e0 sd.Q.length with he | he
+      · unfold isQMat
+        simp only [List.take_left' rfl, List.drop_left' rfl]
+        simp [he]
+      · exfalso
+        cases he' : (sd.Q ++ [(sd.r, Tree.empty)])[e0]? with
+        | none => rw [he'] at hcol; cases hcol
+        | some y =>
+          rw [he', Option.bind_some] at hcol
+          have hy : y = (sd.r, Tree.empty) := by
+            rw [List.getElem?_append_right he] at he'
+            rcases Nat.lt_or_ge (e0 - sd.Q.length) 1 with h1 | h1
+            · rw [show e0 - sd.Q.length = 0 by omega] at he'
+              simp at he'; exact he'.symm
+            · rw [List.getElem?_eq_none (by simp; omega)] at he'; cases he'
+          subst hy
+          cases rest with
+          | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at hcol
+          | cons z zs =>
+            obtain ⟨z1, z2⟩ := z
+            simp [ker_forestAt_cons, Tree.empty, Tree.cols] at hcol
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
