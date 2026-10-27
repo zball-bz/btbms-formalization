@@ -26894,21 +26894,14 @@ end OrdStep
 -- T3.8lb (`headQuery_oldCap`) moved below the G-009 block, to the G-010 (D7) section (brief
 -- rule 5).
 
--- T3.8lc (txt:607-611): query-part cuts of head `i ≥ 2`
-theorem headQuery_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
-    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
-    Covers (litCap S.B c k ρ) S.B := by sorry
+-- T3.8lc (`headQuery_cut`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
+-- T3.8lb (`headQuery_oldCap`) and the G-010 phase-copy lemmas.
 
--- T3.8ld (txt:613-617): the seam: the cap at `s_{i−1}` is `A` advanced by `i − 1` periods
-theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (q : Nat) :
-    expand (litCap S.B c S.m (S.s (i - 1))) q = expand S.A (i - 1 + q) := by sorry
+-- T3.8ld (`expand_seam`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
+-- the G-010 head lemmas (`head_scan_F7`, `head_stack_F7`).
 
--- T3.8le (txt:617-620): no closing parent below `s_{i−1}` is an upward `L` cap at `k = m`
-theorem seam_parent (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
-    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c S.m ρ)
-    (hKL : InL (litCap S.B c S.m ρ)) : S.s (i - 1) ≤ ρ := by sorry
+-- T3.8le (`seam_parent`) moved to just before T3.8l (`KS_ordinary`), brief rule 5: its proof uses
+-- the G-010 phase-copy lemmas.
 
 -- T3.8lf (txt:623-624): restored-suffix cuts force `ρ < r`
 theorem restored_parent (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
@@ -38884,6 +38877,1209 @@ theorem root_current (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 
     have hW := (localSuffix_cont_le S.inL S.kind S.hsd S.hrd hAi (Or.inl ha)).1
     rw [hY]
     exact success_conj_rel_G7 hup hupA hoK hoA hρ'.le hρeq hnum hrel hls hKL hBI hVA hold hW
+
+/-! ## G6 — the seam (T3.8le), helpers -/
+
+-- G6 (helper): `Ordering.then` of two comparisons that are not `gt` is not `gt`
+theorem then_ne_gt_G6 {a b : Ordering} (ha : a ≠ .gt) (hb : b ≠ .gt) : a.then b ≠ .gt := by
+  cases a <;> simp_all [Ordering.then]
+
+section G6Trees
+variable {α : Type}
+mutual
+-- G6 (helper): relabelling by an inflationary map does not decrease a tree
+theorem cmp_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (s : Tree α) : Tree.cmp c s (Tree.map f s) ≠ .gt :=
+  match s with
+  | .node a => by rw [Tree.map, Tree.cmp]; exact cmpCols_map_infl_G6 hf a
+
+theorem cmpCols_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (a : List (List (α × Tree α))) : Tree.cmpCols c a (Tree.mapCols f a) ≠ .gt :=
+  match a with
+  | [] => by simp [Tree.mapCols, Tree.cmpCols]
+  | x :: xs => by
+    rw [Tree.mapCols, Tree.cmpCols]
+    exact then_ne_gt_G6 (cmpCol_map_infl_G6 hf x) (cmpCols_map_infl_G6 hf xs)
+
+theorem cmpCol_map_infl_G6 {c : α → α → Ordering} {f : α → α} (hf : ∀ x, c x (f x) ≠ .gt)
+    (a : List (α × Tree α)) : Tree.cmpCol c a (Tree.mapCol f a) ≠ .gt :=
+  match a with
+  | [] => by simp [Tree.mapCol, Tree.cmpCol]
+  | (p, h) :: es => by
+    rw [Tree.mapCol, Tree.cmpCol]
+    exact then_ne_gt_G6 (then_ne_gt_G6 (hf p) (cmp_map_infl_G6 hf h)) (cmpCol_map_infl_G6 hf es)
+end
+end G6Trees
+
+-- G6 (helper; T3.2p.2, "`κ_1` is inflationary"): `K ≤ κ_j K`
+theorem key_le_kappa_G6 (r d j : Nat) (K : Key) : K ≤ kappa r d j K := by
+  show keyCmp K (kappa r d j K) ≠ .gt
+  unfold keyCmp kappa
+  apply cmp_map_infl_G6
+  intro x
+  obtain ⟨b, p⟩ := x
+  unfold kappaLabel keyLabelCmp
+  split_ifs with h
+  · obtain ⟨rfl, -⟩ := h
+    have h1 : compare false false = .eq := compare_eq_iff_eq.mpr rfl
+    simp only [h1, Ordering.then]
+    intro h'
+    rw [Nat.compare_eq_gt] at h'
+    omega
+  · simp [Ordering.then]
+
+-- G6 (helper): `W ≤ κ_j W` for queries
+theorem le_kappaQ_G6 (r d j : Nat) (W : List (WithTop Key)) : W ≤ kappaQ r d j W := by
+  rw [← not_lt]
+  induction W with
+  | nil => simp [kappaQ]
+  | cons w ws ih =>
+    simp only [kappaQ, List.map_cons] at ih ⊢
+    rw [List.cons_lt_cons_iff]
+    rintro (h | ⟨-, h'⟩)
+    · have hle : w ≤ WithTop.map (kappa r d j) w := by
+        cases w with
+        | top => exact le_refl _
+        | coe K => exact WithTop.coe_le_coe.mpr (key_le_kappa_G6 r d j K)
+      exact absurd h (not_lt.mpr hle)
+    · exact ih h'
+
+
+-- G6 (helper): `κ_0` is the identity on queries
+theorem kappaQ_zero_G6 (r d : Nat) (W : List (WithTop Key)) : kappaQ r d 0 W = W := by
+  unfold kappaQ
+  conv_rhs => rw [← List.map_id W]
+  congr 1
+  funext w
+  cases w with
+  | top => rfl
+  | coe K => simp only [WithTop.map_coe, kappa_zero_E3]; rfl
+
+-- G6 (helper): the root column in the system capped at the stopping column's active containers
+-- is an admissible root capping, and every column placed under the stopping column reads the root
+-- of `B` alike
+theorem activeKeys_root_G6 (S : OrdStep) {c : ColAddr} (hc : ∃ b, c = underCol S.sd.col b) :
+    RootCap_F7 S (activeKeys_D7 S.A S.sd.col S.rd.col) ∧
+      activeKeys_D7 S.B c S.rd.col = activeKeys_D7 S.A S.sd.col S.rd.col ∧
+      parents S.B S.rd.col = parents S.A S.rd.col := by
+  obtain ⟨b, hb⟩ := hc
+  obtain ⟨hres, -, -, -, -, hown, hlast⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hE : S.A ≠ Tree.empty := by
+    intro h
+    have := S.hsd
+    rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this
+    cases this
+  obtain ⟨Z, hB⟩ : ∃ Z, S.B = context S.A S.sd Z := by
+    have := expand_eq_iterate hE S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined S.n
+    rw [S.out] at this
+    exact ⟨_, Option.some.inj this⟩
+  obtain ⟨hpar, htake, hnone⟩ := colAt_context_onStack S.hsd Z hsdR
+  rw [← hB] at hpar htake hnone
+  have hcR : S.rd.col.container c = S.rd.col.container S.sd.col := by
+    rw [hb]; exact container_underCol_of_onStack hsdR b
+  refine ⟨?_, ?_, hpar⟩
+  · cases hRs : S.rd.col.container S.sd.col with
+    | none => left; simp only [activeKeys_D7, hRs]
+    | some e =>
+      have hl := hlast e hRs
+      unfold Packet.rootLenOf at hl
+      have ho : S.rd.owner = true := hown.mpr (by rw [hRs]; rfl)
+      have hkd := S.kernelDefined ho
+      have hlenR := length_actualKeys S.A S.rd.col
+      have hcA : S.rd.cursor < (actualKeys S.A S.rd.col).length := by
+        unfold unconsumed rootCol at hkd
+        rw [hlenR]
+        by_contra hcon
+        exact hkd (List.drop_eq_nil_of_le (by omega))
+      right
+      refine ⟨e.idx, by omega, by omega, ?_⟩
+      simp only [activeKeys_D7, hRs]
+  · cases hRs : S.rd.col.container S.sd.col with
+    | none =>
+      simp only [activeKeys_D7, hcR, hRs, actualKeys, hnone hRs]
+    | some e =>
+      simp only [activeKeys_D7, hcR, hRs]
+      congr 1
+      have h1 := htake e hRs
+      simp only [actualKeys, ← List.map_take]
+      congr 1
+      cases hBo : S.B.colAt S.rd.col with
+      | none =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rfl
+        | some _ => rw [hBo, hAo] at h1; cases h1
+      | some C1 =>
+        cases hAo : S.A.colAt S.rd.col with
+        | none => rw [hBo, hAo] at h1; cases h1
+        | some C2 =>
+          rw [hBo, hAo] at h1
+          simpa using h1
+
+-- G6 (helper): the root's response, in `A` read from the stopping column and in `B` read from a
+-- column placed under it, both in the systems capped at the active containers
+theorem respEdge_root_G6 (S : OrdStep) {c : ColAddr} (hc : ∃ b, c = underCol S.sd.col b)
+    (W : List (WithTop Key)) :
+    respEdge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W S.sd.r =
+        (parents S.A S.rd.col)[cursor (activeKeys_D7 S.A S.sd.col S.rd.col) W]? ∧
+      respEdge S.B (activeKeys_D7 S.B c) c W S.sd.r =
+        (parents S.A S.rd.col)[cursor (activeKeys_D7 S.A S.sd.col S.rd.col) W]? := by
+  obtain ⟨-, hks, hpar⟩ := activeKeys_root_G6 S hc
+  obtain ⟨b, hb⟩ := hc
+  obtain ⟨hres, hrnum, -⟩ := rootData_path S.hsd S.hrd
+  have hsdR : S.sd.col.OnStack S.rd.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres).1
+  have hcR : c.resolve 0 S.sd.r = some S.rd.col := by
+    rw [hb]
+    exact (ColAddr.resolve_spec 0 _ _ _).mpr ⟨(onStack_underCol _ _ _).mpr (Or.inl hsdR), hrnum⟩
+  refine ⟨?_, ?_⟩
+  · unfold respEdge
+    rw [hres]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents]
+  · unfold respEdge
+    rw [hcR]
+    simp only [Option.bind_some]
+    rw [resp_eq_parents, hks, hpar]
+
+-- G6 (helper; T3.2p.2): at the old complete query every admissible root capping stops at `c_A`
+theorem rootCap_termZ_G6 (S : OrdStep) {ks : List (WithTop Key)} (hks : RootCap_F7 S ks) :
+    cursor ks S.termZ = S.rd.cursor := by
+  have hcur := rdcursor_eq_F7 S
+  rcases hks with rfl | ⟨u, hu1, hu2, rfl⟩
+  · exact hcur.symm
+  · obtain ⟨-, -, h2⟩ := rootCap_headHyp_F7 S (Or.inl rfl)
+    have hlt : S.termZ < cutQuery (actualKeys S.A S.rd.col) (u + 1) :=
+      lt_of_lt_of_le (h2 (by omega)) (cutQuery_mono _ (by omega))
+    rw [← (cursor_cappedAt _ S.termZ u hu2 (cutQuery_noninc _ _) (termZ_ne_top_F7 S) hlt).2, hcur]
+
+
+-- G6 (helper): the final test of `A` at its closing slot, in the system capped at the stopping
+-- column's active containers: the old terminal path reaches `r` at the complete query
+theorem final_path_A_G6 (S : OrdStep) :
+    Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ (cutStart S.A S.sd.col S.m) S.sd.r := by
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hAK : CondAK S.A (capKeys S.A (routeCols S.A)) :=
+    capping_forward S.inL.1 S.inL.2.2.2.1 S.inL.2.2.2.2 (fun _ h => h)
+  have hpar : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcol]
+  have hclen : ((S.A.colAt S.sd.col).getD []).length = S.m + 1 := by
+    rw [hcol]; simp [OrdStep.m]
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  have hpm : (parents S.A S.sd.col)[S.m]? = some S.sd.r := by
+    rw [hpar, List.getElem?_append_right (by simp [OrdStep.m])]
+    simp [OrdStep.m]
+  have hA := hAK S.sd.col hmem S.m S.sd.r hpm
+  rw [cutQuery_capKeys _ _ _ (by rw [hclen]; omega)] at hA
+  exact path_congr_F7 (fun x o ho => activeKeys_stopCol_F7 S ho) hA
+
+-- G6 (helper; T3.2q, high case): at a high query the decorated paths of a phase copy with
+-- `φ ≥ 1` never enter `[r, s_φ)`: the head `s_φ` answers with the old root response `< r`
+theorem path_avoid_G6 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
+    (hp : PhasePair_D7 S j a c φ) (hφ : 1 ≤ φ) {W : List (WithTop Key)} (hW : Noninc W)
+    (hT : ∀ w ∈ W, w ≠ ⊤) (hhigh : S.termZ ≤ kappaQ S.sd.r S.d 1 W) {x y : Nat}
+    (hx : x < S.sd.r ∨ S.s φ ≤ x)
+    (hpath : Path S.B (activeKeys_D7 S.B c) c (kappaQ S.sd.r S.d φ W) x y) :
+    y < S.sd.r ∨ S.s φ ≤ y := by
+  have hVB : CondV S.B := condV_ord S.inL S.kind S.out
+  induction hpath using Relation.ReflTransGen.head_induction_on with
+  | refl => exact hx
+  | @head x x' hxx' _ ih =>
+    apply ih
+    have hx'x : x' < x := edge_lt hVB hxx'
+    rw [edge_iff] at hxx'
+    rcases hx with hxr | hsx
+    · left; omega
+    · rcases Nat.eq_or_lt_of_le hsx with hxs | hxs
+      · subst hxs
+        rw [respEdge_head_high_D7 S hj hp hφ hW hT hhigh] at hxx'
+        exact Or.inl (respEdge_root_lt_D7 S hj hp hφ hxx')
+      · obtain ⟨z, rfl⟩ : ∃ z, x = z + φ * S.d := ⟨x - φ * S.d, by simp only [OrdStep.s] at hxs; omega⟩
+        have hzr : S.sd.r < z := by simp only [OrdStep.s] at hxs; omega
+        rw [(respEdge_phase_active_D7 S hj hp hT z).1 hzr] at hxx'
+        obtain ⟨z', -, rfl⟩ := Option.map_eq_some_iff.mp hxx'
+        rcases shiftVal_dich S.sd.r (φ * S.d) z' with h | h
+        · exact Or.inl h
+        · exact Or.inr (by simpa [OrdStep.s] using h)
+
+-- G6 (helper): head 1 is the stopping column, and `B` reads its stack like `A` in the systems
+-- capped at its active containers
+theorem respEdge_head1_G6 (S : OrdStep) (hc1 : phaseCol S.sd S.rd 1 S.rd.col = some S.sd.col)
+    {W : List (WithTop Key)} (hT : ∀ w ∈ W, w ≠ ⊤) (x : Nat) :
+    respEdge S.B (activeKeys_D7 S.B S.sd.col) S.sd.col W x =
+      respEdge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col W x := by
+  have hp : PhasePair_D7 S 1 S.sd.col S.sd.col 0 := Or.inr ⟨rfl, hc1, rfl⟩
+  have h1 : 1 ≤ 1 ∧ 1 ≤ S.n := ⟨le_rfl, S.pos⟩
+  have H := respEdge_phase_active_D7 S h1 hp hT x
+  rw [kappaQ_zero_G6, Nat.zero_mul, Nat.add_zero, shiftVal_zero_fun, Option.map_id] at H
+  rcases Nat.lt_trichotomy x S.sd.r with h | rfl | h
+  · exact H.2 h
+  · obtain ⟨-, -, -, hb⟩ := phasePair_root_D7 S hp
+    obtain ⟨hA, hB⟩ := respEdge_root_G6 S hb W
+    rw [hA, hB]
+  · exact H.1 h
+
+
+-- T3.8le (txt:617-620): no closing parent below `s_{i−1}` is an upward `L` cap at `k = m`
+-- (moved here from after T3.8ld, brief rule 5: its proof uses the G-010 phase-copy lemmas)
+theorem seam_parent (S : OrdStep) {i : Nat} {c : ColAddr} {ρ : Nat} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hup : IsUpward S.B c S.m ρ)
+    (hKL : InL (litCap S.B c S.m ρ)) : S.s (i - 1) ≤ ρ := by
+  by_contra hlt
+  rw [not_le] at hlt
+  have hVA : CondV S.A := S.inL.1
+  have hp : PhasePair_D7 S i S.sd.col c (i - 1) := Or.inr ⟨rfl, hc, rfl⟩
+  have hZn : Noninc S.termZ := cutQuery_noninc _ _
+  have hZT := termZ_ne_top_F7 S
+  -- the final test of the cap, read in `B`
+  have hKA := capping_forward hKL.1 hKL.2.2.2.1 hKL.2.2.2.2
+    (sel := routeCols (litCap S.B c S.m ρ)) (fun _ h => h)
+  obtain ⟨hcK, -⟩ := litCap_parents_self hup
+  have hB := (aAt_litCap_final_D7 hup).mp ((condAK_iff _ _).mp hKA c hcK S.m)
+  obtain ⟨hmB, hparB, hkeyB⟩ := headQuery_prefix_D7 S hi hc
+  have hQ : cutQuery (actualKeys S.B c) S.m = kappaQ S.sd.r S.d (i - 1) S.termZ := by
+    unfold cutQuery OrdStep.termZ cutQuery
+    rw [hkeyB]
+    unfold kappaQ
+    rw [nu_map (kappaQry_strictMono _ _ _)]
+  rw [hQ] at hB
+  obtain ⟨hcol, -⟩ := stopData_spec S.hsd
+  have hlenA : (parents S.A S.sd.col).length = S.m + 1 := by
+    simp [parents, hcol, OrdStep.m]
+  obtain ⟨hra, hnum⟩ := phasePair_num_D7 S hi hp
+  obtain ⟨hst, hproj⟩ := cutStart_phase_D7 S hra hnum (by omega) hparB
+  -- the old path to `ρ < r`
+  have hold : ρ < S.sd.r ∧
+      Path S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ (cutStart S.A S.sd.col S.m) ρ := by
+    rcases Nat.eq_or_lt_of_le hi.1 with hi1 | hi2
+    · subst hi1
+      have hc1 : c = S.sd.col := by
+        obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+        rw [phaseCol_eq_iterate S hkh (kerCol_rdcol S), Option.some.injEq] at hc
+        exact hc.symm
+      subst hc1
+      have hρr : ρ < S.sd.r := by simpa [OrdStep.s] using hlt
+      refine ⟨hρr, ?_⟩
+      have hp0 : S.proj 0 (cutStart S.B S.sd.col S.m) = cutStart S.B S.sd.col S.m := by
+        unfold OrdStep.proj
+        split_ifs with h1 h2
+        · simp
+        · rw [h2]; simp [OrdStep.s]
+        · rfl
+      simp only [Nat.sub_self] at hproj hB
+      rw [hp0] at hproj
+      rw [kappaQ_zero_G6, hproj] at hB
+      have hc1 : phaseCol S.sd S.rd 1 S.rd.col = some S.sd.col := hc
+      have he : ∀ a b, Edge S.B (activeKeys_D7 S.B S.sd.col) S.sd.col S.termZ a b ↔
+          Edge S.A (activeKeys_D7 S.A S.sd.col) S.sd.col S.termZ a b := fun a b => by
+        rw [edge_iff, edge_iff, respEdge_head1_G6 S hc1 hZT]
+      exact Relation.ReflTransGen.mono (fun a b => (he a b).mp) _ _ hB
+    · have hφ : 1 ≤ i - 1 := by omega
+      have hρ := path_avoid_G6 S hi hp hφ hZn hZT (le_kappaQ_G6 _ _ _ _) hst hB
+      have hρr : ρ < S.sd.r := by omega
+      refine ⟨hρr, ?_⟩
+      have := head_path_active_D7 S hi hp hφ hZn hZT hst (Or.inl hρr.le) hB
+      have hpρ : S.proj (i - 1) ρ = ρ := by
+        unfold OrdStep.proj
+        rw [if_neg (by omega), if_neg (by omega)]
+      rwa [hpρ, hproj] at this
+  obtain ⟨hρr, hpathA⟩ := hold
+  -- both `r` and `ρ` lie on the old terminal path, so `ρ` is reached from `r`
+  have hr := path_functional hVA (final_path_A_G6 S) hpathA hρr.le
+  rcases Relation.ReflTransGen.cases_head hr with h0 | ⟨u, hru, huρ⟩
+  · omega
+  · have hρu := path_le hVA huρ
+    rw [edge_iff] at hru
+    obtain ⟨hRC, -⟩ := activeKeys_root_G6 S (phasePair_root_D7 S hp).2.2.2
+    rw [(respEdge_root_G6 S (phasePair_root_D7 S hp).2.2.2 _).1, rootCap_termZ_G6 S hRC] at hru
+    -- the next entry of the head is the first unconsumed root entry, which upwardness beats
+    obtain ⟨-, -, hupB⟩ := isUpward_iff_parents_D7.mp hup
+    have hhc : S.headCol i = c := by simp [OrdStep.headCol, hc]
+    have hpar := (head_content_F7 S hi).1
+    rw [hhc] at hpar
+    have hlm : (((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((i - 1) * S.d))).length =
+        S.m := by
+      rw [List.length_map, List.length_take]; omega
+    have hm : (parents S.B c)[S.m]? = some u := by
+      rw [hpar, List.getElem?_append_right (by omega), hlm, Nat.sub_self, List.getElem?_drop,
+        Nat.add_zero, hru]
+    have := hupB u hm
+    omega
+
+/-! ## G6 — placements under route holes -/
+
+-- G6 (helper): `mapLast` on a snoc
+theorem mapLast_snoc_G6 {β γ : Type} (f g : β → γ) (l : List β) (x : β) :
+    mapLast f g (l ++ [x]) = l.map f ++ [g x] := by
+  rw [mapLast_eq]; simp
+
+-- G6 (helper): a route of positive depth ends in a last entry of a last column
+theorem route_succ_G6 {k : Nat} {G : Forest} (h : KerRoute (k + 1) G) :
+    ∃ init cinit p H, G = Tree.node (init ++ [cinit ++ [(p, H)]]) ∧ KerRoute k H := by
+  obtain ⟨col, p, H, h1, h2, h3⟩ := h
+  obtain ⟨cols⟩ := G
+  simp only [Tree.cols] at h1
+  have hne : cols ≠ [] := by intro h'; subst h'; cases h1
+  have hcne : col ≠ [] := by intro h'; subst h'; cases h2
+  refine ⟨cols.dropLast, col.dropLast, p, H, ?_, h3⟩
+  have e1 : col = cols.getLast hne := by
+    rw [List.getLast?_eq_some_getLast hne] at h1; exact (Option.some.inj h1).symm
+  have e2 : (p, H) = col.getLast hcne := by
+    rw [List.getLast?_eq_some_getLast hcne] at h2; exact (Option.some.inj h2).symm
+  rw [e2, List.dropLast_concat_getLast, e1, List.dropLast_concat_getLast]
+
+-- G6 (helper): the unshifted placement through a last entry
+theorem replaceAt_snoc_G6 (Y : Forest) (m : Nat) (init : List Column) (cinit : Column) (p : Nat)
+    (H : Forest) :
+    replaceAt 0 0 Y (m + 1) (Tree.node (init ++ [cinit ++ [(p, H)]])) =
+      Tree.node (init ++ [cinit ++ [(p, replaceAt 0 0 Y m H)]]) := by
+  rw [ker_replaceAt_zero_succ, mapLast_snoc_G6, mapLast_snoc_G6, List.map_id, List.map_id]
+
+-- G6 (helper): the route hole through a last entry
+theorem kerHoleAt_snoc_G6 (k : Nat) (init : List Column) (cinit : Column) (p : Nat) (H : Forest) :
+    kerHoleAt (k + 1) (Tree.node (init ++ [cinit ++ [(p, H)]])) =
+      ⟨(init.length, cinit.length) :: (kerHoleAt k H).path, (kerHoleAt k H).col⟩ := by
+  rw [ker_kerHoleAt_succ (col := cinit ++ [(p, H)]) (p := p) (H := H) (by simp [Tree.cols])
+    (by simp)]
+  simp [Tree.cols]
+
+-- G6 (helper): the route hole at depth `k` has a path of length `k`
+theorem kerHoleAt_path_length_G6 : ∀ (k : Nat) (G : Forest), (kerHoleAt k G).path.length = k
+  | 0, G => rfl
+  | k + 1, G => by simp only [kerHoleAt, List.length_cons, kerHoleAt_path_length_G6 k]
+
+-- G6 (helper): placement under a cons address
+theorem underCol_cons_G6 (x : Nat × Nat) (hp : List (Nat × Nat)) (hc : Nat) (y : ColAddr) :
+    underCol ⟨x :: hp, hc⟩ y = ⟨x :: (underCol ⟨hp, hc⟩ y).path, (underCol ⟨hp, hc⟩ y).col⟩ := by
+  obtain ⟨yp, yc⟩ := y
+  cases yp with
+  | nil => simp [underCol]
+  | cons z rest => simp [underCol]
+
+-- G6 (helper): the depth of a placed address
+theorem underCol_path_length_G6 (h y : ColAddr) :
+    (underCol h y).path.length = h.path.length + y.path.length := by
+  obtain ⟨yp, yc⟩ := y
+  cases yp with
+  | nil => simp [underCol]
+  | cons z rest => simp [underCol]
+
+-- G6 (helper; hole composition): placing into the hole of a placed forest is placing into it
+-- before the placement
+theorem replaceAt_comp_G6 (X : Forest) : ∀ (k : Nat) (G : Forest), KerRoute k G →
+    ∀ (Y : Forest) (kY : Nat), KerRoute kY Y →
+      replaceAt 0 0 X (k + kY) (replaceAt 0 0 Y k G) = replaceAt 0 0 (replaceAt 0 0 X kY Y) k G
+  | 0, .node cols, hG, .node ycols, kY, hY => by
+    have hne : cols ≠ [] := hG
+    rw [ker_replaceAt_zero_zero _ _ hne, Nat.zero_add]
+    cases kY with
+    | zero =>
+      have hyne : ycols ≠ [] := hY
+      rw [ker_replaceAt_zero_zero _ _ (by
+          simp only [Tree.cols]; intro h'; exact hyne (List.append_eq_nil_iff.mp h').2),
+        ker_replaceAt_zero_zero _ _ hyne,
+        ker_replaceAt_zero_zero _ _ hne]
+      simp only [Tree.cols]
+      rw [List.dropLast_append_of_ne_nil hyne, List.append_assoc]
+    | succ m =>
+      have hyne : ycols ≠ [] := by
+        obtain ⟨col, p, H, h1, -⟩ := hY
+        intro h'; subst h'; cases h1
+      rw [ker_replaceAt_zero_succ, ker_replaceAt_zero_succ, ker_replaceAt_zero_zero _ _ hne]
+      simp only [Tree.cols]
+      rw [ker_mapLast_append _ _ _ _ hyne, List.map_id]
+  | k + 1, G, hG, Y, kY, hY => by
+    obtain ⟨init, cinit, p, H, rfl, hH⟩ := route_succ_G6 hG
+    rw [show k + 1 + kY = (k + kY) + 1 by omega, replaceAt_snoc_G6, replaceAt_snoc_G6,
+      replaceAt_snoc_G6, replaceAt_comp_G6 X k H hH Y kY hY]
+
+-- G6 (helper): the route of a placed forest continues into the filling
+theorem route_place_G6 : ∀ (k : Nat) (G : Forest), KerRoute k G →
+    ∀ (Y : Forest) (kY : Nat), KerRoute kY Y → KerRoute (k + kY) (replaceAt 0 0 Y k G)
+  | 0, .node cols, hG, .node ycols, kY, hY => by
+    have hne : cols ≠ [] := hG
+    rw [ker_replaceAt_zero_zero _ _ hne, Nat.zero_add]
+    cases kY with
+    | zero =>
+      have hyne : ycols ≠ [] := hY
+      show cols.dropLast ++ ycols ≠ []
+      intro h'
+      exact hyne (List.append_eq_nil_iff.mp h').2
+    | succ m =>
+      obtain ⟨col, p, H, h1, h2, h3⟩ := hY
+      refine ⟨col, p, H, ?_, h2, h3⟩
+      have hyne : ycols ≠ [] := by intro h'; subst h'; cases h1
+      simp only [Tree.cols] at h1 ⊢
+      rw [List.getLast?_append_of_ne_nil _ hyne, h1]
+  | k + 1, G, hG, Y, kY, hY => by
+    obtain ⟨init, cinit, p, H, rfl, hH⟩ := route_succ_G6 hG
+    rw [show k + 1 + kY = (k + kY) + 1 by omega, replaceAt_snoc_G6]
+    exact ⟨cinit ++ [(p, replaceAt 0 0 Y k H)], p, _, by simp [Tree.cols], by simp,
+      route_place_G6 k H hH Y kY hY⟩
+
+-- G6 (helper): a shift commutes with an unshifted placement
+theorem shift_place_G6 (r d : Nat) (Z : Forest) (k : Nat) (G : Forest) :
+    shift r d (replaceAt 0 0 Z k G) = replaceAt 0 0 (shift r d Z) k (shift r d G) := by
+  rw [shift_replaceAt, replaceAt_eq_shift]
+
+
+-- G6 (helper): `getD` past a prefix
+theorem getD_append_right_G6 {β : Type} (l₁ l₂ : List β) (j : Nat) (d : β) :
+    (l₁ ++ l₂).getD (l₁.length + j) d = l₂.getD j d := by
+  simp [List.getD_eq_getElem?_getD, List.getElem?_append_right]
+
+-- G6 (helper; litCap fill law): a literal cap under the hole of a placement is the placement of
+-- the literal cap of the filling
+theorem litCapAux_place_G6 (kk p : Nat) (Z : Forest) : ∀ (k : Nat) (G : Forest), KerRoute k G →
+    ∀ (y : ColAddr),
+      litCapAux kk p (underCol (kerHoleAt k G) y).path (underCol (kerHoleAt k G) y).col
+          (replaceAt 0 0 Z k G) = replaceAt 0 0 (litCapAux kk p y.path y.col Z) k G
+  | 0, .node cols, hG, ⟨yp, yc⟩ => by
+    have hne : cols ≠ [] := hG
+    have hdl : cols.dropLast.length = cols.length - 1 := by simp
+    obtain ⟨zc⟩ := Z
+    rw [ker_replaceAt_zero_zero _ _ hne]
+    cases yp with
+    | nil =>
+      simp only [kerHoleAt, underCol, Tree.cols]
+      rw [ker_replaceAt_zero_zero _ _ hne]
+      simp only [litCapAux, Tree.cols]
+      rw [← hdl, List.take_append, List.take_of_length_le (by omega), Nat.add_sub_cancel_left,
+        getD_append_right_G6, List.append_assoc]
+    | cons z rest =>
+      obtain ⟨c0, e0⟩ := z
+      simp only [kerHoleAt, underCol, Tree.cols, List.nil_append]
+      simp only [litCapAux]
+      rw [← hdl, getD_append_right_G6]
+      cases h : (zc.getD c0 [])[e0]? with
+      | none => simp only [ker_replaceAt_zero_zero _ _ hne, Tree.cols]
+      | some x =>
+        obtain ⟨q, hh⟩ := x
+        simp only [ker_replaceAt_zero_zero _ _ hne, Tree.cols]
+        rw [List.take_append, List.take_of_length_le (by omega), Nat.add_sub_cancel_left,
+          List.append_assoc]
+  | k + 1, G, hG, y => by
+    obtain ⟨init, cinit, p', H, rfl, hH⟩ := route_succ_G6 hG
+    rw [kerHoleAt_snoc_G6, underCol_cons_G6, replaceAt_snoc_G6, replaceAt_snoc_G6]
+    simp only [litCapAux]
+    have h1 : (init ++ [cinit ++ [(p', replaceAt 0 0 Z k H)]]).getD init.length [] =
+        cinit ++ [(p', replaceAt 0 0 Z k H)] := by
+      simp [List.getD_eq_getElem?_getD]
+    rw [h1]
+    have h2 : (cinit ++ [(p', replaceAt 0 0 Z k H)])[cinit.length]? =
+        some (p', replaceAt 0 0 Z k H) := by simp
+    rw [h2]
+    simp only
+    rw [show (⟨(kerHoleAt k H).path, (kerHoleAt k H).col⟩ : ColAddr) = kerHoleAt k H from rfl,
+      litCapAux_place_G6 kk p Z k H hH y]
+    simp
+
+
+-- G6 (helper): a literal cap commutes with a relabelling
+theorem litCapAux_map_G6 (f : Nat → Nat) (kk p : Nat) : ∀ (σ : List (Nat × Nat)) (j : Nat)
+    (X : Forest), litCapAux kk (f p) σ j (Tree.map f X) = Tree.map f (litCapAux kk p σ j X)
+  | [], j, .node cols => by
+    simp only [Tree.map, litCapAux, treeMapCols_eq_map]
+    congr 1
+    rw [List.map_append, List.map_take, List.map_cons, List.map_nil]
+    congr 2
+    have hg : (cols.map (Tree.mapCol f)).getD j [] = Tree.mapCol f (cols.getD j []) := by
+      simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+      cases cols[j]? <;> rfl
+    rw [hg, treeMapCol_eq_map, treeMapCol_eq_map, List.map_append, List.map_take]
+    simp [Tree.empty, Tree.map, Tree.mapCols]
+  | (ci, ei) :: rest, j, .node cols => by
+    simp only [Tree.map, litCapAux, treeMapCols_eq_map]
+    have hg : (cols.map (Tree.mapCol f)).getD ci [] = Tree.mapCol f (cols.getD ci []) := by
+      simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+      cases cols[ci]? <;> rfl
+    rw [hg, treeMapCol_eq_map, List.getElem?_map]
+    cases h : (cols.getD ci [])[ei]? with
+    | none => simp only [Option.map_none]; simp only [Tree.map, treeMapCols_eq_map]
+    | some x =>
+      obtain ⟨q, hh⟩ := x
+      simp only [Option.map_some]
+      rw [litCapAux_map_G6 f kk p rest j hh]
+      simp only [Tree.map, treeMapCols_eq_map, List.map_append, List.map_take, List.map_cons,
+        List.map_nil, treeMapCol_eq_map]
+
+-- G6 (helper): a literal cap commutes with a shift
+theorem litCap_shift_G6 (r d : Nat) (X : Forest) (y : ColAddr) (kk p : Nat) :
+    litCap (shift r d X) y kk (shiftVal r d p) = shift r d (litCap X y kk p) := by
+  unfold litCap litCapBody
+  rw [(ker_shift_law r d X y).1]
+  cases h : X.colAt y with
+  | none => simp
+  | some col =>
+    simp only [Option.map_some, Option.isSome_some, if_true]
+    exact litCapAux_map_G6 _ kk p y.path y.col X
+
+-- G6 (helper): `litCap` under the hole of a placement
+theorem litCap_place_G6 (kk p : Nat) (Z : Forest) {k : Nat} {G : Forest} (hG : KerRoute k G)
+    (y : ColAddr) :
+    litCap (replaceAt 0 0 Z k G) (underCol (kerHoleAt k G) y) kk p =
+      replaceAt 0 0 (litCap Z y kk p) k G := by
+  unfold litCap litCapBody
+  rw [(ker_hole_law Z hG y).1]
+  split_ifs
+  · exact litCapAux_place_G6 kk p Z k G hG y
+  · rfl
+
+
+-- G6 (helper): the kernel of `A` as a placement into its open kernel
+theorem kernel_place_G6 (S : OrdStep) (X : Forest) :
+    kernel S.A S.sd S.rd X =
+      replaceAt 0 0 (shift S.sd.r S.d X) (holeDepth S.sd S.rd) (kerOpen S.A S.sd S.rd) :=
+  (ker_kernel_open S.hsd S.hrd S.kernelDefined X).1
+
+-- G6 (helper; G5): `j` kernel layers place `τ_j X` at depth `j (ℓ − j₀)` of the iterate on any
+-- one-column forest
+theorem iter_place_G6 (S : OrdStep) (col0 : Column) : ∀ (j : Nat) (X : Forest),
+    (kernel S.A S.sd S.rd)^[j] X =
+        replaceAt 0 0 (shift S.sd.r (j * S.d) X) (j * holeDepth S.sd S.rd)
+          ((kernel S.A S.sd S.rd)^[j] (Tree.node [col0])) ∧
+      KerRoute (j * holeDepth S.sd S.rd) ((kernel S.A S.sd S.rd)^[j] (Tree.node [col0]))
+  | 0, X => by
+    simp only [Function.iterate_zero_apply, Nat.zero_mul, shift_zero]
+    refine ⟨?_, by show [col0] ≠ []; simp⟩
+    rw [ker_replaceAt_zero_zero _ _ (by simp)]
+    simp [ker_node_cols]
+  | j + 1, X => by
+    obtain ⟨-, hR, -⟩ := ker_kernel_open S.hsd S.hrd S.kernelDefined X
+    obtain ⟨ih1, ih2⟩ := iter_place_G6 S col0 j X
+    have hR' : KerRoute (j * holeDepth S.sd S.rd)
+        (shift S.sd.r S.d ((kernel S.A S.sd S.rd)^[j] (Tree.node [col0]))) := ker_route_shift ih2
+    rw [Function.iterate_succ_apply', Function.iterate_succ_apply', kernel_place_G6,
+      kernel_place_G6, ih1, shift_place_G6, shift_add,
+      ← replaceAt_comp_G6 _ _ _ hR _ _ hR']
+    refine ⟨?_, ?_⟩
+    · congr 2
+      · rw [Nat.succ_mul, Nat.add_comm]
+      · rw [Nat.succ_mul, Nat.add_comm]
+    · have := route_place_G6 _ _ hR _ _ hR'
+      rwa [show holeDepth S.sd S.rd + j * holeDepth S.sd S.rd = (j + 1) * holeDepth S.sd S.rd by
+        rw [Nat.succ_mul, Nat.add_comm]] at this
+
+-- G6 (helper): literal caps under `j` kernel holes are the kernel layers over a literal cap
+theorem litCap_iter_G6 (S : OrdStep) (kk : Nat) : ∀ (j : Nat) (X : Forest) (y : ColAddr) (p : Nat),
+    litCap ((kernel S.A S.sd S.rd)^[j] X) ((underCol (kerHole S.sd S.rd))^[j] y) kk
+        (shiftVal S.sd.r (j * S.d) p) =
+      (kernel S.A S.sd S.rd)^[j] (litCap X y kk p)
+  | 0, X, y, p => by
+    simp only [Function.iterate_zero_apply, Nat.zero_mul, shiftVal_zero_fun, id]
+  | j + 1, X, y, p => by
+    obtain ⟨-, hR, hH⟩ := ker_kernel_open S.hsd S.hrd S.kernelDefined X
+    have key := litCap_place_G6 kk (shiftVal S.sd.r S.d (shiftVal S.sd.r (j * S.d) p))
+      (shift S.sd.r S.d ((kernel S.A S.sd S.rd)^[j] X)) hR ((underCol (kerHole S.sd S.rd))^[j] y)
+    rw [hH] at key
+    rw [Function.iterate_succ_apply', Function.iterate_succ_apply', Function.iterate_succ_apply',
+      kernel_place_G6, kernel_place_G6,
+      show shiftVal S.sd.r ((j + 1) * S.d) p = shiftVal S.sd.r S.d (shiftVal S.sd.r (j * S.d) p) by
+        rw [← Function.comp_apply (f := shiftVal S.sd.r S.d), shiftVal_add, Nat.succ_mul,
+          Nat.add_comm],
+      key, litCap_shift_G6, litCap_iter_G6 S kk j X y p]
+
+-- G6 (L1; T3.2i, D3.3a): a cap of `B` at the head of layer `i` inside its query part is the
+-- context of `i − 1` kernel layers over the one-column forest `Q[0, k) ⌢ (ρ', ∅)`
+theorem litCap_head_G6 (S : OrdStep) {i : Nat} (hi : 1 ≤ i ∧ i ≤ S.n) {c : ColAddr}
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) {kk : Nat} (hk : kk ≤ S.m) (ρ' : Nat) :
+    litCap S.B c kk (shiftVal S.sd.r ((i - 1) * S.d) ρ') =
+      context S.A S.sd ((kernel S.A S.sd S.rd)^[i - 1]
+        (Tree.node [S.sd.Q.take kk ++ [(ρ', Tree.empty)]])) := by
+  obtain ⟨hB, -⟩ := ker_expand_out S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.out
+  obtain ⟨hR, hH⟩ := ker_stop_hole S.hsd
+  have hc' : c = underCol S.sd.col ((underCol (kerHole S.sd S.rd))^[i - 1] ⟨[], 0⟩) := by
+    unfold phaseCol at hc
+    rw [kerCol_rdcol S, Option.map_some, Option.some.injEq] at hc
+    exact hc.symm
+  have hn : S.n = (i - 1) + ((S.n - i) + 1) := by omega
+  rw [hB, hc', hn, Function.iterate_add_apply]
+  unfold context
+  rw [← hH, litCap_place_G6 _ _ _ hR, litCap_iter_G6]
+  congr 2
+  rw [Function.iterate_succ_apply']
+  obtain ⟨V, hV, -⟩ := ker_kernel_col0 S.A S.sd S.rd ((kernel S.A S.sd S.rd)^[S.n - i] Tree.empty)
+  rw [litCap_eq_aux hV]
+  generalize kernel S.A S.sd S.rd ((kernel S.A S.sd S.rd)^[S.n - i] Tree.empty) = W at hV
+  obtain ⟨wc⟩ := W
+  rw [colAt_node_nil] at hV
+  simp only [litCapAux, List.take_zero, List.nil_append, List.getD_eq_getElem?_getD, hV,
+    Option.getD_some]
+  rw [List.take_append_of_le_length hk]
+
+
+-- G6 (helper): the local suffix at a column starts with that column
+theorem localSuffix_spec_G6 {E : Forest} {c : ColAddr} (hc : c ∈ E.colAddrs) :
+    ∃ F col, E.forestAt c.path = some F ∧ E.colAt c = some col ∧
+      localSuffix E c = Tree.node (col :: F.cols.drop (c.col + 1)) ∧
+      F.cols.length = c.col + 1 + (F.cols.drop (c.col + 1)).length := by
+  obtain ⟨col, hcol⟩ := Option.isSome_iff_exists.mp ((Tree.mem_colAddrs_iff _ _).mp hc)
+  unfold Tree.colAt at hcol
+  cases hF : E.forestAt c.path with
+  | none => rw [hF] at hcol; cases hcol
+  | some F =>
+    rw [hF, Option.bind_some] at hcol
+    have hlt : c.col < F.cols.length := (List.getElem?_eq_some_iff.mp hcol).1
+    refine ⟨F, col, rfl, by unfold Tree.colAt; rw [hF, Option.bind_some, hcol], ?_, ?_⟩
+    · unfold localSuffix
+      rw [hF, Option.getD_some, List.drop_eq_getElem_cons hlt,
+        (List.getElem?_eq_some_iff.mp hcol).2]
+    · rw [List.length_drop]; omega
+
+-- G6 (D3.3c packaged): kernel conjugacy from the local suffixes at the two roots
+theorem kernel_conj_G6 {K K' : Forest} {sd sd' : StopData} {rd rd' : RootData} {r δ : Nat}
+    (hsd : stopData K = some sd) (hsd' : stopData K' = some sd') (hrd : rootData K = some rd)
+    (hrd' : rootData K' = some rd') (hr : r ≤ sd'.r)
+    (hQ : sd.Q = Tree.mapCol (shiftVal r δ) sd'.Q) (hρ : sd.r = sd'.r + δ) (ht : sd.t = sd'.t + δ)
+    (hdep : sd.col.path.length + rd'.col.path.length = sd'.col.path.length + rd.col.path.length)
+    {colK colK' : Column} {restK restK' : List Column}
+    (hloc : localSuffix K rd.col = Tree.node (colK :: restK))
+    (hloc' : localSuffix K' rd'.col = Tree.node (colK' :: restK'))
+    (hrest : restK = restK'.map (Tree.mapCol (shiftVal r δ)))
+    (hU : colK.drop rd.cursor = Tree.mapCol (shiftVal r δ) (colK'.drop rd'.cursor)) :
+    rd.owner = rd'.owner ∧
+      unconsumed K rd = Tree.mapCol (shiftVal r δ) (unconsumed K' rd') ∧
+      ∀ X, kernel K sd rd (shift r δ X) = shift r δ (kernel K' sd' rd' X) := by
+  obtain ⟨-, hlay, hidx, -, -, hmem, -, hown⟩ := rootData_spec hsd hrd
+  obtain ⟨-, hlay', hidx', -, -, hmem', -, hown'⟩ := rootData_spec hsd' hrd'
+  obtain ⟨F, col, hF, hcol, hls, hFlen⟩ := localSuffix_spec_G6 hmem
+  obtain ⟨F', col', hF', hcol', hls', hFlen'⟩ := localSuffix_spec_G6 hmem'
+  rw [hls, Tree.node.injEq, List.cons.injEq] at hloc
+  rw [hls', Tree.node.injEq, List.cons.injEq] at hloc'
+  obtain ⟨rfl, hr1⟩ := hloc
+  obtain ⟨rfl, hr2⟩ := hloc'
+  have hlen : restK.length = restK'.length := by rw [hrest, List.length_map]
+  have hUU : unconsumed K rd = Tree.mapCol (shiftVal r δ) (unconsumed K' rd') := by
+    unfold unconsumed rootCol; rw [hcol, hcol', Option.getD_some, Option.getD_some]; exact hU
+  have hOw : rd.owner = rd'.owner := by
+    have h1 : rd.owner = true ↔ restK = [] := by
+      rw [hown]
+      constructor
+      · rintro ⟨F₀, hF₀, h⟩; rw [hF] at hF₀; cases hF₀; rw [← hr1]
+        exact List.drop_eq_nil_of_le (by omega)
+      · intro h; refine ⟨F, hF, ?_⟩; rw [← hr1] at h; rw [hFlen, h]; rfl
+    have h2 : rd'.owner = true ↔ restK' = [] := by
+      rw [hown']
+      constructor
+      · rintro ⟨F₀, hF₀, h⟩; rw [hF'] at hF₀; cases hF₀; rw [← hr2]
+        exact List.drop_eq_nil_of_le (by omega)
+      · intro h; refine ⟨F', hF', ?_⟩; rw [← hr2] at h; rw [hFlen', h]; rfl
+    have h3 : restK = [] ↔ restK' = [] := by
+      rw [← List.length_eq_zero_iff, ← List.length_eq_zero_iff, hlen]
+    cases ho : rd.owner <;> cases ho' : rd'.owner <;> simp_all
+  refine ⟨hOw, hUU, fun X => kernel_conj hr hQ hρ ht hUU hOw ?_ ?_ X⟩
+  · have h1 := rootData_layer_le hsd hrd
+    have h2 := rootData_layer_le hsd' hrd'
+    obtain ⟨-, hd, -⟩ := stopData_spec hsd
+    obtain ⟨-, hd', -⟩ := stopData_spec hsd'
+    unfold holeDepth
+    omega
+  · unfold rootForest
+    rw [hF, hF', Option.getD_some, Option.getD_some, hidx, hidx', hr1, hr2, hrest,
+      ker_shift_node]
+
+
+-- G6 (helper): `j` kernel layers above an address of any `X` shift it by `τ_j` (cf. T3.2i
+-- `ker_iterate_law`, which starts from `∅`)
+theorem iter_law_G6 (S : OrdStep) : ∀ (j : Nat) (X : Forest) (w : ColAddr),
+    ((kernel S.A S.sd S.rd)^[j] X).colAt ((underCol (kerHole S.sd S.rd))^[j] w) =
+        (X.colAt w).map (Tree.mapCol (shiftVal S.sd.r (j * S.d))) ∧
+      localSuffix ((kernel S.A S.sd S.rd)^[j] X) ((underCol (kerHole S.sd S.rd))^[j] w) =
+        shift S.sd.r (j * S.d) (localSuffix X w)
+  | 0, X, w => by
+    simp only [Function.iterate_zero_apply, Nat.zero_mul, shift_zero]
+    rw [shiftVal_zero_fun, treeMapCol_id_fun, Option.map_id]
+    exact ⟨by simp, by simp⟩
+  | j + 1, X, w => by
+    rw [Function.iterate_succ_apply', Function.iterate_succ_apply']
+    obtain ⟨h1, h2⟩ := ker_kernel_hole_law S.hsd S.hrd S.kernelDefined
+      ((kernel S.A S.sd S.rd)^[j] X) ((underCol (kerHole S.sd S.rd))^[j] w)
+    obtain ⟨h3, h4⟩ := ker_shift_law S.sd.r (period S.sd) ((kernel S.A S.sd S.rd)^[j] X)
+      ((underCol (kerHole S.sd S.rd))^[j] w)
+    obtain ⟨ih1, ih2⟩ := iter_law_G6 S j X w
+    refine ⟨?_, ?_⟩
+    · rw [h1, h3, ih1, Option.map_map]
+      congr 1
+      funext c
+      rw [Function.comp, treeMapCol_map, shiftVal_add, Nat.succ_mul, Nat.add_comm]
+      rfl
+    · rw [h2, h4, ih2, shift_add, Nat.succ_mul, Nat.add_comm]
+      rfl
+
+-- G6 (helper): the depth of an iterated placement
+theorem iterate_underCol_length_G6 (g : ColAddr) : ∀ (j : Nat) (y : ColAddr),
+    ((underCol g)^[j] y).path.length = y.path.length + j * g.path.length
+  | 0, y => by simp
+  | j + 1, y => by
+    rw [Function.iterate_succ_apply', underCol_path_length_G6, iterate_underCol_length_G6 g j y,
+      Nat.succ_mul]
+    omega
+
+-- G6 (helper): the kernel hole has depth `ℓ − j₀`
+theorem kerHole_length_G6 (S : OrdStep) :
+    (kerHole S.sd S.rd).path.length = holeDepth S.sd S.rd := by
+  obtain ⟨-, -, hH⟩ := ker_kernel_open S.hsd S.hrd S.kernelDefined Tree.empty
+  rw [← hH, kerHoleAt_path_length_G6]
+
+-- G6 (helper; hole composition for the context): placing into the innermost hole of
+-- `C_A(F^j(node [col0]))` is placing `F^j` of the unshifted filling
+theorem context_iter_G6 (S : OrdStep) (col0 : Column) (j : Nat) (Z : Forest) :
+    replaceAt 0 0 (shift S.sd.r (j * S.d) Z) (S.sd.depth + j * holeDepth S.sd S.rd)
+        (context S.A S.sd ((kernel S.A S.sd S.rd)^[j] (Tree.node [col0]))) =
+      context S.A S.sd ((kernel S.A S.sd S.rd)^[j] Z) := by
+  obtain ⟨hR, -⟩ := ker_stop_hole S.hsd
+  obtain ⟨h1, h2⟩ := iter_place_G6 S col0 j Z
+  unfold context
+  rw [replaceAt_comp_G6 _ _ _ hR _ _ h2, ← h1]
+
+
+-- G6 (helper): keys of a shifted column of `A`'s stack material
+theorem keys_mapCol_G6 (r d j x : Nat) (hx : r ≤ x) (l : Column) :
+    (Tree.mapCol (shiftVal r (j * d)) l).map (fun y => relKey (x + j * d) y.2) =
+      (l.map fun y => relKey x y.2).map (kappa r d j) := by
+  rw [mapCol_eq_map, List.map_map, List.map_map]
+  apply List.map_congr_left
+  intro y _
+  exact relKey_shift r d j x hx y.2
+
+-- G6 (helper): `κ` on lifted keys
+theorem kappaQ_coe_G6 (r d j : Nat) (l : List Key) :
+    kappaQ r d j (l.map (↑)) = (l.map (kappa r d j)).map (↑) := by
+  unfold kappaQ
+  rw [List.map_map, List.map_map]
+  rfl
+
+-- G6 (T3.8ld step 2; T3.2p.2): the seam root (head `i − 1`) scans the cap's query `κ_{i−1}(Q)`
+-- high, with cursor exactly `m`: `γ = c_A`, so the unconsumed suffix is the copy of `U`
+theorem seam_cursor_G6 (S : OrdStep) (j : Nat) :
+    cursor ((Tree.mapCol (shiftVal S.sd.r (j * S.d)) S.sd.Q ++
+          Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) (unconsumed S.A S.rd)).map
+          (fun x => relKey (S.s (j + 1)) x.2))
+      ((Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) S.sd.Q).map
+        (fun x => relKey (S.s (j + 2)) x.2)) =
+      S.m := by
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hdt : S.sd.t = S.sd.r + S.d := by simp only [OrdStep.d, period]; omega
+  have hs1 : S.s (j + 1) = S.sd.t + j * S.d := by
+    simp only [OrdStep.s]; rw [hdt, Nat.succ_mul]; omega
+  have hs1' : S.s (j + 1) = S.sd.r + (j + 1) * S.d := rfl
+  have hs2 : S.s (j + 2) = S.sd.t + (j + 1) * S.d := by
+    simp only [OrdStep.s]; rw [hdt, show j + 2 = (j + 1) + 1 by omega, Nat.succ_mul]; omega
+  -- the source and query keys
+  have hsrc : (Tree.mapCol (shiftVal S.sd.r (j * S.d)) S.sd.Q ++
+        Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) (unconsumed S.A S.rd)).map
+        (fun x => relKey (S.s (j + 1)) x.2) =
+      (queryKeys S.sd).map (kappa S.sd.r S.d j) ++ (rootKeys S.A S.rd).drop S.rd.cursor := by
+    rw [List.map_append]
+    congr 1
+    · rw [hs1, keys_mapCol_G6 _ _ _ _ (by omega)]
+      rfl
+    · rw [hs1', keys_mapCol_G6 _ _ _ _ le_rfl]
+      unfold rootKeys unconsumed rootCol
+      rw [List.map_drop, List.map_drop, List.map_map, hrnum]
+      congr 1
+      apply List.map_congr_left
+      intro y _
+      exact kappa_fix _ _ _ _ le_rfl _
+  have hqry : (Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) S.sd.Q).map
+      (fun x => relKey (S.s (j + 2)) x.2) = (queryKeys S.sd).map (kappa S.sd.r S.d (j + 1)) := by
+    rw [hs2, keys_mapCol_G6 _ _ _ _ (by omega)]
+    rfl
+  have hZ : nu ((queryKeys S.sd).map ((↑) : Key → WithTop Key)) = S.termZ := by
+    unfold OrdStep.termZ cutQuery
+    rw [sdcol_keys_take_F7]
+  have hq : nu (kappaQ S.sd.r S.d (j + 1) ((queryKeys S.sd).map (↑))) =
+      kappaQ S.sd.r S.d j (kappaQ S.sd.r S.d 1 S.termZ) := by
+    rw [kappaQ_add]
+    unfold kappaQ
+    rw [nu_map (kappaQry_strictMono _ _ _)]
+    rw [hZ]
+  rw [hsrc, hqry, ← cursor_map WithTop.coe_strictMono, ← cursor_nu, List.map_append,
+    ← kappaQ_coe_G6, ← kappaQ_coe_G6, hq, List.map_drop, ← rdcol_keys_F7, ← sdcol_keys_take_F7]
+  have hRC : RootCap_F7 S (actualKeys S.A S.rd.col) := Or.inl rfl
+  obtain ⟨-, hcur⟩ := (head_scan_F7 S hRC j (W' := kappaQ S.sd.r S.d 1 S.termZ)
+    (kappaQ_noninc _ _ _ (cutQuery_noninc _ _))).2 (le_kappaQ_G6 _ _ _ _)
+  rw [hcur, rootCap_cursor_F7 S hRC, ← rdcursor_eq_F7]
+  omega
+
+
+-- G6 (helper): `A` is its own context filled with its stopping column
+theorem context_self_G6 (S : OrdStep) :
+    context S.A S.sd (Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]]) = S.A := by
+  obtain ⟨G, hG, hR⟩ := ker_routeTo_of_stop S.hsd 0 (Nat.zero_le _)
+  simp only [List.take_zero, forestAt_nil_path, Option.some.injEq, Nat.sub_zero] at hG hR
+  subst hG
+  unfold context
+  rw [ker_replaceAt_self _ _ _ hR]
+
+-- G6 (helper): a cap of `A` at its stopping column is the context of the capped column
+theorem litCap_sdcol_G6 (S : OrdStep) {k : Nat} (hk : k ≤ S.m) (p : Nat) :
+    litCap S.A S.sd.col k p =
+      context S.A S.sd (Tree.node [S.sd.Q.take k ++ [(p, Tree.empty)]]) := by
+  obtain ⟨hR, hH⟩ := ker_stop_hole S.hsd
+  have hsd : S.sd.col = underCol (kerHoleAt S.sd.depth S.A) ⟨[], 0⟩ := by
+    rw [hH]; simp [underCol]
+  conv_lhs => rw [← context_self_G6 S, hsd]
+  unfold context
+  rw [litCap_place_G6 _ _ _ hR, litCap_eq_aux (col := S.sd.Q ++ [(S.sd.r, Tree.empty)]) rfl]
+  simp only [litCapAux, List.take_zero, List.nil_append, List.getD_cons_zero]
+  rw [List.take_append_of_le_length hk]
+
+-- G6 (helper): the local suffix at the address `⟨[], 0⟩` is the whole forest
+theorem localSuffix_zero_G6 (X : Forest) : localSuffix X ⟨[], 0⟩ = X := by
+  unfold localSuffix
+  simp [Tree.forestAt, ker_node_cols]
+
+-- G6 (helper; T3.8lc step 3): `F(X) < S₀ = [Q ⌢ (r, ∅)]`: after `Q` the kernel's first column
+-- continues with a restored parent `< r` or ends
+theorem kernel_lt_S0_G6 (S : OrdStep) (X : Forest) :
+    kernel S.A S.sd S.rd X < Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+  obtain ⟨V, cs, hker⟩ := kernel_firstCol_E5 S.A S.sd S.rd X
+  obtain ⟨V', hV', hlen, hent⟩ := ker_kernel_col0 S.A S.sd S.rd X
+  rw [hker, colAt_node_nil] at hV'
+  simp only [List.getElem?_cons_zero, Option.some.injEq, List.append_cancel_left_eq] at hV'
+  subst hV'
+  have hUlt := ker_unconsumed_lt S.inL.1 S.hsd S.hrd
+  rw [hker]
+  show Tree.cmp compare _ _ = .lt
+  simp only [Tree.cmp, Tree.cmpCols, cmpCol_append_left_D3]
+  cases V with
+  | nil => rfl
+  | cons y ys =>
+    obtain ⟨x, hx⟩ : ∃ x, (unconsumed S.A S.rd)[0]? = some x :=
+      ⟨_, List.getElem?_eq_getElem (by simp at hlen; omega)⟩
+    obtain ⟨y', hy', hyx, -⟩ := hent 0 x hx
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at hy'
+    subst hy'
+    have := hUlt x (List.mem_of_getElem? hx)
+    obtain ⟨p, H⟩ := y
+    simp only at hyx
+    simp only [Tree.cmpCol, Nat.compare_eq_lt.mpr (show p < S.sd.r by omega), Ordering.then]
+
+
+-- G6 (helper): the kernel image of a non-query template address drops the root's path
+theorem kerCol_length_G6 (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.rd x = some x')
+    (hxq : isQMat S.sd x = false) : x.path.length = S.rd.col.path.length + x'.path.length := by
+  obtain ⟨suf, hpath, hcases⟩ := kerCol_tail_spec S hx hxq
+  rw [hpath, List.length_append]
+  rcases hcases with ⟨rfl, -, rfl⟩ | ⟨rfl, -, -, rfl⟩ | ⟨e, rest, rfl, -, rfl⟩ |
+    ⟨ci, e, rest, rfl, -, -, rfl⟩ <;> simp
+
+-- T3.8ld (txt:613-617): the seam: the cap at `s_{i−1}` is `A` advanced by `i − 1` periods
+-- (moved here from before T3.8le, brief rule 5: its proof uses the G-010 head lemmas)
+theorem expand_seam (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (q : Nat) :
+    expand (litCap S.B c S.m (S.s (i - 1))) q = expand S.A (i - 1 + q) := by
+  have hAne : S.A ≠ Tree.empty := by
+    intro h; have := S.hsd; rw [h, stopData_eq_none_of_lastCol (Or.inl rfl)] at this; cases this
+  have hexpA := expand_eq_iterate hAne S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.kernelDefined
+    (i - 1 + q)
+  have hS0 : S.sd.Q.take S.m = S.sd.Q := List.take_of_length_le (by simp [OrdStep.m])
+  have hs : S.s (i - 1) = shiftVal S.sd.r ((i - 1) * S.d) S.sd.r := by
+    simp [OrdStep.s, shiftVal]
+  have hK := litCap_head_G6 S hi hc (le_refl S.m) S.sd.r
+  rw [← hs, hS0] at hK
+  -- `A` is its own context filled with its stopping column
+  have hAself := context_self_G6 S
+  rcases Nat.eq_or_lt_of_le hi.1 with hi1 | hi2
+  · subst hi1
+    rw [hK, Nat.sub_self, Function.iterate_zero_apply, hAself, Nat.zero_add]
+  -- `i = j + 2`: the seam cap is `C_A(F^{j+1}(S₀))`
+  obtain ⟨j, rfl⟩ : ∃ j, i = j + 2 := ⟨i - 2, by omega⟩
+  have hj1 : j + 2 - 1 = j + 1 := by omega
+  rw [hj1] at hK hexpA ⊢
+  set K := litCap S.B c S.m (S.s (j + 1)) with hKdef
+  set F := kernel S.A S.sd S.rd with hFdef
+  have hi' : 1 ≤ j + 2 ∧ j + 2 ≤ S.n := hi
+  have hp : PhasePair_D7 S (j + 2) S.sd.col c (j + 1) := Or.inr ⟨rfl, hc, rfl⟩
+  have hhc : S.headCol (j + 2) = c := by simp [OrdStep.headCol, hc]
+  have hcnum : c.num 0 = S.s (j + 2) := by rw [← hhc]; exact num_headCol_F7 S (by omega)
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hdt : S.sd.t = S.sd.r + S.d := by simp only [OrdStep.d, period]; omega
+  have hd1 : 1 ≤ S.d := by simp only [OrdStep.d, period]; omega
+  have hUlt := ker_unconsumed_lt S.inL.1 S.hsd S.hrd
+  -- the head column of `B`
+  obtain ⟨col, hcolB, hlenB, htakeB, hentB⟩ := colAt_head S.inL S.kind S.hsd S.hrd S.out hi hc
+  have hcB : c ∈ S.B.colAddrs := by rw [Tree.mem_colAddrs_iff, hcolB]; rfl
+  have hm : S.sd.Q.length = S.m := rfl
+  have hkB : S.m ≤ (parents S.B c).length := by
+    simp only [parents, hcolB, Option.getD_some, List.length_map]; omega
+  have hlow : ∀ y, col[S.m]? = some y → y.1 < S.sd.r := by
+    intro y hy
+    obtain ⟨x, hx⟩ : ∃ x, (unconsumed S.A S.rd)[0]? = some x :=
+      ⟨_, List.getElem?_eq_getElem (by have := (List.getElem?_eq_some_iff.mp hy).1; omega)⟩
+    obtain ⟨y', hy', hyx, -⟩ := hentB 0 x hx
+    rw [Nat.add_zero, hm, hy] at hy'
+    cases hy'
+    rw [hyx]
+    exact hUlt x (List.mem_of_getElem? hx)
+  have hsr : S.sd.r ≤ S.s (j + 1) := by simp only [OrdStep.s]; omega
+  have hup : IsUpward S.B c S.m (S.s (j + 1)) := by
+    refine isUpward_iff_parents_D7.mpr ⟨hcB, hkB, fun q hq => ?_⟩
+    simp only [parents, hcolB, Option.getD_some, List.getElem?_map] at hq
+    obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.mp hq
+    have := hlow y hy
+    omega
+  -- stop data, V, I, ordinary
+  have hQK : col.take S.m = Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) S.sd.Q := by
+    rw [← hm, htakeB, hj1]; rfl
+  have hsdK := stopData_litCap hup
+  rw [hcolB, Option.getD_some, hQK, hcnum] at hsdK
+  have hBI : CondI S.B := condI_ord S.inL S.kind S.out
+  have hKV : CondV K := condV_litCap_D7 (condV_ord S.inL S.kind S.out) hcB hkB (by
+    rw [hcnum]; simp only [OrdStep.s]; rw [Nat.succ_mul (j + 1)]; omega)
+  have hKI : CondI K := by
+    refine condI_litCap_D7 hBI hcB hkB (fun hm0 π ci ei hpath => ?_)
+    have hc' : c = ⟨(⟨⟨π, ci⟩, ei⟩ : EntryAddr).heightPath, c.col⟩ := by
+      simp [EntryAddr.heightPath, ← hpath]
+    rw [hc'] at hcolB
+    obtain ⟨q0, H0, rest0, hq0, hnum0⟩ := condI_col_D7 hBI hcolB
+    have := hlow (q0, H0) (by rw [hm0, hq0]; rfl)
+    simp only at hnum0 this
+    omega
+  have hord := litCap_ordinary hBI hup hKV hKI
+  obtain ⟨rdK, hrdK⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hord)
+  obtain ⟨hresK, -, -, hnumK, -, hmemK, hcurK, -⟩ := rootData_spec hsdK hrdK
+  simp only at hresK hnumK hcurK
+  have hrcol : rdK.col = S.headCol (j + 1) := by
+    have := (head_stack_F7 S hi hp (h := j + 1) (by omega) le_rfl).1
+    rw [hresK] at this
+    exact Option.some.inj this
+  have hho : S.headCol (j + 1) = underCol S.sd.col ((underCol (kerHole S.sd S.rd))^[j] ⟨[], 0⟩) := by
+    unfold OrdStep.headCol phaseCol
+    rw [kerCol_rdcol S]
+    rfl
+  -- the root suffix of `A` and its copy at the seam root
+  have hmemA : S.rd.col ∈ S.A.colAddrs := (rootData_spec S.hsd S.hrd).2.2.2.2.2.1
+  obtain ⟨FA, colR, hFA, hcolR, hlocA, -⟩ := localSuffix_spec_G6 hmemA
+  have hidx := (rootData_spec S.hsd S.hrd).2.2.1
+  have hUA : unconsumed S.A S.rd = colR.drop S.rd.cursor := by
+    unfold unconsumed rootCol; rw [hcolR, Option.getD_some]
+  have hFS0 : F (Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]]) =
+      Tree.node ((S.sd.Q ++ Tree.mapCol (shiftVal S.sd.r S.d) (unconsumed S.A S.rd)) ::
+        (FA.cols.drop (S.rd.col.col + 1)).map (Tree.mapCol (shiftVal S.sd.r S.d))) := by
+    rw [hFdef, filling_identity S.inL.1 S.hsd S.hrd, hAself]
+    unfold rootTail
+    rw [hcolR, hFA, Option.getD_some, Option.getD_some, ← hUA, hidx, ker_shift_node, List.map_cons]
+    rfl
+  have hlocK : localSuffix K rdK.col =
+      Tree.node ((Tree.mapCol (shiftVal S.sd.r (j * S.d)) S.sd.Q ++
+          Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) (unconsumed S.A S.rd)) ::
+        (FA.cols.drop (S.rd.col.col + 1)).map (Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)))) := by
+    rw [hrcol, hho, hK, (ker_context_law S.hsd _ _).2, Function.iterate_succ_apply,
+      (iter_law_G6 S j _ _).2, hFS0]
+    unfold localSuffix
+    simp only [Tree.forestAt, Option.getD_some, Tree.cols, List.drop_zero]
+    rw [ker_shift_node, List.map_cons, ker_mapCol_append, treeMapCol_map, List.map_map]
+    have hfun : shiftVal S.sd.r (j * S.d) ∘ shiftVal S.sd.r S.d = shiftVal S.sd.r ((j + 1) * S.d) := by
+      rw [shiftVal_add, Nat.succ_mul]
+    rw [hfun]
+    congr 3
+    funext x
+    simp only [Function.comp_apply]
+    rw [treeMapCol_map, hfun]
+  -- the seam root scans to exactly `m`
+  obtain ⟨FK, colK, -, hcolK, hlsK, -⟩ := localSuffix_spec_G6 hmemK
+  rw [hlocK, Tree.node.injEq, List.cons.injEq] at hlsK
+  obtain ⟨hcolKeq, -⟩ := hlsK
+  have hcurm : rdK.cursor = S.m := by
+    rw [hcurK]
+    unfold rootKeys queryKeys
+    rw [hcolK, Option.getD_some, ← hcolKeq, hnumK]
+    exact seam_cursor_G6 S j
+  -- the conjugacy `F_K(τ X) = τ(F_A X)`
+  have hcaddr : c = underCol S.sd.col ((underCol (kerHole S.sd S.rd))^[j + 1] ⟨[], 0⟩) := by
+    unfold phaseCol at hc
+    rw [kerCol_rdcol S, Option.map_some, Option.some.injEq] at hc
+    exact hc.symm
+  have hlay := rootData_layer_le S.hsd S.hrd
+  obtain ⟨-, hdepA, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, hlayA, -⟩ := rootData_spec S.hsd S.hrd
+  have hdep : c.path.length + S.rd.col.path.length = S.sd.col.path.length + rdK.col.path.length := by
+    rw [hrcol, hho, hcaddr, underCol_path_length_G6, underCol_path_length_G6,
+      iterate_underCol_length_G6, iterate_underCol_length_G6, kerHole_length_G6, Nat.succ_mul]
+    unfold holeDepth
+    simp only [List.length_nil, Nat.zero_add]
+    omega
+  have hUK : (Tree.mapCol (shiftVal S.sd.r (j * S.d)) S.sd.Q ++
+      Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) (unconsumed S.A S.rd)).drop rdK.cursor =
+      Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) (colR.drop S.rd.cursor) := by
+    rw [hcurm, List.drop_left' (by rw [mapCol_eq_map, List.length_map]; rfl), hUA]
+  obtain ⟨hOw, hUU, hconj⟩ := kernel_conj_G6 (K := K) (K' := S.A) (r := S.sd.r)
+    (δ := (j + 1) * S.d) hsdK S.hsd hrdK S.hrd le_rfl rfl rfl
+    (by simp only [OrdStep.s]; rw [hdt, show j + 2 = (j + 1) + 1 by omega, Nat.succ_mul (j + 1)]; omega)
+    hdep hlocK hlocA rfl hUK
+  have hkdK : KernelDefined K rdK := by
+    intro ho
+    rw [hUU]
+    intro h0
+    have h1 : unconsumed S.A S.rd = [] := by
+      rw [mapCol_eq_map] at h0; exact List.map_eq_nil_iff.mp h0
+    exact S.kernelDefined (hOw ▸ ho) h1
+  have hKne : K ≠ Tree.empty := litCap_ne_empty_E5 hup
+  rw [expand_eq_iterate hKne hKV hKI hord hsdK hrdK hkdK q, hexpA]
+  -- `F_K^q(∅) = τ(F^q ∅)`
+  have hit : ∀ q', (kernel K ⟨colDepth c, c, S.s (j + 2), S.s (j + 1),
+      Tree.mapCol (shiftVal S.sd.r ((j + 1) * S.d)) S.sd.Q⟩ rdK)^[q'] Tree.empty =
+      shift S.sd.r ((j + 1) * S.d) (F^[q'] Tree.empty) := by
+    intro q'
+    induction q' with
+    | zero => rfl
+    | succ q' ih =>
+      rw [Function.iterate_succ_apply', Function.iterate_succ_apply', ih, hconj]
+  rw [hit q, Function.iterate_add_apply]
+  congr 1
+  -- the context of the seam cap is the context of `A` after `j + 1` kernel layers
+  have hdK : colDepth c = S.sd.depth + (j + 1) * holeDepth S.sd S.rd := by
+    unfold colDepth
+    rw [hcaddr, underCol_path_length_G6, iterate_underCol_length_G6, kerHole_length_G6, hdepA]
+    simp
+  unfold context
+  simp only
+  rw [hdK, hK]
+  exact context_iter_G6 S _ (j + 1) _
+
+-- T3.8lc (txt:607-611): query-part cuts of head `i ≥ 2`
+-- (moved here from before T3.8ld, brief rule 5: its proof uses T3.8lb and the G-010 lemmas)
+theorem headQuery_cut (S : OrdStep) {i : Nat} {c : ColAddr} {k ρ : Nat} (hi : 2 ≤ i ∧ i ≤ S.n)
+    (hc : phaseCol S.sd S.rd i S.rd.col = some c) (hk : k < S.m ∨ (k = S.m ∧ S.s (i - 1) < ρ))
+    (hup : IsUpward S.B c k ρ) (hKL : InL (litCap S.B c k ρ)) :
+    Covers (litCap S.B c k ρ) S.B := by
+  have hi1 : 1 ≤ i ∧ i ≤ S.n := ⟨by omega, hi.2⟩
+  have hkm : k ≤ S.m := by rcases hk with h | ⟨h, -⟩ <;> omega
+  obtain ⟨hρ, hupA, hV', hI', hA'⟩ := headQuery_oldCap S hi hc hk hup hKL
+  set ρ' := ρ - (i - 1) * S.d with hρ'def
+  set K := litCap S.B c k ρ with hKdef
+  set K' := litCap S.A S.sd.col k ρ' with hK'def
+  set F := kernel S.A S.sd S.rd with hFdef
+  obtain ⟨-, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  have hdt : S.sd.t = S.sd.r + S.d := by simp only [OrdStep.d, period]; omega
+  have hρr : S.sd.r < ρ' := by simp only [OrdStep.s] at hρ; omega
+  have hρeq : ρ = ρ' + (i - 1) * S.d := by simp only [OrdStep.s] at hρ; omega
+  -- the old cap succeeds (L3.6), with target `S₀ = [Q ⌢ (r, ∅)]`
+  obtain ⟨sd', rd', hsd', hrd', hkd', hlt'⟩ :=
+    cap_completion S.inL S.condP S.cof S.sd.col k ρ' hupA hV' hI' hA'
+  obtain ⟨hcolA, -⟩ := stopData_spec S.hsd
+  have hsd'eq := stopData_litCap hupA
+  rw [hcolA, Option.getD_some, List.take_append_of_le_length (by simpa [OrdStep.m] using hkm)]
+    at hsd'eq
+  rw [hsd'eq, Option.some.injEq] at hsd'
+  subst hsd'
+  set sd' : StopData := ⟨colDepth S.sd.col, S.sd.col, S.sd.col.num 0, ρ', S.sd.Q.take k⟩
+    with hsd'def
+  have hS0 : localSuffix S.A S.sd.col = Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+    obtain ⟨G, hG, hGlen, hGc⟩ := ker_stopForest S.hsd
+    unfold localSuffix
+    rw [hG, Option.getD_some, List.drop_eq_getElem_cons (by omega),
+      (List.getElem?_eq_some_iff.mp hGc).2, List.drop_eq_nil_of_le (by omega)]
+  rw [hS0] at hlt'
+  -- downward success at `W = F^{n−i+1}(∅) < S₀` (L3.4c)
+  set W := F^[S.n - i + 1] Tree.empty with hWdef
+  have hWS0 : W < Tree.node [S.sd.Q ++ [(S.sd.r, Tree.empty)]] := by
+    rw [hWdef, Function.iterate_succ_apply']
+    exact kernel_lt_S0_G6 S _
+  have hdown : W < kernel K' sd' rd' W := by
+    have hw := word_kernel hV' hsd'eq hrd' hkd'
+    rw [← word_lt_iff, hw] at hlt' ⊢
+    exact success_anti _ (kerPrefix_ne_nil _ _ _) (kerSigma_strictMono _ _)
+      (le_of_lt ((word_lt_iff _ _).mpr hWS0)) hlt'
+  -- the two caps as contexts (L1)
+  have hKY : K = context S.A S.sd (F^[i - 1] (Tree.node [S.sd.Q.take k ++ [(ρ', Tree.empty)]])) := by
+    have := litCap_head_G6 S hi1 hc hkm ρ'
+    rwa [show shiftVal S.sd.r ((i - 1) * S.d) ρ' = ρ by
+      simp only [shiftVal, if_pos hρr.le]; omega] at this
+  have hK'Y : K' = context S.A S.sd (Tree.node [S.sd.Q.take k ++ [(ρ', Tree.empty)]]) :=
+    litCap_sdcol_G6 S hkm ρ'
+  -- stop and root data of the new cap
+  obtain ⟨col, hcolB, hlenB, htakeB, -⟩ := colAt_head S.inL S.kind S.hsd S.hrd S.out hi1 hc
+  have hhc : S.headCol i = c := by simp [OrdStep.headCol, hc]
+  have hcnum : c.num 0 = S.s i := by rw [← hhc]; exact num_headCol_F7 S (by omega)
+  have hm : S.sd.Q.length = S.m := rfl
+  have hQK : col.take k = Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) (S.sd.Q.take k) := by
+    rw [show col.take k = (col.take S.sd.Q.length).take k by
+      rw [List.take_take, Nat.min_eq_left (by omega)], htakeB, mapCol_eq_map, mapCol_eq_map,
+      List.map_take]
+    rfl
+  have hsdK := stopData_litCap hup
+  rw [hcolB, Option.getD_some, hQK, hcnum] at hsdK
+  set sdK : StopData := ⟨colDepth c, c, S.s i, ρ,
+    Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) (S.sd.Q.take k)⟩ with hsdKdef
+  have hBI : CondI S.B := condI_ord S.inL S.kind S.out
+  have hord := litCap_ordinary hBI hup hKL.1 hKL.2.1
+  obtain ⟨rdK, hrdK⟩ := Option.isSome_iff_exists.mp (rootData_of_ordinary hord)
+  have hkdK : KernelDefined K rdK := ker_kernelDefined hKL hsdK hrdK
+  obtain ⟨hresK, -, -, hnumK, -, hmemK, hcurK, -⟩ := rootData_spec hsdK hrdK
+  obtain ⟨hres', -, -, hnum', -, hmem', hcur', -⟩ := rootData_spec hsd'eq hrd'
+  simp only [hsdKdef, hsd'def] at hresK hnumK hcurK hres' hnum' hcur'
+  -- the new root is the phase-`(i−1)` copy of the old root
+  obtain ⟨kh, hkh⟩ := kerCol_sdcol S
+  have hkhe : kerHole S.sd S.rd = kh := by simp [kerHole, hkh]
+  have hsdq : isQMat S.sd S.sd.col = false := isQMat_of_short S.sd le_rfl
+  have hst' : S.sd.col.OnStack rd'.col := ((ColAddr.resolve_spec 0 _ _ _).mp hres').1
+  obtain ⟨hoker, hoq⟩ := kerCol_of_onStack_tail S hkh hsdq hst' (by rw [hnum']; omega)
+  obtain ⟨a', ha'⟩ := Option.isSome_iff_exists.mp hoker
+  have hne : rd'.col ≠ S.rd.col := by intro h; rw [h, hrnum] at hnum'; omega
+  have hcdef : c = underCol S.sd.col ((underCol kh)^[i - 1] ⟨[], 0⟩) := by
+    unfold phaseCol at hc
+    rw [kerCol_rdcol S, Option.map_some, Option.some.injEq, hkhe] at hc
+    exact hc.symm
+  obtain ⟨hres2, -⟩ := resolve_copyCol_gen_F7 S hkh hcdef (h := i - 1) (by omega) hρr hres'
+  rw [← hρeq, hresK, Option.some.injEq] at hres2
+  have hrdcol : rdK.col = underCol S.sd.col ((underCol kh)^[i - 2] a') := by
+    rw [hres2]
+    simp only [OrdStep.copyCol, if_neg (show i - 1 ≠ 0 by omega)]
+    rw [phaseCol_eq_iterate S hkh ha']
+    rfl
+  -- its local suffix is the `τ_{i−1}`-copy of the old root's
+  obtain ⟨F', col', -, hcol', hloc', -⟩ := localSuffix_spec_G6 hmem'
+  have hlocK : localSuffix K rdK.col =
+      Tree.node (Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)) col' ::
+        (F'.cols.drop (rd'.col.col + 1)).map (Tree.mapCol (shiftVal S.sd.r ((i - 1) * S.d)))) := by
+    rw [hrdcol, hKY, (ker_context_law S.hsd _ _).2, show i - 1 = (i - 2) + 1 by omega,
+      Function.iterate_succ_apply, ← hkhe, (iter_law_G6 S (i - 2) _ _).2,
+      (ker_kernel_roottail S.inL.1 S.hsd S.hrd _ hoq hne ha').2, ← hK'Y, hloc', shift_add,
+      ker_shift_node, List.map_cons,
+      show (i - 2) * S.d + period S.sd = (i - 2 + 1) * S.d by rw [Nat.succ_mul]; rfl]
+  have hsi : S.s i = S.sd.col.num 0 + (i - 1) * S.d := by
+    have : i * S.d = (i - 1) * S.d + S.d := by rw [← Nat.succ_mul]; congr 1; omega
+    simp only [OrdStep.s]; omega
+  -- the root scans agree (`κ_{i−1}` on both sides)
+  obtain ⟨FK, colK, -, hcolK, hlsK, -⟩ := localSuffix_spec_G6 hmemK
+  rw [hlocK, Tree.node.injEq, List.cons.injEq] at hlsK
+  obtain ⟨hcolKeq, -⟩ := hlsK
+  have hcur : rdK.cursor = rd'.cursor := by
+    rw [hcurK, hcur']
+    unfold rootKeys queryKeys
+    rw [hcolK, hcol', Option.getD_some, Option.getD_some, ← hcolKeq, hnumK, hnum', hρeq,
+      keys_mapCol_G6 _ _ _ _ hρr.le, hsi, keys_mapCol_G6 _ _ _ _ (by omega)]
+    exact cursor_map (kappa_strictMono _ _ _) _ _
+  -- the conjugacy `F_K(τ X) = τ(F_{K'} X)`
+  have hlay := rootData_layer_le S.hsd S.hrd
+  obtain ⟨-, hdepA, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, hlayA, -⟩ := rootData_spec S.hsd S.hrd
+  have hdep : c.path.length + rd'.col.path.length = S.sd.col.path.length + rdK.col.path.length := by
+    rw [hrdcol, hcdef, kerCol_length_G6 S ha' hoq, underCol_path_length_G6,
+      underCol_path_length_G6, iterate_underCol_length_G6, iterate_underCol_length_G6, ← hkhe,
+      kerHole_length_G6, show i - 1 = (i - 2) + 1 by omega, Nat.succ_mul]
+    unfold holeDepth
+    simp only [List.length_nil, Nat.zero_add]
+    omega
+  obtain ⟨-, -, hconj⟩ := kernel_conj_G6 (K := K) (K' := K') (r := S.sd.r)
+    (δ := (i - 1) * S.d) hsdK hsd'eq hrdK hrd' hρr.le rfl hρeq
+    hsi
+    hdep hlocK hloc' rfl (by rw [hcur, mapCol_eq_map, mapCol_eq_map, List.map_drop])
+  -- the target suffix is `τ_{i−1}(W)`
+  have hYB : localSuffix S.B c = shift S.sd.r ((i - 1) * S.d) W := by
+    obtain ⟨hB, -⟩ := ker_expand_out S.inL.1 S.inL.2.1 S.kind S.hsd S.hrd S.out
+    have hn : S.n = (i - 1) + (S.n - i + 1) := by omega
+    rw [hB, hcdef, ← hkhe, hn, Function.iterate_add_apply, (ker_context_law S.hsd _ _).2,
+      (iter_law_G6 S _ _ _).2, localSuffix_zero_G6]
+  refine (covers_iff_success hBI hup hKL.1 hKL.2.1
+    (fun rd hrd => ker_kernelDefined hKL hsdK hrd)).2 ⟨sdK, rdK, hsdK, hrdK, hkdK, ?_⟩
+  rw [hYB, hconj]
+  exact (shift_lt_shift _ _).mpr hdown
 
 -- T3.8l (txt:511-643): the ordinary induction step
 theorem KS_ordinary (S : OrdStep) : KS S.B := by
