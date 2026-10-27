@@ -5259,7 +5259,8 @@ theorem failure_floor {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
     ∃ Ls, L ≤ Ls ∧ Ls < pk.asg pk.owner ∧ (∀ x ∈ pk.lowNames, pk.asg x < Ls) ∧
       ¬ BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel)
         (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner) := by
-  sorry
+  obtain ⟨Ls, h1, h2, h3, h4⟩ := factorization pk hv ha hL
+  exact ⟨Ls, h1, h2, h3, fun hB => hf (h4 hB)⟩
 
 /-- L8.8b: Case 1, the whole target ends first: contradiction (txt:1357-1363). -/
 theorem case_wholeEnds (I : Interface.{u}) (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
@@ -5348,7 +5349,15 @@ theorem least_failure {P : Prims.{u}} {n : Nat}
 /-- L8.8, `D_{<n} ⇒ S_n` (txt:1348-1474). -/
 theorem sStrict_of_dLab (I : Interface.{u}) (n : Nat) (hD : DLab I.toPrims n) :
     SStrict I.toPrims n := by
-  sorry
+  refine least_failure fun pk L hF => ?_
+  obtain ⟨hadm, hv, hsize, hL, hT⟩ := hF
+  obtain ⟨Ls, -, hLs, hlow, h23⟩ := failure_floor pk hv hadm.2.2.1 hL hT
+  match hfd : pk.rk.firstDiff with
+  | .wholeEnds => exact (case_wholeEnds I pk hadm hv hLs hlow h23 hfd).elim
+  | .childEnds π =>
+    obtain ⟨pk', hF', hlt⟩ := case_childEnds I hD (specialDesc I) pk hadm hv hsize hLs hlow h23 hfd
+    exact ⟨pk', Ls, hF', hlt⟩
+  | .capAt c k p => exact case_cap I hD pk hadm hv hsize hLs hlow h23 hfd
 
 /-! ## §9: strict descent, the abstract theorem, `σ` -/
 
