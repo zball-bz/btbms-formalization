@@ -2990,8 +2990,8 @@ theorem ker_under_exhaust (Z : Forest) {k : Nat} {G : Forest} (hG : KerRoute k G
       rw [show Tree.forestAt Z ([] : List (Nat × Nat)) = some Z from rfl, Option.bind_some]
       simp only at hcol ⊢
       rw [hcol]; rfl
-    · show _ = ⟨(kerHoleAt k G).path, (kerHoleAt k G).col + (cc - (kerHoleAt k G).col)⟩
-      rw [Nat.add_sub_cancel' hle']
+    · simp only [underCol, ColAddr.mk.injEq, true_and]
+      omega
   · simp only at hp
     subst hp
     unfold Tree.colAt at hcol
@@ -3003,9 +3003,10 @@ theorem ker_under_exhaust (Z : Forest) {k : Nat} {G : Forest} (hG : KerRoute k G
       rw [ker_forestAt_cons]
       simp only at hcol ⊢
       rw [hcol]; rfl
-    · show _ = ⟨(kerHoleAt k G).path ++
-        ((kerHoleAt k G).col + (c0 - (kerHoleAt k G).col), e0) :: rest, cc⟩
-      rw [Nat.add_sub_cancel' hle]
+    · have hle' : (kerHoleAt k G).col ≤ c0 := hle
+      simp only [underCol, ColAddr.mk.injEq, List.append_cancel_left_eq, List.cons.injEq,
+        Prod.mk.injEq, and_true, true_and]
+      omega
 
 /-- T3.2i helper: outside the hole region, which addresses are columns does not depend on the
 filling. -/
@@ -3617,6 +3618,54 @@ theorem ker_kerOpen_preimage {A : Forest} {sd : StopData} {rd : RootData}
         simp only
         rw [if_neg (by omega), if_pos ⟨by omega, ho'⟩, ← hyform]
 
+/-- T3.2i helper: placement under a fixed hole is injective. -/
+theorem ker_underCol_inj (h : ColAddr) {y y' : ColAddr} (hy : underCol h y = underCol h y') :
+    y = y' := by
+  obtain ⟨yp, yc⟩ := y
+  obtain ⟨yp', yc'⟩ := y'
+  cases yp with
+  | nil =>
+    cases yp' with
+    | nil =>
+      simp only [underCol, ColAddr.mk.injEq] at hy ⊢
+      exact ⟨trivial, by omega⟩
+    | cons x rest =>
+      obtain ⟨c0, e0⟩ := x
+      simp only [underCol, ColAddr.mk.injEq] at hy
+      have := congrArg List.length hy.1; simp at this
+  | cons x rest =>
+    obtain ⟨c0, e0⟩ := x
+    cases yp' with
+    | nil =>
+      simp only [underCol, ColAddr.mk.injEq] at hy
+      have := congrArg List.length hy.1; simp at this
+    | cons x' rest' =>
+      obtain ⟨c0', e0'⟩ := x'
+      simp only [underCol, ColAddr.mk.injEq, List.append_cancel_left_eq, List.cons.injEq,
+        Prod.mk.injEq] at hy ⊢
+      obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hy
+      exact ⟨⟨⟨by omega, h2⟩, h3⟩, h4⟩
+
+/-- T3.2i helper: iterated placements of addresses outside the hole region are injective. -/
+theorem ker_iter_inj (h : ColAddr) {b b' : ColAddr} (hb : ¬ KerUnder h b)
+    (hb' : ¬ KerUnder h b') :
+    ∀ p q, (underCol h)^[p] b = (underCol h)^[q] b' → p = q ∧ b = b'
+  | 0, 0, e => ⟨rfl, e⟩
+  | 0, q + 1, e => by
+    rw [Function.iterate_zero_apply, Function.iterate_succ_apply'] at e
+    have := ker_under_underCol h ((underCol h)^[q] b')
+    rw [← e] at this
+    exact absurd this hb
+  | p + 1, 0, e => by
+    rw [Function.iterate_zero_apply, Function.iterate_succ_apply'] at e
+    have := ker_under_underCol h ((underCol h)^[p] b)
+    rw [e] at this
+    exact absurd this hb'
+  | p + 1, q + 1, e => by
+    rw [Function.iterate_succ_apply', Function.iterate_succ_apply'] at e
+    obtain ⟨h1, h2⟩ := ker_iter_inj h hb hb' p q (ker_underCol_inj h e)
+    exact ⟨by omega, h2⟩
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
@@ -3624,7 +3673,86 @@ theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (
     (c ∈ (context A sd Tree.empty).colAddrs ∧ c ≠ sd.col) ∨
       ∃ i a, 1 ≤ i ∧ i ≤ n ∧ (a = rd.col ∨ IsTmplCol A sd rd a) ∧ phaseCol sd rd i a = some c ∧
         ∀ i' a', 1 ≤ i' → i' ≤ n → (a' = rd.col ∨ IsTmplCol A sd rd a') →
-          phaseCol sd rd i' a' = some c → i' = i ∧ a' = a := by sorry
+          phaseCol sd rd i' a' = some c → i' = i ∧ a' = a := by
+  have hkd := ker_kernelDefined hL hsd hrd
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨hBeq, -⟩ := ker_expand_out hV hI hk hsd hrd hB
+  subst hBeq
+  -- the columns of the iterates
+  have hZ : ∀ m (y : ColAddr), y ∈ ((kernel A sd rd)^[m] Tree.empty).colAddrs →
+      ∃ i a a', 1 ≤ i ∧ i ≤ m ∧ (a = rd.col ∨ IsTmplCol A sd rd a) ∧
+        kerCol sd rd a = some a' ∧ y = (underCol (kerHole sd rd))^[i - 1] a' := by
+    intro m
+    induction m with
+    | zero =>
+      intro y hy
+      rw [Tree.mem_colAddrs_iff] at hy
+      exfalso
+      unfold Tree.colAt at hy
+      cases hp : y.path with
+      | nil => rw [hp] at hy; simp [Tree.forestAt, Tree.empty, Tree.cols] at hy
+      | cons x rest =>
+        obtain ⟨c0, e0⟩ := x
+        rw [hp, ker_forestAt_cons] at hy
+        simp [Tree.empty, Tree.cols] at hy
+    | succ m ih =>
+      intro y hy
+      rw [Function.iterate_succ_apply'] at hy
+      obtain ⟨hko, hR, hH⟩ := ker_kernel_open hsd hrd hkd ((kernel A sd rd)^[m] Tree.empty)
+      rw [hko] at hy
+      by_cases hu : KerUnder (kerHole sd rd) y
+      · have hu' := hu
+        rw [← hH] at hu'
+        obtain ⟨y', hy', rfl⟩ := ker_under_exhaust _ hR hu' hy
+        have hy'' : y' ∈ ((kernel A sd rd)^[m] Tree.empty).colAddrs := by
+          rw [Tree.mem_colAddrs_iff] at hy' ⊢
+          rw [(ker_shift_law _ _ _ _).1] at hy'
+          simpa using hy'
+        obtain ⟨i, a, a', hi1, hi2, ha, hka, rfl⟩ := ih y' hy''
+        refine ⟨i + 1, a, a', by omega, by omega, ha, hka, ?_⟩
+        rw [hH, Nat.add_sub_cancel, show i = (i - 1) + 1 by omega, Function.iterate_succ_apply']
+        simp only [Nat.add_sub_cancel]
+      · have hu' := hu
+        rw [← hH] at hu'
+        have hk0 : y ∈ (kerOpen A sd rd).colAddrs := by
+          rw [Tree.mem_colAddrs_iff] at hy ⊢
+          rw [← ker_off_isSome _ _ _ hR y hu']
+          exact hy
+        obtain ⟨a, ha, hka⟩ := ker_kerOpen_preimage hsd hrd hkd hk0 hu
+        exact ⟨1, a, y, le_rfl, by omega, ha, hka, rfl⟩
+  obtain ⟨hRA, hHA⟩ := ker_stop_hole hsd
+  have hc' : c ∈ (replaceAt 0 0 ((kernel A sd rd)^[n] Tree.empty) sd.depth A).colAddrs := hc
+  by_cases hu : KerUnder sd.col c
+  · right
+    rw [← hHA] at hu
+    obtain ⟨y, hy, rfl⟩ := ker_under_exhaust _ hRA hu hc'
+    obtain ⟨i, a, a', hi1, hi2, ha, hka, rfl⟩ := hZ n y hy
+    refine ⟨i, a, hi1, hi2, ha, ?_, ?_⟩
+    · unfold phaseCol; rw [hka, hHA]; rfl
+    · intro i' a'' hi1' hi2' ha'' hc''
+      unfold phaseCol at hc''
+      cases hk'' : kerCol sd rd a'' with
+      | none => rw [hk''] at hc''; cases hc''
+      | some b' =>
+        rw [hk'', Option.map_some, Option.some.injEq, hHA] at hc''
+        have e := ker_underCol_inj sd.col hc''
+        obtain ⟨h1, h2⟩ := ker_iter_inj (kerHole sd rd)
+          (ker_kerCol_not_under hsd hrd hkd ha'' hk'') (ker_kerCol_not_under hsd hrd hkd ha hka)
+          _ _ e
+        subst h2
+        exact ⟨by omega, ker_kerCol_inj hk'' hka⟩
+  · left
+    refine ⟨?_, ?_⟩
+    · rw [Tree.mem_colAddrs_iff] at hc' ⊢
+      have hu' : ¬ KerUnder (kerHoleAt sd.depth A) c := by rw [hHA]; exact hu
+      have h1 := ker_off_isSome ((kernel A sd rd)^[n] Tree.empty) _ _ hRA c hu'
+      have h2 := ker_off_isSome Tree.empty _ _ hRA c hu'
+      show ((replaceAt 0 0 Tree.empty sd.depth A).colAt c).isSome = true
+      rw [h2, ← h1]
+      exact hc'
+    · intro h
+      subst h
+      exact hu ((ker_under_pre _ _ _).2 le_rfl)
 
 -- T3.2i: printed numbers of phase copies
 theorem num_phaseCol {A : Forest} {sd : StopData} {rd : RootData} {i : Nat} {a c : ColAddr}
