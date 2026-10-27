@@ -28,7 +28,13 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - **Lean statement:** `lean/BTBMS/Statement.lean` (commit 82c3f01).
   - Codex's independent fidelity review (`tracker/review/codex-statement-review.md`, with its
     follow-up) finds it faithful, with no remaining required change.
-  - **Waiting on the user: gate G2** (sign off, then lock).
+  - **Gate G2 passed** (user go-ahead, 2026-10-27). The statement is **locked**:
+    `checks/lock/check.sh` verifies the hashes in `checks/lock/statement.lock.json` and the
+    elaborated statements. The locked files are Syntax, Expansion, Mahlo and Statement (with the
+    Prop definitions `MainTheorem` and `PaperTheorem`). The proof goes in `lean/BTBMS/Main.lean`,
+    and `mainTheorem : MainTheorem` must end up sorry-free.
+- **Lean progress is derived from the build:** `scripts/lean-status.sh` writes
+  `tracker/lean-status.json`, and `refresh.py` maps it to claims through `lean_decls`.
 
 ## Decisions
 - **D-1 = H** (user, 2026-10-27): a host-Lean theorem
@@ -55,6 +61,8 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Next
-1. Integrate T-010.
-2. T-008 library survey on the pinned revisions, then T-012 project setup.
-3. P2: repaired and simplified proof write-up (G-002, G-003, G-006 lemmas, S-1, S-2, S-4), then gate G1.
+1. T-016 blueprint workflow (running): `blueprint/00-spine.md` and `blueprint/lean/Spine.lean`,
+   then units U1-U5 in `blueprint/`, with verification notes kept separate in
+   `blueprint/verification/` so that Codex's review stays blind.
+2. T-017: Codex reviews the blueprint blind. Then gate G1 (user) on the blueprint.
+3. T-018: compiling sorry skeleton, then parallel proving leaf-first.

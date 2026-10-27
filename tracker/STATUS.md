@@ -1,15 +1,19 @@
 # Status snapshot
 
-Generated 2026-10-27T07:41:06+00:00 at commit `82c3f01`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T08:57:36+00:00 at commit `23ecdec`. Hand-written context lives in `CURRENT.md`.
 
-Phase: **P3 Lean outline**
+Phase: **P2 Repair & simplify (blueprint)**
 
-## todo (3)
+## todo (4)
 - T-008 [claude] Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals
-- T-009 [user] Gate G1: sign off gap report and simplified proof
-- T-015 [user] Gate G2: sign off the Lean statement; then it is locked
+- T-009 [user] Gate G1: sign off the repaired, simplified proof (the blueprint)
+- T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
+- T-018 [claude] Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations
 
-## done (12)
+## doing (1)
+- T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
+
+## done (13)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker
 - T-002 [claude] Blind review of the paper (Claude)
 - T-003 [codex] Blind review of the paper (Codex)
@@ -22,3 +26,4 @@ Phase: **P3 Lean outline**
 - T-012 [claude] Set up the Lean 4.33.1 project with pinned Mathlib + narrow CU imports (no edits to the 1Y vendor tree)
 - T-013 [claude] Formalize the main statement in Lean (definitions, order, operation, Std, Mahlo, theorem with sorry)
 - T-014 [codex] Independent statement-fidelity review of the Lean statement
+- T-015 [user] Gate G2: sign off the Lean statement; then it is locked

@@ -6,7 +6,10 @@ Statuses that can be derived are checked here rather than trusted:
   * a gap is `confirmed` only if two different reviewers found it independently;
   * a gap is `closed` only if someone other than the repair author checked the repair;
   * a task is `done` only if its evidence files exist.
-Lean status (phase 4) will be derived from the Lean sources, never set by hand.
+Lean status is derived, never set by hand: the statement lock is re-verified from file hashes
+(`checks/lock/lock.py`), and per-declaration sorry/axiom data comes from `tracker/lean-status.json`,
+which `scripts/lean-status.sh` regenerates from the build. A claim's Lean status follows from the
+declarations it maps to (`lean_decls` in the ledger).
 """
 import json
 import subprocess
@@ -17,6 +20,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 LEDGER = HERE / 'ledger.json'
+LEAN_STATUS = HERE / 'lean-status.json'
+sys.path.insert(0, str(ROOT / 'checks' / 'lock'))
+import lock  # noqa: E402
 
 TASK_STATUSES = ['todo', 'doing', 'blocked', 'review', 'done']
 GAP_STATUSES = ['suspected', 'confirmed', 'disputed', 'refuted', 'repaired', 'closed']
@@ -69,6 +75,41 @@ def check(ledger):
         if d['status'] == 'decided' and not d.get('answer'):
             errors.append(f"{d['id']}: decided without an answer")
     return errors
+
+
+def lean_stats(ledger):
+    """Lock state, declaration status from the last build, and each claim's derived Lean status."""
+    ok, problems = lock.verify()
+    status = json.loads(LEAN_STATUS.read_text()) if LEAN_STATUS.exists() else {'decls': []}
+    decls = {d['name']: d for d in status['decls']}
+
+    def state(d):
+        if d['direct_sorry']:
+            return 'stated'
+        if 'sorryAx' in d['axioms']:
+            return 'proved modulo sorry'
+        return 'defined' if d['kind'] in ('def', 'inductive') else 'proved'
+
+    claims = {}
+    for n in ledger['nodes']:
+        names = n.get('lean_decls', [])
+        missing = [x for x in names if x not in decls]
+        if not names:
+            claims[n['id']] = 'not stated'
+        elif missing:
+            claims[n['id']] = 'missing: ' + ', '.join(missing)
+        else:
+            states = {state(decls[x]) for x in names}
+            claims[n['id']] = next(s for s in ('stated', 'proved modulo sorry', 'proved', 'defined') if s in states)
+    main = decls.get('BTBMS.mainTheorem')
+    return {
+        'lock_ok': ok, 'lock_problems': problems,
+        'status_generated': status.get('generated'), 'status_head': status.get('head'),
+        'decls': status['decls'],
+        'sorry_decls': sum(d['direct_sorry'] for d in status['decls']),
+        'main_axioms': main['axioms'] if main else None,
+        'claims': claims,
+    }
 
 
 def git_head():
@@ -134,13 +175,16 @@ def main():
         'tasks': {s: sum(t['status'] == s for t in ledger['tasks']) for s in TASK_STATUSES},
         'gaps': {s: sum(g['status'] == s for g in ledger['gaps']) for s in GAP_STATUSES},
         'open_user_decisions': sum(d['status'] == 'open' and d['owner'] == 'user' for d in ledger.get('decisions', [])),
+        'lean': lean_stats(ledger),
     }
     payload = json.dumps({'ledger': ledger, 'stats': stats}, ensure_ascii=False)
     html = (HERE / 'template.html').read_text().replace('/*DATA*/null', payload.replace('</', '<\\/'))
     (HERE / 'index.html').write_text(html)
     (HERE / 'GAPS.md').write_text(gaps_md(ledger))
     (HERE / 'STATUS.md').write_text(status_md(ledger, stats))
-    print(f"ok: {len(ledger['tasks'])} tasks, {len(ledger['gaps'])} gaps, {len(ledger['nodes'])} claims")
+    lean = stats['lean']
+    print(f"ok: {len(ledger['tasks'])} tasks, {len(ledger['gaps'])} gaps, {len(ledger['nodes'])} claims; "
+          f"lock {'intact' if lean['lock_ok'] else 'BROKEN'}; {lean['sorry_decls']} sorry declarations")
 
 
 if __name__ == '__main__':

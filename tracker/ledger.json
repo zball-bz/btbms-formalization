@@ -5,7 +5,7 @@
   "paper_sha256": "a8947c78075aa85946bc2a3bf4eebe43b429a9f799f6077693c9b55b825e1c86",
   "reference": "SmileLee-lyx/ne-rewritten@88df7989e270fe6eb447d7fd174d1c06ffc53cf0 src/notations/BM-like/BTBM.ts",
   "root": "claude",
-  "phase": "P3 Lean outline",
+  "phase": "P2 Repair & simplify (blueprint)",
   "phases": [
    {
     "id": "P1",
@@ -136,17 +136,16 @@
    "status": "todo",
    "title": "Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals",
    "deps": [],
-   "note": "Statement-level needs covered (Cardinal.IsRegular, IsInaccessible, IsClub/IsStationary on Set.Iio κ.ord). Proof-level survey (CU collapse/condensation, ZFSet) still to do."
+   "note": "Statement-level needs covered (Cardinal.IsRegular, IsInaccessible, IsClub/IsStationary on Set.Iio κ.ord). Proof-level survey (CU collapse/condensation, ZFSet) still to do. Proof-level survey folded into T-016 unit U4."
   },
   {
    "id": "T-009",
    "phase": "P2",
    "owner": "user",
    "status": "todo",
-   "title": "Gate G1: sign off gap report and simplified proof",
+   "title": "Gate G1: sign off the repaired, simplified proof (the blueprint)",
    "deps": [
-    "T-005",
-    "T-011"
+    "T-017"
    ]
   },
   {
@@ -227,10 +226,49 @@
    "id": "T-015",
    "phase": "P3",
    "owner": "user",
-   "status": "todo",
+   "status": "done",
    "title": "Gate G2: sign off the Lean statement; then it is locked",
    "deps": [
     "T-014"
+   ],
+   "evidence": [
+    "checks/lock/statement.lock.json",
+    "checks/lock/lock.py",
+    "checks/lock/check.sh",
+    "checks/lock/LockCheck.lean"
+   ],
+   "note": "User go-ahead 2026-10-27 taken as sign-off. Statement split so the proof can change without touching locked files: locked Prop defs MainTheorem/PaperTheorem in Statement.lean; std_isWellOrder (sorry) and mainTheorem : MainTheorem in Main.lean. LockCheck.lean checks by rfl that MainTheorem is the reviewed type."
+  },
+  {
+   "id": "T-016",
+   "phase": "P2",
+   "owner": "claude",
+   "status": "doing",
+   "title": "Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated",
+   "deps": [
+    "T-015"
+   ],
+   "deliverable": "blueprint/",
+   "note": "Workflow: spine agent, then per unit a drafter and an adversarial verifier, then a cross-unit reconciler. Units: U1 §1-2, U2 §3, U3 §4+§6.1+§7, U4 §5+§6.2, U5 §8-9 + seed lemma."
+  },
+  {
+   "id": "T-017",
+   "phase": "P2",
+   "owner": "codex",
+   "status": "todo",
+   "title": "Blind review of the blueprint (statements and proofs, without the verification notes)",
+   "deps": [
+    "T-016"
+   ]
+  },
+  {
+   "id": "T-018",
+   "phase": "P3",
+   "owner": "claude",
+   "status": "todo",
+   "title": "Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations",
+   "deps": [
+    "T-009"
    ]
   }
  ],
@@ -245,9 +283,10 @@
     "claude": "sound",
     "codex": "repairable"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.Tree.cmp",
+    "BTBMS.instLTForest"
+   ]
   },
   {
    "id": "D1.2",
@@ -258,9 +297,6 @@
    "review": {
     "claude": "sound",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -272,9 +308,6 @@
    "review": {
     "claude": "sound",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -287,9 +320,10 @@
     "claude": "sound",
     "codex": "repairable"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.relKey",
+    "BTBMS.keyCmp"
+   ]
   },
   {
    "id": "D1.5",
@@ -300,9 +334,6 @@
    "review": {
     "claude": "sound",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -317,9 +348,9 @@
     "claude": "sound",
     "codex": "repairable"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.expand"
+   ]
   },
   {
    "id": "D1.7",
@@ -331,9 +362,11 @@
     "claude": "sound",
     "codex": "repairable"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.seed",
+    "BTBMS.IsStd",
+    "BTBMS.Std"
+   ]
   },
   {
    "id": "C1.8",
@@ -344,9 +377,6 @@
    "review": {
     "claude": "sound",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -358,9 +388,6 @@
    "review": {
     "claude": "sound",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -372,9 +399,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -386,9 +410,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -400,9 +421,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -416,9 +434,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -430,9 +445,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -446,9 +458,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -462,9 +471,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -476,9 +482,6 @@
    "review": {
     "claude": "sound (terse)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -490,9 +493,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -506,9 +506,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -520,9 +517,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -534,9 +528,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -548,9 +539,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -562,9 +550,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -576,9 +561,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -590,9 +572,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -604,9 +583,6 @@
    "review": {
     "claude": "likely true; proofs unchecked",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -620,9 +596,6 @@
    "review": {
     "claude": "not evaluated",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -634,9 +607,6 @@
    "review": {
     "claude": "not evaluated",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -648,9 +618,6 @@
    "review": {
     "claude": "not evaluated",
     "codex": "repairable"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -662,9 +629,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -676,9 +640,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -690,9 +651,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -704,9 +662,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -718,9 +673,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -732,9 +684,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -748,9 +697,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -762,9 +708,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -776,9 +719,6 @@
    "review": {
     "claude": "sound (standard; sketch)",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -790,9 +730,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -804,9 +741,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -818,9 +752,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -833,9 +764,11 @@
     "claude": "sound",
     "codex": "sound"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.IsWeaklyMahlo",
+    "BTBMS.IsMahlo",
+    "BTBMS.StationaryIn"
+   ]
   },
   {
    "id": "L6.5",
@@ -846,9 +779,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -860,9 +790,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -874,9 +801,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -888,9 +812,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -904,9 +825,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -918,9 +836,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -932,9 +847,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -946,9 +858,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -960,9 +869,6 @@
    "review": {
     "claude": "under-specified",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -974,9 +880,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -988,9 +891,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1002,9 +902,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1016,9 +913,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1030,9 +924,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1044,9 +935,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1058,9 +946,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1074,9 +959,6 @@
    "review": {
     "claude": "coherent; no gap found",
     "codex": "sound (conditional)"
-   },
-   "lean": {
-    "status": "not started"
    }
   },
   {
@@ -1089,9 +971,10 @@
     "claude": "sound",
     "codex": "sound"
    },
-   "lean": {
-    "status": "not started"
-   }
+   "lean_decls": [
+    "BTBMS.std_isWellOrder",
+    "BTBMS.mainTheorem"
+   ]
   },
   {
    "id": "R9.2",
@@ -1102,9 +985,6 @@
    "review": {
     "claude": "sound",
     "codex": "sound"
-   },
-   "lean": {
-    "status": "not started"
    }
   }
  ],
