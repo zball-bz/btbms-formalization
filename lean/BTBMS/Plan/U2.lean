@@ -1712,10 +1712,83 @@ theorem safePrefix_condP {E : Forest} (hL : InL E) (hP : CondP E) (k : Nat) :
     rw [spx_colAt_empty] at hcol; cases hcol
 
 
+/-! T3.2g helpers: a proper word prefix is a safe prefix; filling the hole with its own column. -/
+
+/-- A forest whose word is a proper prefix of `w(E)` is a safe prefix of `E`. -/
+theorem spx_safePrefix_of_word {E E' : Forest} {X : List WordAtom} (hX : X ≠ [])
+    (h : word E = word E' ++ X) : ∃ k, k < mu E ∧ E' = safePrefix E k := by
+  refine ⟨mu E', ?_, word_injective ?_⟩
+  · unfold mu; rw [h, List.length_append]
+    have := List.length_pos_of_ne_nil hX; omega
+  · rw [word_safePrefix, h]
+    show word E' = (word E' ++ X).take (word E').length
+    simp
+
+/-- Filling the hole at the end of a route path with the column found there restores the forest. -/
+theorem spx_put_self : ∀ (π : List (Nat × Nat)) (F G : Forest), IsRoutePath F π →
+    F.forestAt π = some G → G.cols ≠ [] →
+      replaceAt 0 0 (Tree.node [G.cols.getLast?.getD []]) π.length F = F
+  | [], .node cols, G, _, hG, hne => by
+    simp only [Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    simp only [Tree.cols] at hne ⊢
+    obtain ⟨ys, y, rfl⟩ := (List.eq_nil_or_concat cols).resolve_left hne
+    cases ys with
+    | nil => simp [replaceAt, shiftVal_zero_fun, treeMapCol_id_fun, Tree.cols]
+    | cons c cs =>
+      simp only [replaceAt, shiftVal_zero_fun, treeMapCol_id_fun, Tree.cols, List.map_id,
+        List.length_nil]
+      rw [List.concat_eq_append, List.dropLast_concat, List.getLast?_concat]; rfl
+  | s :: π, .node cols, G, hr, hG, hne => by
+    obtain ⟨hl, h, hh, hr'⟩ := isRoutePath_cons.1 hr
+    obtain ⟨col, p, h', hcol, hcl, hs, hh'⟩ := lastStep?_eq_some hl
+    rw [hh] at hh'
+    cases hh'
+    have hG' : h.forestAt π = some G := by
+      rw [show s :: π = [s] ++ π from rfl, Tree.forestAt_append, hh] at hG
+      exact hG
+    have ih := spx_put_self π h G hr' hG' hne
+    simp only [Tree.cols] at hcol
+    obtain ⟨ys, rfl⟩ := List.getLast?_eq_some_iff.1 hcol
+    obtain ⟨zs, rfl⟩ := List.getLast?_eq_some_iff.1 hcl
+    simp only [List.length_cons, replaceAt, mapLast_eq, List.dropLast_concat, List.getLast?_concat,
+      Option.map_some, Option.toList_some, shiftVal_zero_fun, treeMapCol_id_fun, id, treeMap_id,
+      List.map_id, ih]
+    simp
+
+theorem spx_wordCol_ne (e : Nat) (c : Column) : wordCol e c ≠ [] := by
+  cases c with
+  | nil => simp [wordCol]
+  | cons x xs => obtain ⟨p, h⟩ := x; simp [wordCol]
+
 -- T3.2g: deletion steps and ordinary steps at parameter 0 are safe prefixes
 theorem expand_safePrefix {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV : CondV E)
     (hI : CondI E) (hk : stepKind E = some .deletion ∨ (stepKind E = some .ordinary ∧ n = 0))
-    (h : expand E n = some E') : ∃ k, k < mu E ∧ E' = safePrefix E k := by sorry
+    (h : expand E n = some E') : ∃ k, k < mu E ∧ E' = safePrefix E k := by
+  rcases hk with hd | ⟨ho, rfl⟩
+  · rw [expand_deletion hd n, Option.some.injEq] at h
+    subst h
+    have hl := (stepKind_deletion_iff E).1 hd
+    obtain ⟨ys, hys⟩ := List.getLast?_eq_some_iff.1 hl
+    refine spx_safePrefix_of_word (X := [toLex (0, toLex (0, 0))]) (by simp) ?_
+    obtain ⟨cols⟩ := E
+    simp only [Tree.cols] at hys ⊢
+    subst hys
+    simp [word, wordAt, wordCols_append, wordCols, wordCol]
+  · obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind ho (by decide))
+    rw [expand_zero_eq_context hE hV hI ho hsd, Option.some.injEq] at h
+    subst h
+    obtain ⟨-, hdep, -, hmem, -, hlen⟩ := stopData_spec hsd
+    obtain ⟨hrp, F, hF, hFl⟩ := (mem_routeCols_iff E sd.col).1 hmem
+    have hne : F.cols ≠ [] := by intro h0; rw [h0] at hFl; simp at hFl
+    have hself := spx_put_self sd.col.path E F hrp hF hne
+    have hput := word_put ⟨E, sd.depth⟩ (Tree.node [F.cols.getLast?.getD []]) (by simp; omega)
+    simp only [Hole.put] at hput
+    rw [hdep, hself, ← hdep] at hput
+    refine spx_safePrefix_of_word ?_ hput
+    simp only [wordAt, wordCols, List.append_nil]
+    exact spx_wordCol_ne _ _
+
 
 -- T3.2k (txt:340-344): ordinary outputs satisfy V and I
 theorem condV_ord {A B : Forest} {n : Nat} (hL : InL A) (hk : stepKind A = some .ordinary)
