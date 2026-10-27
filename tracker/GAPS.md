@@ -71,7 +71,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 ## G-006 — Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes
 
-**Detail:** Codex (blind): the stated numerical orders suffice, but the paper does not print the needed predicates. Barrier needs a joint induction on (c,k) of C_e (cut paths reaching a have query < D_e) and R_e (return bounds). Reverse capping needs actual A together with actual return bounds, plus a first-divergence argument: the first decorated edge differing from the actual scan is at a capped column a reached by an actual path, so C_e gives W < B_a(v) <= B_a(u*), and the scan stops before the capped key. A proof carrying only "earlier entry A holds" would leave a gap. Codex verdict: no unrepaired mathematical gap. Claude checked each step of the repair.
+**Detail:** Codex (blind): the stated numerical orders suffice, but the paper does not print the needed predicates. Barrier needs a joint induction on (c,k) of C_e (cut paths reaching a have query < D_e) and R_e (return bounds). Reverse capping needs actual A together with actual return bounds, plus a first-divergence argument: the first decorated edge differing from the actual scan is at a capped column a reached by an actual path, so C_e gives W < B_a(v) <= B_a(u*), and the scan stops before the capped key. A proof carrying only "earlier entry A holds" would leave a gap. Codex verdict: no unrepaired mathematical gap. Claude checked each step of the repair. Lean: L2.2a, L2.3a, L2.4a and their lemmas proved (prove/C2).
 
 **Fix:** Write the joint predicates C_e/R_e, the localized pre-entry-cut barrier and the first-divergence argument as explicit lemmas (codex-crosscheck-1.md, Q2).
 
