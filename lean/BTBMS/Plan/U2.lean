@@ -3116,6 +3116,245 @@ theorem ker_under_stop {A : Forest} {sd : StopData} (hsd : stopData A = some sd)
             obtain ⟨z1, z2⟩ := z
             simp [ker_forestAt_cons, Tree.empty, Tree.cols] at hcol
 
+/-! ### T3.2i helpers: the shapes of `kerCol` -/
+
+/-- T3.2i helper: the five shapes of the template map. -/
+theorem ker_kerCol_shape {sd : StopData} {rd : RootData} {a a' : ColAddr}
+    (h : kerCol sd rd a = some a') :
+    (isQMat sd a = true ∧ ∃ j rest, a.path = sd.col.path ++ (sd.col.col, j) :: rest ∧
+        j < sd.Q.length ∧ a' = ⟨(0, j) :: rest, a.col⟩) ∨
+      (isQMat sd a = false ∧ a.path = rd.col.path ∧ a.col = rd.idx ∧ a' = ⟨[], 0⟩) ∨
+      (isQMat sd a = false ∧ a.path = rd.col.path ∧ rd.idx < a.col ∧ rd.owner = false ∧
+        a' = ⟨[], a.col - rd.idx⟩) ∨
+      (isQMat sd a = false ∧ ∃ e rest, a.path = rd.col.path ++ (rd.idx, e) :: rest ∧
+        rd.cursor ≤ e ∧ a' = ⟨(0, sd.Q.length + (e - rd.cursor)) :: rest, a.col⟩) ∨
+      (isQMat sd a = false ∧ ∃ ci e rest, a.path = rd.col.path ++ (ci, e) :: rest ∧
+        rd.idx < ci ∧ rd.owner = false ∧ a' = ⟨(ci - rd.idx, e) :: rest, a.col⟩) := by
+  unfold kerCol at h
+  by_cases hq : isQMat sd a = true
+  · rw [if_pos hq] at h
+    left
+    refine ⟨hq, ?_⟩
+    have hq' := hq
+    unfold isQMat at hq'
+    rw [Bool.and_eq_true, beq_iff_eq] at hq'
+    obtain ⟨h1, h2⟩ := hq'
+    cases hd : a.path.drop sd.col.path.length with
+    | nil => rw [hd] at h2; cases h2
+    | cons x rest =>
+      obtain ⟨ci, j⟩ := x
+      rw [hd] at h2 h
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h2
+      simp only [Option.some.injEq] at h
+      refine ⟨j, rest, ?_, h2.2, h.symm⟩
+      rw [← List.take_append_drop sd.col.path.length a.path, h1, hd, h2.1]
+  · rw [if_neg hq] at h
+    simp only [Bool.not_eq_true] at hq
+    right
+    by_cases hρ : a.path.take rd.col.path.length = rd.col.path
+    swap
+    · rw [if_neg hρ] at h; cases h
+    rw [if_pos hρ] at h
+    have hsplit : a.path = rd.col.path ++ a.path.drop rd.col.path.length := by
+      conv_lhs => rw [← List.take_append_drop rd.col.path.length a.path, hρ]
+    cases hd : a.path.drop rd.col.path.length with
+    | nil =>
+      rw [hd] at h hsplit
+      rw [List.append_nil] at hsplit
+      simp only at h
+      split_ifs at h with hc1 hc2
+      · simp only [Option.some.injEq] at h
+        exact Or.inl ⟨hq, hsplit, hc1, h.symm⟩
+      · simp only [Option.some.injEq] at h
+        exact Or.inr (Or.inl ⟨hq, hsplit, hc2.1, hc2.2, h.symm⟩)
+    | cons x rest =>
+      obtain ⟨ci, e⟩ := x
+      rw [hd] at h hsplit
+      simp only at h
+      split_ifs at h with hc1 hc2
+      · simp only [Option.some.injEq] at h
+        refine Or.inr (Or.inr (Or.inl ⟨hq, e, rest, ?_, hc1.2, h.symm⟩))
+        rw [hsplit, hc1.1]
+      · simp only [Option.some.injEq] at h
+        exact Or.inr (Or.inr (Or.inr ⟨hq, ci, e, rest, hsplit, hc2.1, hc2.2, h.symm⟩))
+
+/-- T3.2i helper: the inverse of the template map. -/
+def kerDecode (sd : StopData) (rd : RootData) (y : ColAddr) : ColAddr :=
+  match y.path with
+  | [] => ⟨rd.col.path, rd.idx + y.col⟩
+  | (0, j) :: rest =>
+    if j < sd.Q.length then ⟨sd.col.path ++ (sd.col.col, j) :: rest, y.col⟩
+    else ⟨rd.col.path ++ (rd.idx, rd.cursor + (j - sd.Q.length)) :: rest, y.col⟩
+  | (k + 1, e) :: rest => ⟨rd.col.path ++ (rd.idx + (k + 1), e) :: rest, y.col⟩
+
+theorem ker_kerCol_decode {sd : StopData} {rd : RootData} {a y : ColAddr}
+    (h : kerCol sd rd a = some y) : a = kerDecode sd rd y := by
+  obtain ⟨ap, ac⟩ := a
+  rcases ker_kerCol_shape h with ⟨-, j, rest, hp, hj, rfl⟩ | ⟨-, hp, hc, rfl⟩ |
+      ⟨-, hp, hc, -, rfl⟩ | ⟨-, e, rest, hp, he, rfl⟩ | ⟨-, ci, e, rest, hp, hci, -, rfl⟩
+  · simp only at hp ⊢; subst hp; simp [kerDecode, hj]
+  · simp only at hp hc ⊢; subst hp hc; simp [kerDecode]
+  · simp only at hp hc ⊢; subst hp; simp only [kerDecode]; congr 1; omega
+  · simp only at hp ⊢; subst hp
+    simp only [kerDecode, show ¬ (sd.Q.length + (e - rd.cursor) < sd.Q.length) by omega, if_false,
+      ColAddr.mk.injEq, List.append_cancel_left_eq, List.cons.injEq, Prod.mk.injEq, true_and,
+      and_true]
+    omega
+  · simp only at hp ⊢; subst hp
+    obtain ⟨k, hk⟩ : ∃ k, ci - rd.idx = k + 1 := ⟨ci - rd.idx - 1, by omega⟩
+    simp only [hk, kerDecode, ColAddr.mk.injEq, List.append_cancel_left_eq, List.cons.injEq,
+      Prod.mk.injEq, true_and, and_true]
+    omega
+
+/-- T3.2i helper: the template map is injective. -/
+theorem ker_kerCol_inj {sd : StopData} {rd : RootData} {a b y : ColAddr}
+    (ha : kerCol sd rd a = some y) (hb : kerCol sd rd b = some y) : a = b := by
+  rw [ker_kerCol_decode ha, ker_kerCol_decode hb]
+
+/-! ### T3.2i helpers: the hole region and the template map -/
+
+theorem ker_under_nil_nil (hc c : Nat) : KerUnder ⟨[], hc⟩ ⟨[], c⟩ ↔ hc ≤ c := by
+  unfold KerUnder; simp
+
+theorem ker_under_nil_cons (hc c c0 e0 : Nat) (q : List (Nat × Nat)) :
+    KerUnder ⟨[], hc⟩ ⟨(c0, e0) :: q, c⟩ ↔ hc ≤ c0 := by
+  unfold KerUnder
+  simp only [List.nil_append, List.cons.injEq, Prod.mk.injEq, reduceCtorEq, false_and, false_or]
+  constructor
+  · rintro ⟨c1, e1, r, ⟨⟨rfl, rfl⟩, rfl⟩, h⟩; exact h
+  · intro h; exact ⟨c0, e0, q, ⟨⟨rfl, rfl⟩, rfl⟩, h⟩
+
+theorem ker_under_cons_nil (x : Nat × Nat) (p : List (Nat × Nat)) (hc c : Nat) :
+    ¬ KerUnder ⟨x :: p, hc⟩ ⟨[], c⟩ := by
+  unfold KerUnder; simp
+
+theorem ker_under_cons_cons (x x' : Nat × Nat) (p q : List (Nat × Nat)) (hc c : Nat) :
+    KerUnder ⟨x :: p, hc⟩ ⟨x' :: q, c⟩ ↔ x' = x ∧ KerUnder ⟨p, hc⟩ ⟨q, c⟩ := by
+  unfold KerUnder
+  simp only [List.cons_append, List.cons.injEq]
+  constructor
+  · rintro (⟨⟨h1, h2⟩, h3⟩ | ⟨c0, e0, r, ⟨h1, h2⟩, h3⟩)
+    · exact ⟨h1, Or.inl ⟨h2, h3⟩⟩
+    · exact ⟨h1, Or.inr ⟨c0, e0, r, h2, h3⟩⟩
+  · rintro ⟨h1, ⟨h2, h3⟩ | ⟨c0, e0, r, h2, h3⟩⟩
+    · exact Or.inl ⟨⟨h1, h2⟩, h3⟩
+    · exact Or.inr ⟨c0, e0, r, ⟨h1, h2⟩, h3⟩
+
+theorem ker_under_append (P p q : List (Nat × Nat)) (hc c : Nat) :
+    KerUnder ⟨P ++ p, hc⟩ ⟨P ++ q, c⟩ ↔ KerUnder ⟨p, hc⟩ ⟨q, c⟩ := by
+  induction P with
+  | nil => rfl
+  | cons x P ih => rw [List.cons_append, List.cons_append, ker_under_cons_cons, ih]; simp
+
+theorem ker_under_pre_l (P q : List (Nat × Nat)) (hc c : Nat) :
+    KerUnder ⟨P, hc⟩ ⟨P ++ q, c⟩ ↔ KerUnder ⟨[], hc⟩ ⟨q, c⟩ := by
+  have := ker_under_append P [] q hc c
+  rw [List.append_nil] at this; exact this
+
+theorem ker_under_pre_r (P p : List (Nat × Nat)) (hc c : Nat) :
+    KerUnder ⟨P ++ p, hc⟩ ⟨P, c⟩ ↔ KerUnder ⟨p, hc⟩ ⟨[], c⟩ := by
+  have := ker_under_append P p [] hc c
+  rw [List.append_nil] at this; exact this
+
+theorem ker_under_pre (P : List (Nat × Nat)) (hc c : Nat) :
+    KerUnder ⟨P, hc⟩ ⟨P, c⟩ ↔ hc ≤ c := by
+  have := ker_under_append P [] [] hc c
+  rw [List.append_nil] at this; rw [this, ker_under_nil_nil]
+
+/-- T3.2i helper: query material lies in the region of the stopping column. -/
+theorem ker_qmat_under {sd : StopData} {a : ColAddr} (hq : isQMat sd a = true) :
+    KerUnder sd.col a := by
+  unfold isQMat at hq
+  rw [Bool.and_eq_true, beq_iff_eq] at hq
+  obtain ⟨h1, h2⟩ := hq
+  cases hd : a.path.drop sd.col.path.length with
+  | nil => rw [hd] at h2; cases h2
+  | cons x rest =>
+    obtain ⟨ci, j⟩ := x
+    rw [hd] at h2
+    simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h2
+    right
+    refine ⟨ci, j, rest, ?_, by omega⟩
+    rw [← List.take_append_drop sd.col.path.length a.path, h1, hd]
+
+/-- T3.2i helper: the explicit hole of the kernel. -/
+theorem ker_kerHole_cases {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hkd : KernelDefined A rd) :
+    (rd.owner = false ∧ sd.col.path = rd.col.path ∧ rd.idx < sd.col.col ∧
+        kerHole sd rd = ⟨[], sd.col.col - rd.idx⟩) ∨
+      (rd.owner = false ∧ ∃ ci e rest, sd.col.path = rd.col.path ++ (ci, e) :: rest ∧
+        rd.idx < ci ∧ kerHole sd rd = ⟨(ci - rd.idx, e) :: rest, sd.col.col⟩) ∨
+      (rd.owner = true ∧ ∃ e rest, sd.col.path = rd.col.path ++ (rd.idx, e) :: rest ∧
+        rd.cursor ≤ e ∧ kerHole sd rd = ⟨(0, sd.Q.length + (e - rd.cursor)) :: rest, sd.col.col⟩) := by
+  obtain ⟨hkc, hq⟩ := ker_kerCol_stop hsd hrd hkd
+  unfold kerCol at hkc
+  rw [if_neg (by simp [hq])] at hkc
+  rcases ker_stop_path hsd hrd hkd with ⟨ho, ⟨hp, hlt⟩ | ⟨ci, e, rest, hp, hlt⟩⟩ |
+      ⟨ho, e, rest, hp, hle, -⟩
+  · rw [hp, List.take_length, if_pos rfl, List.drop_length] at hkc
+    simp only at hkc
+    rw [if_neg (by omega), if_pos ⟨hlt, ho⟩] at hkc
+    exact Or.inl ⟨ho, hp, hlt, (Option.some.inj hkc).symm⟩
+  · rw [hp, List.take_left' rfl, if_pos rfl, List.drop_left' rfl] at hkc
+    simp only at hkc
+    rw [if_neg (by omega), if_pos ⟨hlt, ho⟩] at hkc
+    exact Or.inr (Or.inl ⟨ho, ci, e, rest, hp, hlt, (Option.some.inj hkc).symm⟩)
+  · rw [hp, List.take_left' rfl, if_pos rfl, List.drop_left' rfl] at hkc
+    simp only at hkc
+    rw [if_pos (by simp [hle])] at hkc
+    exact Or.inr (Or.inr ⟨ho, e, rest, hp, hle, (Option.some.inj hkc).symm⟩)
+
+/-- T3.2i helper: for root-tail material the template map carries the region of the stopping
+column onto the region of the kernel hole. -/
+theorem ker_under_transport {A : Forest} {sd : StopData} {rd : RootData}
+    (hsd : stopData A = some sd) (hrd : rootData A = some rd) (hkd : KernelDefined A rd)
+    {a y : ColAddr}
+    (h : (a.path = rd.col.path ∧ rd.idx < a.col ∧ rd.owner = false ∧ y = ⟨[], a.col - rd.idx⟩) ∨
+      (∃ e rest, a.path = rd.col.path ++ (rd.idx, e) :: rest ∧ rd.cursor ≤ e ∧
+        y = ⟨(0, sd.Q.length + (e - rd.cursor)) :: rest, a.col⟩) ∨
+      (∃ ci e rest, a.path = rd.col.path ++ (ci, e) :: rest ∧ rd.idx < ci ∧ rd.owner = false ∧
+        y = ⟨(ci - rd.idx, e) :: rest, a.col⟩)) :
+    KerUnder (kerHole sd rd) y ↔ KerUnder sd.col a := by
+  obtain ⟨ap, ac⟩ := a
+  show KerUnder (kerHole sd rd) y ↔ KerUnder ⟨sd.col.path, sd.col.col⟩ ⟨ap, ac⟩
+  rcases ker_kerHole_cases hsd hrd hkd with ⟨ho, hp, hlt, hkh⟩ | ⟨ho, ci, e, rest, hp, hlt, hkh⟩ |
+      ⟨ho, e, rest, hp, hle, hkh⟩
+  · rw [hkh, hp]
+    generalize sd.col.col = sc at hlt ⊢
+    rcases h with ⟨h1, h2, -, rfl⟩ | ⟨e', rest', h1, h2, rfl⟩ | ⟨ci', e', rest', h1, h2, -, rfl⟩ <;>
+      simp only at h1 h2 ⊢ <;> subst h1
+    · rw [ker_under_nil_nil, ker_under_pre]
+      omega
+    · rw [ker_under_pre_l, ker_under_nil_cons, ker_under_nil_cons]
+      omega
+    · rw [ker_under_pre_l, ker_under_nil_cons, ker_under_nil_cons]
+      omega
+  · rw [hkh, hp]
+    generalize sd.col.col = sc
+    rcases h with ⟨h1, h2, -, rfl⟩ | ⟨e', rest', h1, h2, rfl⟩ | ⟨ci', e', rest', h1, h2, -, rfl⟩ <;>
+      simp only at h1 h2 ⊢ <;> subst h1
+    · rw [ker_under_pre_r]
+      exact iff_of_false (ker_under_cons_nil _ _ _ _) (ker_under_cons_nil _ _ _ _)
+    · rw [ker_under_append, ker_under_cons_cons, ker_under_cons_cons]
+      simp only [Prod.mk.injEq]
+      constructor <;> rintro ⟨⟨h3, -⟩, -⟩ <;> omega
+    · rw [ker_under_append, ker_under_cons_cons, ker_under_cons_cons]
+      simp only [Prod.mk.injEq]
+      constructor
+      · rintro ⟨⟨h3, h4⟩, h5⟩; exact ⟨⟨by omega, h4⟩, h5⟩
+      · rintro ⟨⟨h3, h4⟩, h5⟩; exact ⟨⟨by omega, h4⟩, h5⟩
+  · rw [hkh, hp]
+    generalize sd.col.col = sc
+    rcases h with ⟨h1, h2, h3, rfl⟩ | ⟨e', rest', h1, h2, rfl⟩ | ⟨ci', e', rest', h1, h2, h3, rfl⟩
+    · rw [ho] at h3; cases h3
+    · simp only at h1 h2 ⊢; subst h1
+      rw [ker_under_append, ker_under_cons_cons, ker_under_cons_cons]
+      simp only [Prod.mk.injEq, true_and]
+      constructor
+      · rintro ⟨h3, h4⟩; exact ⟨by omega, h4⟩
+      · rintro ⟨h3, h4⟩; exact ⟨by omega, h4⟩
+    · rw [ho] at h3; cases h3
+
 -- T3.2i (txt:318-330): every column of the output is a context column or exactly one phase copy
 theorem classify_cols {A B : Forest} {sd : StopData} {rd : RootData} {n : Nat} (hL : InL A)
     (hk : stepKind A = some .ordinary) (hsd : stopData A = some sd) (hrd : rootData A = some rd)
