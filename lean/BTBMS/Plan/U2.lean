@@ -903,6 +903,13 @@ def Success (K Y : Forest) : Prop :=
 /-- D3.3c: some approximant of `K` strictly exceeds `B`. -/
 def Covers (K B : Forest) : Prop := ∃ q K', expand K q = some K' ∧ B < K'
 
+/-- D3.3c helper (= T3.2h `shiftVal_conj`, stated here for use before it): phase conjugacy of
+root shifts. -/
+theorem ker_shiftVal_conj {r ρ' δ d : Nat} (hr : r ≤ ρ') (p : Nat) :
+    shiftVal (ρ' + δ) d (shiftVal r δ p) = shiftVal r δ (shiftVal ρ' d p) := by
+  unfold shiftVal
+  split_ifs <;> omega
+
 -- D3.3c: kernel conjugacy under a phase shift (txt:542-546, 547-552)
 theorem kernel_conj {K K' : Forest} {sd sd' : StopData} {rd rd' : RootData} {r δ : Nat}
     (hr : r ≤ sd'.r) (hQ : sd.Q = Tree.mapCol (shiftVal r δ) sd'.Q) (hρ : sd.r = sd'.r + δ)
@@ -910,7 +917,54 @@ theorem kernel_conj {K K' : Forest} {sd sd' : StopData} {rd rd' : RootData} {r �
     (howner : rd.owner = rd'.owner) (hhole : holeDepth sd rd = holeDepth sd' rd')
     (hbody : Tree.node ((rootForest K rd).cols.drop (rd.idx + 1)) =
       shift r δ (.node ((rootForest K' rd').cols.drop (rd'.idx + 1))))
-    (X : Forest) : kernel K sd rd (shift r δ X) = shift r δ (kernel K' sd' rd' X) := by sorry
+    (X : Forest) : kernel K sd rd (shift r δ X) = shift r δ (kernel K' sd' rd' X) := by
+  have hd : period sd = period sd' := by unfold period; omega
+  have hconj : ∀ F : Forest,
+      shift sd.r (period sd) (shift r δ F) = shift r δ (shift sd'.r (period sd') F) := by
+    intro F
+    rw [hd, hρ]
+    unfold shift
+    rw [treeMap_map, treeMap_map]
+    congr 1
+    funext p
+    exact ker_shiftVal_conj hr p
+  have hrep : ∀ k (Z G : Forest), shift r δ (replaceAt sd'.r (period sd') Z k G) =
+      replaceAt sd.r (period sd) (shift r δ Z) k (shift r δ G) := by
+    intro k Z G
+    rw [replaceAt_eq_shift sd'.r, shift_replaceAt, replaceAt_eq_shift r δ,
+      replaceAt_eq_shift sd.r, hconj]
+  have hent : ∀ x : Nat × Forest,
+      (shiftVal r δ x.1, shift sd.r (period sd) (Tree.map (shiftVal r δ) x.2)) =
+        (shiftVal r δ x.1, Tree.map (shiftVal r δ) (shift sd'.r (period sd') x.2)) := by
+    intro x
+    show (_, shift sd.r (period sd) (shift r δ x.2)) = (_, shift r δ (shift sd'.r (period sd') x.2))
+    rw [hconj]
+  unfold kernel
+  simp only []
+  rw [howner, hhole, hU, hQ, hbody]
+  by_cases ho : rd'.owner = true
+  · simp only [ho, if_true]
+    rw [ker_shift_node, List.map_cons, List.map_nil, ker_mapCol_append]
+    congr 3
+    rw [treeMapCol_eq_map, treeMapCol_eq_map, mapLast_map, map_mapLast]
+    congr 1
+    · funext x; exact hent x
+    · funext x
+      simp only [Function.comp]
+      congr 1
+      show replaceAt _ _ _ _ (shift r δ x.2) = shift r δ (replaceAt _ _ _ _ x.2)
+      rw [hrep, hconj]
+  · simp only [ho, Bool.false_eq_true, if_false]
+    conv_rhs => rw [ker_shift_node, List.map_cons, ker_mapCol_append]
+    congr 2
+    · simp only [treeMapCol_eq_map, List.map_map]
+      congr 1
+      apply List.map_congr_left
+      intro x _
+      exact hent x
+    · rw [← ker_map_cols]
+      show (replaceAt _ _ _ _ _).cols = (shift r δ (replaceAt _ _ _ _ _)).cols
+      rw [hrep, hconj]
 
 /-! ## §T3.2 — closure -/
 
