@@ -749,13 +749,10 @@ def safePrefixBody (E : Forest) (k : Nat) : Forest := (spF k E).1
 /-- D1.9: the safe prefix keeping the first `k` atoms of `w(E)` and closing its containers. -/
 def safePrefix (E : Forest) (k : Nat) : Forest := safePrefixBody E k -- body: U1 (SCR-2)
 
--- provides: U1, C1.8
-theorem word_lt_iff (E F : Forest) : word E < word F ↔ E < F := by sorry
--- provides: U1, C1.8
-theorem word_injective : Function.Injective word := by sorry
--- provides: U1, D1.9
-theorem word_safePrefix (E : Forest) (k : Nat) : word (safePrefix E k) = (word E).take k := by
-  sorry
+-- `word_lt_iff`, `word_injective` (provides: U1, C1.8) moved to `Plan/U1.lean`, after the generic
+-- word (N1.2, N1.3, C1.8a) that their proofs use; nothing in between uses them.
+-- `word_safePrefix` (provides: U1, D1.9) moved to `Plan/U1.lean`, after `spF_spec` (D1.9a) that
+-- its proof uses; nothing in between uses it.
 
 /-! ## §c.5 Shifts, the continuation hole, the operation (U1: D1.5, D1.6, D1.6a) -/
 
@@ -966,9 +963,8 @@ theorem ownerEntry_of_special {E : Forest} {sd : StopData} (h : stepKind E = som
 theorem expand_deletion {E : Forest} (h : stepKind E = some .deletion) (n : Nat) :
     expand E n = some (.node E.cols.dropLast) := by sorry
 
--- provides: U1, D1.9 (`truncAfter` is a safe prefix)
-theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
-    ∃ k, E.truncAfter e = safePrefix E k := by sorry
+-- `truncAfter_safePrefix` (provides: U1, D1.9) moved to `Plan/U1.lean`, after
+-- `word_truncAfter_prefix` (D1.9a) that its proof uses; nothing in between uses it.
 
 /-! ## §c.5 (cont.) Scan lemmas (U1: D2.1, L2.1, L2.2; the G-006 predicates are U1-internal) -/
 
