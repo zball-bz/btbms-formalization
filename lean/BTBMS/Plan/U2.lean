@@ -142,11 +142,78 @@ theorem delayed_change {L R L' R' : List α} {lam : Nat} (hRL : R < L) (hlen : R
     (hagree : L'.take lam = L.take lam) (hL' : lam ≤ L'.length) (hR : R' < R) : R' < L' := by
   sorry
 
+/-- T3.2p helper: a word between `T ⌢ D` (letters of `D` below `K`) and `T ⌢ [K]` (letters of `T`
+at least `K`) keeps exactly `T` as its run of letters `≥ K`. -/
+theorem spx_takeWhile_between {K : α} : ∀ (T D Z : List α), (∀ t ∈ T, K ≤ t) →
+    (∀ d ∈ D, d < K) → T ++ D ≤ Z → Z < T ++ [K] →
+      Z.takeWhile (fun y => decide (K ≤ y)) = T
+  | [], D, [], _, _, _, _ => rfl
+  | [], D, z :: Z, _, _, _, h2 => by
+    rcases List.cons_lt_cons_iff.1 h2 with h | ⟨-, h⟩
+    · simp [not_le.2 h]
+    · exact absurd h (List.not_lt_nil _)
+  | t :: T, D, [], _, _, h1, _ => by
+    exact absurd (List.nil_lt_cons t (T ++ D)) (not_lt.2 h1)
+  | t :: T, D, z :: Z, hT, hD, h1, h2 => by
+    have h1' : ¬ z :: Z < t :: (T ++ D) := not_lt.2 h1
+    rw [List.cons_lt_cons_iff] at h1'
+    have h2' := List.cons_lt_cons_iff.1 h2
+    have hzt : z = t := by
+      rcases h2' with h | ⟨h, -⟩
+      · exact absurd (Or.inl h) h1'
+      · exact h
+    subst hzt
+    have h2'' : Z < T ++ [K] := by
+      rcases h2' with h | ⟨-, h⟩
+      · exact absurd h (lt_irrefl _)
+      · exact h
+    have h1'' : T ++ D ≤ Z := by
+      rw [← not_lt]; intro h; exact h1' (Or.inr ⟨rfl, h⟩)
+    have hK : K ≤ z := hT z List.mem_cons_self
+    rw [List.takeWhile_cons, if_pos (by simpa using hK),
+      spx_takeWhile_between T D Z (fun t ht => hT t (List.mem_cons_of_mem _ ht)) hD h1'' h2'']
+
+/-- T3.2p helper: the one-step reset. -/
+theorem spx_reset_one (ks Z : List α) {c : Nat} (hc : c < ks.length)
+    (hZ : Z.Pairwise fun x y => y ≤ x) (h1 : cutQuery ks c ≤ Z) (h2 : Z < cutQuery ks (c + 1)) :
+    nu (Z ++ [ks[c]]) = cutQuery ks (c + 1) := by
+  have hB := cutQuery_noninc ks c
+  rw [nu_append_singleton, nu_of_noninc hZ, nuStep_eq_takeWhile hZ, cutQuery_succ hc,
+    nuStep_eq_takeWhile hB]
+  rw [cutQuery_succ hc, nuStep_eq_takeWhile hB] at h2
+  congr 1
+  set B := cutQuery ks c
+  refine spx_takeWhile_between _ (B.dropWhile fun y => decide (ks[c] ≤ y)) Z ?_ ?_ ?_ h2
+  · intro t ht; simpa using mem_takeWhile_imp_of ht
+  · intro d hd
+    -- the letters after the run are below `ks[c]` (the word is nonincreasing)
+    have hsplit := List.takeWhile_append_dropWhile (p := fun y => decide (ks[c] ≤ y)) (l := B)
+    cases hdw : B.dropWhile (fun y => decide (ks[c] ≤ y)) with
+    | nil => rw [hdw] at hd; simp at hd
+    | cons d₀ ds =>
+      have hd₀ : d₀ < ks[c] := by
+        have := List.head_dropWhile_not (fun y => decide (ks[c] ≤ y)) (l := B) (by simp [hdw])
+        simp only [hdw, List.head_cons] at this
+        simpa using this
+      rw [hdw] at hd
+      rcases List.mem_cons.1 hd with rfl | hd
+      · exact hd₀
+      · have hnon : (d₀ :: ds).Pairwise fun x y => y ≤ x := by
+          rw [← hdw]; exact hB.sublist (List.dropWhile_sublist _)
+        exact lt_of_le_of_lt (List.rel_of_pairwise_cons hnon hd) hd₀
+  · rw [List.takeWhile_append_dropWhile]; exact h1
+
 -- T3.2p (txt:377-382): the reset identity `ν(Z ⌢ [K_c]) = B_c`, iterated through the suffix
 theorem reset_nu (ks Z : List α) {c : Nat} (hc : c < ks.length)
     (hZ : Z.Pairwise fun x y => y ≤ x) (h1 : cutQuery ks c ≤ Z) (h2 : Z < cutQuery ks (c + 1))
     {v : Nat} (hv1 : 1 ≤ v) (hv : c + v ≤ ks.length) :
-    nu (Z ++ (ks.drop c).take v) = cutQuery ks (c + v) := by sorry
+    nu (Z ++ (ks.drop c).take v) = cutQuery ks (c + v) := by
+  obtain ⟨w, rfl⟩ : ∃ w, v = w + 1 := ⟨v - 1, by omega⟩
+  rw [List.drop_eq_getElem_cons hc, List.take_succ_cons,
+    show Z ++ ks[c] :: (ks.drop (c + 1)).take w = (Z ++ [ks[c]]) ++ (ks.drop (c + 1)).take w by simp,
+    ← nu_append_nu, spx_reset_one ks Z hc hZ h1 h2, cutQuery, nu_append_nu, ← List.take_add,
+    show c + 1 + w = c + (w + 1) by omega]
+  rfl
 
 -- T3.2p (txt:386-389): the head cursor `m + γ − c` (including exhaustion)
 theorem head_cursor (qs ks : List α) {c : Nat} (hc : c ≤ ks.length)
@@ -154,7 +221,39 @@ theorem head_cursor (qs ks : List α) {c : Nat} (hc : c ≤ ks.length)
     {V : List α} (hV : V.Pairwise fun x y => y ≤ x) :
     (V < nu qs → cursor (qs ++ ks.drop c) V < qs.length) ∧
     (nu qs ≤ V → c ≤ cursor ks V ∧
-      cursor (qs ++ ks.drop c) V = qs.length + (cursor ks V - c)) := by sorry
+      cursor (qs ++ ks.drop c) V = qs.length + (cursor ks V - c)) := by
+  refine ⟨fun hlt => ?_, fun hle => ?_⟩
+  · have hq : cursor qs V < qs.length := by
+      have := cursor_le_length qs V
+      rcases Nat.lt_or_eq_of_le this with h | h
+      · exact h
+      · exact absurd ((cursor_eq_length_iff qs hV).1 h) (not_le.2 hlt)
+    rw [cursor_append_of_lt _ hq]; exact hq
+  · have hcm : c ≤ cursor ks V := le_cursor_of_cutQuery_le hV hc (le_trans h1 hle)
+    refine ⟨hcm, ?_⟩
+    set m := cursor ks V with hm
+    have hmL : m ≤ ks.length := cursor_le_length ks V
+    obtain ⟨hlo, hhi⟩ := cursor_spec ks V hV
+    -- the cut queries of the concatenated source past `qs`
+    have hcut : ∀ w, c + w ≤ ks.length →
+        cutQuery (qs ++ ks.drop c) (qs.length + w) = if w = 0 then nu qs else cutQuery ks (c + w) := by
+      intro w hw
+      rw [cutQuery, List.take_append, List.take_of_length_le (by omega), Nat.add_sub_cancel_left,
+        ← nu_append_nu]
+      split_ifs with hw0
+      · subst hw0; simp [nu_of_noninc (nu_noninc qs)]
+      · exact reset_nu ks (nu qs) (by omega) (nu_noninc qs) h1 (h2 (by omega)) (by omega) hw
+    apply cursor_unique hV
+    · simp only [List.length_append, List.length_drop]; omega
+    · rw [hcut (m - c) (by omega)]
+      split_ifs with h0
+      · exact hle
+      · rw [show c + (m - c) = m by omega]; exact hlo
+    · intro hlt
+      simp only [List.length_append, List.length_drop] at hlt
+      rw [show qs.length + (m - c) + 1 = qs.length + (m - c + 1) by omega,
+        hcut (m - c + 1) (by omega), if_neg (by omega), show c + (m - c + 1) = m + 1 by omega]
+      exact hhi (by omega)
 
 end Words
 
