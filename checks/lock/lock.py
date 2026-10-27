@@ -40,7 +40,7 @@ LOCKED = [
     'checks/lock/check.sh',
 ]
 CONFIG_NAMES = {'lakefile.lean', 'lakefile.toml', 'lean-toolchain', 'lake-manifest.json'}
-SKIP_DIRS = {'.lake', '.git'}
+SKIP_DIRS = {'.lake', '.git'}  # skipped at a hashed tree's root only
 
 
 def sha256(path):
@@ -52,13 +52,17 @@ class LockError(Exception):
 
 
 def tree_digest(root, keep):
-    """Digest over (relative path, file hash) of every kept file under root, skipping build dirs.
+    """Digest over (relative path, file hash) of every kept file under root.
 
-    Raises LockError on any symlink below root."""
+    Only the root's own build and VCS directories (`root/.lake`, `root/.git`) are skipped; a
+    directory with the same name deeper down can hold importable sources (`BTBMS.«.lake».X`) and
+    is hashed. Raises LockError on any symlink below root."""
     h = hashlib.sha256()
     count = 0
+    root = Path(root)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        top = Path(dirpath) == root
+        dirnames[:] = sorted(d for d in dirnames if not (top and d in SKIP_DIRS))
         for name in dirnames + filenames:
             if (Path(dirpath) / name).is_symlink():
                 raise LockError(f'unsupported symlink in a locked tree: {Path(dirpath) / name}')

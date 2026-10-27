@@ -68,9 +68,13 @@ def main():
         if not isinstance(decls, list) or not decls:
             raise ValueError('expected a nonempty JSON array')
         for d in decls:
+            if not isinstance(d, dict):
+                raise ValueError(f'row is not an object: {d!r:.200}')
             for k, t in DECL_KEYS.items():
                 if not isinstance(d.get(k), t):
                     raise ValueError(f'bad field {k!r} in {d!r:.200}')
+            if not all(isinstance(a, str) for a in d['axioms']):
+                raise ValueError(f'non-string axiom in {d!r:.200}')
     except ValueError as e:
         fail(f'declaration extraction output invalid: {e}', build_ok=True, audit_ok=True)
     try:

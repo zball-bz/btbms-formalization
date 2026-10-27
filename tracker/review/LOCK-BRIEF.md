@@ -38,3 +38,9 @@ Claude fixed remaining A, B and C from your follow-up (see G-008 `fix`):
 `tracker/refresh.py`. Check the fix independently, as before: replay your probes and try new
 ones. Append a "Follow-up 2" section to `tracker/review/codex-lock-review.md` with a verdict per
 item and `STATUS: COMPLETE`. Still do not read `blueprint/`.
+
+## Follow-up 3
+Claude fixed B (only a hashed tree root's own `.lake`/`.git` are skipped) and the two defensive
+validation points (`checks/lock/lock.py`, `scripts/lean_status.py`). Check it as before and
+append "Follow-up 3" to `tracker/review/codex-lock-review.md` with a verdict and
+`STATUS: COMPLETE`. Still do not read `blueprint/`.

@@ -249,3 +249,83 @@ As in the first review, a genuine compiler and its compiled artifacts remain tru
 **G-008 should remain open for the three focused repairs above.** No change to the approved mathematical propositions is required. All reviewed real source hashes remained unchanged, and only this follow-up and scratch evidence were written.
 
 STATUS: COMPLETE
+
+## Follow-up 2
+
+Reviewed **27ec925b542e9572f98b1eb43d6d1048fa5261cd** independently, including real scratch-project builds/status runs and controlled writer tests. **A and C are fixed. B rejects the old symlink case but still omits a valid class of imported source paths. One required source-coverage repair remains.** The approved mathematical statements are unchanged; `blueprint/` remained unread.
+
+| Item from the previous follow-up | Verdict | Evidence |
+|---|---|---|
+| A. Progress requires the target/lock audit | **Fixed** | Plain `True` exports, the old coercion exports and the shortcut axiom now make status generation fail. The tracker returns unknown, not proved. A broken statement lock also suppresses progress. |
+| B. Active-source fingerprint coverage | **Partially fixed** | The original directory symlink is rejected. However, an ordinary, nonsymlink source file under `lean/BTBMS/.lake/` can be imported successfully and changed to `sorry` without changing the fingerprint. |
+| C. Failure-safe status serialization | **Fixed for the reported failures** | Malformed JSON replaces old success with a failed record; valid output for 2,000 declarations succeeds without an argv-size error. Build, audit, extraction and fingerprint failures no longer preserve the older success. |
+
+### A — actual pipeline replay
+
+`scripts/lean_status.py:56–65` now runs the build, the exact exported-type/axiom audit, and extraction. `refresh.py:110–123` requires the successful state, both build/audit flags, the current fingerprint, and an intact lock.
+
+In the full scratch copy:
+
+- The unchanged admitted baseline passes the normal integrity check and status generation; its main claim remains **proved modulo sorry**. `--final` still correctly exits 1 on `sorryAx`.
+- `mainTheorem : True` / `paperTheorem : True` now make `lean-status.sh` exit 1 with `lock/export audit failed`; the actual tracker function returns **unknown (status not current)**.
+- The former coercion and shortcut-axiom implementations also make status generation exit 1.
+- Changing a locked source leaves the collector able to record diagnostics, but `lock_ok=false` and the tracker reports **statement lock broken**, with no proved claim.
+- The old visible-directory-symlink layout now fails before collection and reports an unsupported symlink.
+
+Evidence: `scratch/codex/lock-fu2-replay-results.json` and its listed `lock-fu2-*.log` files. This closes the previous separation between a working type guard and a progress path that did not consume it.
+
+### B — new source omission with no symlink
+
+The remaining issue is `lock.py:60–61`: it prunes **every directory whose basename is `.lake` or `.git`**, not just an actual build/VCS root. Lean permits quoted module components, so this is a valid source/import pair:
+
+```
+lean/BTBMS/.lake/Hidden.lean
+```
+
+```lean
+import BTBMS.«.lake».Hidden
+```
+
+This ordinary directory is inside the BTBMS source tree, **not** the project's actual cache `lean/.lake/`. There are no symlinks in the probe's Lean tree.
+
+I tested the following sequence through the real Lake/status pipeline in scratch:
+
+1. The copied Main imports the module, whose source initially proves `hiddenProof : True` with `True.intro`.
+2. The new status script successfully builds, audits the correct main exports, extracts declarations, and publishes `state=ok`, `build_ok=true`, `audit_ok=true`. The leaf reports no axioms.
+3. Only that actual source body is changed to `by sorry`.
+4. A real `lake build` succeeds, and fresh `#print axioms BTBMS.hiddenProof` shows `sorryAx`.
+5. Nevertheless, the source fingerprint is unchanged, the lock is intact, and the current tracker function accepts the saved report with:
+
+   ```
+   status_problem = None
+   claims["audit-leaf"] = "proved"
+   ```
+
+This is not forged JSON or a modified compiled artifact: both versions are compiled normally from their respective `.lean` sources. It is not a bypass of the fresh final-theorem axiom audit; it is another concrete failure to detect that a reported declaration's active source acquired a hole.
+
+**Required repair:** do not use directory basenames alone to exclude possible Lean sources. Hash valid active source paths, or reject unsupported imported layouts explicitly. A narrower exclusion of actual known cache/VCS roots, combined with ensuring no active source is supplied by excluded paths, is sufficient in principle; an import-closure inventory is another approach. Merely adding further symlink checks will not address this ordinary-directory case.
+
+Reproducer, source, logs and successful pre-edit audit metadata are in `scratch/codex/lock-fu2-hidden-full/`; `result.json` records the unchanged fingerprint, live `sorryAx` and false current “proved” state. The source/import mechanism and the failure remain within the original requirement to fingerprint actual proof inputs.
+
+### C — writer replay and failure behavior
+
+The new writer publishes an in-progress marker first, captures extraction output directly rather than passing it through argv, and atomically replaces the record. Replaying the old controlled producer tests gives:
+
+| Outcome | Exit | Published result |
+|---|---:|---|
+| Nonzero build, audit or extraction | 1 | Failed record; previous success replaced |
+| Malformed JSON | 1 | Failed record; previous success replaced |
+| Valid 2,000-declaration JSON | 0 | Successful 259,146-byte record; no argument-length failure |
+| Fingerprint error or change during generation | 1 | Failed record; previous success replaced |
+
+These writer tests use controlled producers to exercise serialization, not a fake compiler claiming to pass the real proof guard. Evidence: `scratch/codex/lock-fu2-writer-harness/results.json`.
+
+Further artificial schema tests found only nonblocking defensive-validation issues: a nonobject row can leave the initial running marker, which the tracker treats as unknown; a nested non-string axiom item can cause a reader error. The actual typed `Status.lean` producer does not emit those schemas. Neither reproduced the previous unsafe preservation of success, so I am not treating these as additional required proof-acceptance repairs.
+
+### Disposition
+
+**Keep G-008 open only for the active-source coverage issue in B.** A and C, and the earlier exact-type, axiom-whitelist and opaque-hole fixes, passed the relevant rechecks. No change to `MainTheorem` or `PaperTheorem` is required, and no new compiler/cache trust requirement is introduced by this remaining source-file case.
+
+All mutations and outputs were confined to scratch copies and this appended review. The real reviewed source hashes remained unchanged, and `blueprint/` was not read.
+
+STATUS: COMPLETE

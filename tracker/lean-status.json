@@ -8,7 +8,7 @@
  ],
  "lock_ok": true,
  "lock_problems": [],
- "fingerprint": "d8a0f902edf6e80f6c5a9ccae2d46ddb8451a0d874609fffb5046fa0cec13cff",
+ "fingerprint": "6a501e94ba209628361edacef60f3f38aa818d97bc95fa235416dae8824f170c",
  "decls": [
   {
    "axioms": [
@@ -672,6 +672,6 @@
    "name": "BTBMS.Tree.node.sizeOf_spec"
   }
  ],
- "generated": "2026-10-27T10:05:30+00:00",
- "head": "55faa50"
+ "generated": "2026-10-27T10:30:06+00:00",
+ "head": "27ec925"
 }
