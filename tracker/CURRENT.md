@@ -89,23 +89,15 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
 - One commit per integration step.
 
 ## Result (2026-10-28)
-- **The main theorem is formally verified.** `checks/lock/check.sh --final` passes on main
-  (merge 5eb7d06), after a cold rebuild of the BTBMS modules. It reports, for both
-  `BTBMS.mainTheorem` and `BTBMS.paperTheorem`: the statement lock is intact, the type is exactly
-  the locked `MainTheorem` / `PaperTheorem`, and the axioms are only `propext`,
-  `Classical.choice` and `Quot.sound`.
-- **The proof** lives in `lean/BTBMS/Plan/{Spine,U1..U5}.lean` and `lean/BTBMS/Main.lean`, about
-  4,200 declarations. The hierarchy is Part C (the reflection hierarchy, D-4).
-- **Leftover `sorry`s.** 17 declarations still contain one, and none is on the main theorem's
-  dependency path. They are:
-  - test mirrors (N1.1);
-  - T3.2q `head_path`/`head_path_rev`, made unnecessary by `condA_ord`'s direct proof;
-  - alternative readmission lemmas (L7.5b/c);
-  - graph lemmas no one used;
-  - R9.2 `sigma_lt`.
-
-  They can be deleted in a cleanup pass.
-- **Duplication.** U2 holds a duplicated copy of the phase-copy machinery (`*_G3` over
-  `OrdData_G3`), which could be deduplicated.
-- **Worktrees.** Prover worktrees `/home/dev/ggg/btbms-wt-1..8` and their `prove/*` branches are
-  merged and can be removed.
+- **The main theorem is formally verified.** `checks/lock/check.sh --final` passes on main. It
+  reports, for both `BTBMS.mainTheorem` and `BTBMS.paperTheorem`: the statement lock is intact,
+  the type is exactly the locked `MainTheorem` / `PaperTheorem`, and the axioms are only
+  `propext`, `Classical.choice` and `Quot.sound`.
+- **The proof** lives in `lean/BTBMS/Plan/{Spine,U1..U5}.lean` and `lean/BTBMS/Main.lean`. The
+  hierarchy is Part C (the reflection hierarchy, D-4).
+- **Cleanup done the same day:**
+  - The 17 `sorry` declarations off the main theorem's path are deleted. The project now has
+    4,027 declarations, none with or depending on `sorry`.
+  - The duplicated phase-copy machinery is removed: `OrdStep` extends `OrdData`, and 3,705 lines
+    are gone.
+  - The prover worktrees and their `prove/*` branches are removed.
