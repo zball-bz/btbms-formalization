@@ -739,11 +739,43 @@ noncomputable def hullAt (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (r :
     lang.ElementarySubstructure (M w) :=
   hull w hw {x | x.val < r ∨ x.val = κ.ord}
 
+/-- N4.9b helper: for `r < κ`, the hull `H_r` has fewer than `κ` points. -/
+theorem card_hullAt_lt (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
+    {r : Ordinal.{u}} (hr : r < κ.ord) :
+    Cardinal.mk (hullAt κ w hw r) < Cardinal.lift.{u + 1} κ := by
+  have hκ' : ℵ₀ < Cardinal.lift.{u + 1} κ := Cardinal.aleph0_lt_lift.2 hκ
+  unfold hullAt
+  refine (card_hull_le w hw _).trans_lt (max_lt hκ' ?_)
+  have hs : {x : M w | x.val < r ∨ x.val = κ.ord} =
+      {x : M w | x.val < r} ∪ {x : M w | x.val = κ.ord} := Set.ofPred_or
+  rw [hs]
+  refine (Cardinal.mk_union_le _ _).trans_lt (Cardinal.add_lt_of_lt hκ'.le ?_ ?_)
+  · exact (mk_setOf_val_lt_le w r).trans_lt (Cardinal.lift_lt.2 (Cardinal.lt_ord.1 hr))
+  · refine lt_of_le_of_lt ?_ (Cardinal.one_lt_aleph0.trans hκ')
+    rw [Cardinal.le_one_iff_subsingleton]
+    exact ⟨fun a b => Subtype.ext (Carrier.ext (a.2.trans b.2.symm))⟩
+
 /-- N4.9b: for regular uncountable `κ`, `H_r ∩ κ` is bounded below `κ` when `r < κ`. -/
 theorem hullAt_bounded (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) (hκ : ℵ₀ < κ)
     (hreg : κ.IsRegular) (hκw : κ.ord < w) {r : Ordinal.{u}} (hr : r < κ.ord) :
     ∃ f : Ordinal.{u}, r < f ∧ f < κ.ord ∧
-      ∀ y : hullAt κ w hw r, (y : M w).val < κ.ord → (y : M w).val < f := by sorry
+      ∀ y : hullAt κ w hw r, (y : M w).val < κ.ord → (y : M w).val < f := by
+  have hκl : IsLim κ.ord := isLim_ord hκ
+  let T := {y : hullAt κ w hw r // (y : M w).val < κ.ord}
+  have hT : Cardinal.lift.{u} (Cardinal.mk T) < (Ordinal.lift.{u + 1} κ.ord).cof := by
+    rw [← Ordinal.lift_cof, hreg.cof_ord]
+    have := (Cardinal.mk_subtype_le (fun y : hullAt κ w hw r => (y : M w).val < κ.ord)).trans_lt
+      (card_hullAt_lt κ w hw hκ hr)
+    exact (le_of_eq (Cardinal.lift_id'.{u, u + 1} _)).trans_lt this
+  have hsup := Ordinal.lift_iSup_add_one_lt_of_lt_cof (f := fun y : T => (y.1 : M w).val) hT
+    (fun y => y.2)
+  refine ⟨max (r + 1) (⨆ y : T, (y.1 : M w).val + 1),
+    lt_max_of_lt_left (Order.lt_add_one_iff.2 le_rfl), max_lt (hκl.add_one_lt hr) hsup, ?_⟩
+  intro y hy
+  have hbdd : BddAbove (Set.range fun y : T => (y.1 : M w).val + 1) :=
+    ⟨κ.ord, by rintro _ ⟨i, rfl⟩; exact (hκl.add_one_lt i.2).le⟩
+  exact lt_max_of_lt_right
+    ((Order.lt_add_one_iff.2 le_rfl).trans_le (le_ciSup hbdd (⟨y, hy⟩ : T)))
 
 /-- N4.9b: the club of reflection points: limits `x < κ` whose hull meets `κ` exactly in `x`. -/
 def reflPoints (κ : Cardinal.{u}) (w : Ordinal.{u}) (hw : 0 < w) : Set (Set.Iio κ.ord) :=
