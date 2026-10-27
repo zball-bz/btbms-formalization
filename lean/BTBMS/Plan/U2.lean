@@ -1213,7 +1213,64 @@ theorem path_functional {E : Forest} (hV : CondV E) {ks : KeySys} {c : ColAddr}
 theorem term_detour (S : OrdStep) {W : List (WithTop Key)} (hW : Noninc W) (hlow : W < S.termZ) :
     cursor (actualKeys S.A S.sd.col) W < S.m ∧
       ∃ q, (parents S.A S.sd.col)[cursor (actualKeys S.A S.sd.col) W]? = some q ∧
-        S.sd.r ≤ q ∧ q < S.sd.t ∧ Path S.A (actualKeys S.A) S.sd.col W q S.sd.r := by sorry
+        S.sd.r ≤ q ∧ q < S.sd.t ∧ Path S.A (actualKeys S.A) S.sd.col W q S.sd.r := by
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  have hVA : CondV S.A := S.inL.1
+  have hAA : CondA S.A := S.inL.2.2.2.1
+  have hlen : (actualKeys S.A S.sd.col).length = S.m + 1 := by
+    rw [length_actualKeys, hcol]; simp [OrdStep.m]
+  have hpar : parents S.A S.sd.col = S.sd.Q.map Prod.fst ++ [S.sd.r] := by
+    simp [parents, hcol]
+  have hplen : (parents S.A S.sd.col).length = S.m + 1 := by
+    rw [hpar]; simp [OrdStep.m]
+  have hj : cursor (actualKeys S.A S.sd.col) W < S.m :=
+    cursor_lt_of_lt_cutQuery hW (by omega) hlow
+  refine ⟨hj, ?_⟩
+  have hmem : S.sd.col ∈ S.A.colAddrs := by rw [Tree.mem_colAddrs_iff, hcol]; rfl
+  set j := cursor (actualKeys S.A S.sd.col) W with hjdef
+  set P : Nat → Nat := fun l => ((parents S.A S.sd.col)[l]?).getD 0 with hP
+  have hPget : ∀ l, l ≤ S.m → (parents S.A S.sd.col)[l]? = some (P l) := by
+    intro l hl
+    have : l < (parents S.A S.sd.col).length := by omega
+    simp [hP, List.getElem?_eq_getElem this]
+  have hPm : P S.m = S.sd.r := by
+    simp [hP, hpar, OrdStep.m]
+  have hWlt : W < cutQuery (actualKeys S.A S.sd.col) (j + 1) :=
+    (cursor_spec _ W hW).2 (by omega)
+  have hchain : ∀ n, j + n ≤ S.m → Path S.A (actualKeys S.A) S.sd.col W (P j) (P (j + n)) := by
+    intro n
+    induction n with
+    | zero => intro _; exact Relation.ReflTransGen.refl
+    | succ n ih =>
+      intro hn
+      have h1 := ih (by omega)
+      have hA := hAA S.sd.col hmem (j + n + 1) (P (j + n + 1)) (hPget _ hn)
+      simp only [Nat.add_one_ne_zero, if_false, Nat.add_sub_cancel] at hA
+      have hA' : Path S.A (actualKeys S.A) S.sd.col
+          (cutQuery (actualKeys S.A S.sd.col) (j + n + 1)) (P (j + n)) (P (j + n + 1)) := hA
+      have hle : W ≤ cutQuery (actualKeys S.A S.sd.col) (j + n + 1) :=
+        le_of_lt (lt_of_lt_of_le hWlt (cutQuery_mono _ (by omega)))
+      have h2 := path_nesting_path hVA hAA S.sd.col hW (cutQuery_noninc _ _) hle hA'
+      exact h1.trans h2
+  have hqr : Path S.A (actualKeys S.A) S.sd.col W (P j) S.sd.r := by
+    have := hchain (S.m - j) (by omega)
+    rwa [show j + (S.m - j) = S.m by omega, hPm] at this
+  refine ⟨P j, hPget j hj.le, path_le hVA hqr, ?_, hqr⟩
+  -- `q < t`: a parent of the stopping column is visible from it (V)
+  have hent : S.A.entryAt ⟨S.sd.col, j⟩ = some (P j, (S.sd.Q[j]'(by simp [OrdStep.m] at hj; omega)).2) := by
+    have hjQ : j < S.sd.Q.length := by simpa [OrdStep.m] using hj
+    have hjQ' : j < (S.sd.Q.map Prod.fst).length := by simpa using hjQ
+    have hPj : P j = (S.sd.Q[j]).1 := by
+      simp only [hP, hpar, List.getElem?_append_left hjQ', List.getElem?_map,
+        List.getElem?_eq_getElem hjQ, Option.map_some, Option.getD_some]
+    rw [hPj]
+    simp [Tree.entryAt, hcol, List.getElem?_append_left hjQ, hjQ]
+    rfl
+  have hmemE : (⟨S.sd.col, j⟩ : EntryAddr) ∈ S.A.entryAddrs := by
+    rw [Tree.mem_entryAddrs_iff, hent]; rfl
+  have := (condV_iff_lt S.A).mp hVA _ hmemE _ _ hent
+  rw [ht]
+  exact this
 
 /-! ## G9.4 — the stack of a phase copy (address algebra, T3.2i) -/
 
