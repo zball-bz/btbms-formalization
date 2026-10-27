@@ -6178,7 +6178,34 @@ theorem headQuery_prefix_D7 (S : OrdStep) {i : Nat} {c : ColAddr} (hi : 1 ≤ i 
       (parents S.B c).take S.m =
         ((parents S.A S.sd.col).take S.m).map (shiftVal S.sd.r ((i - 1) * S.d)) ∧
       (actualKeys S.B c).take S.m =
-        kappaQ S.sd.r S.d (i - 1) ((actualKeys S.A S.sd.col).take S.m) := by sorry
+        kappaQ S.sd.r S.d (i - 1) ((actualKeys S.A S.sd.col).take S.m) := by
+  obtain ⟨hcol, -, ht, -⟩ := stopData_spec S.hsd
+  obtain ⟨-, -, -, hrnum, hrt, -⟩ := rootData_spec S.hsd S.hrd
+  obtain ⟨col, hBcol, hlen, htake, -⟩ := colAt_head S.inL S.kind S.hsd S.hrd S.out hi hc
+  have hm : S.sd.Q.length = S.m := rfl
+  have hnum := num_phaseCol S.inL S.kind S.hsd S.hrd (Or.inl rfl) hi.1 hc
+  rw [hrnum] at hnum
+  simp only [phaseOff, isQMat_rdcol S, Bool.false_eq_true, if_false] at hnum
+  have hBpar : parents S.B c = col.map Prod.fst := by simp [parents, hBcol]
+  refine ⟨by rw [hBpar, List.length_map, hlen]; omega, ?_, ?_⟩
+  · rw [hBpar, ← List.map_take, ← hm, htake, mapCol_eq_map]
+    simp only [parents, hcol, Option.getD_some, List.map_append, List.map_map]
+    rw [List.take_left' (by simp), List.map_map]
+    rfl
+  · simp only [actualKeys, hBcol, hcol, Option.getD_some, ← List.map_take, ← hm, htake,
+      mapCol_eq_map, List.map_map, kappaQ]
+    rw [List.take_left' (by simp)]
+    congr 1
+    funext y
+    simp only [Function.comp_apply, WithTop.map_coe]
+    rw [hnum, ← ht]
+    have : S.sd.r + i * period S.sd = S.sd.t + (i - 1) * S.d := by
+      simp only [OrdStep.d, period]
+      have : i * (S.sd.t - S.sd.r) = (i - 1) * (S.sd.t - S.sd.r) + (S.sd.t - S.sd.r) := by
+        rw [← Nat.succ_mul]; congr 1; omega
+      omega
+    rw [this]
+    exact congrArg _ (relKey_shift S.sd.r S.d (i - 1) S.sd.t hrt.le y.2)
 
 -- D7: numbers of a phase pair
 theorem phasePair_num_D7 (S : OrdStep) {j φ : Nat} (hj : 1 ≤ j ∧ j ≤ S.n) {a c : ColAddr}
