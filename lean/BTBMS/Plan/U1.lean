@@ -2487,6 +2487,202 @@ theorem stopData_of_route {E : Forest} {c : ColAddr} {Q : Column} {r : Nat}
     stopData E = some { depth := c.path.length, col := c, t := c.num 0, r := r, Q := Q } := by
   sorry
 
+mutual
+/-- D1.9b helper: the number of roles does not depend on the address prefix. -/
+theorem rolesF_length_eq {α : Type} : (π π' : List (Nat × Nat)) → (t : Tree α) →
+    (Tree.rolesF π t).length = (Tree.rolesF π' t).length
+  | π, π', .node cols => by simp only [Tree.rolesF]; exact rolesCols_length_eq π π' 0 0 cols
+theorem rolesCols_length_eq {α : Type} : (π π' : List (Nat × Nat)) → (c c' : Nat) →
+    (cs : List (List (α × Tree α))) → (Tree.rolesCols π c cs).length = (Tree.rolesCols π' c' cs).length
+  | _, _, _, _, [] => rfl
+  | π, π', c, c', col :: rest => by
+    simp only [Tree.rolesCols, List.length_cons, List.length_append]
+    rw [rolesCol_length_eq π π' c c' 0 0 col, rolesCols_length_eq π π' (c + 1) (c' + 1) rest]
+theorem rolesCol_length_eq {α : Type} : (π π' : List (Nat × Nat)) → (c c' i i' : Nat) →
+    (es : List (α × Tree α)) → (Tree.rolesCol π c i es).length = (Tree.rolesCol π' c' i' es).length
+  | _, _, _, _, _, _, [] => rfl
+  | π, π', c, c', i, i', (_, h) :: rest => by
+    simp only [Tree.rolesCol, List.length_cons, List.length_append]
+    rw [rolesF_length_eq (π ++ [(c, i)]) (π' ++ [(c', i')]) h,
+      rolesCol_length_eq π π' c c' (i + 1) (i' + 1) rest]
+end
+
+/-- D1.9b helper: the height of the last entry of the last column has at least two roles fewer
+(the last column's role and the entry's slot). -/
+theorem size_lastHeight (cs : List Column) (es : Column) (q : Nat) (h : Forest) :
+    h.size + 2 ≤ (Tree.node (cs ++ [es ++ [(q, h)]])).size := by
+  unfold Tree.size Tree.roles
+  simp only [Tree.rolesF, Tree.rolesCols_append, Tree.rolesCols, Tree.rolesCol_append, Tree.rolesCol,
+    List.length_append, List.length_cons, List.length_nil]
+  rw [rolesF_length_eq [] ([] ++ [(0 + cs.length, 0 + es.length)]) h]
+  omega
+
+/-- D1.9b helper: one step of the route through the last entry of the last column. -/
+theorem routeColsAux_snoc (m : Nat) (π : List (Nat × Nat)) (cs : List Column) (es : Column)
+    (q : Nat) (h : Forest) :
+    routeColsAux (m + 1) (.node (cs ++ [es ++ [(q, h)]])) π =
+      ⟨π, cs.length⟩ :: routeColsAux m h (π ++ [(cs.length, es.length)]) := by
+  simp [routeColsAux, Tree.cols]
+
+theorem routeColsAux_empty (m : Nat) (π : List (Nat × Nat)) :
+    routeColsAux m (Tree.node []) π = [] := by
+  cases m <;> rfl
+
+/-- D1.9b helper: entries and columns below the last entry of the last column. -/
+theorem entryAt_snoc_cons (cs : List Column) (es : Column) (q : Nat) (h : Forest)
+    (ρ : List (Nat × Nat)) (j k : Nat) :
+    (Tree.node (cs ++ [es ++ [(q, h)]])).entryAt ⟨⟨(cs.length, es.length) :: ρ, j⟩, k⟩ =
+      h.entryAt ⟨⟨ρ, j⟩, k⟩ := by
+  rw [Tree.entryAt_eq_bind, Tree.entryAt_eq_bind, Tree.forestAt_cons]
+  simp [Tree.cols]
+
+theorem colAt_snoc_cons (cs : List Column) (es : Column) (q : Nat) (h : Forest)
+    (ρ : List (Nat × Nat)) (j : Nat) :
+    (Tree.node (cs ++ [es ++ [(q, h)]])).colAt ⟨(cs.length, es.length) :: ρ, j⟩ = h.colAt ⟨ρ, j⟩ := by
+  unfold Tree.colAt
+  rw [Tree.forestAt_cons]
+  simp [Tree.cols]
+
+/-- D1.9b helper: the word of a nonempty forest is nonempty. -/
+theorem wordAt_ne_nil {d : Nat} {h : Forest} (hh : h.cols ≠ []) : wordAt d h ≠ [] := by
+  obtain ⟨cols⟩ := h
+  cases cols with
+  | nil => exact absurd rfl hh
+  | cons col rest =>
+    cases col with
+    | nil => simp [wordAt, wordCols, wordCol]
+    | cons x es => obtain ⟨p, H⟩ := x; simp [wordAt, wordCols, wordCol]
+
+/-- D1.9b helper: the entry atom `(2e, 1, p)` (`first`) or `(2e+1, 0, p)`. -/
+def entryAtom (e p : Nat) (first : Bool) : WordAtom :=
+  if first then toLex (2 * e, toLex (1, p)) else toLex (2 * e + 1, toLex (0, p))
+
+/-- D1.9b helper: the last atom of a word along the route, by strong induction on the size,
+relative to a depth `d` and address prefix `π`, for every adequate fuel; `G₀` is the forest
+without that atom. -/
+theorem lastAtom_route : ∀ (n : Nat) (F : Forest) (d : Nat) (π : List (Nat × Nat))
+    (W : List WordAtom) {e p : Nat} {first : Bool}, F.size ≤ n →
+    wordAt d F = W ++ [entryAtom e p first] →
+    ∃ (c : ColAddr) (k : Nat) (ρ : List (Nat × Nat)) (G₀ : Forest),
+      c.path = π ++ ρ ∧ d ≤ e ∧ ρ.length = e - d ∧ (k = 0 ↔ first = true) ∧
+      (∀ fuel, F.size < fuel → (routeColsAux fuel F π).getLast? = some c) ∧
+      F.entryAt ⟨⟨ρ, c.col⟩, k⟩ = some (p, Tree.empty) ∧
+      ((F.colAt ⟨ρ, c.col⟩).getD []).length = k + 1 ∧ wordAt d G₀ = W ∧
+      (∀ fuel fuel', F.size < fuel → G₀.size < fuel' →
+        (routeColsAux fuel' G₀ π).take (e - d) = (routeColsAux fuel F π).take (e - d)) ∧
+      (k ≠ 0 → (∀ fuel', G₀.size < fuel' → (routeColsAux fuel' G₀ π)[e - d]? = some c) ∧
+        G₀.colAt ⟨ρ, c.col⟩ = some (((F.colAt ⟨ρ, c.col⟩).getD []).take k)) := by
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+  intro F d π W e p first hn hw
+  obtain ⟨cols⟩ := F
+  rcases List.eq_nil_or_concat' cols with rfl | ⟨cs, col, rfl⟩
+  · simp [wordAt, wordCols] at hw
+  rcases List.eq_nil_or_concat' col with rfl | ⟨es, ⟨q, h⟩, rfl⟩
+  · exfalso
+    rw [wordAt, wordCols_append, wordCols, wordCols, List.append_nil, wordCol] at hw
+    have := (List.append_singleton_inj.mp hw).2
+    unfold entryAtom at this
+    split at this <;> (simp at this; try omega)
+  rw [wordAt, wordCols_append, wordCols, wordCols, List.append_nil, wordCol_snoc] at hw
+  by_cases hh : h.cols = []
+  · -- the last entry has an empty height: it carries the last atom
+    obtain ⟨hc⟩ := h
+    simp only [Tree.cols] at hh
+    subst hh
+    have hR : ∀ fuel, (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])).size < fuel →
+        routeColsAux fuel (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])) π = [⟨π, cs.length⟩] := by
+      intro fuel hf
+      obtain ⟨m, rfl⟩ : ∃ m, fuel = m + 1 := ⟨fuel - 1, by omega⟩
+      rw [routeColsAux_snoc, routeColsAux_empty]
+    have hE : (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])).entryAt ⟨⟨[], cs.length⟩, es.length⟩ =
+        some (q, Tree.empty) := by
+      simp [Tree.entryAt_eq_bind, Tree.forestAt, Tree.cols, Tree.empty]
+    have hC : (Tree.node (cs ++ [es ++ [(q, Tree.node [])]])).colAt ⟨[], cs.length⟩ =
+        some (es ++ [(q, Tree.node [])]) := by
+      simp [Tree.colAt, Tree.forestAt, Tree.cols]
+    have hw0 : wordAt (d + 1) (Tree.node ([] : List Column)) = [] := rfl
+    rw [hw0, List.append_nil] at hw
+    rcases List.eq_nil_or_concat' es with rfl | ⟨es', x', rfl⟩
+    · -- first entry: the atom `(2d, 1, q)`
+      have hcol : wordCol d ([] ++ [(q, Tree.empty)]) = [toLex (2 * d, toLex (1, q))] := by
+        simp [wordCol, wordLater, Tree.empty, wordAt, wordCols]
+      rw [hcol] at hw
+      obtain ⟨hW, hz⟩ := List.append_singleton_inj.mp hw
+      unfold entryAtom at hz
+      cases first with
+      | false => simp at hz
+      | true =>
+        simp at hz
+        obtain ⟨rfl, rfl⟩ := hz
+        refine ⟨⟨π, cs.length⟩, 0, [], Tree.node cs, by simp, le_rfl, by simp, by simp, ?_, ?_, ?_,
+          ?_, ?_, by simp⟩
+        · intro fuel hf; rw [hR fuel hf]; rfl
+        · simpa using hE
+        · rw [hC]; simp
+        · simp [wordAt, hW]
+        · intro fuel fuel' _ _; simp
+    · -- later entry: the atom `(2d+1, 0, q)`
+      have hcol : wordCol d (es' ++ [x'] ++ [(q, Tree.empty)]) =
+          wordCol d (es' ++ [x']) ++ [toLex (2 * d + 1, toLex (0, q))] := by
+        rw [wordCol_append_of_ne_nil d (by simp)]
+        simp [wordLater, Tree.empty, wordAt, wordCols]
+      rw [hcol, ← List.append_assoc] at hw
+      obtain ⟨hW, hz⟩ := List.append_singleton_inj.mp hw
+      unfold entryAtom at hz
+      cases first with
+      | true => simp at hz
+      | false =>
+        simp at hz
+        obtain ⟨rfl, rfl⟩ := hz
+        refine ⟨⟨π, cs.length⟩, (es' ++ [x']).length, [], Tree.node (cs ++ [es' ++ [x']]), by simp,
+          le_rfl, by simp, by simp, ?_, ?_, ?_, ?_, ?_, ?_⟩
+        · intro fuel hf; rw [hR fuel hf]; rfl
+        · simpa using hE
+        · rw [hC]; simp
+        · simp [wordAt, wordCols_append, wordCols, hW]
+        · intro fuel fuel' _ _; simp
+        · intro _
+          refine ⟨fun fuel' hf => ?_, ?_⟩
+          · obtain ⟨m, rfl⟩ : ∃ m, fuel' = m + 1 := ⟨fuel' - 1, by omega⟩
+            obtain ⟨q', h'⟩ := x'
+            rw [routeColsAux_snoc]; simp
+          · rw [hC]; simp [Tree.colAt, Tree.forestAt, Tree.cols, List.take_append]
+  · -- the last entry has a nonempty height: the last atom lies in it
+    obtain ⟨W', z', hW'⟩ := (List.eq_nil_or_concat' (wordAt (d + 1) h)).resolve_left
+      (wordAt_ne_nil hh)
+    rw [hW', ← List.append_assoc, ← List.append_assoc] at hw
+    obtain ⟨hW, rfl⟩ := List.append_singleton_inj.mp hw
+    have hsz := size_lastHeight cs es q h
+    obtain ⟨c, k, ρ', G₀', hc, hde, hρ, hk, hR, hE, hcol, hWG, hT, hK⟩ :=
+      ih h.size (by omega) h (d + 1) (π ++ [(cs.length, es.length)]) W' le_rfl hW'
+    have hsz' := size_lastHeight cs es q G₀'
+    refine ⟨c, k, (cs.length, es.length) :: ρ', Tree.node (cs ++ [es ++ [(q, G₀')]]),
+      by simp [hc], by omega, by simp; omega, hk, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · intro fuel hf
+      obtain ⟨m, rfl⟩ : ∃ m, fuel = m + 1 := ⟨fuel - 1, by omega⟩
+      rw [routeColsAux_snoc, List.getLast?_cons, hR m (by omega)]
+      rfl
+    · rw [entryAt_snoc_cons]; exact hE
+    · rw [colAt_snoc_cons]; exact hcol
+    · rw [wordAt, wordCols_append, wordCols, wordCols, List.append_nil, wordCol_snoc, hWG, ← hW,
+        List.append_assoc]
+    · intro fuel fuel' hf hf'
+      obtain ⟨m, rfl⟩ : ∃ m, fuel = m + 1 := ⟨fuel - 1, by omega⟩
+      obtain ⟨m', rfl⟩ : ∃ m', fuel' = m' + 1 := ⟨fuel' - 1, by omega⟩
+      obtain ⟨t, ht⟩ : ∃ t, e - d = t + 1 := ⟨e - d - 1, by omega⟩
+      rw [routeColsAux_snoc, routeColsAux_snoc, ht, List.take_succ_cons, List.take_succ_cons,
+        show t = e - (d + 1) by omega, hT m m' (by omega) (by omega)]
+    · intro hk0
+      obtain ⟨hK1, hK2⟩ := hK hk0
+      refine ⟨fun fuel' hf' => ?_, ?_⟩
+      · obtain ⟨m', rfl⟩ : ∃ m', fuel' = m' + 1 := ⟨fuel' - 1, by omega⟩
+        obtain ⟨t, ht⟩ : ∃ t, e - d = t + 1 := ⟨e - d - 1, by omega⟩
+        rw [routeColsAux_snoc, ht, List.getElem?_cons_succ, show t = e - (d + 1) by omega]
+        exact hK1 m' (by omega)
+      · rw [colAt_snoc_cons, colAt_snoc_cons]; exact hK2
+
 /-- D1.9b (requested by U2 REQ-U1-14, for N2.1): a one-atom extension of a word. If
 `w(E) = w(G) ⌢ [z]` with `z` an entry atom at depth `e` (`(2e,1,p)` if `first`, else
 `(2e+1,0,p)`), then the last route column `c` of `E` has depth `e` and ends in its entry `k`,
@@ -2501,7 +2697,23 @@ theorem routeCols_of_word_snoc {G E : Forest} {e p : Nat} {first : Bool}
       ((E.colAt c).getD []).length = k + 1 ∧ G = safePrefix E (mu E - 1) ∧
       (routeCols G).take e = (routeCols E).take e ∧
       (k ≠ 0 → (routeCols G)[e]? = some c ∧ G.colAt c = some (((E.colAt c).getD []).take k)) := by
-  sorry
+  obtain ⟨c, k, ρ, G₀, hc, -, hρ, hk, hR, hE, hcol, hWG, hT, hK⟩ :=
+    lastAtom_route E.size E 0 [] (word G) le_rfl hw
+  simp only [List.nil_append] at hc
+  have hc' : c = ⟨ρ, c.col⟩ := by rw [← hc]
+  have hG : G = G₀ := word_injective hWG.symm
+  subst hG
+  unfold routeCols
+  refine ⟨c, k, by rw [hc, hρ]; rfl, hk, hR _ (Nat.lt_succ_self _), by rw [hc']; exact hE,
+    by rw [hc']; exact hcol, ?_, ?_, ?_⟩
+  · apply word_injective
+    rw [word_safePrefix, hw]
+    simp [mu, hw]
+  · simpa using hT _ _ (Nat.lt_succ_self _) (Nat.lt_succ_self _)
+  · intro hk0
+    obtain ⟨hK1, hK2⟩ := hK hk0
+    refine ⟨by simpa using hK1 _ (Nat.lt_succ_self _), ?_⟩
+    rw [hc']; exact hK2
 
 mutual
 /-- N1.4 helper: `wordAt_add` with its column, entry and later-entry forms. -/
