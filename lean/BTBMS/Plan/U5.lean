@@ -3668,7 +3668,13 @@ theorem control_edge (I : Interface.{u}) {H : Forest} {α : Role → Ordinal.{u}
     (hα : IsConfig I.toPrims H α) :
     I.Edge (α (.slot (Scan.closingSlot sd))) (α (.ord sd.col)) (α (.ord rd.col)) ∧
       α (.ord rd.col) < α (.ord sd.col) ∧ α (.ord sd.col) < α (.slot (Scan.closingSlot sd)) := by
-  sorry
+  obtain ⟨hres, -, hmem, hent⟩ := Scan.rootData_col hsd hrd
+  have hr : ∃ v, (Scan.closingSlot sd).col.rep 0 sd.r = some (.ord rd.col, v) := by
+    simp [ColAddr.rep, Scan.closingSlot, hres]
+  obtain ⟨v, hr⟩ := hr
+  have he : I.Edge (α (.slot (Scan.closingSlot sd))) (α (.ord sd.col)) (α (.ord rd.col)) :=
+    hα _ (edge_mem_graph hmem hent hr).1
+  exact ⟨he, I.edge_lt he⟩
 
 /-- L8.6c: the first retained role `v` of `K` is absent, on the route (ordinary or active
 owner), or the closed root owner at the final cursor (txt:1288-1297). -/
