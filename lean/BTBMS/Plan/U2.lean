@@ -1741,6 +1741,160 @@ theorem onStack_kerCol_qmat (S : OrdStep) {x x' : ColAddr} (hx : kerCol S.sd S.r
     x'.OnStack o' ↔ o' = ⟨[], 0⟩ ∨ ∃ o, x.OnStack o ∧ isQMat S.sd o = true ∧
       kerCol S.sd S.rd o = some o' := by sorry
 
+-- G9 (helper): columns of a forest below a step `(ci, ei)`
+theorem colAt_cons (cols : List Column) (ci ei : Nat) (π : List (Nat × Nat)) (col : Nat) :
+    (Tree.node cols).colAt ⟨(ci, ei) :: π, col⟩ =
+      ((cols[ci]?).bind (·[ei]?)).bind fun x => x.2.colAt ⟨π, col⟩ := by
+  unfold Tree.colAt
+  simp only [Tree.forestAt, Tree.cols]
+  cases hx : (cols[ci]?).bind (·[ei]?) with
+  | none => rfl
+  | some x => obtain ⟨q, h⟩ := x; rfl
+
+-- G9 (helper): containment below a common step
+theorem container_cons (ci ei : Nat) (π₁ π₂ : List (Nat × Nat)) (c₁ c₂ : Nat) :
+    (⟨(ci, ei) :: π₁, c₁⟩ : ColAddr).container ⟨(ci, ei) :: π₂, c₂⟩ =
+      ((⟨π₁, c₁⟩ : ColAddr).container ⟨π₂, c₂⟩).map fun e => ⟨⟨(ci, ei) :: π₁, c₁⟩, e.idx⟩ := by
+  unfold ColAddr.container
+  simp only [List.length_cons, List.drop_succ_cons, List.take_succ_cons, List.cons.injEq, true_and]
+  cases List.drop π₁.length π₂ with
+  | nil => rfl
+  | cons x xs =>
+    obtain ⟨k, i⟩ := x
+    simp only
+    split_ifs <;> rfl
+
+-- G9 (helper): the column-level form of G9.4l, by induction along the cap's address
+theorem litCapAux_colAt (k p : Nat) (π : List (Nat × Nat)) (j : Nat) (F : Forest)
+    (hc : (F.colAt ⟨π, j⟩).isSome) (o : ColAddr) (ho : (⟨π, j⟩ : ColAddr).OnStack o) :
+    (∀ e, o.container ⟨π, j⟩ = some e → ∃ col h', F.colAt o = some col ∧ e.idx < col.length ∧
+        (litCapAux k p π j F).colAt o = some (col.take e.idx ++ [((col[e.idx]?.map Prod.fst).getD 0, h')])) ∧
+      (o.container ⟨π, j⟩ = none → (litCapAux k p π j F).colAt o = F.colAt o) := by
+  induction π generalizing F o with
+  | nil =>
+    obtain ⟨cols⟩ := F
+    obtain ⟨op, oc⟩ := o
+    rcases ho with ⟨l, cl, il, hl, -, -⟩ | ⟨hp, hlt⟩
+    · simp at hl
+    · simp only at hp hlt
+      subst hp
+      have hj : j < cols.length := by
+        unfold Tree.colAt at hc
+        simp only [Tree.forestAt, Option.bind_some, Tree.cols] at hc
+        cases h : cols[j]? with
+        | none => rw [h] at hc; cases hc
+        | some _ => exact (List.getElem?_eq_some_iff.mp h).1
+      refine ⟨fun e he => by simp [ColAddr.container] at he, fun _ => ?_⟩
+      unfold litCapAux Tree.colAt
+      simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+      rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hlt]
+  | cons s rest ih =>
+    obtain ⟨ci, ei⟩ := s
+    obtain ⟨cols⟩ := F
+    rw [colAt_cons] at hc
+    -- the containing entry exists
+    obtain ⟨x, hx⟩ : ∃ x, (cols[ci]?).bind (·[ei]?) = some x := by
+      cases h : (cols[ci]?).bind (·[ei]?) with
+      | none => rw [h] at hc; cases hc
+      | some x => exact ⟨x, rfl⟩
+    obtain ⟨q, h⟩ := x
+    rw [hx] at hc
+    simp only [Option.bind_some] at hc
+    obtain ⟨colci, hcolci, hei⟩ : ∃ colci, cols[ci]? = some colci ∧ colci[ei]? = some (q, h) := by
+      cases h1 : cols[ci]? with
+      | none => rw [h1] at hx; cases hx
+      | some colci => rw [h1] at hx; exact ⟨colci, rfl, hx⟩
+    have hci : ci < cols.length := (List.getElem?_eq_some_iff.mp hcolci).1
+    have heil : ei < colci.length := (List.getElem?_eq_some_iff.mp hei).1
+    have hK : litCapAux k p ((ci, ei) :: rest) j (Tree.node cols) =
+        .node (cols.take ci ++ [colci.take ei ++ [(q, litCapAux k p rest j h)]]) := by
+      simp only [litCapAux, List.getD_eq_getElem?_getD, hcolci, Option.getD_some, hei]
+    rw [hK]
+    have hlen1 : (cols.take ci).length = ci := by rw [List.length_take]; omega
+    have hlen2 : (colci.take ei).length = ei := by rw [List.length_take]; omega
+    have hKci : (cols.take ci ++ [colci.take ei ++ [(q, litCapAux k p rest j h)]])[ci]? =
+        some (colci.take ei ++ [(q, litCapAux k p rest j h)]) := by
+      rw [List.getElem?_append_right (le_of_eq hlen1), hlen1, Nat.sub_self]; rfl
+    have hKei : (colci.take ei ++ [(q, litCapAux k p rest j h)])[ei]? =
+        some (q, litCapAux k p rest j h) := by
+      rw [List.getElem?_append_right (le_of_eq hlen2), hlen2, Nat.sub_self]; rfl
+    obtain ⟨op, oc⟩ := o
+    rcases ho with ⟨l, cl, il, hl, hp, hle⟩ | ⟨hp, hlt⟩
+    · simp only at hp hle
+      cases l with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Prod.mk.injEq] at hl
+        have hcl : cl = ci := hl.1.symm
+        simp only [List.take_zero] at hp
+        subst hp
+        rw [hcl] at hle
+        rcases Nat.eq_or_lt_of_le hle with heq | hlt'
+        · rw [heq]
+          have hcont : (⟨[], ci⟩ : ColAddr).container ⟨(ci, ei) :: rest, j⟩ = some ⟨⟨[], ci⟩, ei⟩ := by
+            simp [ColAddr.container]
+          refine ⟨fun e he => ?_, fun he => (by rw [hcont] at he; cases he)⟩
+          rw [hcont, Option.some.injEq] at he
+          subst he
+          refine ⟨colci, litCapAux k p rest j h, ?_, heil, ?_⟩
+          · unfold Tree.colAt; simp [Tree.forestAt, Tree.cols, hcolci]
+          · unfold Tree.colAt
+            simp only [Tree.forestAt, Option.bind_some, Tree.cols, hKci, hei]
+            simp
+        · have hcont : (⟨[], oc⟩ : ColAddr).container ⟨(ci, ei) :: rest, j⟩ = none := by
+            unfold ColAddr.container
+            simp only [List.length_nil, List.drop_zero, List.take_zero, true_and]
+            rw [if_neg (by omega)]
+          refine ⟨fun e he => (by rw [hcont] at he; cases he), fun _ => ?_⟩
+          unfold Tree.colAt
+          simp only [Tree.forestAt, Option.bind_some, Tree.cols]
+          rw [List.getElem?_append_left (by simp; omega), List.getElem?_take_of_lt hlt']
+      | succ l =>
+        simp only [List.getElem?_cons_succ] at hl
+        simp only [List.take_succ_cons] at hp
+        subst hp
+        have ho' : (⟨rest, j⟩ : ColAddr).OnStack ⟨rest.take l, oc⟩ := Or.inl ⟨l, cl, il, hl, rfl, hle⟩
+        obtain ⟨ih1, ih2⟩ := ih h hc ⟨rest.take l, oc⟩ ho'
+        have hKcol : (Tree.node (cols.take ci ++ [colci.take ei ++ [(q, litCapAux k p rest j h)]])).colAt
+            ⟨(ci, ei) :: rest.take l, oc⟩ = (litCapAux k p rest j h).colAt ⟨rest.take l, oc⟩ := by
+          rw [colAt_cons, hKci]
+          simp only [Option.bind_some, hKei]
+        have hFcol : (Tree.node cols).colAt ⟨(ci, ei) :: rest.take l, oc⟩ = h.colAt ⟨rest.take l, oc⟩ := by
+          rw [colAt_cons, hx]; rfl
+        rw [hKcol, hFcol, container_cons]
+        refine ⟨fun e he => ?_, fun he => ?_⟩
+        · cases hce : (⟨rest.take l, oc⟩ : ColAddr).container ⟨rest, j⟩ with
+          | none => rw [hce] at he; cases he
+          | some e' =>
+            rw [hce] at he
+            simp only [Option.map_some, Option.some.injEq] at he
+            subst he
+            exact ih1 e' hce
+        · cases hce : (⟨rest.take l, oc⟩ : ColAddr).container ⟨rest, j⟩ with
+          | none => exact ih2 hce
+          | some e' => rw [hce] at he; cases he
+    · simp only at hp hlt
+      subst hp
+      have ho' : (⟨rest, j⟩ : ColAddr).OnStack ⟨rest, oc⟩ := Or.inr ⟨rfl, hlt⟩
+      obtain ⟨ih1, ih2⟩ := ih h hc ⟨rest, oc⟩ ho'
+      have hKcol : (Tree.node (cols.take ci ++ [colci.take ei ++ [(q, litCapAux k p rest j h)]])).colAt
+          ⟨(ci, ei) :: rest, oc⟩ = (litCapAux k p rest j h).colAt ⟨rest, oc⟩ := by
+        rw [colAt_cons, hKci]
+        simp only [Option.bind_some, hKei]
+      have hFcol : (Tree.node cols).colAt ⟨(ci, ei) :: rest, oc⟩ = h.colAt ⟨rest, oc⟩ := by
+        rw [colAt_cons, hx]; rfl
+      rw [hKcol, hFcol, container_cons]
+      refine ⟨fun e he => ?_, fun he => ?_⟩
+      · cases hce : (⟨rest, oc⟩ : ColAddr).container ⟨rest, j⟩ with
+        | none => rw [hce] at he; cases he
+        | some e' =>
+          rw [hce] at he
+          simp only [Option.map_some, Option.some.injEq] at he
+          subst he
+          exact ih1 e' hce
+      · cases hce : (⟨rest, oc⟩ : ColAddr).container ⟨rest, j⟩ with
+        | none => exact ih2 hce
+        | some e' => rw [hce] at he; cases he
+
 -- G9.4l: a literal cap keeps every stack column of its cap column: a container through its
 -- active entry `u` (same parents up to `u`, same keys before `u`), any other stack column whole
 theorem colAt_litCap_onStack {B : Forest} {c o : ColAddr} {k p : Nat} (hc : c ∈ B.colAddrs)
@@ -1748,7 +1902,25 @@ theorem colAt_litCap_onStack {B : Forest} {c o : ColAddr} {k p : Nat} (hc : c �
     (∀ e, o.container c = some e →
         parents (litCap B c k p) o = (parents B o).take (e.idx + 1) ∧
         (actualKeys (litCap B c k p) o).take e.idx = (actualKeys B o).take e.idx) ∧
-      (o.container c = none → (litCap B c k p).colAt o = B.colAt o) := by sorry
+      (o.container c = none → (litCap B c k p).colAt o = B.colAt o) := by
+  have hcs : (B.colAt c).isSome := (Tree.mem_colAddrs_iff _ _).mp hc
+  have hK : litCap B c k p = litCapAux k p c.path c.col B := by
+    show litCapBody B c k p = _
+    unfold litCapBody
+    rw [if_pos hcs]
+  rw [hK]
+  obtain ⟨h1, h2⟩ := litCapAux_colAt k p c.path c.col B hcs o ho
+  refine ⟨fun e he => ?_, h2⟩
+  obtain ⟨col, h', hB, hlt, hKc⟩ := h1 e he
+  have hfst : (col[e.idx]?.map Prod.fst).getD 0 = (col[e.idx]'hlt).1 := by
+    simp [List.getElem?_eq_getElem hlt]
+  refine ⟨?_, ?_⟩
+  · simp only [parents, hB, hKc, Option.getD_some, List.map_append, List.map_cons, List.map_nil,
+      hfst]
+    rw [List.take_add_one, List.getElem?_map, List.getElem?_eq_getElem hlt, List.map_take]
+    rfl
+  · simp only [actualKeys, hB, hKc, Option.getD_some, List.map_append]
+    rw [List.take_left' (by simp; omega), ← List.map_take]
 
 -- G9.4m: a context `C_A(Z)` keeps every stack column of the stopping column: same parents, and
 -- the same entries except the height of the active entry of a container
