@@ -1617,7 +1617,30 @@ theorem colAt_phaseCol_tail (S : OrdStep) {h : Nat} (hh : 1 ≤ h ∧ h ≤ S.n)
     (ho : IsTmplCol S.A S.sd S.rd o) (hoq : isQMat S.sd o = false) {A' : Forest}
     (hA' : expand S.A (S.n - h) = some A') :
     S.B.colAt ((phaseCol S.sd S.rd h o).getD o) =
-      (A'.colAt o).map (Tree.mapCol (shiftVal S.sd.r (h * S.d))) := by sorry
+      (A'.colAt o).map (Tree.mapCol (shiftVal S.sd.r (h * S.d))) := by
+  obtain ⟨c, hc⟩ : ∃ c, phaseCol S.sd S.rd h o = some c := by
+    have hker := ho.2.2.2
+    unfold phaseCol
+    cases hk : kerCol S.sd S.rd o with
+    | none => rw [hk] at hker; cases hker
+    | some a' => exact ⟨_, rfl⟩
+  rw [hc, Option.getD_some]
+  have hls := localSuffix_phase S.inL S.kind S.hsd S.hrd S.out hh ho hc hA'
+  rw [hoq] at hls
+  simp only [Bool.false_eq_true, if_false] at hls
+  have key : ∀ (E : Forest) (a : ColAddr), E.colAt a = (localSuffix E a).cols.head? := by
+    intro E a
+    unfold localSuffix Tree.colAt
+    cases E.forestAt a.path with
+    | none => simp [Tree.cols, Tree.empty]
+    | some f => simp [Tree.cols, List.head?_drop]
+  rw [key S.B c, hls, key A' o]
+  unfold shift
+  generalize localSuffix A' o = L
+  obtain ⟨cols⟩ := L
+  cases cols with
+  | nil => simp [Tree.map, Tree.mapCols, Tree.cols]
+  | cons x xs => simp [Tree.map, Tree.mapCols, Tree.cols, OrdStep.d]
 
 -- G9.4a: the heads `s_1, …, s_φ` are on the stack of `c`; a head containing `c` does so through
 -- an entry of index `≥ m` (a restored entry)
