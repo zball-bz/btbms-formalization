@@ -1272,6 +1272,42 @@ theorem term_detour (S : OrdStep) {W : List (WithTop Key)} (hW : Noninc W) (hlow
   rw [ht]
   exact this
 
+-- G9 (helper): a response is the parent at the cursor
+theorem resp_eq_parents (E : Forest) (ks : KeySys) (o : ColAddr) (W : List (WithTop Key)) :
+    resp E ks o W = (parents E o)[cursor (ks o) W]? := by
+  unfold resp parents
+  rw [List.getElem?_map]
+
+-- G9 (helper, from T3.8c and D1.6b): the cap column of a literal cap holds the first `k`
+-- entries of the column followed by `(ρ, ∅)`
+theorem litCap_colAt_self {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward B c k ρ) :
+    (litCap B c k ρ).colAt c = some (((B.colAt c).getD []).take k ++ [(ρ, Tree.empty)]) ∧
+      (((B.colAt c).getD []).take k).length = k := by
+  have hs := (stopData_spec (stopData_litCap hup)).1
+  refine ⟨hs, ?_⟩
+  unfold IsUpward at hup
+  cases hB : B.colAt c with
+  | none => rw [hB] at hup; exact hup.elim
+  | some col =>
+    rw [hB] at hup
+    simp only [Option.getD_some, List.length_take]
+    cases hk : col[k]? with
+    | none => simp only [hk] at hup; omega
+    | some x =>
+      have : k < col.length := by
+        by_contra hc
+        rw [List.getElem?_eq_none (by omega)] at hk
+        cases hk
+      omega
+
+-- G9 (helper): the cap column is a column of the cap, with `k + 1` entries
+theorem litCap_parents_self {B : Forest} {c : ColAddr} {k ρ : Nat} (hup : IsUpward B c k ρ) :
+    c ∈ (litCap B c k ρ).colAddrs ∧ (parents (litCap B c k ρ) c).length = k + 1 := by
+  obtain ⟨hcol, hlen⟩ := litCap_colAt_self hup
+  refine ⟨by rw [Tree.mem_colAddrs_iff, hcol]; rfl, ?_⟩
+  simp only [parents, hcol, Option.getD_some, List.length_map, List.length_append, hlen,
+    List.length_singleton]
+
 /-! ## G9.4 — the stack of a phase copy (address algebra, T3.2i) -/
 
 -- G9.4s1: the stack of `underCol h b` is the stack of `h` together with the `underCol h`-image of
@@ -1426,7 +1462,80 @@ theorem detour_copy (S : OrdStep) {i : Nat} {a c : ColAddr} {k ρ : Nat} (hi : 1
       Path (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ)
         (cutStart (litCap S.B c k ρ) c k) (x + (h - 1) * S.d) →
       Edge (litCap S.B c k ρ) (actualKeys (litCap S.B c k ρ)) c (S.capQ c k ρ) (x + (h - 1) * S.d)
-        (shiftVal S.sd.r ((h - 1) * S.d) y) := by sorry
+        (shiftVal S.sd.r ((h - 1) * S.d) y) := by
+  obtain ⟨hjm, q, hqget, hrq, -, -⟩ := term_detour S hW' hlow
+  have hh' : h - 1 < phaseOff S.sd i a := by omega
+  have hst := kappaQry_strictMono S.sd.r S.d (h - 1)
+  have hVn : Noninc (S.capQ c k ρ) := cutQuery_noninc _ _
+  refine ⟨⟨q, hqget, ?_⟩, ?_⟩
+  · -- (i) the head edge
+    obtain ⟨hres, -⟩ := resolve_headCol S hi ha hq hc hh
+    obtain ⟨hpar, -, hkeys, -⟩ := headCol_litCap S hi ha hq hc hup hh
+    refine ⟨S.headCol h, hres, ?_⟩
+    have hcur : cursor (actualKeys (litCap S.B c k ρ) (S.headCol h)) (S.capQ c k ρ) =
+        cursor (actualKeys S.A S.sd.col) W' := by
+      have e1 := cursor_take (actualKeys (litCap S.B c k ρ) (S.headCol h)) (S.capQ c k ρ) S.m
+      rw [hkeys, hV] at e1
+      unfold kappaQ at e1
+      rw [cursor_map hst, cursor_take] at e1
+      rw [hV]
+      unfold kappaQ
+      omega
+    rw [resp_eq_parents, hcur, ← List.getElem?_take_of_lt hjm, hpar, List.getElem?_map,
+      List.getElem?_take_of_lt hjm, hqget]
+    simp [shiftVal, hrq]
+  · -- (ii) the copy step
+    intro x y hx hxt hxy hreach
+    obtain ⟨o, ho, hresp⟩ := hxy
+    obtain ⟨hres, hcont, hlast⟩ := resolve_copyCol S hi ha hq hc hh' hx hxt ho
+    obtain ⟨hparK, hkeysK⟩ := copyCol_litCap S hi ha hq hc hup hh' hx hxt ho
+    refine ⟨S.copyCol (h - 1) o, hres, ?_⟩
+    rw [resp_eq_parents] at hresp ⊢
+    have hjxlt : cursor (actualKeys S.A o) W' < (parents S.A o).length := by
+      by_contra hcon
+      rw [List.getElem?_eq_none (by omega)] at hresp
+      cases hresp
+    have hlenK : (actualKeys (litCap S.B c k ρ) (S.copyCol (h - 1) o)).length =
+        (parents S.A o).length := by
+      rw [length_actualKeys, ← List.length_map (f := Prod.fst)]
+      show (parents _ _).length = _
+      rw [hparK, List.length_map]
+    have hjxu : cursor (actualKeys S.A o) W' ≤
+        ((o.container S.sd.col).map (·.idx)).getD (parents S.A o).length := by
+      cases hce : o.container S.sd.col with
+      | none => simp only [Option.map_none, Option.getD_none]; omega
+      | some e =>
+        have := hlast e hce
+        simp only [Option.map_some, Option.getD_some]
+        omega
+    have hcurK : cursor (actualKeys (litCap S.B c k ρ) (S.copyCol (h - 1) o)) (S.capQ c k ρ) ≤
+        ((o.container S.sd.col).map (·.idx)).getD (parents S.A o).length := by
+      cases hce : o.container S.sd.col with
+      | none =>
+        simp only [Option.map_none, Option.getD_none]
+        rw [← hlenK]
+        exact cursor_le_length _ _
+      | some e =>
+        simp only [Option.map_some, Option.getD_some]
+        rw [hce] at hcont
+        simp only [Option.map_some] at hcont
+        obtain ⟨hcmem, hplen⟩ := litCap_parents_self hup
+        have hbar := cut_barrier_read hKL hcmem (by omega) hreach hres hcont
+        have hlt := hlast e hce
+        exact cursor_le_of_lt_cutQuery hVn (by omega) hbar
+    have hcurA : cursor (kappaQ S.sd.r S.d (h - 1) (actualKeys S.A o)) (S.capQ c k ρ) =
+        cursor (actualKeys S.A o) W' := by
+      rw [hV]
+      exact cursor_map hst _ _
+    have heq : cursor (actualKeys (litCap S.B c k ρ) (S.copyCol (h - 1) o)) (S.capQ c k ρ) =
+        cursor (actualKeys S.A o) W' := by
+      rw [← hcurA]
+      refine cursor_eq_of_take_eq ?_ hcurK (hcurA ▸ hjxu)
+      rw [hkeysK]
+      unfold kappaQ
+      rw [List.map_take]
+    rw [heq, hparK, List.getElem?_map, hresp]
+    rfl
 
 -- G9.5 (the invariant, `low_head_detour`): if `K`'s cut path reaches a low head `s_h`,
 -- `1 ≤ h ≤ φ`, it continues to `s_{h−1}` (`s_0 = r`) along the `τ_{h−1}`-copy of the old
