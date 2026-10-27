@@ -853,12 +853,7 @@ theorem entryAt_eq_bind (t : Tree α) (π : List (Nat × Nat)) (j i : Nat) :
     t.entryAt ⟨⟨π, j⟩, i⟩ = (t.forestAt π).bind fun f => (f.cols[j]?).bind (·[i]?) := by
   simp only [entryAt, colAt, Option.bind_assoc]
 
-/-- D1.2c helper: one step of `forestAt`. -/
-theorem forestAt_cons (t : Tree α) (c i₀ : Nat) (rest : List (Nat × Nat)) :
-    t.forestAt ((c, i₀) :: rest) = ((t.cols[c]?).bind (·[i₀]?)).bind fun x => x.2.forestAt rest := by
-  rw [forestAt]
-  generalize (t.cols[c]?).bind (·[i₀]?) = o
-  rcases o with _ | ⟨_, _⟩ <;> rfl
+-- (merge) `forestAt_cons`: an identical copy is declared earlier (D1.2b helpers).
 
 /-- D1.2c helper: the containing step of `truncAux` keeps entry `i₀` of column `c`, with its
 height transformed. -/
@@ -4320,23 +4315,7 @@ theorem list_split_of_getElem? {β : Type} {l : List β} {n : Nat} {a : β} (h :
   obtain ⟨hn, rfl⟩ := List.getElem?_eq_some_iff.1 h
   conv_lhs => rw [← List.take_append_drop n l, List.drop_eq_getElem_cons hn]
 
-theorem rolesCols_append (π : List (Nat × Nat)) :
-    ∀ (c : Nat) (A B : List (List (α × Tree α))),
-      rolesCols π c (A ++ B) = rolesCols π c A ++ rolesCols π (c + A.length) B
-  | c, [], B => by simp [rolesCols]
-  | c, col :: A, B => by
-    rw [List.cons_append, rolesCols, rolesCols, rolesCols_append π (c + 1) A B]
-    simp only [List.cons_append, List.append_assoc, List.length_cons]
-    rw [show c + 1 + A.length = c + (A.length + 1) by omega]
-
-theorem rolesCol_append (π : List (Nat × Nat)) (c : Nat) :
-    ∀ (k : Nat) (A B : List (α × Tree α)),
-      rolesCol π c k (A ++ B) = rolesCol π c k A ++ rolesCol π c (k + A.length) B
-  | k, [], B => by simp [rolesCol]
-  | k, (p, h) :: A, B => by
-    rw [List.cons_append, rolesCol, rolesCol, rolesCol_append π c (k + 1) A B]
-    simp only [List.cons_append, List.append_assoc, List.length_cons]
-    rw [show k + 1 + A.length = k + (A.length + 1) by omega]
+-- (merge) `rolesCols_append` / `rolesCol_append`: identical copies are declared earlier (D1.2c helpers).
 
 /-- D1.2e helper: the roles of a tree around an entry `e`: the roles before `U_e` (among them
 the column of `e`, its visible stack and the slots of the entries containing it), `U_e`, the
