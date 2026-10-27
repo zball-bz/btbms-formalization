@@ -113,12 +113,31 @@ def kerIter (P : List α) (σ : α → α) : Nat → List α
   | 0 => []
   | q + 1 => P ++ (kerIter P σ q).map σ
 
+/-- L3.4a helper: the length of an iterate. -/
+theorem ker_kerIter_len (P : List α) (σ : α → α) :
+    ∀ q, (kerIter P σ q).length = q * P.length
+  | 0 => by simp [kerIter]
+  | q + 1 => by
+    simp only [kerIter, List.length_append, List.length_map, ker_kerIter_len P σ q, Nat.succ_mul]
+    omega
+
 -- L3.4a: iterates are proper-prefix increasing
 theorem kerIter_prefix (P : List α) (σ : α → α) (hP : P ≠ []) (q : Nat) :
-    kerIter P σ q <+: kerIter P σ (q + 1) ∧ kerIter P σ q ≠ kerIter P σ (q + 1) := by sorry
+    kerIter P σ q <+: kerIter P σ (q + 1) ∧ kerIter P σ q ≠ kerIter P σ (q + 1) := by
+  refine ⟨?_, ?_⟩
+  · induction q with
+    | zero => exact List.nil_prefix
+    | succ q ih =>
+      show P ++ (kerIter P σ q).map σ <+: P ++ (kerIter P σ (q + 1)).map σ
+      exact (List.prefix_append_right_inj P).2 (ih.map σ)
+  · intro h
+    have := congrArg List.length h
+    rw [ker_kerIter_len, ker_kerIter_len, Nat.succ_mul] at this
+    have := List.length_pos_of_ne_nil hP
+    omega
 
 theorem kerIter_length (P : List α) (σ : α → α) (q : Nat) :
-    (kerIter P σ q).length = q * P.length := by sorry
+    (kerIter P σ q).length = q * P.length := ker_kerIter_len P σ q
 
 -- L3.4b (txt:427-436): success iff some iterate covers
 theorem word_criterion (P : List α) {σ : α → α} (hP : P ≠ []) (hσ : StrictMono σ)
@@ -2088,12 +2107,171 @@ def CC (B : Forest) : Prop :=
     Success (litCap B c k p) (localSuffix B c)
 
 -- T3.8a (txt:493): an empty last column is the least column
-theorem le_of_lt_append_empty {B F : Forest} (h : B < Tree.node (F.cols ++ [[]])) : B ≤ F := by sorry
+/-- T3.8a helper: the empty-column atom `(0, 0, 0)` is the least atom. -/
+theorem ker_not_lt_bot (y : WordAtom) : ¬ y < toLex (0, toLex (0, 0)) := by
+  intro h
+  rw [Prod.Lex.lt_iff] at h
+  simp only [ofLex_toLex] at h
+  rcases h with h | ⟨_, h⟩
+  · exact Nat.not_lt_zero _ h
+  · rw [Prod.Lex.lt_iff] at h
+    simp only [ofLex_toLex] at h
+    rcases h with h | ⟨_, h⟩ <;> exact Nat.not_lt_zero _ h
+
+/-- T3.8a helper: nothing lies strictly between `u` and `u ⌢ [(0,0,0)]` above `u`. -/
+theorem ker_not_lt_append_bot :
+    ∀ (u w : List WordAtom), u < w → ¬ w < u ++ [toLex (0, toLex (0, 0))]
+  | [], [], h => absurd h (List.not_lt_nil _)
+  | [], y :: w, _ => by
+    intro h
+    rw [List.nil_append, List.cons_lt_cons_iff] at h
+    rcases h with h | ⟨_, h⟩
+    · exact ker_not_lt_bot y h
+    · exact List.not_lt_nil _ h
+  | x :: u, [], h => absurd h (List.not_lt_nil _)
+  | x :: u, y :: w, h => by
+    intro h'
+    rw [List.cons_lt_cons_iff] at h
+    rw [List.cons_append, List.cons_lt_cons_iff] at h'
+    rcases h with h | ⟨rfl, h⟩
+    · rcases h' with h' | ⟨rfl, _⟩
+      · exact lt_asymm h h'
+      · exact lt_irrefl _ h
+    · rcases h' with h' | ⟨_, h'⟩
+      · exact lt_irrefl _ h'
+      · exact ker_not_lt_append_bot u w h h'
+
+theorem le_of_lt_append_empty {B F : Forest} (h : B < Tree.node (F.cols ++ [[]])) : B ≤ F := by
+  rcases le_or_gt B F with h' | h'
+  · exact h'
+  · exfalso
+    rw [← word_lt_iff] at h h'
+    have hw : word (Tree.node (F.cols ++ [[]])) = word F ++ [toLex (0, toLex (0, 0))] := by
+      unfold word
+      rw [← ker_wordCols_cols 0 F]
+      simp only [wordAt]
+      rw [wordCols_append]
+      rfl
+    rw [hw] at h
+    exact ker_not_lt_append_bot _ _ h' h
+
+/-- T3.8b helper: words of kernel iterates are the word iterates. -/
+theorem ker_word_iterate {E : Forest} {sd : StopData} {rd : RootData} (hV : CondV E)
+    (hsd : stopData E = some sd) (hrd : rootData E = some rd) (hkd : KernelDefined E rd) :
+    ∀ n, word ((kernel E sd rd)^[n] Tree.empty) = kerIter (kerPrefix E sd rd) (kerSigma sd rd) n
+  | 0 => rfl
+  | n + 1 => by
+    rw [Function.iterate_succ_apply', word_kernel hV hsd hrd hkd, ker_word_iterate hV hsd hrd hkd n]
+    rfl
+
+/-- helper: a proper extension is larger. -/
+theorem ker_lt_append {α : Type} [LinearOrder α] {t : List α} (ht : t ≠ []) :
+    ∀ l : List α, l < l ++ t
+  | [] => by
+    obtain ⟨x, xs, rfl⟩ := List.exists_cons_of_ne_nil ht
+    exact List.nil_lt_cons _ _
+  | x :: l => by
+    rw [List.cons_append, List.cons_lt_cons_iff]
+    exact Or.inr ⟨rfl, ker_lt_append ht l⟩
+
+theorem ker_kerIter_prefix_succ {α : Type} (P : List α) (σ : α → α) :
+    ∀ m, kerIter P σ m <+: kerIter P σ (m + 1)
+  | 0 => List.nil_prefix
+  | q + 1 => by
+    show P ++ (kerIter P σ q).map σ <+: P ++ (kerIter P σ (q + 1)).map σ
+    exact (List.prefix_append_right_inj P).2 ((ker_kerIter_prefix_succ P σ q).map σ)
+
+theorem ker_kerIter_prefix_le {α : Type} (P : List α) (σ : α → α) {n n' : Nat} (h : n ≤ n') :
+    kerIter P σ n <+: kerIter P σ n' := by
+  obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le h
+  clear h
+  induction k with
+  | zero => exact List.prefix_refl _
+  | succ k ih => exact ih.trans (ker_kerIter_prefix_succ P σ (n + k))
+
+/-- helper: KerRoute is downward closed. -/
+theorem ker_route_pred : ∀ (k : Nat) (F : Forest), KerRoute (k + 1) F → KerRoute k F
+  | 0, F, ⟨col, p, H, h1, _, _⟩ => by
+    show F.cols ≠ []
+    intro h; rw [h] at h1; cases h1
+  | k + 1, F, ⟨col, p, H, h1, h2, h3⟩ => ⟨col, p, H, h1, h2, ker_route_pred k H h3⟩
+
+/-- helper: the word of a column splits after a nonempty head. -/
+theorem ker_wordCol_append (e : Nat) {l₁ : Column} (h : l₁ ≠ []) (l₂ : Column) :
+    wordCol e (l₁ ++ l₂) = wordCol e l₁ ++ wordLater e l₂ := by
+  obtain ⟨x, xs, rfl⟩ := List.exists_cons_of_ne_nil h
+  obtain ⟨p, H⟩ := x
+  simp only [List.cons_append, wordCol, ker_wordLater_append, List.append_assoc]
 
 -- T3.8b: approximants strictly increase
 theorem expand_strictMono {E X Y : Forest} {n n' : Nat} (hL : InL E)
     (hlast : E.cols.getLast? ≠ some []) (hE : E ≠ Tree.empty) (hnn : n < n')
-    (hX : expand E n = some X) (hY : expand E n' = some Y) : X < Y := by sorry
+    (hX : expand E n = some X) (hY : expand E n' = some Y) : X < Y := by
+  obtain ⟨hV, hI, -⟩ := hL
+  obtain ⟨knd, hknd⟩ := Option.isSome_iff_exists.1 (stepKind_isSome hE hV hI)
+  cases knd with
+  | deletion => exact absurd ((stepKind_deletion_iff E).1 hknd) hlast
+  | ordinary =>
+    obtain ⟨sd, hsd⟩ := Option.isSome_iff_exists.1 (stopData_of_stepKind hknd (by decide))
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.1 (rootData_of_ordinary hknd)
+    obtain ⟨hX', -⟩ := ker_expand_out hV hI hknd hsd hrd hX
+    obtain ⟨hY', hkd⟩ := ker_expand_out hV hI hknd hsd hrd hY
+    have hkd := hkd (by omega)
+    subst hX' hY'
+    rw [← word_lt_iff, word_context hsd ((kernel E sd rd)^[n] Tree.empty),
+      word_context hsd ((kernel E sd rd)^[n'] Tree.empty), ker_append_lt_append_iff,
+      ker_word_iterate hV hsd hrd hkd, ker_word_iterate hV hsd hrd hkd]
+    apply List.map_lt (fun x y h => depthShift_strictMono _ h)
+    obtain ⟨t, ht⟩ := ker_kerIter_prefix_le (kerPrefix E sd rd) (kerSigma sd rd) (le_of_lt hnn)
+    rw [← ht]
+    apply ker_lt_append
+    rintro rfl
+    have := congrArg List.length ht
+    rw [List.append_nil, kerIter_length, kerIter_length] at this
+    have hP := List.length_pos_of_ne_nil (kerPrefix_ne_nil E sd rd)
+    have := Nat.eq_of_mul_eq_mul_right hP this
+    omega
+  | special =>
+    obtain ⟨sd, hsd, hspec⟩ := (stepKind_special_iff E).1 hknd
+    obtain ⟨oe, hoe⟩ := Option.isSome_iff_exists.1 (ownerEntry_of_special hknd hsd)
+    obtain ⟨-, -, -, col, p, Fl, hcol, hlastc, -, -⟩ := ownerEntry_spec hknd hsd hoe
+    rw [expand_eq_paperOp hE hV hI, paperOp_special hknd hsd hoe hcol hlastc] at hX hY
+    cases hX; cases hY
+    have hdpos : 0 < sd.depth := by
+      unfold specialStop at hspec
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hspec
+      exact hspec.1.1
+    obtain ⟨G, hG, hR⟩ := ker_route_of_stop hsd 0 (Nat.zero_le _)
+    simp only [List.take_zero, Tree.forestAt, Option.some.injEq] at hG
+    subst hG
+    have hR' : KerRoute (sd.depth - 1) E :=
+      ker_route_pred _ _ (by rw [show sd.depth - 1 + 1 = sd.depth - 0 by omega]; exact hR)
+    rw [← word_lt_iff]
+    show wordAt 0 (replaceAt 0 0 _ (sd.depth - 1) E) < wordAt 0 (replaceAt 0 0 _ (sd.depth - 1) E)
+    conv_lhs => rw [ker_wordAt_replaceAt _ _ _ 0 hR']
+    conv_rhs => rw [ker_wordAt_replaceAt _ _ _ 0 hR']
+    rw [ker_append_lt_append_iff, Nat.zero_add, show sd.depth - 1 = 0 + (sd.depth - 1) by omega,
+      wordAt_add, wordAt_add]
+    apply List.map_lt (fun x y h => depthShift_strictMono _ h)
+    have hne : col.dropLast ++ List.replicate (n + if col.dropLast.isEmpty then 1 else 0)
+        (p, Tree.node Fl.cols.dropLast) ≠ [] := by
+      by_cases hA : col.dropLast = []
+      · rw [hA]; simp
+      · intro h; exact hA (List.append_eq_nil_iff.1 h).1
+    have hsplit : col.dropLast ++ List.replicate (n' + if col.dropLast.isEmpty then 1 else 0)
+        (p, Tree.node Fl.cols.dropLast) =
+        (col.dropLast ++ List.replicate (n + if col.dropLast.isEmpty then 1 else 0)
+          (p, Tree.node Fl.cols.dropLast)) ++
+          List.replicate (n' - n) (p, Tree.node Fl.cols.dropLast) := by
+      rw [List.append_assoc, ← List.replicate_add]
+      congr 2
+      omega
+    simp only [wordAt, wordCols, List.append_nil]
+    rw [hsplit, ker_wordCol_append 0 hne]
+    apply ker_lt_append
+    obtain ⟨m, hm⟩ : ∃ m, n' - n = m + 1 := ⟨n' - n - 1, by omega⟩
+    rw [hm, List.replicate_succ]
+    simp [wordLater]
 
 -- T3.8c: stop data of a literal cap
 theorem stopData_litCap {B : Forest} {c : ColAddr} {k p : Nat} (hup : IsUpward B c k p) :
