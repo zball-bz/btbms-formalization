@@ -1182,12 +1182,137 @@ theorem graph_chain {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) {e : En
         (by simp [BaseAtom.vars]) ((inEntry_iff _ e).2 (Or.inr ?_))⟩))
       exact ⟨rest, hrest⟩
 
+/-- L8.2c (helper): stack occurrences lie on the containing path. -/
+theorem onStack_path_prefix {c o : ColAddr} (h : c.OnStack o) : o.path <+: c.path := by
+  rcases h with ⟨k, ck, ik, -, hp, -⟩ | ⟨hp, -⟩
+  · rw [hp]; exact List.take_prefix _ _
+  · rw [hp]
+
+/-- L8.2c (helper): roles placed under a path lie under it. -/
+theorem under_path (π : List (Nat × Nat)) (r : Role) : (Role.under π r).path = π ++ r.path := by
+  cases r <;> rfl
+
+/-- L8.2c (helper): the representatives seen from a column `d` inside the height of `e`: the
+frame of `e`, the host `A_{e.col}` or the slot `U_e`, or roles inside `e`. -/
+theorem rep_inside_cases {e : EntryAddr} {d : ColAddr} (hd : e.heightPath <+: d.path) {p : Nat}
+    {o v : Role} (hr : d.rep 0 p = some (o, v)) :
+    ∀ x, (x = o ∨ x = v) → x.inEntry e = true ∨ x = .ord e.col ∨
+      ∃ ov ∈ e.col.reps0, x = ov.1 ∨ x = ov.2 := by
+  obtain ⟨h1, h2, h3, -⟩ := rep_inside e d hd
+  intro x hx
+  rcases lt_trichotomy p (e.col.num 0) with hlt | heq | hgt
+  · rw [h1 p hlt] at hr
+    refine Or.inr (Or.inr ⟨(o, v), List.mem_filterMap.2 ⟨p, List.mem_range.2 hlt, hr⟩, hx⟩)
+  · subst heq
+    rw [h2, Option.some.injEq, Prod.mk.injEq] at hr
+    obtain ⟨rfl, rfl⟩ := hr
+    rcases hx with rfl | rfl
+    · exact Or.inr (Or.inl rfl)
+    · exact Or.inl ((inEntry_iff _ e).2 (Or.inl rfl))
+  · obtain ⟨w, rfl⟩ : ∃ w, p = e.col.num 0 + w := ⟨p - e.col.num 0, by omega⟩
+    rw [h3 w (by omega)] at hr
+    obtain ⟨ov, -, hov⟩ := Option.map_eq_some_iff.1 hr
+    simp only [Prod.mk.injEq] at hov
+    obtain ⟨rfl, rfl⟩ := hov
+    left
+    refine (inEntry_iff _ e).2 (Or.inr ?_)
+    rcases hx with rfl | rfl <;> rw [under_path] <;> exact List.prefix_append _ _
+
 /-- L8.2c: the atoms touching `e` read only `e`'s slot and height and `e`'s frame. -/
 theorem localStruct_vars {E : Forest} (hV : Scan.CondV E) {e : EntryAddr}
     (he : e ∈ E.entryAddrs) :
     ∀ a ∈ localStruct E e, ∀ v ∈ a.vars,
       v.inEntry e = true ∨ v = .ord e.col ∨ ∃ ov ∈ e.col.reps0, v = ov.1 ∨ v = ov.2 := by
-  sorry
+  intro a ha
+  obtain ⟨hg, hs⟩ := List.mem_filter.1 ha
+  simp only [Bool.and_eq_true, List.any_eq_true] at hs
+  obtain ⟨hst, w, hw, hwin⟩ := hs
+  simp only [graph, List.mem_append, List.mem_map, List.mem_filterMap, List.mem_flatMap] at hg
+  rcases hg with (((⟨x, -, rfl⟩ | ⟨xy, -, rfl⟩) | ⟨c, hc, hca⟩) | ⟨e'', he'', hea⟩)
+  · simp [isStruct] at hst
+  · simp [isStruct] at hst
+  · split_ifs at hca
+    cases hca
+    have hp : e.heightPath <+: c.path := by
+      simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hw
+      rcases hw with rfl | rfl <;> rcases (inEntry_iff _ e).1 hwin with h | h
+      · cases h
+      · exact h
+      · cases h
+      · exact h
+    intro v hv
+    left
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hv
+    rcases hv with rfl | rfl <;> exact (inEntry_iff _ e).2 (Or.inr hp)
+  · cases hx : E.entryAt e'' with
+    | none => rw [hx] at hea; simp at hea
+    | some ph =>
+      obtain ⟨p, h⟩ := ph
+      rw [hx] at hea
+      simp only at hea
+      cases hr : e''.col.rep 0 p with
+      | none => rw [hr] at hea; simp at hea
+      | some ov =>
+        obtain ⟨o, v'⟩ := ov
+        rw [hr] at hea
+        simp only [List.mem_cons, List.mem_nil_iff, or_false] at hea
+        -- the representatives through the resolved stack occurrence
+        have hrep := hr
+        unfold ColAddr.rep at hrep
+        cases hres : e''.col.resolve 0 p with
+        | none => rw [hres] at hrep; simp at hrep
+        | some o' =>
+          rw [hres] at hrep
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hrep
+          obtain ⟨rfl, hv'⟩ := hrep
+          have hstk := onStack_path_prefix ((ColAddr.resolve_spec 0 _ o' p).1 hres).1
+          -- a variable inside `e` forces `e''` to be `e` or inside `e`
+          have hinside : e'' = e ∨ e.heightPath <+: e''.col.path := by
+            have hw' : w = .slot e'' ∨ w = .ord e''.col ∨ w = .ord o' ∨ w = v' := by
+              rcases hea with rfl | rfl <;>
+                simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hw <;>
+                tauto
+            rcases hw' with rfl | rfl | rfl | rfl
+            · rcases (inEntry_iff _ e).1 hwin with h | h
+              · exact Or.inl (Role.slot.inj h)
+              · exact Or.inr h
+            · rcases (inEntry_iff _ e).1 hwin with h | h
+              · cases h
+              · exact Or.inr h
+            · rcases (inEntry_iff _ e).1 hwin with h | h
+              · cases h
+              · exact Or.inr (h.trans hstk)
+            · revert hv'
+              cases hcont : o'.container e''.col with
+              | none =>
+                intro hv'; subst hv'
+                rcases (inEntry_iff _ e).1 hwin with h | h
+                · cases h
+                · exact Or.inr (h.trans hstk)
+              | some e3 =>
+                intro hv'; subst hv'
+                obtain ⟨he3, he3p⟩ := (ColAddr.container_spec o' e''.col e3).1 hcont
+                rcases (inEntry_iff _ e).1 hwin with h | h
+                · cases Role.slot.inj h; exact Or.inr he3p
+                · exact Or.inr (h.trans (by rw [Role.path, he3]; exact hstk))
+          intro v hv
+          have hv3 : v = .slot e'' ∨ v = .ord e''.col ∨ v = .ord o' ∨ v = v' := by
+            rcases hea with rfl | rfl <;>
+              simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at hv <;>
+              tauto
+          rcases hinside with rfl | hB
+          · rcases hv3 with rfl | rfl | hv3 | hv3
+            · exact Or.inl ((inEntry_iff _ _).2 (Or.inl rfl))
+            · exact Or.inr (Or.inl rfl)
+            all_goals
+              refine Or.inr (Or.inr ⟨(.ord o', v'), List.mem_filterMap.2
+                ⟨p, List.mem_range.2 (ColAddr.resolve_lt hres), hr⟩, ?_⟩)
+              simp [hv3]
+          · rcases hv3 with rfl | rfl | hv3 | hv3
+            · exact Or.inl ((inEntry_iff _ e).2 (Or.inr hB))
+            · exact Or.inl ((inEntry_iff _ e).2 (Or.inr hB))
+            · exact rep_inside_cases hB hr v (Or.inl hv3)
+            · exact rep_inside_cases hB hr v (Or.inr hv3)
 
 /-- L8.2, (19): owner-path elementarity in any realized diagram containing the atoms touching
 `e`: `J_{β(U_e)} ≺_{Σ1} J_{β z}` for every role `z` inside the height of `e`. -/
