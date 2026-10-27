@@ -116,16 +116,246 @@ instance instDecidableEq : DecidableEq (Tree α) := decEq
 
 end Tree
 
+/-! ### D1.1a, D1.4a — lawful comparators on trees and key labels
+
+Moved here from `Plan/U1.lean` (brief rule 5; names and statements unchanged): the proof fields
+of `Forest.instLinearOrder` and `Key.instLinearOrder` below need them. The `…Cols`/`…Col`
+companions and `Tree.Trans3` are helpers of the mutual structural inductions. -/
+
+namespace Tree
+
+variable {α : Type}
+
+mutual
+/-- D1.1a: `Tree.cmp c` is oriented when `c` is (proved by mutual structural induction through
+`cmp`/`cmpCols`/`cmpCol`). -/
+theorem cmp_eq_swap (c : α → α → Ordering) [Std.OrientedCmp c] (s t : Tree α) :
+    cmp c s t = (cmp c t s).swap :=
+  match s, t with
+  | .node a, .node b => by rw [cmp, cmp]; exact cmpCols_eq_swap c a b
+
+/-- D1.1a helper: `cmp_eq_swap` for column lists. -/
+theorem cmpCols_eq_swap (c : α → α → Ordering) [Std.OrientedCmp c]
+    (a b : List (List (α × Tree α))) : cmpCols c a b = (cmpCols c b a).swap :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | x :: xs, y :: ys => by
+    rw [cmpCols, cmpCols, Ordering.swap_then, ← cmpCol_eq_swap c x y, ← cmpCols_eq_swap c xs ys]
+
+/-- D1.1a helper: `cmp_eq_swap` for columns. -/
+theorem cmpCol_eq_swap (c : α → α → Ordering) [Std.OrientedCmp c]
+    (a b : List (α × Tree α)) : cmpCol c a b = (cmpCol c b a).swap :=
+  match a, b with
+  | [], [] => rfl
+  | [], _ :: _ => rfl
+  | _ :: _, [] => rfl
+  | (p, h) :: es, (q, k) :: fs => by
+    rw [cmpCol, cmpCol, Ordering.swap_then, Ordering.swap_then, ← Std.OrientedCmp.eq_swap,
+      ← cmp_eq_swap c h k, ← cmpCol_eq_swap c es fs]
+end
+
+mutual
+/-- D1.1a: `Tree.cmp c` is reflexive when `c` is. -/
+theorem cmp_self (c : α → α → Ordering) [Std.ReflCmp c] (s : Tree α) : cmp c s s = .eq :=
+  match s with
+  | .node a => by rw [cmp]; exact cmpCols_self c a
+
+/-- D1.1a helper: `cmp_self` for column lists. -/
+theorem cmpCols_self (c : α → α → Ordering) [Std.ReflCmp c] (a : List (List (α × Tree α))) :
+    cmpCols c a a = .eq :=
+  match a with
+  | [] => rfl
+  | x :: xs => by rw [cmpCols, cmpCol_self c x, cmpCols_self c xs]; rfl
+
+/-- D1.1a helper: `cmp_self` for columns. -/
+theorem cmpCol_self (c : α → α → Ordering) [Std.ReflCmp c] (a : List (α × Tree α)) :
+    cmpCol c a a = .eq :=
+  match a with
+  | [] => rfl
+  | (p, h) :: es => by
+    rw [cmpCol, Std.ReflCmp.compare_self (cmp := c), cmp_self c h, cmpCol_self c es]; rfl
+end
+
+mutual
+/-- D1.1a: `Tree.cmp c` decides equality when `c` does. -/
+theorem eq_of_cmp_eq (c : α → α → Ordering) [Std.LawfulEqCmp c] {s t : Tree α}
+    (h : cmp c s t = .eq) : s = t :=
+  match s, t, h with
+  | .node a, .node b, h => by
+    rw [cmp] at h; rw [eq_of_cmpCols_eq c h]
+
+/-- D1.1a helper: `eq_of_cmp_eq` for column lists. -/
+theorem eq_of_cmpCols_eq (c : α → α → Ordering) [Std.LawfulEqCmp c]
+    {a b : List (List (α × Tree α))} (h : cmpCols c a b = .eq) : a = b :=
+  match a, b, h with
+  | [], [], _ => rfl
+  | x :: xs, y :: ys, h => by
+    rw [cmpCols, Ordering.then_eq_eq] at h
+    rw [eq_of_cmpCol_eq c h.1, eq_of_cmpCols_eq c h.2]
+
+/-- D1.1a helper: `eq_of_cmp_eq` for columns. -/
+theorem eq_of_cmpCol_eq (c : α → α → Ordering) [Std.LawfulEqCmp c]
+    {a b : List (α × Tree α)} (h : cmpCol c a b = .eq) : a = b :=
+  match a, b, h with
+  | [], [], _ => rfl
+  | (p, h') :: es, (q, k) :: fs, h => by
+    rw [cmpCol, Ordering.then_eq_eq, Ordering.then_eq_eq] at h
+    rw [Std.LawfulEqCmp.eq_of_compare h.1.1, eq_of_cmp_eq c h.1.2, eq_of_cmpCol_eq c h.2]
+end
+
+/-- D1.1a helper: the three transitivity facts T1–T3 (U1 doc, D1.1a item 4) for the comparisons
+`a = κ s t`, `b = κ t w`, `a' = κ s w`. -/
+def Trans3 (a b a' : Ordering) : Prop :=
+  (a.isLE = true → b.isLE = true → a'.isLE = true) ∧
+    (a = .lt → b.isLE = true → a' = .lt) ∧ (a.isLE = true → b = .lt → a' = .lt)
+
+/-- D1.1a helper (composite lemma, D1.1a item 4.1): T1–T3 pass through `Ordering.then`. -/
+theorem Trans3.then {a b a' A B A' : Ordering} (h : Trans3 a b a') (H : Trans3 A B A') :
+    Trans3 (a.then A) (b.then B) (a'.then A') := by
+  obtain ⟨h1, h2, h3⟩ := h
+  cases a <;> cases b <;> cases a' <;> simp_all [Trans3, Ordering.then]
+
+/-- D1.1a helper: a transitive label comparator satisfies T1–T3. -/
+theorem Trans3.of_transCmp (c : α → α → Ordering) [Std.TransCmp c] (p q o : α) :
+    Trans3 (c p q) (c q o) (c p o) :=
+  ⟨Std.TransCmp.isLE_trans, Std.TransCmp.lt_of_lt_of_isLE, Std.TransCmp.lt_of_isLE_of_lt⟩
+
+mutual
+/-- D1.1a helper: T1–T3 for `Tree.cmp c` (D1.1a item 4.2). -/
+theorem cmp_trans3 (c : α → α → Ordering) [Std.TransCmp c] (s t w : Tree α) :
+    Trans3 (cmp c s t) (cmp c t w) (cmp c s w) :=
+  match s, t, w with
+  | .node a, .node b, .node d => by rw [cmp, cmp, cmp]; exact cmpCols_trans3 c a b d
+
+/-- D1.1a helper: T1–T3 for `Tree.cmpCols c`. -/
+theorem cmpCols_trans3 (c : α → α → Ordering) [Std.TransCmp c]
+    (a b d : List (List (α × Tree α))) :
+    Trans3 (cmpCols c a b) (cmpCols c b d) (cmpCols c a d) :=
+  match a, b, d with
+  | x :: xs, y :: ys, z :: zs => by
+    rw [cmpCols, cmpCols, cmpCols]
+    exact (cmpCol_trans3 c x y z).then (cmpCols_trans3 c xs ys zs)
+  | [], [], [] => by simp [Trans3, cmpCols]
+  | [], [], _ :: _ => by simp [Trans3, cmpCols]
+  | [], _ :: _, [] => by simp [Trans3, cmpCols]
+  | [], _ :: _, _ :: _ => by simp [Trans3, cmpCols]
+  | _ :: _, [], _ => by simp [Trans3, cmpCols]
+  | _ :: _, _ :: _, [] => by simp [Trans3, cmpCols]
+
+/-- D1.1a helper: T1–T3 for `Tree.cmpCol c`. -/
+theorem cmpCol_trans3 (c : α → α → Ordering) [Std.TransCmp c]
+    (a b d : List (α × Tree α)) :
+    Trans3 (cmpCol c a b) (cmpCol c b d) (cmpCol c a d) :=
+  match a, b, d with
+  | (p, h) :: es, (q, k) :: fs, (o, l) :: gs => by
+    rw [cmpCol, cmpCol, cmpCol]
+    exact ((Trans3.of_transCmp c p q o).then (cmp_trans3 c h k l)).then
+      (cmpCol_trans3 c es fs gs)
+  | [], [], [] => by simp [Trans3, cmpCol]
+  | [], [], _ :: _ => by simp [Trans3, cmpCol]
+  | [], _ :: _, [] => by simp [Trans3, cmpCol]
+  | [], _ :: _, _ :: _ => by simp [Trans3, cmpCol]
+  | _ :: _, [], _ => by simp [Trans3, cmpCol]
+  | _ :: _, _ :: _, [] => by simp [Trans3, cmpCol]
+end
+
+-- U1-verify: changed
+/-- D1.1a: `Tree.cmp c` is transitive when `c` is. Proved together with the two strict variants
+(`lt` then `isLE` gives `lt`; `isLE` then `lt` gives `lt`) in one mutual structural induction on
+`s`; transitivity of `isLE` alone is not inductive (U1 doc, D1.1a item 4). -/
+theorem cmp_isLE_trans (c : α → α → Ordering) [Std.TransCmp c] {s t w : Tree α}
+    (h₁ : (cmp c s t).isLE = true) (h₂ : (cmp c t w).isLE = true) : (cmp c s w).isLE = true :=
+  (cmp_trans3 c s t w).1 h₁ h₂
+
+instance instOrientedCmp (c : α → α → Ordering) [Std.OrientedCmp c] :
+    Std.OrientedCmp (cmp c) := ⟨fun {a b} => cmp_eq_swap c a b⟩
+
+instance instTransCmp (c : α → α → Ordering) [Std.TransCmp c] : Std.TransCmp (cmp c) :=
+  { isLE_trans := fun h₁ h₂ => cmp_isLE_trans c h₁ h₂ }
+
+instance instReflCmp (c : α → α → Ordering) [Std.ReflCmp c] : Std.ReflCmp (cmp c) :=
+  ⟨fun {a} => cmp_self c a⟩
+
+instance instLawfulEqCmp (c : α → α → Ordering) [Std.LawfulEqCmp c] :
+    Std.LawfulEqCmp (cmp c) := { eq_of_compare := fun h => eq_of_cmp_eq c h }
+
+end Tree
+
+/-- D1.4a: `keyLabelCmp` is transitive (it is `compare` on `Bool ×ₗ Nat`, `keyLabelCmp_eq`). -/
+instance keyLabelCmp_transCmp : Std.TransCmp keyLabelCmp := by
+  have : Std.TransOrd (Lex (Bool × Nat)) := inferInstance
+  exact this
+
+/-- D1.4a: `keyLabelCmp` decides equality. -/
+instance keyLabelCmp_lawfulEqCmp : Std.LawfulEqCmp keyLabelCmp where
+  compare_self {x} := by simp [keyLabelCmp]
+  eq_of_compare {x y} h := by
+    rw [keyLabelCmp, Ordering.then_eq_eq] at h
+    exact Prod.ext (Std.LawfulEqCmp.eq_of_compare h.1) (Std.LawfulEqCmp.eq_of_compare h.2)
+
+/-! ### The order axioms of a lawful comparator (U1 proposal P-5)
+
+For `cmp` oriented, transitive and lawful, `cmp a b = .lt` and `cmp a b ≠ .gt` satisfy the
+axioms of a linear order. Both instances below take their proof fields from these lemmas; their
+data fields are unchanged. -/
+
+namespace LawfulCmp
+
+variable {γ : Type} (cmp : γ → γ → Ordering)
+
+/-- P-5 helper: reflexivity of `cmp · · ≠ .gt`. -/
+theorem le_refl [Std.ReflCmp cmp] (a : γ) : cmp a a ≠ .gt := by
+  rw [Std.ReflCmp.compare_self (cmp := cmp)]; decide
+
+/-- P-5 helper: transitivity of `cmp · · ≠ .gt`. -/
+theorem le_trans [Std.TransCmp cmp] (a b d : γ) (h₁ : cmp a b ≠ .gt) (h₂ : cmp b d ≠ .gt) :
+    cmp a d ≠ .gt :=
+  Ordering.isLE_iff_ne_gt.1 <|
+    Std.TransCmp.isLE_trans (Ordering.isLE_iff_ne_gt.2 h₁) (Ordering.isLE_iff_ne_gt.2 h₂)
+
+/-- P-5 helper: antisymmetry of `cmp · · ≠ .gt`. -/
+theorem le_antisymm [Std.OrientedCmp cmp] [Std.LawfulEqCmp cmp] (a b : γ) (h₁ : cmp a b ≠ .gt)
+    (h₂ : cmp b a ≠ .gt) : a = b := by
+  apply Std.LawfulEqCmp.eq_of_compare (cmp := cmp)
+  revert h₁ h₂
+  rw [Std.OrientedCmp.eq_swap (cmp := cmp) (a := b) (b := a)]
+  cases cmp a b <;> simp
+
+/-- P-5 helper: totality of `cmp · · ≠ .gt`. -/
+theorem le_total [Std.OrientedCmp cmp] (a b : γ) : cmp a b ≠ .gt ∨ cmp b a ≠ .gt := by
+  rw [Std.OrientedCmp.eq_swap (cmp := cmp) (a := b) (b := a)]
+  cases cmp a b <;> simp
+
+/-- P-5 helper: `cmp · · = .lt` is the strict part of `cmp · · ≠ .gt`. -/
+theorem lt_iff_le_not_ge [Std.OrientedCmp cmp] (a b : γ) :
+    cmp a b = .lt ↔ cmp a b ≠ .gt ∧ ¬cmp b a ≠ .gt := by
+  rw [Std.OrientedCmp.eq_swap (cmp := cmp) (a := b) (b := a)]
+  cases cmp a b <;> simp
+
+/-- P-5 helper: in any linear order whose `<` is `cmp · · = .lt`, `compare` is `cmp`. -/
+theorem compare_eq [LinearOrder γ] [Std.OrientedCmp cmp] [Std.LawfulEqCmp cmp]
+    (hlt : ∀ a b : γ, a < b ↔ cmp a b = .lt) (a b : γ) : compare a b = cmp a b := by
+  cases h : cmp a b with
+  | lt => exact compare_lt_iff_lt.2 ((hlt a b).2 h)
+  | eq => exact compare_eq_iff_eq.2 (Std.LawfulEqCmp.eq_of_compare h)
+  | gt =>
+    refine compare_gt_iff_gt.2 ((hlt b a).2 ?_)
+    rw [Std.OrientedCmp.eq_swap (cmp := cmp), h]; rfl
+
+end LawfulCmp
+
 /-- D1.1: the syntax order on forests is a linear order. `lt` is *definitionally* the locked
 `instLTForest`, so `Std.lt` and every statement in `Statement.lean` read the same relation. -/
 instance Forest.instLinearOrder : LinearOrder Forest where -- proofs: U1
   lt := @LT.lt Forest instLTForest
   le a b := Tree.cmp compare a b ≠ .gt
-  le_refl := sorry
-  le_trans := sorry
-  le_antisymm := sorry
-  le_total := sorry
-  lt_iff_le_not_ge := sorry
+  le_refl := LawfulCmp.le_refl (Tree.cmp compare)
+  le_trans := LawfulCmp.le_trans (Tree.cmp compare)
+  le_antisymm := LawfulCmp.le_antisymm (Tree.cmp compare)
+  le_total := LawfulCmp.le_total (Tree.cmp compare)
+  lt_iff_le_not_ge := LawfulCmp.lt_iff_le_not_ge (Tree.cmp compare)
   toDecidableLE := fun a b => inferInstanceAs (Decidable (Tree.cmp compare a b ≠ .gt))
   toDecidableEq := Tree.instDecidableEq
 
@@ -134,11 +364,11 @@ then by value; lexicographic on trees, a proper prefix smaller). -/
 instance Key.instLinearOrder : LinearOrder Key where -- proofs: U1
   lt x y := keyCmp x y = .lt
   le x y := keyCmp x y ≠ .gt
-  le_refl := sorry
-  le_trans := sorry
-  le_antisymm := sorry
-  le_total := sorry
-  lt_iff_le_not_ge := sorry
+  le_refl := LawfulCmp.le_refl (Tree.cmp keyLabelCmp)
+  le_trans := LawfulCmp.le_trans (Tree.cmp keyLabelCmp)
+  le_antisymm := LawfulCmp.le_antisymm (Tree.cmp keyLabelCmp)
+  le_total := LawfulCmp.le_total (Tree.cmp keyLabelCmp)
+  lt_iff_le_not_ge := LawfulCmp.lt_iff_le_not_ge (Tree.cmp keyLabelCmp)
   toDecidableLE := fun x y => inferInstanceAs (Decidable (keyCmp x y ≠ .gt))
   toDecidableEq := Tree.instDecidableEq
 
@@ -146,12 +376,13 @@ instance Key.instLinearOrder : LinearOrder Key where -- proofs: U1
 theorem Forest.lt_iff_cmp (a b : Forest) : a < b ↔ Tree.cmp compare a b = .lt := Iff.rfl
 
 -- provides: U1, D1.1 (the empty forest is least)
-theorem Forest.empty_lt {E : Forest} (h : E ≠ Tree.empty) : Tree.empty < E := by
-  sorry
+theorem Forest.empty_lt {E : Forest} (h : E ≠ Tree.empty) : Tree.empty < E :=
+  match E, h with
+  | .node [], h => absurd rfl h
+  | .node (_ :: _), _ => rfl
 
--- provides: U1, D1.4 (h_a preserves and reflects order, txt:84-85)
-theorem relKey_lt_iff (a : Nat) (H H' : Forest) : relKey a H < relKey a H' ↔ H < H' := by
-  sorry
+-- provides: U1, D1.4: `relKey_lt_iff` moved to `Plan/U1.lean`, after `keyCmp_relKey` (brief
+-- rule 5: its proof needs `Tree.cmp_map` and `keyLabelCmp_relLabel`; nothing in between uses it).
 
 /-! ## §c.2 Occurrences (U1: D1.2, new sub-node D1.2a; risk R-3) -/
 
