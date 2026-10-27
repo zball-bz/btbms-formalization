@@ -4,14 +4,18 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 
 | ID | Status | Severity | Location | Summary | Found by | Confirmed by |
 |---|---|---|---|---|---|---|
-| G-001 | confirmed | exposition | §1.2 txt:95-101 | Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there | claude, codex |  |
-| G-002 | confirmed | repairable | §3.1 txt:263-268 | "P implies S" is false without V, I, H | codex | claude |
-| G-003 | confirmed | repairable | §4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474 | Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written | claude, codex |  |
-| G-004 | confirmed | exposition | §5.2 txt:864-866 | "The hull contains the whole J_b" must mean J_b ∈ H, not J_b ⊆ H | codex | claude |
-| G-005 | confirmed | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
+| G-001 | repaired | exposition | §1.2 txt:95-101 | Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there | claude, codex |  |
+| G-002 | repaired | repairable | §3.1 txt:263-268 | "P implies S" is false without V, I, H | codex | claude |
+| G-003 | repaired | repairable | §4 txt:646-686; §7.1 txt:1045-1065; §8.5 txt:1474 | Admitted records (§4) and the packet class quantified in S_n (§7) are not exact predicates; closure of the class under the §8.5 constructions is not checkable as written | claude, codex |  |
+| G-004 | repaired | exposition | §5.2 txt:864-866 | "The hull contains the whole J_b" must mean J_b ∈ H, not J_b ⊆ H | codex | claude |
+| G-005 | repaired | exposition | §10 txt:1516-1534 | The "accompanying Python programs" of §10 are not supplied | codex | claude |
 | G-006 | closed | repairable | §2 txt:194-236 | Path nesting, barrier and capping proofs do not state their induction predicates and orders across height scopes | claude | codex |
 | G-007 | closed | repairable | lean/BTBMS/Expansion.lean (statement port) | Lean expand returned none where BTBM.FS returns a forest, on raw non-V/I inputs whose root lies in the stopping entry's height | codex | claude |
 | G-008 | closed | repairable | checks/lock/, scripts/lean-status.sh, tracker/refresh.py (tooling, not the paper) | Lock and progress tooling could certify a wrong proof: coerced or axiom-based exports passed, Mathlib/toolchain unpinned or pinned at the wrong path, stale status shown as current, opaque holes missed | codex | claude |
+| G-009 | suspected | unknown | §3 txt:553-560 | Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour | claude |  |
+| G-010 | suspected | unknown | §3 txt:520-541 | Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix | claude |  |
+| G-011 | suspected | unknown | §4 txt:667-681 | First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed | claude |  |
+| G-012 | suspected | unknown | §8.5 txt:1418-1423 | Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched | claude |  |
 
 ## G-001 — Operation domain: ∅[n] undefined in paper but ∅ in BTBM.ts; paper stopping rule undefined on forests with internal empty columns, reference stops there
 
@@ -85,6 +89,34 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 **Refs:** codex-lock-review.md
 
 
+## G-009 — Cofinality, ordinary step: the response at a previous-phase root (r < ρ < s_φ) is asserted without the invariant that relates V = κ_φ W to the old terminal queries along the low-head detour
+
+**Detail:** Found while writing the blueprint (node T3.8lo). Statement passed 647 bounded caps with r < ρ < s_φ; the invariant for proof step 3 is not written.
+
+**Refs:** blueprint/INTEGRATION.md §2.2
+
+
+## G-010 — Cofinality, projection of the final A-test: needs a decorated-key variant of head_path whose hypotheses the paper does not fix
+
+**Detail:** Found while writing the blueprint (node T3.8li, T3.2q). Decorated variant fails for arbitrary reduced W (74 bounded failures) and held for cut queries of a (9,420 cases); the projection itself held in 32,183 cases.
+
+**Refs:** blueprint/INTEGRATION.md §2.2
+
+
+## G-011 — First-difference lemma, path transfer: the cap-anchor host crossing and the descendant identification at the source host are compressed
+
+**Detail:** Found while writing the blueprint (node L4.2c). Not exercised on any bounded instance with a moved cap anchor; 1,344 related repair-record cases pass.
+
+**Refs:** blueprint/INTEGRATION.md §2.2-2.3
+
+
+## G-012 — Case 3 data: whole-frame survival through repairs ("induction through the containers") and an injective chart of the repaired cap compatible with χ are sketched
+
+**Detail:** Found while writing the blueprint (node L7.5d, L8.8f). Each CapData field now has a named source (L7.5, L7.5a, value separation); not yet confirmed field by field.
+
+**Refs:** blueprint/INTEGRATION.md §2.2-2.3
+
+
 # Decisions
 
 | ID | Owner | Status | Question | Answer / impact |
@@ -92,6 +124,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | D-1 | user | decided | Which theorem is the deliverable: a host-Lean theorem (∀n ∃ n-Mahlo) → WellFounded on Std, or an object-theory derivation ZFC + {n-Mahlo} ⊢ WO(Std) as in KP1Y? | H: host-Lean theorem. Hypothesis "for every n an n-Mahlo cardinal exists" is an explicit premise (Lean cannot prove even one Mahlo cardinal exists), stated in the same universe as the J-hierarchy. Decided by the user 2026-10-27. |
 | D-2 | claude | decided | Keep the paper's hypothesis (n-Mahlo over inaccessibles) or prove the stronger theorem with weakly n-Mahlo cardinals (S-1)? | Default, user may override: main theorem with weakly n-Mahlo cardinals (stronger theorem, simpler definition); the paper's n-Mahlo version as a corollary. This delivers both statements. |
 | D-3 | claude | decided | Operation domain in Lean | Lean `expand : Forest → Nat → Option Forest` mirrors BTBM.FS exactly, returning none exactly where the reference throws (owner-root exhausted scan with n ≥ 1; invisible root). ∅[n] = some ∅ as in the reference. IsStd closes the seeds under defined operations, as in the paper. |
+| D-4 | user | open | Hierarchy for the main-theorem route: the paper's J-hierarchy (§5, blueprint Part B) or the reflection hierarchy (S-7 / P-U4-1, Part C)? | Root recommends Part C, keeping Part B as an optional §5-fidelity track. Part B is the largest and riskiest block of the project; Part C changes no statement. |
 
 # Simplifications
 
@@ -103,6 +136,7 @@ Generated from `tracker/ledger.json` by `tracker/refresh.py`; do not edit by han
 | S-4 | agreed | Prove §6-§9 against an explicit semantic interface (levels, edges, capture, transport, budgets, (13), (14)); instantiate it with the J-hierarchy separately | claude, codex |
 | S-5 | agreed | Extract the abstract final theorem first: closure + cofinality + seed configurations + strict descent ⇒ well-order | codex |
 | S-6 | agreed | Engineering: one word library (reductions, traces, cancellation, delayed change); one typed continuation-hole operation; P as a separate invariant from L; label-free descent before labels; one finite-name amalgamation and packing lemma | codex |
+| S-7 | proposed | P-U4-1: instantiate the S-4 interface with a reflection hierarchy on ordinals (Elem/Edge defined by well-founded recursion as "every diagram reflects/transports"), proving (13)/(14) from Mathlib Skolem hulls plus one condensation lemma, instead of building the J-hierarchy of §5 | claude |
 
 # Risks
 

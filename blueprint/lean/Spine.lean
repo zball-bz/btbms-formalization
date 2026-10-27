@@ -1,0 +1,1932 @@
+import BTBMS
+import Mathlib.Data.List.Basic
+import Mathlib.Data.List.Chain
+import Mathlib.Data.List.Infix
+import Mathlib.Data.List.Lex
+import Mathlib.Data.List.MinMax
+import Mathlib.Data.List.Nodup
+import Mathlib.Data.List.TakeDrop
+import Mathlib.Data.Prod.Lex
+import Mathlib.Data.Finset.Max
+import Mathlib.Data.Finset.Lattice.Fold
+import Mathlib.Data.Set.Finite.Basic
+import Mathlib.Logic.Relation
+import Mathlib.Logic.Function.Iterate
+import Mathlib.Order.Cofinal
+import Mathlib.Order.Lex
+import Mathlib.Order.RelClasses
+import Mathlib.Order.SuccPred.Limit
+import Mathlib.Order.WellFounded
+import Mathlib.Order.WithBot
+import Mathlib.SetTheory.Ordinal.Arithmetic
+import Mathlib.SetTheory.Ordinal.Enum
+import Mathlib.SetTheory.Ordinal.Family
+import Mathlib.SetTheory.Ordinal.FixedPoint
+import Mathlib.SetTheory.Ordinal.Rank
+import Mathlib.SetTheory.Cardinal.Aleph
+import Mathlib.SetTheory.Cardinal.Arithmetic
+import Mathlib.SetTheory.Cardinal.Ordinal
+import Mathlib.SetTheory.Cardinal.Regular
+import Mathlib.SetTheory.Cardinal.Cofinality.Basic
+import Mathlib.SetTheory.Cardinal.Cofinality.Ordinal
+import Mathlib.SetTheory.Cardinal.Cofinality.Club
+import Mathlib.SetTheory.ZFC.Basic
+import Mathlib.SetTheory.ZFC.Cardinal
+import Mathlib.SetTheory.ZFC.Ordinal
+import Mathlib.SetTheory.ZFC.Rank
+import Mathlib.ModelTheory.Basic
+import Mathlib.ModelTheory.Syntax
+import Mathlib.ModelTheory.Semantics
+import Mathlib.ModelTheory.Substructures
+import Mathlib.ModelTheory.ElementaryMaps
+import Mathlib.ModelTheory.ElementarySubstructures
+import Mathlib.ModelTheory.Skolem
+import Mathlib.ModelTheory.Definability
+
+/-!
+# BTBMS blueprint — the spine (shared vocabulary and cross-unit contracts)
+
+Companion of `blueprint/00-spine.md`; section letters (§c.1 …) refer to that file. Every
+declaration carries its ledger node ID and its owner unit:
+
+* `-- body: U<k>` marks a definition whose body is `sorry` and is owed by unit `U<k>`;
+  the precise informal definition is in `00-spine.md`.
+* `-- provides: U<k>, <node>` marks a cross-unit contract (a theorem whose proof is owed by
+  `U<k>`). All proofs are `sorry` in the blueprint.
+
+Units: U1 syntax-scans (`BTBMS.Scan`, plus `BTBMS.Tree`/`BTBMS.ColAddr` helpers), U2
+closure-cofinality (`BTBMS.Closure`), U3 records-packets (`BTBMS.Packet`), U4 hierarchy
+(`BTBMS.Hier`), U5 descent-main (`BTBMS.Descent`).
+
+Locked files (`Syntax`, `Expansion`, `Mahlo`, `Statement`) are imported, never edited.
+
+Integration (2026-10-27, `00-spine.md` §i): the bodies owed by U1, U2 and U3 are now real
+(marked `-- body: U<k> (SCR…)`, each block preceded by a `moved from` comment); `Role.under` and
+`Packet.blockMap` are new real-bodied definitions; `factorization` carries the hypothesis `ha`.
+The only remaining `sorry` body is `Hier.jInterface` (U4).
+-/
+
+namespace BTBMS
+
+universe u
+
+open Cardinal
+
+/-! ## §c.1 Syntax and order (U1: D1.1, D1.4) -/
+
+namespace Tree
+
+variable {α : Type} [DecidableEq α]
+
+mutual
+/-- Decidable equality of trees (D1.1). Real body: the derived handler does not support this
+nested inductive. -/
+def decEq : (a b : Tree α) → Decidable (a = b)
+  | .node a, .node b =>
+    match decEqCols a b with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse fun e => h (Tree.node.inj e)
+
+def decEqCols : (a b : List (List (α × Tree α))) → Decidable (a = b)
+  | [], [] => isTrue rfl
+  | [], _ :: _ => isFalse fun e => List.cons_ne_nil _ _ e.symm
+  | _ :: _, [] => isFalse (List.cons_ne_nil _ _)
+  | x :: xs, y :: ys =>
+    match decEqCol x y, decEqCols xs ys with
+    | isTrue h1, isTrue h2 => isTrue (h1 ▸ h2 ▸ rfl)
+    | isFalse h1, _ => isFalse fun e => h1 (List.cons.inj e).1
+    | _, isFalse h2 => isFalse fun e => h2 (List.cons.inj e).2
+
+def decEqCol : (a b : List (α × Tree α)) → Decidable (a = b)
+  | [], [] => isTrue rfl
+  | [], _ :: _ => isFalse fun e => List.cons_ne_nil _ _ e.symm
+  | _ :: _, [] => isFalse (List.cons_ne_nil _ _)
+  | (p, h) :: xs, (q, k) :: ys =>
+    if hp : p = q then
+      match decEq h k, decEqCol xs ys with
+      | isTrue h1, isTrue h2 => isTrue (hp ▸ h1 ▸ h2 ▸ rfl)
+      | isFalse h1, _ => isFalse fun e => h1 (Prod.mk.inj (List.cons.inj e).1).2
+      | _, isFalse h2 => isFalse fun e => h2 (List.cons.inj e).2
+    else isFalse fun e => hp (Prod.mk.inj (List.cons.inj e).1).1
+end
+
+instance instDecidableEq : DecidableEq (Tree α) := decEq
+
+end Tree
+
+/-- D1.1: the syntax order on forests is a linear order. `lt` is *definitionally* the locked
+`instLTForest`, so `Std.lt` and every statement in `Statement.lean` read the same relation. -/
+instance Forest.instLinearOrder : LinearOrder Forest where -- proofs: U1
+  lt := @LT.lt Forest instLTForest
+  le a b := Tree.cmp compare a b ≠ .gt
+  le_refl := sorry
+  le_trans := sorry
+  le_antisymm := sorry
+  le_total := sorry
+  lt_iff_le_not_ge := sorry
+  toDecidableLE := fun a b => inferInstanceAs (Decidable (Tree.cmp compare a b ≠ .gt))
+  toDecidableEq := Tree.instDecidableEq
+
+/-- D1.4: relative keys are linearly ordered by `keyCmp` (false fields before true fields,
+then by value; lexicographic on trees, a proper prefix smaller). -/
+instance Key.instLinearOrder : LinearOrder Key where -- proofs: U1
+  lt x y := keyCmp x y = .lt
+  le x y := keyCmp x y ≠ .gt
+  le_refl := sorry
+  le_trans := sorry
+  le_antisymm := sorry
+  le_total := sorry
+  lt_iff_le_not_ge := sorry
+  toDecidableLE := fun x y => inferInstanceAs (Decidable (keyCmp x y ≠ .gt))
+  toDecidableEq := Tree.instDecidableEq
+
+-- provides: U1, D1.1
+theorem Forest.lt_iff_cmp (a b : Forest) : a < b ↔ Tree.cmp compare a b = .lt := Iff.rfl
+
+-- provides: U1, D1.1 (the empty forest is least)
+theorem Forest.empty_lt {E : Forest} (h : E ≠ Tree.empty) : Tree.empty < E := by
+  sorry
+
+-- provides: U1, D1.4 (h_a preserves and reflects order, txt:84-85)
+theorem relKey_lt_iff (a : Nat) (H H' : Forest) : relKey a H < relKey a H' ↔ H < H' := by
+  sorry
+
+/-! ## §c.2 Occurrences (U1: D1.2, new sub-node D1.2a; risk R-3) -/
+
+/-- D1.2a. Address of a column occurrence: the `(column index, entry index)` steps of its
+containing entries, from the outer forest inward, and its index in its own forest. -/
+structure ColAddr where
+  path : List (Nat × Nat)
+  col : Nat
+  deriving DecidableEq, Repr
+
+/-- D1.2a. Address of an entry occurrence: its column and its index in that column. -/
+structure EntryAddr where
+  col : ColAddr
+  idx : Nat
+  deriving DecidableEq, Repr
+
+/-- D1.2a / D6.1. A role of the finite graph `Γ(E)`: the ordinary role `A_c` of a column
+occurrence, or the slot `U_e` of an entry occurrence. -/
+inductive Role where
+  | ord (c : ColAddr)
+  | slot (e : EntryAddr)
+  deriving DecidableEq, Repr
+
+/-- The path of containing entries of the height of `e`. -/
+def EntryAddr.heightPath (e : EntryAddr) : List (Nat × Nat) := e.col.path ++ [(e.col.col, e.idx)]
+
+/-- The containing-entry path of a role (`A_c`: that of `c`; `U_e`: that of `e`'s column). -/
+def Role.path : Role → List (Nat × Nat)
+  | .ord c => c.path
+  | .slot e => e.col.path
+
+/-- `x` is `U_e` itself or lies inside the height of `e`. -/
+def Role.inEntry (x : Role) (e : EntryAddr) : Bool :=
+  x == .slot e || e.heightPath.isPrefixOf x.path
+
+/-- D1.2a (SCR-1 of U5, applied at integration; owner U1): `Role.under π r` places a role read
+relative to a height under the containing path `π` (prefixes `π` to its address path). -/
+def Role.under (π : List (Nat × Nat)) : Role → Role
+  | .ord c => .ord ⟨π ++ c.path, c.col⟩
+  | .slot e => .slot ⟨⟨π ++ e.col.path, e.col.col⟩, e.idx⟩
+
+namespace ColAddr
+
+/-- D1.2: printed column number. The outer forest starts at `base`; a height attached to column
+`a` starts at `a + 1` (txt:65). Forests use `base = 0`; relative keys of a height use `base = 1`
+(the host is relative number `0`). -/
+def num (base : Nat) (c : ColAddr) : Nat := base + (c.path.map (·.1 + 1)).sum + c.col
+
+/-- Helper of `resolve`: scan the levels of the visible stack. -/
+def resolveAux : Nat → List (Nat × Nat) → List (Nat × Nat) → Nat → Nat → Option ColAddr
+  | start, pre, [], j, q => if start ≤ q ∧ q < start + j then some ⟨pre, q - start⟩ else none
+  | start, pre, (ck, ik) :: rest, j, q =>
+    if start ≤ q ∧ q ≤ start + ck then some ⟨pre, q - start⟩
+    else resolveAux (start + ck + 1) (pre ++ [(ck, ik)]) rest j q
+
+/-- D1.2: the occurrence denoted by the printed number `q` on the visible stack of column `c`
+(txt:66-69): containing columns and earlier columns of each containing forest, and earlier columns
+of `c`'s own forest. `none` if `q` is not on the stack (in particular if `q ≥ c.num base`). -/
+def resolve (base : Nat) (c : ColAddr) (q : Nat) : Option ColAddr :=
+  resolveAux base [] c.path c.col q
+
+/-- D1.2: the entry of column occurrence `q` whose height contains column occurrence `c`. -/
+def container (q c : ColAddr) : Option EntryAddr :=
+  match c.path.drop q.path.length with
+  | (k, i) :: _ => if c.path.take q.path.length = q.path ∧ k = q.col then some ⟨q, i⟩ else none
+  | [] => none
+
+/-- D1.2 / D6.1: the two representatives `(O(q), P(q))` of visible number `q` seen from column
+`c`: the ordinary role, and the slot of the containing entry if `q` contains `c` (else the
+ordinary role again). -/
+def rep (base : Nat) (c : ColAddr) (q : Nat) : Option (Role × Role) :=
+  (c.resolve base q).map fun o =>
+    (.ord o, match o.container c with
+      | some e => .slot e
+      | none => .ord o)
+
+/-- D7.1: representatives of every visible number `0, …, c.num 0 - 1` of a forest column. -/
+def reps0 (c : ColAddr) : List (Role × Role) :=
+  (List.range (c.num 0)).filterMap (c.rep 0)
+
+end ColAddr
+
+namespace Tree
+
+variable {α : Type}
+
+/-- The forest reached by a path of `(column, entry)` steps. -/
+def forestAt : Tree α → List (Nat × Nat) → Option (Tree α)
+  | t, [] => some t
+  | t, (c, i) :: rest =>
+    match (t.cols[c]?).bind (·[i]?) with
+    | some (_, h) => forestAt h rest
+    | none => none
+
+def colAt (t : Tree α) (c : ColAddr) : Option (List (α × Tree α)) :=
+  (t.forestAt c.path).bind fun f => f.cols[c.col]?
+
+def entryAt (t : Tree α) (e : EntryAddr) : Option (α × Tree α) :=
+  (t.colAt e.col).bind (·[e.idx]?)
+
+def heightAt (t : Tree α) (e : EntryAddr) : Option (Tree α) :=
+  (t.entryAt e).map Prod.snd
+
+mutual
+/-- Roles in reading order (depth first; a slot immediately before its height, txt:923-924). -/
+def rolesF (π : List (Nat × Nat)) : Tree α → List Role
+  | .node cols => rolesCols π 0 cols
+
+def rolesCols (π : List (Nat × Nat)) (c : Nat) : List (List (α × Tree α)) → List Role
+  | [] => []
+  | col :: rest => .ord ⟨π, c⟩ :: (rolesCol π c 0 col ++ rolesCols π (c + 1) rest)
+
+def rolesCol (π : List (Nat × Nat)) (c i : Nat) : List (α × Tree α) → List Role
+  | [] => []
+  | (_, h) :: rest => .slot ⟨⟨π, c⟩, i⟩ :: (rolesF (π ++ [(c, i)]) h ++ rolesCol π c (i + 1) rest)
+end
+
+/-- D6.1: all roles of a tree, in reading order. -/
+def roles (t : Tree α) : List Role := rolesF [] t
+
+def colAddrs (t : Tree α) : List ColAddr :=
+  t.roles.filterMap fun | .ord c => some c | .slot _ => none
+
+def entryAddrs (t : Tree α) : List EntryAddr :=
+  t.roles.filterMap fun | .slot e => some e | .ord _ => none
+
+/-- D8.1 / (7): `N(B)`, the number of ordinary and slot roles internal to `B`. -/
+def size (t : Tree α) : Nat := t.roles.length
+
+-- SCR-2 (U1), applied at integration: moved from `U1.lean`; owner U1.
+/-- D1.2c: body of the spine's `Tree.truncAfter` (§c.2). `truncAux π j i t`: at a containing
+level `(c, i₀) :: rest` keep columns `0…c`, in column `c` keep entries `0…i₀` and truncate the
+height of entry `i₀` recursively; at the last level keep columns `0…j` and in column `j` entries
+`0…i`. -/
+def truncAux : List (Nat × Nat) → Nat → Nat → Tree α → Tree α
+  | [], j, i, .node cols => .node (cols.take j ++ [(cols.getD j []).take (i + 1)])
+  | (c, i₀) :: rest, j, i, .node cols =>
+    let col := cols.getD c []
+    .node (cols.take c ++
+      [col.take i₀ ++ (col[i₀]?.map fun x => (x.1, truncAux rest j i x.2)).toList])
+
+/-- D1.2c: keep everything up to and including entry `e` with its complete height; `t` itself if
+`e` is not an entry of `t`. -/
+def truncAfterBody (t : Tree α) (e : EntryAddr) : Tree α :=
+  if (t.entryAt e).isSome then truncAux e.col.path e.col.col e.idx t else t
+
+/-- D1.2c: helper of `setHeightBody`. -/
+def setAux (h : Tree α) : List (Nat × Nat) → Nat → Nat → Tree α → Tree α
+  | [], j, i, .node cols => .node (cols.modify j fun col => col.modify i fun x => (x.1, h))
+  | (c, i₀) :: rest, j, i, .node cols =>
+    .node (cols.modify c fun col => col.modify i₀ fun x => (x.1, setAux h rest j i x.2))
+
+/-- D1.2c: body of the spine's `Tree.setHeight`: replace the height of entry `e` by `h`. -/
+def setHeightBody (t : Tree α) (e : EntryAddr) (h : Tree α) : Tree α :=
+  if (t.entryAt e).isSome then setAux h e.col.path e.col.col e.idx t else t
+
+/-- §4: keep everything up to and including entry `e` with its complete height and delete all
+later context (later entries of `e`'s column, later columns of its forest, and the same in every
+containing forest). -/
+def truncAfter (t : Tree α) (e : EntryAddr) : Tree α := t.truncAfterBody e -- body: U1 (SCR-2)
+
+/-- §4: replace the height of entry `e` by `h` (no other change). -/
+def setHeight (t : Tree α) (e : EntryAddr) (h : Tree α) : Tree α := t.setHeightBody e h -- body: U1 (SCR-2)
+
+end Tree
+
+/-! ## §c.3 Keys, scans and the conditions V, I, H, A, S, class L (U1: D1.3, D1.4, D2.1–D2.3); P is §c.6 (U2) -/
+
+namespace Scan
+
+/-- Generic reduction `ν` (D2.1): append letters one by one, first deleting terminal letters
+strictly smaller than the appended letter; equal letters are retained. -/
+def nu {α : Type} [LinearOrder α] (l : List α) : List α :=
+  l.foldl (fun acc x => (acc.reverse.dropWhile fun y => decide (y < x)).reverse ++ [x]) []
+
+/-- D2.1: the query of the cut before entry `k`, `W(c,k) = B_c(k-1) = ν(K_0,…,K_{k-1})`. -/
+def cutQuery {α : Type} [LinearOrder α] (ks : List α) (k : Nat) : List α := nu (ks.take k)
+
+/-- D2.1: the boundary `B_c(i) = ν(K_0,…,K_i)`; `B_c(-1) = cutQuery ks 0 = []`. -/
+def boundary {α : Type} [LinearOrder α] (ks : List α) (i : Nat) : List α := nu (ks.take (i + 1))
+
+/-- §1.2 / D2.1: the raw two-cursor scan (generic form of the locked `scanCount`): advance the
+source cursor when `x ≤ y`, the query cursor when `x ≥ y`; returns the final source cursor. -/
+def cursor {α : Type} [LinearOrder α] : List α → List α → Nat
+  | [], _ => 0
+  | _ :: _, [] => 0
+  | x :: xs, y :: ys =>
+    if x < y then cursor xs (y :: ys) + 1
+    else if x = y then cursor xs ys + 1
+    else cursor (x :: xs) ys
+termination_by xs ys => xs.length + ys.length
+
+/-- The raw scan's states `(i, j)` (source cursor, query cursor), in order, including the
+final state. -/
+def traceFrom {α : Type} [LinearOrder α] : Nat → Nat → List α → List α → List (Nat × Nat)
+  | i, j, [], _ => [(i, j)]
+  | i, j, _ :: _, [] => [(i, j)]
+  | i, j, x :: xs, y :: ys =>
+    (i, j) :: (if x < y then traceFrom (i + 1) j xs (y :: ys)
+      else if x = y then traceFrom (i + 1) (j + 1) xs ys
+      else traceFrom i (j + 1) (x :: xs) ys)
+termination_by _ _ xs ys => xs.length + ys.length
+
+def trace {α : Type} [LinearOrder α] (src qry : List α) : List (Nat × Nat) := traceFrom 0 0 src qry
+
+/-- D4.1 / §8.2: the actual raw scan reaches state `(i, j)` and its next comparison is
+source-greater (`x_i > y_j`). -/
+def ReachesGT {α : Type} [LinearOrder α] (src qry : List α) (i j : Nat) : Prop :=
+  (i, j) ∈ trace src qry ∧ ∃ x y, src[i]? = some x ∧ qry[j]? = some y ∧ y < x
+
+/-- §2 (txt:220-222): a key system assigns to every column occurrence the keys of its entries.
+Actual keys are relative keys of the explicit heights; a decorated system may replace selected
+last keys by the formal top `⊤`. -/
+abbrev KeySys := ColAddr → List (WithTop Key)
+
+/-- D2.2: actual keys `K_i = h_c(H_i)`, with threshold the printed number of the column. -/
+def actualKeys (E : Forest) : KeySys := fun c =>
+  ((E.colAt c).getD []).map fun x => ((relKey (c.num 0) x.2 : Key) : WithTop Key)
+
+/-- D1.6 / §2: the columns of the terminal last-column, last-entry route, outermost first: the
+last column of each forest `E_0, E_1, …` reached by following last entries (stops at an empty
+last column or an empty last height). -/
+def routeColsAux : Nat → Forest → List (Nat × Nat) → List ColAddr
+  | 0, _, _ => []
+  | fuel + 1, F, π =>
+    match F.cols.getLast? with
+    | none => []
+    | some col =>
+      ⟨π, F.cols.length - 1⟩ ::
+        match col.getLast? with
+        | some (_, h) => routeColsAux fuel h (π ++ [(F.cols.length - 1, col.length - 1)])
+        | none => []
+
+def routeCols (E : Forest) : List ColAddr := routeColsAux (E.size + 1) E []
+
+/-- §2 (txt:220-222): the independently capped key system: the last key of every selected column
+is replaced by `⊤`; children are unchanged. Selections are taken on `routeCols`. -/
+def capKeys (E : Forest) (sel : List ColAddr) : KeySys := fun c =>
+  let ks := actualKeys E c
+  if c ∈ sel then ks.dropLast ++ (ks.getLast?.map fun _ => (⊤ : WithTop Key)).toList else ks
+
+/-- D2.2: `g_W(o)`: the parent of the first unconsumed entry of column occurrence `o` scanned
+against `W`; `none` when the scan is exhausted. -/
+def resp (E : Forest) (ks : KeySys) (o : ColAddr) (W : List (WithTop Key)) : Option Nat :=
+  (((E.colAt o).getD [])[cursor (ks o) W]?).map Prod.fst
+
+/-- D2.2: one `g_W` edge between visible numbers, both resolved on the stack of column `c`. -/
+def Edge (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) (x p : Nat) : Prop :=
+  ∃ o, c.resolve 0 x = some o ∧ resp E ks o W = some p
+
+/-- D2.2: `y` is a `g_W`-ancestor of `x` (reflexive-transitive closure, txt:178-179). -/
+def Path (E : Forest) (ks : KeySys) (c : ColAddr) (W : List (WithTop Key)) : Nat → Nat → Prop :=
+  Relation.ReflTransGen (Edge E ks c W)
+
+/-- D2.2: parents of the entries of a column occurrence. -/
+def parents (E : Forest) (c : ColAddr) : List Nat := ((E.colAt c).getD []).map Prod.fst
+
+/-- D2.2: condition A in key system `ks` ("decorated A" when `ks` is decorated):
+`p_i` is a `g_{B_c(i-1)}`-ancestor of `c - 1` (if `i = 0`) or of `p_{i-1}` (txt:185-190). -/
+def CondAK (E : Forest) (ks : KeySys) : Prop :=
+  ∀ c ∈ E.colAddrs, ∀ i p, (parents E c)[i]? = some p →
+    Path E ks c (cutQuery (ks c) i)
+      (if i = 0 then c.num 0 - 1 else ((parents E c)[i - 1]?).getD 0) p
+
+/-- D1.3: condition V: every entry's parent is a visible column number (hence smaller). -/
+def CondV (E : Forest) : Prop :=
+  ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → (e.col.resolve 0 p).isSome
+
+/-- D1.3: condition I: every column of a nonempty height attached to column `a` is nonempty and
+its first parent is at least `a`. -/
+def CondI (E : Forest) : Prop :=
+  ∀ e ∈ E.entryAddrs, ∀ p h, E.entryAt e = some (p, h) → h ≠ Tree.empty →
+    ∀ col ∈ h.cols, ∃ q H rest, col = (q, H) :: rest ∧ e.col.num 0 ≤ q
+
+/-- Entry order: parent first, then height (txt:62). -/
+def EntryLe (y x : Nat × Forest) : Prop := y.1 < x.1 ∨ (y.1 = x.1 ∧ y.2 ≤ x.2)
+
+/-- D1.3: condition H: the entries of every column are nonincreasing. -/
+def CondH (E : Forest) : Prop :=
+  ∀ c ∈ E.colAddrs, ∀ i x y, ((E.colAt c).getD [])[i]? = some x →
+    ((E.colAt c).getD [])[i + 1]? = some y → EntryLe y x
+
+/-- D2.3: an owner return: entry `e` lies in a column inside the height of entry `e0` and its
+parent denotes `e0`'s column (txt:201-202). -/
+def IsOwnerReturn (E : Forest) (e0 e : EntryAddr) : Prop :=
+  e0.heightPath <+: e.col.path ∧ ∃ q J, E.entryAt e = some (q, J) ∧ e.col.resolve 0 q = some e0.col
+
+/-- D2.3: condition S: `h_c(J) < h_a(H)` at every owner return. -/
+def CondS (E : Forest) : Prop :=
+  ∀ e0 ∈ E.entryAddrs, ∀ e ∈ E.entryAddrs, IsOwnerReturn E e0 e →
+    relKey (e.col.num 0) ((E.heightAt e).getD Tree.empty) <
+      relKey (e0.col.num 0) ((E.heightAt e0).getD Tree.empty)
+
+def CondA (E : Forest) : Prop := CondAK E (actualKeys E)
+
+/-- D2.3: the class `L = V ∧ I ∧ H ∧ A ∧ S`. -/
+def InL (E : Forest) : Prop := CondV E ∧ CondI E ∧ CondH E ∧ CondA E ∧ CondS E
+
+/-! ## §c.4 Words and safe prefixes (U1: C1.8, D1.9) -/
+
+/-- C1.8: a word atom `(depth coordinate, marker, parent)`, ordered lexicographically. -/
+abbrev WordAtom := Nat ×ₗ Nat ×ₗ Nat
+
+mutual
+def wordAt (e : Nat) : Forest → List WordAtom
+  | .node cols => wordCols e cols
+
+def wordCols (e : Nat) : List Column → List WordAtom
+  | [] => []
+  | col :: rest => wordCol e col ++ wordCols e rest
+
+def wordCol (e : Nat) : Column → List WordAtom
+  | [] => [toLex (2 * e, toLex (0, 0))]
+  | (p, h) :: rest => toLex (2 * e, toLex (1, p)) :: (wordAt (e + 1) h ++ wordLater e rest)
+
+def wordLater (e : Nat) : Column → List WordAtom
+  | [] => []
+  | (p, h) :: rest => toLex (2 * e + 1, toLex (0, p)) :: (wordAt (e + 1) h ++ wordLater e rest)
+end
+
+/-- C1.8: the compact word `w(E)`. -/
+def word (E : Forest) : List WordAtom := wordAt 0 E
+
+/-- C1.8: `µ(E)`. -/
+def mu (E : Forest) : Nat := (word E).length
+
+-- SCR-2 (U1), applied at integration: moved from `U1.lean`; owner U1.
+mutual
+/-- D1.9a: the budgeted walk behind the spine's `safePrefix`: walk the tree with a budget of atoms, returning the
+truncated forest and the unused budget. A column is kept only if its first atom fits; an entry is
+kept only if its own atom fits, with its height truncated by the remaining budget; all later
+context is dropped once the budget is `0`. -/
+def spF (k : Nat) : Forest → Forest × Nat
+  | .node cols => let r := spCols k cols; (.node r.1, r.2)
+
+def spCols (k : Nat) : List Column → List Column × Nat
+  | [] => ([], k)
+  | col :: rest =>
+    if k = 0 then ([], 0) else
+      let r₁ := spCol k col
+      let r₂ := spCols r₁.2 rest
+      (r₁.1 :: r₂.1, r₂.2)
+
+/-- Called with `k ≥ 1`: the column's first atom is consumed. -/
+def spCol (k : Nat) : Column → Column × Nat
+  | [] => ([], k - 1)
+  | (p, h) :: rest =>
+    let r₁ := spF (k - 1) h
+    let r₂ := spLater r₁.2 rest
+    ((p, r₁.1) :: r₂.1, r₂.2)
+
+def spLater (k : Nat) : Column → Column × Nat
+  | [] => ([], k)
+  | (p, h) :: rest =>
+    if k = 0 then ([], 0) else
+      let r₁ := spF (k - 1) h
+      let r₂ := spLater r₁.2 rest
+      ((p, r₁.1) :: r₂.1, r₂.2)
+end
+
+/-- D1.9: body of the spine's `safePrefix`. -/
+def safePrefixBody (E : Forest) (k : Nat) : Forest := (spF k E).1
+
+/-- D1.9: the safe prefix keeping the first `k` atoms of `w(E)` and closing its containers. -/
+def safePrefix (E : Forest) (k : Nat) : Forest := safePrefixBody E k -- body: U1 (SCR-2)
+
+-- provides: U1, C1.8
+theorem word_lt_iff (E F : Forest) : word E < word F ↔ E < F := by sorry
+-- provides: U1, C1.8
+theorem word_injective : Function.Injective word := by sorry
+-- provides: U1, D1.9
+theorem word_safePrefix (E : Forest) (k : Nat) : word (safePrefix E k) = (word E).take k := by
+  sorry
+
+/-! ## §c.5 Shifts, the continuation hole, the operation (U1: D1.5, D1.6, D1.6a) -/
+
+/-- D1.5: `T_{r,d}`. -/
+def shift (r d : Nat) (F : Forest) : Forest := Tree.map (shiftVal r d) F
+
+/-- D1.5 / S-6: a forest with its rightmost continuation hole at depth `depth` on the
+last-column, last-entry route; `fill` is `A_{r,d,depth,Z}` (the locked `replaceAt`). -/
+structure Hole where
+  outer : Forest
+  depth : Nat
+
+def Hole.fill (h : Hole) (r d : Nat) (Z : Forest) : Forest := replaceAt r d Z h.depth h.outer
+
+inductive StepKind where
+  | deletion
+  | special
+  | ordinary
+  deriving DecidableEq, Repr
+
+/-- D1.6: the stopping column `Q ⌢ [(r, ∅)]` at depth `ℓ` (txt:98-104). -/
+structure StopData where
+  depth : Nat
+  col : ColAddr
+  t : Nat
+  r : Nat
+  Q : Column
+
+/-- D1.6: the located root column `r` (txt:121-122): forest `E_j`, index `i`, owner flag
+`i = |E_j| - 1`, and the final source cursor `c` of the raw scan. -/
+structure RootData where
+  layer : Nat
+  idx : Nat
+  col : ColAddr
+  owner : Bool
+  cursor : Nat
+
+/-- D1.6: the closing slot `N` (the stopping column's last entry). -/
+def closingSlot (sd : StopData) : EntryAddr := ⟨sd.col, sd.Q.length⟩
+
+/-- D1.6: the direct owner entry of the stopping forest (`none` at depth 0). For a special step
+it is the entry `(p, C ⌢ [[(a, ∅)]])` that is replaced. -/
+def StopData.ownerEntry (sd : StopData) : Option EntryAddr :=
+  sd.col.path.getLast?.map fun ci => ⟨⟨sd.col.path.dropLast, ci.1⟩, ci.2⟩
+
+/-- Keys of the root column, normalized at `r` (source keys `x_i`). -/
+def rootKeys (E : Forest) (rd : RootData) : List Key :=
+  ((E.colAt rd.col).getD []).map fun x => relKey (rd.col.num 0) x.2
+
+/-- Keys of the query `Q`, normalized at `t` (query keys `y_j`). -/
+def queryKeys (sd : StopData) : List Key := sd.Q.map fun x => relKey sd.t x.2
+
+-- SCR-2 (U1), applied at integration: moved from `U1.lean`; owner U1.
+mutual
+/-- D1.6b: the paper's route (txt:98-104), by structural recursion. It follows the last
+column and last entry of the forest `F` at address prefix `π` (`stopF π F`), until the first entry whose
+height is `∅`; it returns `none` where the paper's route is stuck (a forest without columns or
+an empty last column: X-02). -/
+def stopF (π : List (Nat × Nat)) : Forest → Option StopData
+  | .node cols => stopCols π 0 cols
+
+/-- `ci` is the index of the head column. -/
+def stopCols (π : List (Nat × Nat)) (ci : Nat) : List Column → Option StopData
+  | [] => none
+  | [col] => stopCol π ci 0 [] col
+  | _ :: rest@(_ :: _) => stopCols π (ci + 1) rest
+
+/-- `ei` is the index of the head entry; `Q` accumulates the entries before the last one. -/
+def stopCol (π : List (Nat × Nat)) (ci ei : Nat) (Q : Column) : Column → Option StopData
+  | [] => none
+  | [(p, .node [])] =>
+    some { depth := π.length, col := ⟨π, ci⟩, t := ColAddr.num 0 ⟨π, ci⟩, r := p, Q := Q }
+  | [(_, .node gcols@(_ :: _))] => stopCols (π ++ [(ci, ei)]) 0 gcols
+  | x :: rest@(_ :: _) => stopCol π ci (ei + 1) (Q ++ [x]) rest
+end
+
+/-- D1.6: body of the spine's `stopData`. -/
+def stopDataBody (E : Forest) : Option StopData := stopF [] E
+
+/-- D1.6 (txt:105-106): the special test: `ℓ > 0`, `Q = []`, and `r` is the number
+`t - |F_ℓ|` of the direct owner column (written without subtraction; `|F_ℓ| = col.col + 1`). -/
+def specialStop (sd : StopData) : Bool :=
+  decide (0 < sd.depth) && sd.Q.isEmpty && (sd.r + sd.col.col + 1 == sd.t)
+
+/-- D1.6: body of the spine's `stepKind` (steps 1-5 of §c.5). -/
+def stepKindBody (E : Forest) : Option StepKind :=
+  match E.cols.getLast? with
+  | none => none
+  | some [] => some .deletion
+  | some (_ :: _) =>
+    match stopDataBody E with
+    | none => none
+    | some sd =>
+      if specialStop sd then some .special
+      else if (sd.col.resolve 0 sd.r).isSome then some .ordinary else none
+
+/-- D1.6: body of the spine's `rootData`: the visible root column `o = ⟨π_j, i⟩`, its owner
+flag and the final source cursor of the raw scan of its keys (normalized at `r`) against the
+query keys (normalized at `t`), txt:121-124. -/
+def rootDataBody (E : Forest) : Option RootData :=
+  match stepKindBody E, stopDataBody E with
+  | some .ordinary, some sd =>
+    match sd.col.resolve 0 sd.r with
+    | some o =>
+      let F := (E.forestAt o.path).getD Tree.empty
+      let R := (F.cols[o.col]?).getD []
+      some { layer := o.path.length, idx := o.col, col := o,
+             owner := o.col + 1 == F.cols.length,
+             cursor := cursor (R.map fun x => relKey (o.num 0) x.2) (sd.Q.map fun x => relKey sd.t x.2) }
+    | none => none
+  | _, _ => none
+
+/-- D1.6 (txt:125-131): one pass of the ordinary loop at index `k`, with root forest `F` and
+unconsumed suffix `U`. Head: `T_{r,(k-1)d}(Q)` followed by `U` with heights shifted by `T_{r,kd}`.
+Body case: the head followed by `A_{r,kd,ℓ-j,Z}(F[i+1:])`. Owner case: the last restored height
+uses `A_{r,kd,ℓ-j-1,Z}`; the head is the whole new forest. -/
+def ordStep (sd : StopData) (rd : RootData) (F : Forest) (U : Column) (k : Nat) (Z : Forest) :
+    Forest :=
+  let r := sd.r
+  let d := sd.t - sd.r
+  let qHead := Tree.mapCol (shiftVal r ((k - 1) * d)) sd.Q
+  if rd.owner then
+    .node [qHead ++ (U.dropLast.map fun x => (x.1, shift r (k * d) x.2)) ++
+      (U.getLast?.map fun x => (x.1, Hole.fill ⟨x.2, sd.depth - rd.layer - 1⟩ r (k * d) Z)).toList]
+  else
+    .node ((qHead ++ U.map fun x => (x.1, shift r (k * d) x.2)) ::
+      (Hole.fill ⟨.node (F.cols.drop (rd.idx + 1)), sd.depth - rd.layer⟩ r (k * d) Z).cols)
+
+/-- D1.6: the loop `k = n, n-1, …, 1` (txt:125). -/
+def ordLoop (step : Nat → Forest → Forest) : Nat → Forest → Forest
+  | 0, Z => Z
+  | k + 1, Z => ordLoop step k (step (k + 1) Z)
+
+/-- D1.6: the final `Z` of an ordinary step with parameter `n`. -/
+def ordZ (E : Forest) (sd : StopData) (rd : RootData) (n : Nat) : Forest :=
+  let F := (E.forestAt rd.col.path).getD Tree.empty
+  let U := ((E.colAt rd.col).getD []).drop rd.cursor
+  ordLoop (ordStep sd rd F U) n Tree.empty
+
+/-- D1.6 (txt:105-111): the special output: the owner column `P ⌢ [(p, C ⌢ [[(a,∅)]])]` at depth
+`ℓ - 1` becomes `P ⌢ [(p, C)]^{n+ε}`, `ε = 1` iff `P = []`. -/
+def specialOut (E : Forest) (sd : StopData) (n : Nat) : Option Forest :=
+  match sd.ownerEntry with
+  | none => none
+  | some oe =>
+    match E.colAt oe.col with
+    | none => none
+    | some col =>
+      match col.getLast? with
+      | none => none
+      | some (p, Fl) =>
+        some (Hole.fill ⟨E, sd.depth - 1⟩ 0 0
+          (.node [col.dropLast ++
+            List.replicate (n + if col.dropLast.isEmpty then 1 else 0) (p, .node Fl.cols.dropLast)]))
+
+/-- D1.6 (txt:129, 132-133): the ordinary output; `none` exactly on owner-root exhaustion. -/
+def ordinaryOut (E : Forest) (sd : StopData) (rd : RootData) (n : Nat) : Option Forest :=
+  if rd.owner && n != 0 && (((E.colAt rd.col).getD []).drop rd.cursor).isEmpty then none
+  else some (Hole.fill ⟨E, sd.depth⟩ 0 0 (ordZ E sd rd n))
+
+/-- D1.6: body of the spine's `paperOp`. -/
+def paperOpBody (E : Forest) (n : Nat) : Option Forest :=
+  match stepKindBody E, stopDataBody E, rootDataBody E with
+  | some .deletion, _, _ => some (.node E.cols.dropLast)
+  | some .special, some sd, _ => specialOut E sd n
+  | some .ordinary, some sd, some rd => ordinaryOut E sd rd n
+  | _, _, _ => none
+
+/-- D1.6: branch of the paper's operation; `none` on `∅` and where the paper's route or root
+lookup is undefined. -/
+def stepKind (E : Forest) : Option StepKind := stepKindBody E -- body: U1 (SCR-2)
+/-- D1.6: `some` exactly when the paper's route reaches a stopping column. -/
+def stopData (E : Forest) : Option StopData := stopDataBody E -- body: U1 (SCR-2)
+/-- D1.6: `some` exactly for ordinary steps whose root is visible. -/
+def rootData (E : Forest) : Option RootData := rootDataBody E -- body: U1 (SCR-2)
+
+/-- D1.6: the paper's operation `E[n]`, written from §1.2 alone (G-001). -/
+def paperOp (E : Forest) (n : Nat) : Option Forest := paperOpBody E n -- body: U1 (SCR-2)
+
+-- provides: U1, D1.6a (G-001: agreement on nonempty V ∧ I inputs)
+theorem expand_eq_paperOp {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E)
+    (n : Nat) : expand E n = paperOp E n := by sorry
+
+-- provides: U1, D1.6a (the empty self-loop of the reference)
+theorem expand_empty (n : Nat) : expand Tree.empty n = some Tree.empty := rfl
+
+-- provides: U1, L2.4 (every operation is defined under V, I, A, S)
+theorem expand_isSome {E : Forest} (hV : CondV E) (hI : CondI E) (hA : CondA E) (hS : CondS E)
+    (n : Nat) : (expand E n).isSome := by sorry
+
+-- provides: U1, D1.6a (on nonempty V ∧ I inputs the paper's route and root lookup are defined)
+theorem stepKind_isSome {E : Forest} (hE : E ≠ Tree.empty) (hV : CondV E) (hI : CondI E) :
+    (stepKind E).isSome := by sorry
+
+-- provides: U1, D1.6 (branch data exist)
+theorem stopData_of_stepKind {E : Forest} {k : StepKind} (h : stepKind E = some k)
+    (hk : k ≠ .deletion) : (stopData E).isSome := by sorry
+
+-- provides: U1, D1.6
+theorem rootData_of_ordinary {E : Forest} (h : stepKind E = some .ordinary) :
+    (rootData E).isSome := by sorry
+
+-- provides: U1, D1.6
+theorem ownerEntry_of_special {E : Forest} {sd : StopData} (h : stepKind E = some .special)
+    (hsd : stopData E = some sd) : sd.ownerEntry.isSome := by sorry
+
+-- provides: U1, D1.6 (deletion removes the empty last outer column)
+theorem expand_deletion {E : Forest} (h : stepKind E = some .deletion) (n : Nat) :
+    expand E n = some (.node E.cols.dropLast) := by sorry
+
+-- provides: U1, D1.9 (`truncAfter` is a safe prefix)
+theorem truncAfter_safePrefix {E : Forest} {e : EntryAddr} (he : e ∈ E.entryAddrs) :
+    ∃ k, E.truncAfter e = safePrefix E k := by sorry
+
+/-! ## §c.5 (cont.) Scan lemmas (U1: D2.1, L2.1, L2.2; the G-006 predicates are U1-internal) -/
+
+-- provides: U1, D2.1 (boundaries strictly increase)
+theorem cutQuery_lt_succ {α : Type} [LinearOrder α] (ks : List α) {k : Nat} (hk : k < ks.length) :
+    cutQuery ks k < cutQuery ks (k + 1) := by sorry
+
+-- provides: U1, L2.1 (scan boundary lemma, reduced query)
+theorem cursor_spec {α : Type} [LinearOrder α] (ks W : List α)
+    (hW : W.Pairwise fun x y => y ≤ x) :
+    cutQuery ks (cursor ks W) ≤ W ∧
+      (cursor ks W < ks.length → W < cutQuery ks (cursor ks W + 1)) := by sorry
+
+-- provides: U1, L2.1 (reducing a query does not change the final source cursor)
+theorem cursor_nu {α : Type} [LinearOrder α] (ks W : List α) :
+    cursor ks (nu W) = cursor ks W := by sorry
+
+-- provides: U1, L2.2 (path nesting)
+theorem path_nesting {E : Forest} {ks : KeySys} (hV : CondV E) (hA : CondAK E ks) (c : ColAddr)
+    {W Z : List (WithTop Key)} (hW : W.Pairwise fun x y => y ≤ x)
+    (hZ : Z.Pairwise fun x y => y ≤ x) (hWZ : W ≤ Z) {x p : Nat} (h : Edge E ks c Z x p) :
+    Path E ks c W x p := by sorry
+
+end Scan
+
+/-! ## §c.6 Profiles, caps, repairs; closure and cofinality contracts (U2: D3.1, D3.1a, L3.1, L3.1a, T3.2, T3.2a, T3.8) -/
+
+namespace Closure
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1 (txt:254-256): profile recursion: follow first-column, first-entry heights while they
+are nonempty, counting descents `d`; at the end count the leading run of entries of the first
+column whose parent equals that column's first parent. An empty first column gives `(d, 0)`. -/
+def profileAux : Nat → Forest → Nat ×ₗ Nat
+  | d, .node cols =>
+    match cols with
+    | ((p, h) :: rest) :: _ =>
+      match h with
+      | .node [] => toLex (d, 1 + (rest.takeWhile fun x => x.1 == p).length)
+      | h@(.node (_ :: _)) => profileAux (d + 1) h
+    | _ => toLex (d, 0)
+
+/-- D3.1: body of the spine's `profile`; `⊥` is `π(∅) = (-1, 0)`. -/
+def profileBody (H : Forest) : WithBot (Nat ×ₗ Nat) :=
+  match H with
+  | .node [] => ⊥
+  | H => ((profileAux 0 H : Nat ×ₗ Nat) : WithBot (Nat ×ₗ Nat))
+
+/-- D3.1: the profile `π(H)`; `⊥` is `π(∅) = (-1, 0)`. -/
+def profile (H : Forest) : WithBot (Nat ×ₗ Nat) := profileBody H -- body: U2 (SCR-U2-2)
+
+/-- D3.1: condition P: `π(J) < π(H)` at every owner return. -/
+def CondP (E : Forest) : Prop :=
+  ∀ e0 ∈ E.entryAddrs, ∀ e ∈ E.entryAddrs, Scan.IsOwnerReturn E e0 e →
+    profile ((E.heightAt e).getD Tree.empty) < profile ((E.heightAt e0).getD Tree.empty)
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1: literal cap recursion along the address path (keep columns `0…c_d`, entries `0…i_d`,
+recurse into the containing entry; at the own level keep columns `0…j`, cut column `j` after
+`k` entries and append `(p, ∅)`). -/
+def litCapAux (k p : Nat) : List (Nat × Nat) → Nat → Forest → Forest
+  | [], j, .node cols => .node (cols.take j ++ [(cols.getD j []).take k ++ [(p, Tree.empty)]])
+  | (ci, ei) :: rest, j, .node cols =>
+    match (cols.getD ci [])[ei]? with
+    | some (q, h) =>
+      .node (cols.take ci ++ [(cols.getD ci []).take ei ++ [(q, litCapAux k p rest j h)]])
+    | none => .node cols
+
+/-- D3.1: body of the spine's `litCap` (identity when `c` is not a column of `E`). -/
+def litCapBody (E : Forest) (c : ColAddr) (k p : Nat) : Forest :=
+  if (E.colAt c).isSome then litCapAux k p c.path c.col E else E
+
+/-- D3.1: the literal cap at column occurrence `c`, cut `k`: keep the first `k` entries,
+append `(p, ∅)`, remove all later context. -/
+def litCap (E : Forest) (c : ColAddr) (k p : Nat) : Forest := litCapBody E c k p -- body: U2 (SCR-U2-2)
+
+/-- D3.1: the cap increases the next parent, or appends at the column's end. -/
+def IsUpward (E : Forest) (c : ColAddr) (k p : Nat) : Prop :=
+  match E.colAt c with
+  | some col =>
+    match col[k]? with
+    | some (q, _) => q < p
+    | none => k = col.length
+  | none => False
+
+/-- L3.1: a same-parent move in column occurrence `col`: entry `j` moves to index `i < j`,
+deleting entries `i, …, j-1` (txt:283-286). -/
+structure Move where
+  col : ColAddr
+  i : Nat
+  j : Nat
+  deriving DecidableEq, Repr
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1a: modify the column at address `c` (identity off the tree). -/
+def modifyColAux (f : Column → Column) : List (Nat × Nat) → Nat → Forest → Forest
+  | [], j, .node cols => .node (cols.modify j f)
+  | (ci, ei) :: rest, j, .node cols =>
+    .node (cols.modify ci fun col => col.modify ei fun x => (x.1, modifyColAux f rest j x.2))
+
+def modifyCol (E : Forest) (c : ColAddr) (f : Column → Column) : Forest :=
+  modifyColAux f c.path c.col E
+
+/-- D3.1a: body of the spine's `applyMove`: in column `m.col`, entries `i … j-1` are deleted and
+entry `j` (with everything after it) moves back to index `i`; invalid indices: identity. -/
+def applyMoveBody (E : Forest) (m : Move) : Forest :=
+  match E.colAt m.col with
+  | some col =>
+    if m.i < m.j ∧ m.j < col.length then modifyCol E m.col (fun col => col.take m.i ++ col.drop m.j)
+    else E
+  | none => E
+
+def applyMove (E : Forest) (m : Move) : Forest := applyMoveBody E m -- body: U2 (SCR-U2-2)
+
+def applyMoves (E : Forest) (ms : List Move) : Forest := ms.foldl applyMove E
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1a / L3.1 (txt:283-286): one legal repair move of the current expression `K`: `m.col`'s
+last entry `j` contains the stopping column of `K`, `i < j`, entries `i … j` share the parent
+of `j`, `H_i < C` for the height `C` of `j`, and no earlier same-parent entry has height `< C`. -/
+def MoveOK (K : Forest) (m : Move) : Prop :=
+  ∃ col sd, K.colAt m.col = some col ∧ Scan.stopData K = some sd ∧ m.j + 1 = col.length ∧ m.i < m.j ∧
+    (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: sd.col.path ∧
+    (∀ x, m.i ≤ x → x ≤ m.j → (col.getD x (0, Tree.empty)).1 = (col.getD m.j (0, Tree.empty)).1) ∧
+    (col.getD m.i (0, Tree.empty)).2 < (col.getD m.j (0, Tree.empty)).2 ∧
+    (∀ x < m.i, (col.getD x (0, Tree.empty)).1 = (col.getD m.j (0, Tree.empty)).1 →
+      ¬ (col.getD x (0, Tree.empty)).2 < (col.getD m.j (0, Tree.empty)).2)
+
+/-- D3.1a: body of the spine's `MovesValid`: every move is legal for the expression produced
+by the moves before it. -/
+def MovesValidBody (K : Forest) (ms : List Move) : Prop :=
+  ∀ idx (h : idx < ms.length), MoveOK (applyMoves K (ms.take idx)) ms[idx]
+
+/-- L3.1: each move, applied in order, is a legal repair move of the current expression
+(the moved entry is the active last entry of a containing column of the cap, entries `i..j`
+share one parent, `i` is the first index with `H_i < C`). -/
+def MovesValid (K : Forest) (ms : List Move) : Prop := MovesValidBody K ms -- body: U2 (SCR-U2-2)
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1a: forward index map of a move at its own level (meaningful on retained indices). -/
+def Move.fwdIdx (m : Move) (e : Nat) : Nat := if m.j ≤ e then e - (m.j - m.i) else e
+
+/-- D3.1a: backward index map (retained index after the move ↦ index before). -/
+def Move.bwdIdx (m : Move) (e : Nat) : Nat := if m.i ≤ e then e + (m.j - m.i) else e
+
+/-- D3.1a: rewrite the step of a path that passes through the move column. -/
+def Move.mapPath (g : Nat → Nat) (m : Move) (π : List (Nat × Nat)) : List (Nat × Nat) :=
+  if π.take m.col.path.length = m.col.path then
+    match π[m.col.path.length]? with
+    | some (c, e) =>
+      if c = m.col.col then π.take m.col.path.length ++ (c, g e) :: π.drop (m.col.path.length + 1)
+      else π
+    | none => π
+  else π
+
+def Move.mapEntry (g : Nat → Nat) (m : Move) (b : EntryAddr) : EntryAddr :=
+  let c' : ColAddr := ⟨m.mapPath g b.col.path, b.col.col⟩
+  if c' = m.col then ⟨c', g b.idx⟩ else ⟨c', b.idx⟩
+
+def Move.mapRole (g : Nat → Nat) (m : Move) : Role → Role
+  | .ord c => .ord ⟨m.mapPath g c.path, c.col⟩
+  | .slot e => .slot (m.mapEntry g e)
+
+/-- D3.1a: body of the spine's `moveAddr`. -/
+def moveAddrBody (ms : List Move) (b : EntryAddr) : EntryAddr :=
+  ms.foldl (fun b m => m.mapEntry m.fwdIdx b) b
+
+/-- The current address of a retained entry after the moves. -/
+def moveAddr (ms : List Move) (b : EntryAddr) : EntryAddr := moveAddrBody ms b -- body: U2 (SCR-U2-2)
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1a / D4.1 (txt:655-658): one step of a repair record for the marked entry `b` (at its
+current address): the move lies in `b`'s column or a strict container column of `b`, its
+deleted entries share the retained entry's parent, and the retained entry is `b` or contains it. -/
+def RepairStepOK (K : Forest) (b : EntryAddr) (m : Move) : Prop :=
+  ∃ col, K.colAt m.col = some col ∧ m.i < m.j ∧ m.j < col.length ∧
+    (m.col = b.col ∨ ∃ i', (⟨m.col, i'⟩ : EntryAddr).heightPath <+: b.col.path) ∧
+    (∀ x, m.i ≤ x → x ≤ m.j → (col.getD x (0, Tree.empty)).1 = (col.getD m.j (0, Tree.empty)).1) ∧
+    ((⟨m.col, m.j⟩ : EntryAddr) = b ∨ (⟨m.col, m.j⟩ : EntryAddr).heightPath <+: b.col.path)
+
+/-- D3.1a: body of the spine's `RepairList`. -/
+def RepairListBody (K : Forest) (b : EntryAddr) (ms : List Move) : Prop :=
+  ∀ idx (h : idx < ms.length),
+    RepairStepOK (applyMoves K (ms.take idx)) (moveAddr (ms.take idx) b) ms[idx]
+
+/-- D4.1 (repair records): the move list is a same-parent repair record for the marked entry
+`b` of `K`: every move is in `b`'s column or a strict container column of `b`, deletes only
+closed entries sharing one parent, and retains `b`'s container chain. -/
+def RepairList (K : Forest) (b : EntryAddr) (ms : List Move) : Prop := RepairListBody K b ms -- body: U2 (SCR-U2-2)
+
+/-- D3.1a: an admissible upward cap of `E`: a literal upward cap followed by legal same-parent
+repairs, landing in `L`. -/
+structure AdmCap (E : Forest) where
+  col : ColAddr
+  cut : Nat
+  par : Nat
+  moves : List Move
+  upward : IsUpward E col cut par
+  movesValid : MovesValid (litCap E col cut par) moves
+  inL : Scan.InL (applyMoves (litCap E col cut par) moves)
+
+def AdmCap.H {E : Forest} (w : AdmCap E) : Forest := applyMoves (litCap E w.col w.cut w.par) w.moves
+
+-- SCR-U2-2, applied at integration: moved from `U2.lean`; owner U2.
+/-- D3.1a: body of the spine's `AdmCap.origin` (χ): undo the moves (last first), then the
+literal cap keeps every address except its appended closing slot. -/
+def originBody {E : Forest} (w : AdmCap E) (x : Role) : Option Role :=
+  let x0 := w.moves.foldr (fun m y => m.mapRole m.bwdIdx y) x
+  if x0 = .slot ⟨w.col, w.cut⟩ then none else some x0
+
+/-- D3.1a: the surviving-role map `χ` from the cap's roles to the roles of `E` (`none` exactly
+on the appended closing slot). -/
+def AdmCap.origin {E : Forest} (w : AdmCap E) : Role → Option Role := originBody w -- body: U2 (SCR-U2-2)
+
+/-- The ordinary input of a record: `E` itself (`none`) or an admissible cap of `E`. -/
+def anchor (E : Forest) : Option (AdmCap E) → Forest
+  | none => E
+  | some w => w.H
+
+def anchorOrigin (E : Forest) : Option (AdmCap E) → Role → Option Role
+  | none => some
+  | some w => w.origin
+
+-- provides: U2, L3.1a (G-002: `V ∧ I ∧ H ∧ P ⇒ S`)
+theorem condS_of_condP {E : Forest} (hV : Scan.CondV E) (hI : Scan.CondI E) (hH : Scan.CondH E)
+    (hP : CondP E) : Scan.CondS E := by sorry
+
+-- provides: U2, T3.2
+theorem std_inL {E : Forest} (h : IsStd E) : Scan.InL E := by sorry
+-- provides: U2, T3.2
+theorem std_condP {E : Forest} (h : IsStd E) : CondP E := by sorry
+-- provides: U2, T3.2
+theorem inL_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (h : expand E n = some E') :
+    Scan.InL E' := by sorry
+-- provides: U2, T3.2 (P is preserved when present, S-6)
+theorem condP_expand {E E' : Forest} {n : Nat} (hE : Scan.InL E) (hP : CondP E)
+    (h : expand E n = some E') : CondP E' := by sorry
+-- provides: U2, T3.2
+theorem inL_safePrefix {E : Forest} (hE : Scan.InL E) (k : Nat) :
+    Scan.InL (Scan.safePrefix E k) := by sorry
+-- provides: U2, T3.2 (strict decrease; the paper's statement asks only V, I)
+theorem expand_lt {E E' : Forest} {n : Nat} (hE : E ≠ Tree.empty) (hV : Scan.CondV E)
+    (hI : Scan.CondI E) (h : expand E n = some E') : E' < E := by sorry
+-- provides: U2, T3.2a (Lean `IsStd` equals the paper's Std, generated by `paperOp`)
+theorem isStd_iff_paper (E : Forest) :
+    IsStd E ↔ (∃ (m : Nat) (ns : List Nat), ns.foldlM (fun F n => Scan.paperOp F n) (seed m) = some E) := by sorry
+
+-- provides: U2, T3.8 (cofinality)
+theorem cofinal {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E) :
+    ∃ n E', expand E n = some E' ∧ B ≤ E' ∧ E' < E := by sorry
+
+-- provides: U2, T3.8 (the explicit bound when `E` ends in a nonempty outer column)
+theorem cofinal_bound {B E : Forest} (hB : IsStd B) (hE : Scan.InL E) (hlt : B < E)
+    (hlast : E.cols.getLast? ≠ some []) :
+    ∃ n E', 1 ≤ n ∧ n ≤ Scan.mu B + 1 ∧ expand E n = some E' ∧ B < E' := by sorry
+
+end Closure
+
+/-! ## §c.7 The diagram language and the S-4 semantic interface (U4: N4.1, N4.2, D5.7, D5.7a,
+L5.8, L5.8a, L5.9, L6.5, L6.6; G-004) -/
+
+namespace Hier
+
+/-- `Lim(a)`: a limit ordinal greater than `ω` (txt:735-736). -/
+def IsLim (o : Ordinal.{u}) : Prop := Order.IsSuccLimit o ∧ Ordinal.omega0 < o
+
+/-- N4.1: the two semantic relations read by graphs: `Elem a b` is `J_a ≺_{Σ1} J_b`, and
+`Edge C b a` is the control edge `R(C, b, a)` of (10). -/
+structure Prims where
+  Elem : Ordinal.{u} → Ordinal.{u} → Prop
+  Edge : Ordinal.{u} → Ordinal.{u} → Ordinal.{u} → Prop
+
+/-- N4.1: atoms of finite diagrams over variables `V` (txt:874-877). -/
+inductive BaseAtom (V : Type) where
+  | lim (x : V)
+  | lt (x y : V)
+  | le (x y : V)
+  | eq (x y : V)
+  | elem (x y : V)
+  | edge (c b a : V)
+  deriving DecidableEq
+
+namespace BaseAtom
+
+variable {V W : Type}
+
+def vars : BaseAtom V → List V
+  | lim x => [x]
+  | lt x y => [x, y]
+  | le x y => [x, y]
+  | eq x y => [x, y]
+  | elem x y => [x, y]
+  | edge c b a => [c, b, a]
+
+def map (f : V → W) : BaseAtom V → BaseAtom W
+  | lim x => lim (f x)
+  | lt x y => lt (f x) (f y)
+  | le x y => le (f x) (f y)
+  | eq x y => eq (f x) (f y)
+  | elem x y => elem (f x) (f y)
+  | edge c b a => edge (f c) (f b) (f a)
+
+def Holds (P : Prims.{u}) (a : V → Ordinal.{u}) : BaseAtom V → Prop
+  | lim x => IsLim (a x)
+  | lt x y => a x < a y
+  | le x y => a x ≤ a y
+  | eq x y => a x = a y
+  | elem x y => P.Elem (a x) (a y)
+  | edge c b a' => P.Edge (a c) (a b) (a a')
+
+end BaseAtom
+
+def baseVars {V : Type} (D : List (BaseAtom V)) : List V := D.flatMap BaseAtom.vars
+
+def BaseHolds {V : Type} (P : Prims.{u}) (D : List (BaseAtom V)) (a : V → Ordinal.{u}) : Prop :=
+  ∀ x ∈ D, x.Holds P a
+
+/-- N4.1 / D7.1: `D` has a realization extending the partial frame `fr`, with every new
+coordinate above the floor `L` and every coordinate below `w` (a "certificate in `J_w` above
+`L`", ordinal form of L5.8). -/
+def BlockAbove {W : Type} (P : Prims.{u}) (D : List (BaseAtom W)) (fr : W → Option Ordinal.{u})
+    (L w : Ordinal.{u}) : Prop :=
+  ∃ β : W → Ordinal.{u}, (∀ x o, fr x = some o → β x = o) ∧
+    (∀ x ∈ baseVars D, fr x = none → L < β x) ∧ (∀ x ∈ baseVars D, β x < w) ∧ BaseHolds P D β
+
+/-- N4.1: atoms of the full grammar: base atoms and negative realizability labels. The label
+`noReal D fr u L` is the bounded failure predicate (16) `No(J_u; frame, L)` for the base
+diagram `D` (in the paper, `D` is a positive block, `Packet.posBlock`). -/
+inductive Atom (V : Type) : Type 1 where
+  | base (b : BaseAtom V)
+  | noReal {W : Type} (D : List (BaseAtom W)) (fr : W → Option V) (u L : V)
+
+namespace Atom
+
+variable {V V' : Type}
+
+def vars : Atom V → List V
+  | base b => b.vars
+  | noReal D fr u L => u :: L :: (baseVars D).filterMap fr
+
+def map (f : V → V') : Atom V → Atom V'
+  | base b => base (b.map f)
+  | noReal D fr u L => noReal D (fun x => (fr x).map f) (f u) (f L)
+
+def Holds (P : Prims.{u}) (a : V → Ordinal.{u}) : Atom V → Prop
+  | base b => b.Holds P a
+  | noReal D fr u L => ¬ BlockAbove P D (fun x => (fr x).map a) (a L) (a u)
+
+end Atom
+
+/-- N4.1: a finite diagram (complete existence problem). -/
+abbrev Diagram (V : Type) := List (Atom V)
+
+namespace Diagram
+
+variable {V V' : Type}
+
+def ofBase (D : List (BaseAtom V)) : Diagram V := D.map Atom.base
+def vars (D : Diagram V) : List V := D.flatMap Atom.vars
+def map (f : V → V') (D : Diagram V) : Diagram V' := List.map (Atom.map f) D
+def Holds (P : Prims.{u}) (a : V → Ordinal.{u}) (D : Diagram V) : Prop := ∀ x ∈ D, x.Holds P a
+
+/-- N4.1: `D` is realizable with the variables in `F` fixed at `σ` and every coordinate below
+`w` (ordinal form of "a complete witness in `J_w`"). -/
+def RealizableBelow (P : Prims.{u}) (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u})
+    (w : Ordinal.{u}) : Prop :=
+  ∃ a : V → Ordinal.{u}, (∀ x, F x → a x = σ x) ∧ (∀ x ∈ D.vars, a x < w) ∧ D.Holds P a
+
+end Diagram
+
+/-- N4.1 (S-4): the semantic interface. Its fields are exactly what §6–§9 use from the
+hierarchy: levels (`Elem`), edges (`Edge`), capture and transport (L5.9), budgets (built into
+`RealizableBelow`, L5.8), (13) and (14). -/
+structure Interface extends Prims.{u} where
+  /-- D5.7 / (9): elementarity is between limit levels, upward. -/
+  elem_le : ∀ {a b}, Elem a b → a ≤ b
+  elem_lim : ∀ {a b}, Elem a b → IsLim a ∧ IsLim b
+  elem_refl : ∀ {a}, IsLim a → Elem a a
+  elem_trans : ∀ {a b c}, Elem a b → Elem b c → Elem a c
+  /-- Intermediate Σ1 elementarity (used at txt:1230). -/
+  elem_mid : ∀ {a b c}, Elem a c → a ≤ b → b ≤ c → IsLim b → Elem a b
+  /-- D5.7: all three coordinates of an edge are limits, `a < b < C`. -/
+  edge_lt : ∀ {c b a}, Edge c b a → a < b ∧ b < c
+  edge_lim : ∀ {c b a}, Edge c b a → IsLim a ∧ IsLim b ∧ IsLim c
+  /-- D5.7 (G-004: `J_b ∈ Hull`, then relativization): an edge gives `J_a ≺ J_b`. -/
+  edge_elem_low : ∀ {c b a}, Edge c b a → Elem a b
+  /-- (10), second conjunct. -/
+  edge_elem_high : ∀ {c b a}, Edge c b a → Elem b c
+  /-- D5.7: environment restriction (txt:867-869). -/
+  edge_restrict : ∀ {c b a d}, Edge c b a → IsLim d → b < d → d ≤ c → Edge d b a
+  /-- D5.7: environment extension along `J_C ≺_{Σ1} J_D` (txt:869-871). -/
+  edge_extend : ∀ {c b a d}, Edge c b a → Elem c d → Edge d b a
+  /-- L5.9 capture (with L5.8 budgets): fixed parameters below `a`, witness below `b`. -/
+  capture : ∀ {V : Type} (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u}) {a b : Ordinal.{u}},
+    Elem a b → (∀ x ∈ D.vars, F x → σ x < a) →
+    D.RealizableBelow toPrims F σ b → D.RealizableBelow toPrims F σ a
+  /-- L5.9 control transport, followed by capture into `J_b`: distinguished parameter `t`
+  moves from `b` to `a`. -/
+  transport : ∀ {V : Type} [DecidableEq V] (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u})
+    (t : V) {c b a : Ordinal.{u}}, Edge c b a → ¬ F t → (∀ x ∈ D.vars, F x → σ x < a) →
+    D.RealizableBelow toPrims (fun x => F x ∨ x = t) (Function.update σ t b) c →
+    D.RealizableBelow toPrims (fun x => F x ∨ x = t) (Function.update σ t a) b
+  /-- L6.5, (13): an uncountable cardinal is a Σ1-elementary level below every higher limit. -/
+  card_elem : ∀ (κ : Cardinal.{u}) (w : Ordinal.{u}), ℵ₀ < κ → IsLim w → κ.ord < w →
+    Elem κ.ord w
+  /-- L6.6, (14): reflection points of an uncountable regular `κ` contain a club. -/
+  club_edge : ∀ (κ : Cardinal.{u}) (w : Ordinal.{u}), ℵ₀ < κ → κ.IsRegular → IsLim w →
+    κ.ord < w → ∃ C : Set (Set.Iio κ.ord), IsClub C ∧ ∀ x ∈ C, Edge w κ.ord x.1
+
+/-- N4.2: the J-hierarchy instance of the interface (all of §5 and (13), (14)). -/
+noncomputable def jInterface : Interface.{u} := sorry -- body: U4
+
+-- provides: U4, F5.1 ((8))
+theorem add_omega_le {v w : Ordinal.{u}} (hw : IsLim w) (h : v < w) : v + Ordinal.omega0 ≤ w := by
+  sorry
+
+-- provides: U4, D6.4 (initial ordinals of uncountable cardinals are coordinates)
+theorem isLim_ord {κ : Cardinal.{u}} (h : ℵ₀ < κ) : IsLim κ.ord := by sorry
+
+end Hier
+
+/-! ## §c.8 The graph `Γ(E)`, configurations, role sets, occurrence maps (U3: D6.1, L6.2, D6.3) -/
+
+namespace Packet
+
+open Hier
+
+/-- D6.1: the graph `Γ(E)`: `Lim` on every role, strict reading order, `J_{A_c} ≺ J_{A_{c+1}}`
+for consecutive columns of one forest, and both head edges (11) of every entry. -/
+def graph (E : Forest) : List (BaseAtom Role) :=
+  let rs := E.roles
+  rs.map BaseAtom.lim ++
+  (rs.zip rs.tail).map (fun xy => BaseAtom.lt xy.1 xy.2) ++
+  (E.colAddrs.filterMap fun c =>
+    if (E.colAt ⟨c.path, c.col + 1⟩).isSome then
+      some (BaseAtom.elem (.ord c) (.ord ⟨c.path, c.col + 1⟩))
+    else none) ++
+  E.entryAddrs.flatMap fun e =>
+    match E.entryAt e with
+    | some (p, _) =>
+      match e.col.rep 0 p with
+      | some (o, v) => [BaseAtom.edge (.slot e) (.ord e.col) o, BaseAtom.edge (.slot e) (.ord e.col) v]
+      | none => []
+    | none => []
+
+/-- D6.1: a configuration of `E` is an ordinal assignment satisfying `Γ(E)`. -/
+def IsConfig (P : Prims.{u}) (E : Forest) (α : Role → Ordinal.{u}) : Prop :=
+  BaseHolds P (graph E) α
+
+/-- The maximum of a configuration (`0` on the empty expression). -/
+noncomputable def cfgMax (E : Forest) (α : Role → Ordinal.{u}) : Ordinal.{u} := (E.roles.map α).foldr max 0
+
+/-- `Γ(E)` has a configuration of maximum `θ`. -/
+def Configured (P : Prims.{u}) (E : Forest) (θ : Ordinal.{u}) : Prop :=
+  ∃ α, IsConfig P E α ∧ cfgMax E α = θ
+
+/-- Roles strictly before `x` in reading order. -/
+def rolesBefore (E : Forest) (x : Role) : List Role := E.roles.takeWhile (· != x)
+
+/-- D7.1: `P(E, e)`, the roles strictly before the slot of `e`. -/
+def prefixRoles (E : Forest) (e : EntryAddr) : List Role := rolesBefore E (.slot e)
+
+/-- The atoms of a base diagram all of whose variables lie in `S`. -/
+def restrictTo (D : List (BaseAtom Role)) (S : List Role) : List (BaseAtom Role) :=
+  D.filter fun a => a.vars.all fun v => decide (v ∈ S)
+
+/-- D7.1: the full graph restriction to `P(E, e)`. -/
+def prefixGraph (E : Forest) (e : EntryAddr) : List (BaseAtom Role) :=
+  restrictTo (graph E) (prefixRoles E e)
+
+/-- D6.1: the role sets of an ordinary step (txt:935-939). -/
+structure RoleSets where
+  R : Role
+  T : Role
+  N : Role
+  Q : List Role
+  K : List Role
+  D : List Role
+  P : List Role
+
+/-- D6.1: role sets of an ordinary step of `H` (`none` unless `H` is ordinary). Consumed root
+entries are those with index below the final source cursor. -/
+def roleSets (H : Forest) : Option RoleSets := do
+  let sd ← Scan.stopData H
+  let rd ← Scan.rootData H
+  let rs := H.roles
+  let T : Role := .ord sd.col
+  let R : Role := .ord rd.col
+  let N : Role := .slot (Scan.closingSlot sd)
+  let P := rs.takeWhile (· != T)
+  let pre := rs.takeWhile (· != R)
+  let between := (P.dropWhile (· != R)).drop 1
+  let consumed : Role → Bool := fun x => (List.range rd.cursor).any fun i => x.inEntry ⟨rd.col, i⟩
+  let K := between.filter fun x => !consumed x
+  pure ⟨R, T, N, ((rs.dropWhile (· != T)).drop 1).takeWhile (· != N), K, pre ++ [R] ++ K, P⟩
+
+-- SCR2 (U3), applied at integration: moved from `U3.lean`; owner U3.
+/-- L6.2a: relocate a column address of the subtree of column `c` (the column itself, or a column
+inside the height of one of its entries) to column `c'`, renaming the entry indices of `c` by `f`.
+Other addresses are unchanged. -/
+def relocCol (c c' : ColAddr) (f : Nat → Nat) (d : ColAddr) : ColAddr :=
+  if d = c then c'
+  else if c.path.isPrefixOf d.path then
+    match d.path.drop c.path.length with
+    | (ci, ii) :: rest => if ci = c.col then ⟨c'.path ++ (c'.col, f ii) :: rest, d.col⟩ else d
+    | [] => d
+  else d
+
+/-- L6.2a: role version of `relocCol`; a slot of column `c` itself moves to column `c'` with its
+index renamed by `f`. -/
+def transColumn (c c' : ColAddr) (f : Nat → Nat) : Role → Role
+  | .ord d => .ord (relocCol c c' f d)
+  | .slot e => if e.col = c then .slot ⟨c', f e.idx⟩ else .slot ⟨relocCol c c' f e.col, e.idx⟩
+
+/-- L6.2a: relocate the subtree of entry `src` (its slot and its height) to entry `dst`. -/
+def relocEntryCol (src dst : EntryAddr) (d : ColAddr) : ColAddr :=
+  if src.heightPath.isPrefixOf d.path then
+    ⟨dst.heightPath ++ d.path.drop src.heightPath.length, d.col⟩
+  else d
+
+/-- L6.2a / L7.4: role version of `relocEntryCol`. -/
+def transEntry (src dst : EntryAddr) : Role → Role
+  | .ord d => .ord (relocEntryCol src dst d)
+  | .slot e => if e = src then .slot dst else .slot ⟨relocEntryCol src dst e.col, e.idx⟩
+
+/-- L6.2a: relocate the columns `lo, lo+1, …` of the forest at path `π` (with everything inside
+them) to the forest at path `π'`, column `lo` going to column `lo'`. -/
+def relocCols (π π' : List (Nat × Nat)) (lo lo' : Nat) (d : ColAddr) : ColAddr :=
+  if d.path = π then (if lo ≤ d.col then ⟨π', d.col - lo + lo'⟩ else d)
+  else if π.isPrefixOf d.path then
+    match d.path.drop π.length with
+    | (ci, ii) :: rest => if lo ≤ ci then ⟨π' ++ (ci - lo + lo', ii) :: rest, d.col⟩ else d
+    | [] => d
+  else d
+
+/-- L6.2a: role version of `relocCols`. -/
+def transCols (π π' : List (Nat × Nat)) (lo lo' : Nat) : Role → Role
+  | .ord d => .ord (relocCols π π' lo lo' d)
+  | .slot e => .slot ⟨relocCols π π' lo lo' e.col, e.idx⟩
+
+/-- L6.2a: the head address `h_{m+1}` from `h_m`: the position of the continuation hole of stage
+`m`'s retained copy. Owner case: inside the last restored root entry; body case: in the copy of
+`F[i+1:]` placed after `h_m` (same forest when the root lies in the stopping forest). -/
+def nextHead (sd : Scan.StopData) (rd : Scan.RootData) (qLen rootLen : Nat) (h : ColAddr) :
+    ColAddr :=
+  let tail := sd.col.path.drop (rd.layer + 1)
+  if rd.owner then ⟨h.path ++ (h.col, qLen + (rootLen - rd.cursor) - 1) :: tail, sd.col.col⟩
+  else if rd.layer = sd.depth then ⟨h.path, h.col + (sd.col.col - rd.idx)⟩
+  else
+    match sd.col.path[rd.layer]? with
+    | some (cj, ij) => ⟨h.path ++ (h.col + (cj - rd.idx), ij) :: tail, sd.col.col⟩
+    | none => h
+
+/-- L6.2a: address of the stage-`m` head column `h_m` of `H[n]` (`m ≥ 1`; `h_1` is the old
+stopping column's address). -/
+def headAddr (sd : Scan.StopData) (rd : Scan.RootData) (qLen rootLen : Nat) : Nat → ColAddr
+  | 0 => sd.col
+  | 1 => sd.col
+  | m + 2 => nextHead sd rd qLen rootLen (headAddr sd rd qLen rootLen (m + 1))
+
+/-- L6.2a: number of entries of the root column. -/
+def rootLenOf (H : Forest) (rd : Scan.RootData) : Nat := ((H.colAt rd.col).getD []).length
+
+/-- L6.2a: `x` lies in a query entry (slot or height) of the stopping column. -/
+def inQueryRegion (sd : Scan.StopData) (x : Role) : Bool :=
+  (List.range sd.Q.length).any fun j => x.inEntry ⟨sd.col, j⟩
+
+/-- L6.2a: `x` lies in an unconsumed root entry (index `≥ cursor`). -/
+def inRootSuffix (rd : Scan.RootData) (rootLen : Nat) (x : Role) : Bool :=
+  (List.range rootLen).any fun i => decide (rd.cursor ≤ i) && x.inEntry ⟨rd.col, i⟩
+
+/-- L6.2a: body of the retained map `f_m` (spine `fMap`). `f_0 = id`; for `m ≥ 1`: `R ↦ h_m`;
+unconsumed root entries go to the head column after the query copy; in the body case the columns
+after the root go after `h_m`; everything else (in particular every role before `R`) is fixed.
+Values outside `D` are irrelevant. The parameter `n` is not used: addresses of stage `m` do not
+depend on the number of stages. -/
+def fMapDef (H : Forest) (_n : Nat) : Nat → Role → Role
+  | 0, x => x
+  | m + 1, x =>
+    match Scan.stopData H, Scan.rootData H with
+    | some sd, some rd =>
+      let h := headAddr sd rd sd.Q.length (rootLenOf H rd) (m + 1)
+      if x = .ord rd.col then .ord h
+      else if inRootSuffix rd (rootLenOf H rd) x then
+        transColumn rd.col h (fun i => sd.Q.length + (i - rd.cursor)) x
+      else if !rd.owner then transCols rd.col.path h.path (rd.idx + 1) (h.col + 1) x
+      else x
+    | _, _ => x
+
+/-- L6.2a: body of the query map `q_m` (spine `qMap`). `q_0 = id`; for `m ≥ 1`: `T ↦ h_m`;
+query entries go to the same indices of `h_m`; on `D` it is `f_{m-1}`. -/
+def qMapDef (H : Forest) (n : Nat) : Nat → Role → Role
+  | 0, x => x
+  | m + 1, x =>
+    match Scan.stopData H, Scan.rootData H with
+    | some sd, some rd =>
+      let h := headAddr sd rd sd.Q.length (rootLenOf H rd) (m + 1)
+      if x = .ord sd.col then .ord h
+      else if inQueryRegion sd x then transColumn sd.col h id x
+      else fMapDef H n m x
+    | _, _ => x
+
+/-- L6.2: the query map `q_m` of stage `m`, from the old roles into the roles of `H[n]`. -/
+def qMap (H : Forest) (n m : Nat) : Role → Role := qMapDef H n m -- body: U3 (SCR2)
+/-- L6.2: the retained map `f_m` of stage `m`, from the old roles into the roles of `H[n]`. -/
+def fMap (H : Forest) (n m : Nat) : Role → Role := fMapDef H n m -- body: U3 (SCR2)
+/-- D6.3, (12): the persistent map `ι_n : P ↪ Γ(H[n])` onto the original pre-stop occurrences.
+`A_{0,0,ℓ,Z}` only replaces the stopping column, so every role before `T` keeps its address:
+`ι_n` is the identity on `P` (its values outside `P` are irrelevant). It differs from `f_n`. -/
+def iota (_H : Forest) (_n : Nat) : Role → Role := fun x => x
+
+/-! ## §c.9 Names, charts, frames, blocks (U3: D7.1; risk R-3) -/
+
+/-- D7.1: immutable occurrence names: role `r` of chart instance `tag`, or an auxiliary
+coordinate (floor, stage, separating bound). -/
+inductive Name where
+  | role (tag : Nat) (r : Role)
+  | aux (k : Nat)
+  deriving DecidableEq, Repr
+
+/-- D7.1: a height's frame: its physical host and both representatives `(O(q), P(q))` of every
+externally visible column `q` below its printed host. -/
+structure Frame (V : Type) where
+  host : V
+  reps : List (V × V)
+
+def Frame.map {V W : Type} (f : V → W) (fr : Frame V) : Frame W :=
+  ⟨f fr.host, fr.reps.map fun ov => (f ov.1, f ov.2)⟩
+
+/-- D7.1: the frame of the height of entry `e` of a forest. It depends only on the address: the
+host is `A_{col}` and the representatives are those of the visible stack (`ColAddr.reps0`). -/
+def frameOf (e : EntryAddr) : Frame Role := ⟨.ord e.col, e.col.reps0⟩
+
+/-- D7.1: variables of a block problem: the frame (host, both representatives of each external
+column), the new owner, and the internal roles of the target height. -/
+inductive BlkVar where
+  | host
+  | ord (q : Nat)
+  | cur (q : Nat)
+  | owner
+  | inner (r : Role)
+  deriving DecidableEq, Repr
+
+/-- D7.1: the frame part of a block assignment. -/
+def Frame.toFr {V : Type} (fr : Frame V) : BlkVar → Option V
+  | .host => some fr.host
+  | .ord q => (fr.reps[q]?).map Prod.fst
+  | .cur q => (fr.reps[q]?).map Prod.snd
+  | .owner => none
+  | .inner _ => none
+
+/-- D7.1: the free block of a height with relative key `K = h_a(B)`: owner and internal roles
+marked `Lim`, strictly ordered owner first, ordinary pairs of internal forests, and the head
+edges of every internal entry, with false fields read from the frame, `(true, 0)` read as
+`(host, owner)` and `(true, v+1)` resolved internally (base 1). -/
+def freeBlock (K : Key) : List (BaseAtom BlkVar) :=
+  let rs := (K.roles).map BlkVar.inner
+  BaseAtom.lim .owner :: rs.map BaseAtom.lim ++
+  ((BlkVar.owner :: rs).zip rs).map (fun xy => BaseAtom.lt xy.1 xy.2) ++
+  (K.colAddrs.filterMap fun c =>
+    if (K.colAt ⟨c.path, c.col + 1⟩).isSome then
+      some (BaseAtom.elem (.inner (.ord c)) (.inner (.ord ⟨c.path, c.col + 1⟩)))
+    else none) ++
+  K.entryAddrs.flatMap fun e =>
+    let me : BlkVar := .inner (.slot e)
+    let mc : BlkVar := .inner (.ord e.col)
+    match K.entryAt e with
+    | some ((false, q), _) => [BaseAtom.edge me mc (.ord q), BaseAtom.edge me mc (.cur q)]
+    | some ((true, 0), _) => [BaseAtom.edge me mc .host, BaseAtom.edge me mc .owner]
+    | some ((true, v + 1), _) =>
+      match e.col.rep 1 (v + 1) with
+      | some (o, w) => [BaseAtom.edge me mc (.inner o), BaseAtom.edge me mc (.inner w)]
+      | none => []
+    | none => []
+
+/-- D7.1 (SCR-1 of U5, applied at integration; owner U3): the block variables of the height of
+entry `e` read as roles of the surrounding tree: the host column, both representatives of each
+visible number below the host (`ColAddr.rep`, default `A_{e.col}` off the stack), the slot of `e`
+as owner, and the internal roles placed under `e`'s height path. -/
+def blockMap (e : EntryAddr) : BlkVar → Role
+  | .host => .ord e.col
+  | .ord q => ((e.col.rep 0 q).map Prod.fst).getD (.ord e.col)
+  | .cur q => ((e.col.rep 0 q).map Prod.snd).getD (.ord e.col)
+  | .owner => .slot e
+  | .inner r => Role.under e.heightPath r
+
+/-- D7.1, (15): the positive block: the free block plus both target heads at the owner, with
+selector `sel` the outer entry's parent. -/
+def posBlock (K : Key) (sel : Nat) : List (BaseAtom BlkVar) :=
+  freeBlock K ++ [BaseAtom.edge .owner .host (.ord sel), BaseAtom.edge .owner .host (.cur sel)]
+
+/-- D7.1, (16): the failure label `No_B(J_u; frame, L)`. -/
+def noB {V : Type} (K : Key) (sel : Nat) (fr : Frame V) (u L : V) : Atom V :=
+  .noReal (posBlock K sel) fr.toFr u L
+
+/-! ## §c.10 Records (U3: D4.1, D4.1a, L4.2; G-003) -/
+
+/-- D4.1: the three record kinds. `scan`/`desc` carry the anchor (`E` itself or an admissible
+cap of `E`), the actual source index `i` and query index `j`; `repair` carries its move list. -/
+inductive RecKind (E : Forest) where
+  | scan (cap : Option (Closure.AdmCap E)) (i j : Nat)
+  | desc (cap : Option (Closure.AdmCap E)) (i j : Nat)
+  | repair (moves : List Closure.Move)
+
+/-- D4.1: a finite strict-source record. Target: entry `b` of the original expression `E`
+(target height `B`). Source: entry `a` of the source context `F` (source height `A'`). -/
+structure SrcRecord where
+  E : Forest
+  b : EntryAddr
+  F : Forest
+  a : EntryAddr
+  kind : RecKind E
+
+namespace SrcRecord
+
+def tgtHeight (rk : SrcRecord) : Forest := (rk.E.heightAt rk.b).getD Tree.empty
+def srcHeight (rk : SrcRecord) : Forest := (rk.F.heightAt rk.a).getD Tree.empty
+/-- `h_t(B)`, `t` the target's printed host. -/
+def tgtKey (rk : SrcRecord) : Key := relKey (rk.b.col.num 0) rk.tgtHeight
+/-- `h_r(A')`, `r` the source's printed host. -/
+def srcKey (rk : SrcRecord) : Key := relKey (rk.a.col.num 0) rk.srcHeight
+/-- The target entry's parent (selector of the target heads). -/
+def tgtSel (rk : SrcRecord) : Nat := ((rk.E.entryAt rk.b).map Prod.fst).getD 0
+
+/-- D4.1: the anchor conditions of scan and descendant records (`H := anchor E cap` ordinary;
+the target is the `E`-origin of query entry `j`; the actual raw scan reaches `(i, j)` with
+`x_i > y_j`; source entry `i` of the root column is closed). -/
+def AnchorAt (E : Forest) (cap : Option (Closure.AdmCap E)) (i j : Nat) (b : EntryAddr) : Prop :=
+  let H := Closure.anchor E cap
+  ∃ sd rd, Scan.stepKind H = some .ordinary ∧ Scan.stopData H = some sd ∧
+    Scan.rootData H = some rd ∧
+    Closure.anchorOrigin E cap (.slot ⟨sd.col, j⟩) = some (.slot b) ∧
+    Scan.ReachesGT (Scan.rootKeys H rd) (Scan.queryKeys sd) i j ∧
+    rd.col.container sd.col ≠ some ⟨rd.col, i⟩
+
+/-- The source entry `(r, i)` of an anchor. -/
+def anchorSrc (E : Forest) (cap : Option (Closure.AdmCap E)) (i : Nat) : Option EntryAddr :=
+  (Scan.rootData (Closure.anchor E cap)).map fun rd => ⟨rd.col, i⟩
+
+/-- L4.2 / §8.5: the first difference of `h_r(A')` over `h_t(B)` (the cases of §8.5). Column
+addresses are absolute addresses in `E` (inside `B`). -/
+inductive FirstDiff where
+  /-- Case 1: the whole target ends first (`h_t(B)` is a proper prefix). -/
+  | wholeEnds
+  /-- Case 2: the proper child forest of `B` at the given path ends first (the source has an
+  extra column there). -/
+  | childEnds (path : List (Nat × Nat))
+  /-- Case 3: at column `c`, cut `k`: the source parent is larger, or the target column ends and
+  the source has another entry; `p` is the corresponding absolute parent in `E`. -/
+  | capAt (c : ColAddr) (k p : Nat)
+
+end SrcRecord
+
+-- SCR2 (U3), applied at integration: moved from `U3.lean`; owner U3.
+/-- L4.2: absolute parent in `E` of a relative label read at target host `t`. -/
+def labelAbs (t : Nat) : Bool × Nat → Nat
+  | (false, q) => q
+  | (true, v) => t + v
+
+/-- L4.2: walker state of the first-difference classifier. -/
+inductive FDStep where
+  | same
+  | diff (d : SrcRecord.FirstDiff)
+  | stop
+
+mutual
+/-- L4.2: compare two forests of the keys at absolute path `π` (`top`: the whole target). -/
+def fdForest (t : Nat) (π : List (Nat × Nat)) (top : Bool) : Key → Key → FDStep
+  | .node xs, .node ys => fdCols t π top 0 xs ys
+/-- L4.2: compare column lists from column index `ci`. -/
+def fdCols (t : Nat) (π : List (Nat × Nat)) (top : Bool) (ci : Nat) :
+    List (List ((Bool × Nat) × Key)) → List (List ((Bool × Nat) × Key)) → FDStep
+  | [], [] => .same
+  | [], _ :: _ => .diff (if top then .wholeEnds else .childEnds π)
+  | _ :: _, [] => .stop
+  | x :: xs, y :: ys =>
+    match fdCol t π ci 0 x y with
+    | .same => fdCols t π top (ci + 1) xs ys
+    | r => r
+/-- L4.2: compare one column from entry index `k`; labels first, then heights, then the rest. -/
+def fdCol (t : Nat) (π : List (Nat × Nat)) (ci k : Nat) :
+    List ((Bool × Nat) × Key) → List ((Bool × Nat) × Key) → FDStep
+  | [], [] => .same
+  | [], (l, _) :: _ => .diff (.capAt ⟨π, ci⟩ k (labelAbs t l))
+  | _ :: _, [] => .stop
+  | (l1, h1) :: es, (l2, h2) :: fs =>
+    match keyLabelCmp l1 l2 with
+    | .lt => .diff (.capAt ⟨π, ci⟩ k (labelAbs t l2))
+    | .gt => .stop
+    | .eq =>
+      match fdForest t (π ++ [(ci, k)]) false h1 h2 with
+      | .same => fdCol t π ci (k + 1) es fs
+      | r => r
+end
+
+/-- L4.2: body of the spine's `SrcRecord.firstDiff` (default `wholeEnds` when the keys are not
+strictly increasing, which admission excludes). -/
+def firstDiffDef (rk : SrcRecord) : SrcRecord.FirstDiff :=
+  match fdForest (rk.b.col.num 0) rk.b.heightPath true rk.tgtKey rk.srcKey with
+  | .diff d => d
+  | _ => .wholeEnds
+
+namespace SrcRecord
+
+/-- L4.2: the first-difference classifier of an admitted record. -/
+def firstDiff (rk : SrcRecord) : FirstDiff := firstDiffDef rk -- body: U3 (SCR2)
+
+/-- D4.1 (G-003): admission of a record. Common clauses: `E` standard; `b`, `a` are entries;
+`F ∈ L` and is truncated after `a`; strictness `h_t(B) < h_r(A')`. Kind clauses fix the source
+context exactly (scan: the anchor truncated after its source entry; descendant: the same with
+the source height replaced by a smaller one; repair: the moved, truncated target context with
+the source height replaced). -/
+def Admitted (rk : SrcRecord) : Prop :=
+  IsStd rk.E ∧ rk.b ∈ rk.E.entryAddrs ∧ rk.a ∈ rk.F.entryAddrs ∧ Scan.InL rk.F ∧
+  rk.F.truncAfter rk.a = rk.F ∧ rk.tgtKey < rk.srcKey ∧
+  match rk.kind with
+  | .scan cap i j =>
+    AnchorAt rk.E cap i j rk.b ∧ anchorSrc rk.E cap i = some rk.a ∧
+    rk.F = (Closure.anchor rk.E cap).truncAfter rk.a
+  | .desc cap i j =>
+    AnchorAt rk.E cap i j rk.b ∧ anchorSrc rk.E cap i = some rk.a ∧
+    rk.F.setHeight rk.a (((Closure.anchor rk.E cap).heightAt rk.a).getD Tree.empty) =
+      (Closure.anchor rk.E cap).truncAfter rk.a ∧
+    rk.srcHeight ≤ ((Closure.anchor rk.E cap).heightAt rk.a).getD Tree.empty
+  | .repair ms =>
+    Closure.RepairList (rk.E.truncAfter rk.b) rk.b ms ∧ rk.a = Closure.moveAddr ms rk.b ∧
+    rk.F.setHeight rk.a rk.tgtHeight = Closure.applyMoves (rk.E.truncAfter rk.b) ms
+
+end SrcRecord
+
+/-! ## §c.11 Source packets (U3: D7.2, D7.2a, L7.3) and the scan setup (D7.2b, L7.6) -/
+
+/-- D7.2: a source packet: a record, the target-prefix chart on `P(E, b)`, the source-context
+chart on `Γ(F)`, an auxiliary diagram over names, and one assignment on all names. -/
+structure SourcePacket where
+  rk : SrcRecord
+  tgtChart : Role → Name
+  srcChart : Role → Name
+  aux : Diagram Name
+  asg : Name → Ordinal.{u}
+
+namespace SourcePacket
+
+variable (pk : SourcePacket.{u})
+
+/-- The physical host `ρ` (shared by both charts). -/
+def host : Name := pk.srcChart (.ord pk.rk.a.col)
+/-- The source owner `u`. -/
+def owner : Name := pk.srcChart (.slot pk.rk.a)
+def tgtFrame : Frame Name := (frameOf pk.rk.b).map pk.tgtChart
+def srcFrame : Frame Name := (frameOf pk.rk.a).map pk.srcChart
+
+/-- Names of the low certificate: both prefixes and the auxiliary diagram (not `u`, not the
+source height, not the whole `J_u`). -/
+def lowNames : List Name :=
+  (prefixRoles pk.rk.E pk.rk.b).map pk.tgtChart ++
+  (prefixRoles pk.rk.F pk.rk.a).map pk.srcChart ++ pk.aux.vars
+
+/-- D7.2: the jointly realized diagram (clauses 1–5 except the target heads). -/
+def joint : Diagram Name :=
+  Diagram.ofBase ((prefixGraph pk.rk.E pk.rk.b).map (BaseAtom.map pk.tgtChart)) ++
+  Diagram.ofBase ((graph pk.rk.F).map (BaseAtom.map pk.srcChart)) ++ pk.aux
+
+/-- D7.2 (G-003): validity of a packet in a semantic structure `P`. -/
+def Valid (P : Prims.{u}) : Prop :=
+  Set.InjOn pk.tgtChart {x | x ∈ prefixRoles pk.rk.E pk.rk.b} ∧
+  Set.InjOn pk.srcChart {x | x ∈ pk.rk.F.roles} ∧
+  -- the two physical host roles share `ρ`
+  pk.tgtChart (.ord pk.rk.b.col) = pk.host ∧
+  -- external frame below the source printed host agrees (cross-host and same-host records)
+  pk.srcFrame.reps.take (pk.rk.a.col.num 0) = pk.tgtFrame.reps.take (pk.rk.a.col.num 0) ∧
+  -- clauses 1-4: one assignment realizes both charts and the auxiliary diagram
+  pk.joint.Holds P pk.asg ∧
+  -- clause 5: both target heads at the same owner `u`
+  (∃ o v, pk.tgtFrame.reps[pk.rk.tgtSel]? = some (o, v) ∧
+    P.Edge (pk.asg pk.owner) (pk.asg pk.host) (pk.asg o) ∧
+    P.Edge (pk.asg pk.owner) (pk.asg pk.host) (pk.asg v)) ∧
+  -- clause 6: the low certificate lies in `J_u`
+  ∀ x ∈ pk.lowNames, pk.asg x < pk.asg pk.owner
+
+/-- D8.1: the conclusion of `S_n`: a positive target block in `J_u` above `L` and above every
+low coordinate (hence compatible with all unchanged low resources, L7.3). -/
+def TargetAbove (P : Prims.{u}) (L : Ordinal.{u}) : Prop :=
+  ∃ β : BlkVar → Ordinal.{u},
+    (∀ w x, pk.tgtFrame.toFr w = some x → β w = pk.asg x) ∧
+    (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), pk.tgtFrame.toFr w = none →
+      L < β w ∧ ∀ x ∈ pk.lowNames, pk.asg x < β w) ∧
+    (∀ w ∈ baseVars (posBlock pk.rk.tgtKey pk.rk.tgtSel), β w < pk.asg pk.owner) ∧
+    BaseHolds P (posBlock pk.rk.tgtKey pk.rk.tgtSel) β
+
+end SourcePacket
+
+-- provides: U3, L7.3 (factorization; hypothesis `ha` added by SCR1 of U3, applied at integration)
+theorem factorization {P : Prims.{u}} (pk : SourcePacket.{u}) (hv : pk.Valid P)
+    (ha : pk.rk.a ∈ pk.rk.F.entryAddrs) {L : Ordinal.{u}} (hL : L < pk.asg pk.owner) :
+    ∃ Ls, L ≤ Ls ∧ Ls < pk.asg pk.owner ∧ (∀ x ∈ pk.lowNames, pk.asg x < Ls) ∧
+      (BlockAbove P (posBlock pk.rk.tgtKey pk.rk.tgtSel)
+          (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner) →
+        pk.TargetAbove P L) := by sorry
+
+-- SCR2 (U3), applied at integration: moved from `U3.lean`; owner U3.
+/-- D6.1b: the totalized anchor origin `χ` (identity for `cap = none`). -/
+def anchorD (E : Forest) (cap : Option (Closure.AdmCap E)) (x : Role) : Role :=
+  (Closure.anchorOrigin E cap x).getD x
+
+/-- §7.3 / L7.6: the scan setup: the transported target-prefix chart `ePre` (on the roles of
+`E` before the `E`-copy of the stopping ordinary role), the new stopping role `stopNm`, the
+original positive query `qNm`, the source bank `bankNm` (root entries `0..c`), auxiliary data. -/
+structure ScanSetup where
+  E : Forest
+  cap : Option (Closure.AdmCap E)
+  sd : Scan.StopData
+  rd : Scan.RootData
+  ePre : Role → Name
+  stopNm : Name
+  qNm : Role → Name
+  bankNm : Role → Name
+  aux : Diagram Name
+  asg : Name → Ordinal.{u}
+
+namespace ScanSetup
+
+variable (S : ScanSetup.{u})
+
+def H : Forest := Closure.anchor S.E S.cap
+/-- `P⁻`: roles of `H` strictly before its stopping ordinary role `T`. -/
+def preStop : List Role := rolesBefore S.H (.ord S.sd.col)
+/-- Roles of the query `Q`: strictly between `T` and the closing slot `N`. -/
+def queryRoles : List Role :=
+  ((S.H.roles.dropWhile (· != .ord S.sd.col)).drop 1).takeWhile (· != .slot (Scan.closingSlot S.sd))
+/-- The query graph: atoms of `Γ(H)` inside `P⁻ ∪ {T} ∪ Q` that involve `T` or `Q`. -/
+def queryGraph : List (BaseAtom Role) :=
+  (restrictTo (graph S.H) (S.preStop ++ [.ord S.sd.col] ++ S.queryRoles)).filter fun a =>
+    a.vars.any fun v => decide (v ∈ .ord S.sd.col :: S.queryRoles)
+/-- Values of the transported part: `P⁻` through `ePre ∘ χ`, and `T ↦ ρ`. -/
+noncomputable def baseVal (x : Role) : Ordinal.{u} :=
+  if x = .ord S.sd.col then S.asg S.stopNm
+  else ((Closure.anchorOrigin S.E S.cap x).map fun y => S.asg (S.ePre y)).getD 0
+/-- A fitted assignment: `β` on query roles, the transported values elsewhere. -/
+noncomputable def fitVal (β : Role → Ordinal.{u}) (x : Role) : Ordinal.{u} :=
+  if x ∈ S.queryRoles then β x else S.baseVal x
+/-- `u_i`: the value of the bank owner of root entry `i`. -/
+def ownerVal (i : Nat) : Ordinal.{u} := S.asg (S.bankNm (.slot ⟨S.rd.col, i⟩))
+
+end ScanSetup
+
+-- SCR2 (U3), applied at integration: moved from `U3.lean`; owner U3.
+/-! ## D7.2b  Validity of a scan setup (§7.3) -/
+
+namespace ScanSetup
+
+variable (S : ScanSetup.{u})
+
+/-- D7.2b: the totalized `χ` of the setup. -/
+def chi (x : Role) : Role := anchorD S.E S.cap x
+/-- D7.2b: `T_E`, the `E`-copy of the stopping ordinary role. -/
+def TE : Role := S.chi (.ord S.sd.col)
+/-- D7.2b: `P_E`, the roles of `E` strictly before `T_E` (with the deleted blocks of a cap). -/
+def PE : List Role := rolesBefore S.E S.TE
+/-- D7.2b: the root ordinary role `R`. -/
+def R : Role := .ord S.rd.col
+/-- D7.2b: roles of `H` strictly before `R`. -/
+def preRoot : List Role := rolesBefore S.H S.R
+/-- D7.2b: number of root entries. -/
+def rootLen : Nat := rootLenOf S.H S.rd
+/-- D7.2b: the bank: slots and heights of root entries `0 … c` (`c` the final cursor). -/
+def bankRoles : List Role :=
+  S.H.roles.filter fun x => (List.range (S.rd.cursor + 1)).any fun i => x.inEntry ⟨S.rd.col, i⟩
+/-- D7.2b, S4: values of the query problem (`Q` through `qNm`, the rest as `baseVal`). -/
+noncomputable def qVal (x : Role) : Ordinal.{u} :=
+  if x ∈ S.queryRoles then S.asg (S.qNm x) else S.baseVal x
+/-- D7.2b, S5: values of the bank problem (`R ↦ ρ`, bank through `bankNm`, pre-root through
+`ePre ∘ χ`). -/
+noncomputable def bankVal (x : Role) : Ordinal.{u} :=
+  if x = S.R then S.asg S.stopNm
+  else if x ∈ S.bankRoles then S.asg (S.bankNm x) else S.asg (S.ePre (S.chi x))
+/-- D7.2b, S5: atoms of `Γ(H)` inside `preRoot ∪ {R} ∪ bank` that involve `R` or the bank. -/
+def bankGraph : List (BaseAtom Role) :=
+  (restrictTo (graph S.H) (S.preRoot ++ [S.R] ++ S.bankRoles)).filter fun a =>
+    a.vars.any fun v => decide (v ∈ S.R :: S.bankRoles)
+
+/-- D7.2b (G-003): body of the spine's `ScanSetup.Valid`: clauses S1–S6. -/
+def ValidDef (P : Prims.{u}) : Prop :=
+  -- S1: anchor, ordinary step, unexhausted bank, closed endpoint
+  (IsStd S.E ∧ Scan.InL S.H ∧ Scan.stepKind S.H = some .ordinary ∧
+    Scan.stopData S.H = some S.sd ∧ Scan.rootData S.H = some S.rd ∧
+    S.rd.cursor < S.rootLen ∧ S.rd.col.container S.sd.col ≠ some ⟨S.rd.col, S.rd.cursor⟩) ∧
+  -- S2: transported target prefix, certified below `ρ`
+  (Set.InjOn S.ePre {y | y ∈ S.PE} ∧
+    BaseHolds P ((restrictTo (graph S.E) S.PE).map (BaseAtom.map S.ePre)) S.asg ∧
+    ∀ y ∈ S.PE, S.asg (S.ePre y) < S.asg S.stopNm) ∧
+  -- S3: old auxiliary data below `ρ`
+  (S.aux.Holds P S.asg ∧ ∀ v ∈ S.aux.vars, S.asg v < S.asg S.stopNm) ∧
+  -- S4: new stopping role and the original positive query
+  BaseHolds P S.queryGraph S.qVal ∧
+  -- S5: the source bank with root `ρ`
+  BaseHolds P S.bankGraph S.bankVal ∧
+  -- S6: freshness
+  (Set.InjOn S.qNm {x | x ∈ S.queryRoles} ∧ Set.InjOn S.bankNm {x | x ∈ S.bankRoles} ∧
+    (∀ x ∈ S.queryRoles, ∀ y ∈ S.bankRoles, S.qNm x ≠ S.bankNm y) ∧
+    (∀ x ∈ S.queryRoles, S.qNm x ∉ S.PE.map S.ePre ∧ S.qNm x ≠ S.stopNm ∧ S.qNm x ∉ S.aux.vars) ∧
+    (∀ y ∈ S.bankRoles, S.bankNm y ∉ S.PE.map S.ePre ∧ S.bankNm y ≠ S.stopNm ∧
+      S.bankNm y ∉ S.aux.vars))
+
+end ScanSetup
+
+/-- §7.3 (G-003): validity of a scan setup (clauses S1–S6 of `00-spine.md` §c.11). -/
+def ScanSetup.Valid (S : ScanSetup.{u}) (P : Prims.{u}) : Prop := S.ValidDef P -- body: U3 (SCR2)
+
+namespace ScanSetup
+
+variable (S : ScanSetup.{u})
+
+/-- Roles of query entry `j` (its slot and its height). -/
+def entryRoles (j : Nat) : List Role :=
+  S.queryRoles.filter fun x => x.inEntry ⟨S.sd.col, j⟩
+/-- Roles of the query entries `0, …, j-1`. -/
+def fittedRoles (j : Nat) : List Role :=
+  S.queryRoles.filter fun x => (List.range j).any fun j' => x.inEntry ⟨S.sd.col, j'⟩
+/-- §7.3: the query entries below `j` are fitted by `β` (with the transported values elsewhere). -/
+def Fitted (P : Prims.{u}) (j : Nat) (β : Role → Ordinal.{u}) : Prop :=
+  BaseHolds P (restrictTo S.queryGraph (S.preStop ++ [.ord S.sd.col] ++ S.fittedRoles j)) (S.fitVal β)
+/-- (17): `L_j`, the target-prefix maximum (`L_0 = ρ`). -/
+noncomputable def Lmax (j : Nat) (β : Role → Ordinal.{u}) : Ordinal.{u} :=
+  ((S.fittedRoles j).map β).foldr max (S.asg S.stopNm)
+/-- (17): `C_j`, the original positive-prefix maximum. -/
+noncomputable def Cmax (j : Nat) : Ordinal.{u} :=
+  ((S.fittedRoles j).map fun x => S.asg (S.qNm x)).foldr max (S.asg S.stopNm)
+/-- §7.3: both target heads of query entry `j` at the source owner `u_i`. -/
+noncomputable def HeadsAt (P : Prims.{u}) (j i : Nat) (β : Role → Ordinal.{u}) : Prop :=
+  ∃ p o v, ((S.sd.Q[j]?).map Prod.fst) = some p ∧ (frameOf ⟨S.sd.col, j⟩).reps[p]? = some (o, v) ∧
+    P.Edge (S.ownerVal i) (S.asg S.stopNm) (S.fitVal β o) ∧
+    P.Edge (S.ownerVal i) (S.asg S.stopNm) (S.fitVal β v)
+/-- The scan record at state `(i, j)` (D4.1, kind `scan`). -/
+def scanRecord (i j : Nat) : SrcRecord :=
+  { E := S.E
+    b := match Closure.anchorOrigin S.E S.cap (.slot ⟨S.sd.col, j⟩) with
+      | some (.slot b) => b
+      | _ => ⟨S.sd.col, j⟩
+    F := S.H.truncAfter ⟨S.rd.col, i⟩
+    a := ⟨S.rd.col, i⟩
+    kind := .scan S.cap i j }
+
+end ScanSetup
+
+-- provides: U3, L7.6 (complete packets at a scan, (17))
+theorem scan_packet {P : Prims.{u}} (S : ScanSetup.{u}) (hS : S.Valid P) {i j : Nat}
+    (hij : Scan.ReachesGT (Scan.rootKeys S.H S.rd) (Scan.queryKeys S.sd) i j)
+    {β : Role → Ordinal.{u}} (hfit : S.Fitted P j β) (h17a : S.Lmax j β < S.ownerVal i)
+    (h17b : S.Lmax j β ≤ S.Cmax j) (hheads : S.HeadsAt P j i β) :
+    ∃ pk : SourcePacket.{u}, pk.rk = S.scanRecord i j ∧ pk.rk.Admitted ∧ pk.Valid P ∧
+      pk.asg pk.owner = S.ownerVal i ∧
+      ∀ L, S.Lmax j β ≤ L → pk.TargetAbove P L →
+        ∃ β', S.Fitted P (j + 1) β' ∧ (∀ x ∈ S.fittedRoles j, β' x = β x) ∧
+          ∀ x ∈ S.entryRoles j, L < β' x ∧ β' x < S.ownerVal i := by sorry
+
+/-! ## §c.12 Induction predicates (U5: D8.1, D8.1a, L8.7, T9.1) -/
+
+end Packet
+
+namespace Descent
+
+open Hier Packet
+
+/-- D8.1: `S_n`. For every admitted record whose original standard target has size `n` and every
+valid packet realizing it, each floor `L < u` admits a positive target block in `J_u` above `L`
+compatible with all low resources. -/
+def SStrict (P : Prims.{u}) (n : Nat) : Prop :=
+  ∀ pk : SourcePacket.{u}, pk.rk.Admitted → pk.Valid P → pk.rk.tgtHeight.size = n →
+    ∀ L, L < pk.asg pk.owner → pk.TargetAbove P L
+
+/-- D8.1: `W_{<n}`: fit the complete query, all of whose child heights have size below `n`, below
+the final unconsumed closed source owner `u_c`. -/
+def WFit (P : Prims.{u}) (n : Nat) : Prop :=
+  ∀ S : ScanSetup.{u}, S.Valid P → (∀ J ∈ S.sd.Q, J.2.size < n) →
+    ∃ β : Role → Ordinal.{u}, BaseHolds P S.queryGraph (S.fitVal β) ∧
+      ∀ x ∈ S.queryRoles, β x < S.ownerVal S.rd.cursor
+
+/-- D8.1a: the inputs of the label-free core `DCore`: `H ∈ L` ordinary, and either the query is
+empty (txt:1188-1189) or `H` is standard with all query children of size below `n`. Admissible
+caps of standard expressions are inputs of `DLab` only: their deleted blocks must travel in
+the label (`eν`), which a bare configuration of `H` does not supply (txt:1101, 1123). -/
+def AllowedInput (n : Nat) (H : Forest) : Prop :=
+  Scan.InL H ∧ Scan.stepKind H = some .ordinary ∧
+  ∃ sd, Scan.stopData H = some sd ∧ (sd.Q = [] ∨ (IsStd H ∧ ∀ J ∈ sd.Q, J.2.size < n))
+
+/-- D8.1: `D_{<n}`, label-free core: ordinary successors are configured below the old stopping
+ordinary value `W = α(T)`. -/
+def DCore (P : Prims.{u}) (n : Nat) : Prop :=
+  ∀ (H H' : Forest) (k : Nat) (α : Role → Ordinal.{u}) (sd : Scan.StopData),
+    AllowedInput n H → Scan.stopData H = some sd → IsConfig P H α → expand H k = some H' →
+    ∃ γ, IsConfig P H' γ ∧ ∀ x ∈ H'.roles, γ x < α (.ord sd.col)
+
+/-- D8.1: `D_{<n}` with labels (§8.3): an old label `Λ` over variables `V`, reading the
+pre-stop roles `P` through `ν` (and, for caps, the whole `E`-prefix through `eν`, so that deleted
+blocks travel with it), certified below `W`, with fixed variables below `p = α(R)`, is transported
+to the persistent occurrences `ι_k(P)` of the output; nonfixed old main roles at or after the root
+move below `p` (moving clause, used for (22)); pre-root roles keep their values. -/
+def DLab (P : Prims.{u}) (n : Nat) : Prop :=
+  ∀ (E : Forest) (cap : Option (Closure.AdmCap E)) (α : Role → Ordinal.{u})
+    (sd : Scan.StopData) (rd : Scan.RootData),
+    Scan.InL (Closure.anchor E cap) → Scan.stepKind (Closure.anchor E cap) = some .ordinary →
+    Scan.stopData (Closure.anchor E cap) = some sd → Scan.rootData (Closure.anchor E cap) = some rd →
+    IsConfig P (Closure.anchor E cap) α →
+    (sd.Q = [] ∨ (IsStd E ∧ ∀ J ∈ sd.Q, J.2.size < n)) →
+  ∀ (V : Type) (Λ : Diagram V) (ν eν : Role → V) (b : V → Ordinal.{u}) (Fix : V → Prop),
+    (∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col), b (ν x) = α x) →
+    (∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col), ∀ y,
+      Closure.anchorOrigin E cap x = some y → eν y = ν x) →
+    (∀ T' a, Closure.anchorOrigin E cap (.ord sd.col) = some T' →
+      a ∈ restrictTo (graph E) (rolesBefore E T') → Atom.base (a.map eν) ∈ Λ) →
+    Λ.Holds P b → (∀ v ∈ Λ.vars, b v < α (.ord sd.col)) →
+    (∀ v ∈ Λ.vars, Fix v → b v < α (.ord rd.col)) →
+  ∀ (k : Nat) (H' : Forest), expand (Closure.anchor E cap) k = some H' →
+    ∃ (γ : Role → Ordinal.{u}) (b' : V → Ordinal.{u}),
+      IsConfig P H' γ ∧ (∀ x ∈ H'.roles, γ x < α (.ord sd.col)) ∧
+      (∀ v, Fix v → b' v = b v) ∧
+      (∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col),
+        b' (ν x) = γ (iota (Closure.anchor E cap) k x)) ∧
+      Λ.Holds P b' ∧ (∀ v ∈ Λ.vars, b' v < α (.ord sd.col)) ∧
+      (∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord rd.col), γ x = α x) ∧
+      (0 < k → ∀ x ∈ rolesBefore (Closure.anchor E cap) (.ord sd.col),
+        x ∉ rolesBefore (Closure.anchor E cap) (.ord rd.col) → ¬ Fix (ν x) → γ x < α (.ord rd.col))
+
+/-- L8.7: special descent (n + ε fresh copies between a floor `L` and the owner `s`). -/
+def SpecialDesc (P : Prims.{u}) : Prop :=
+  ∀ (H H' : Forest) (k : Nat) (α : Role → Ordinal.{u}) (sd : Scan.StopData) (e : EntryAddr)
+    (L : Ordinal.{u}),
+    Scan.InL H → Scan.stepKind H = some .special → Scan.stopData H = some sd →
+    sd.ownerEntry = some e → IsConfig P H α → expand H k = some H' →
+    (∀ x ∈ prefixRoles H e, α x ≤ L) → L < α (.slot e) →
+    ∃ γ, IsConfig P H' γ ∧ (∀ x ∈ prefixRoles H e, γ x = α x) ∧
+      ∀ x ∈ H'.roles, x ∉ prefixRoles H e → L < γ x ∧ γ x < α (.slot e)
+
+/-- T9.1, (27): strict descent of configuration maxima for standard inputs. -/
+def StrictDescent (P : Prims.{u}) : Prop :=
+  ∀ (A A' : Forest) (k : Nat) (α : Role → Ordinal.{u}), IsStd A → A ≠ Tree.empty →
+    IsConfig P A α → expand A k = some A' → A' ≠ Tree.empty →
+    ∃ γ, IsConfig P A' γ ∧ cfgMax A' γ < cfgMax A α
+
+-- provides: U5, L6.7 (seed lemma)
+theorem seed_config (I : Interface.{u}) (m : Nat)
+    (hM : ∃ κ : Cardinal.{u}, IsWeaklyMahlo (m - 1) κ) : ∃ α, IsConfig I.toPrims (seed m) α := by
+  sorry
+
+-- provides: U5, L8.4–L8.8 and (18)
+theorem sStrict_all (I : Interface.{u}) (n : Nat) : SStrict I.toPrims n := by sorry
+-- provides: U5, L8.5
+theorem wFit_all (I : Interface.{u}) (n : Nat) : WFit I.toPrims n := by sorry
+-- provides: U5, L8.6
+theorem dLab_all (I : Interface.{u}) (n : Nat) : DLab I.toPrims n := by sorry
+-- provides: U5, L8.6 (label-free core)
+theorem dCore_all (I : Interface.{u}) (n : Nat) : DCore I.toPrims n := by sorry
+-- provides: U5, L8.7
+theorem specialDesc (I : Interface.{u}) : SpecialDesc I.toPrims := by sorry
+-- provides: U5, T9.1 (27)
+theorem strictDescent (I : Interface.{u}) : StrictDescent I.toPrims := by sorry
+
+/-! ## §c.13 The S-5 abstract final theorem (U5: N5.1, T9.1a) -/
+
+/-- N5.1 (S-5): closure + cofinality + seed configurations + strict descent, for an abstract
+configuration predicate `Conf E θ` ("`Γ(E)` has a configuration of maximum `θ`"). -/
+structure FinalHyps (Conf : Forest → Ordinal.{u} → Prop) : Prop where
+  /-- D1.1 (U1). -/
+  order : IsStrictTotalOrder Forest (· < ·)
+  /-- D1.1 (U1). -/
+  empty_least : ∀ E : Forest, E ≠ Tree.empty → Tree.empty < E
+  /-- T3.2 (U2): closure, `Std ⊆ L`. -/
+  closure : ∀ E, IsStd E → Scan.InL E
+  /-- T3.8 (U2): cofinality (only the lower bound is used). -/
+  cofinal : ∀ B E, IsStd B → Scan.InL E → B < E → ∃ n E', expand E n = some E' ∧ B ≤ E'
+  /-- L6.7 (U5): seed configurations. -/
+  seed : ∀ m, ∃ θ, Conf (seed m) θ
+  /-- T9.1 (27) (U5): strict descent. -/
+  descent : ∀ A A' n θ, IsStd A → A ≠ Tree.empty → Conf A θ → expand A n = some A' →
+    A' ≠ Tree.empty → ∃ θ', θ' < θ ∧ Conf A' θ'
+
+-- provides: U5, N5.1
+theorem abstract_wellOrder {Conf : Forest → Ordinal.{u} → Prop} (h : FinalHyps Conf) :
+    IsWellOrder Std Std.lt := by sorry
+
+-- provides: U5, N5.1
+theorem abstract_implies_main
+    (h : (∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) →
+      ∃ Conf : Forest → Ordinal.{u} → Prop, FinalHyps Conf) :
+    MainTheorem.{u} := by sorry
+
+-- provides: U5, T9.1 (assembly of all units into the S-5 hypotheses)
+theorem finalHyps (I : Interface.{u}) (hM : ∀ n : Nat, ∃ κ : Cardinal.{u}, IsWeaklyMahlo n κ) :
+    FinalHyps (Configured I.toPrims) := by sorry
+
+end Descent
+
+end BTBMS

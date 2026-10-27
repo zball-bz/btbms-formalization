@@ -1,19 +1,19 @@
 # Status snapshot
 
-Generated 2026-10-27T11:04:44+00:00 at commit `3d727dc`. Hand-written context lives in `CURRENT.md`.
+Generated 2026-10-27T12:48:04+00:00 at commit `25d0456`. Hand-written context lives in `CURRENT.md`.
 
 Phase: **P2 Repair & simplify (blueprint)**
 
-## todo (4)
+## todo (3)
 - T-008 [claude] Library survey: what Mathlib provides for ordinals, clubs, stationary sets, Mahlo cardinals
 - T-009 [user] Gate G1: sign off the repaired, simplified proof (the blueprint)
-- T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
 - T-018 [claude] Compiling sorry skeleton of the whole claim graph; every node mapped to Lean declarations
 
-## doing (1)
-- T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
+## doing (2)
+- T-017 [codex] Blind review of the blueprint (statements and proofs, without the verification notes)
+- T-020 [claude] Close the blueprint's open arguments G-009..G-012 and bounded-test the untested integration statements
 
-## done (14)
+## done (15)
 - T-001 [claude] Set up repo, pinned reference fetch, tracker
 - T-002 [claude] Blind review of the paper (Claude)
 - T-003 [codex] Blind review of the paper (Codex)
@@ -27,4 +27,5 @@ Phase: **P2 Repair & simplify (blueprint)**
 - T-013 [claude] Formalize the main statement in Lean (definitions, order, operation, Std, Mahlo, theorem with sorry)
 - T-014 [codex] Independent statement-fidelity review of the Lean statement
 - T-015 [user] Gate G2: sign off the Lean statement; then it is locked
+- T-016 [claude] Blueprint (lemma plan): spine + five units drafted, adversarially verified, integrated
 - T-019 [codex] Check the statement lock (split into locked Prop defs + unlocked proof file; lock and status scripts)

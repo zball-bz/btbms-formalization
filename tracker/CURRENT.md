@@ -35,6 +35,15 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
     and `mainTheorem : MainTheorem` must end up sorry-free.
 - **Lean progress is derived from the build:** `scripts/lean-status.sh` writes
   `tracker/lean-status.json`, and `refresh.py` maps it to claims through `lean_decls`.
+- **Blueprint (T-016) done:** `blueprint/`, summary in `blueprint/INTEGRATION.md`.
+  - The plan has 302 nodes plus MAIN, all in `tracker/ledger.json` with `uses` edges and planned
+    `lean_decls`. The board's Plan tab derives the per-unit counts, the heaviest chain and the
+    nodes that are ready to prove.
+  - The integrated Lean skeleton (Spine + U1–U5) typechecks with `sorry` proofs only.
+  - Only three definitions still have `sorry` bodies: the two order instances (proof fields)
+    and `Hier.jInterface` (waits on D-4).
+  - Four open arguments are recorded as suspected gaps G-009…G-012. The repairs of
+    G-001…G-005 are written, and Codex's review (T-017) checks them.
 
 ## Decisions
 - **D-1 = H** (user, 2026-10-27): a host-Lean theorem
@@ -60,9 +69,17 @@ Read this first at the start of every session (Claude, Codex). Root (Claude) mai
     one-line argument checked directly.
 - One commit per integration step.
 
+- **D-4 (user, open):** which hierarchy to use for the main-theorem route.
+  - Part B is the paper's J-hierarchy: about 18k–37k LOC.
+  - Part C is the reflection hierarchy, S-7 / P-U4-1: about 2.5k–5k LOC. No statement changes,
+    but §5 itself would go uncertified.
+  - Root recommends Part C.
+
 ## Next
-1. T-016 blueprint workflow (running): `blueprint/00-spine.md` and `blueprint/lean/Spine.lean`,
-   then units U1-U5 in `blueprint/`, with verification notes kept separate in
-   `blueprint/verification/` so that Codex's review stays blind.
-2. T-017: Codex reviews the blueprint blind. Then gate G1 (user) on the blueprint.
-3. T-018: compiling sorry skeleton, then parallel proving leaf-first.
+1. T-017 (Codex, running): blind review of the blueprint, brief
+   `tracker/review/BLUEPRINT-BRIEF.md`. It does not read `blueprint/verification/`,
+   INTEGRATION.md §2 or `blueprint/repairs/`.
+2. T-020 (Claude, running): close G-009…G-012 and bounded-test the integration statements that
+   are still untested, in `blueprint/repairs/`. Codex checks this after T-017.
+3. Gate G1 (user): sign off the blueprint and decide D-4.
+4. T-018: move the skeleton into `lean/`, then prove in parallel, leaf first (Plan tab).

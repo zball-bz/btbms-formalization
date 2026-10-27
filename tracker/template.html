@@ -63,7 +63,8 @@ document.getElementById('metrics').innerHTML = [
   [S.tasks.doing, 'in progress'],
   [gapsOpen, 'open gaps'],
   [L.gaps.filter(g => g.severity==='fatal' && g.status!=='refuted' && g.status!=='closed').length, 'open fatal gaps'],
-  [L.nodes.length, 'claims inventoried'],
+  [S.plan?.known ? S.plan.done + ' / ' + L.nodes.length : '?', 'plan nodes proved'],
+  [S.plan?.known ? S.plan.ready.length : '?', 'nodes ready to prove now'],
   [S.open_user_decisions, 'decisions waiting on you'],
   [S.lean.lock_ok ? 'intact' : 'BROKEN', 'statement lock'],
   [S.lean.status_problem ? '?' : S.lean.sorry_decls, 'Lean declarations with a direct sorry'],
@@ -87,9 +88,25 @@ const views = {
   },
   Claims() {
     if (!L.nodes.length) return `<div class="empty">The claim inventory is built from the two reviews in T-004.</div>`;
-    return `<p class="muted">Review columns are each reviewer's verdict for the claim's section.</p><div class="wrap"><table><tr><th>ID</th><th>Kind</th><th>Location</th><th>Claim</th><th>Gaps</th><th>Claude</th><th>Codex</th><th>Lean</th></tr>${
-      L.nodes.map(n => `<tr><td class="mono">${esc(n.id)}</td><td>${esc(n.kind)}</td><td class="mono">${esc(n.loc)}</td><td>${esc(n.title)}</td>
-        <td class="mono">${esc((n.gaps||[]).join(' '))}</td><td>${esc(n.review?.claude)}</td><td>${esc(n.review?.codex)}</td><td>${esc(S.lean.claims[n.id])}</td></tr>`).join('')}</table></div>`;
+    return `<p class="muted">The blueprint's node graph (blueprint/INTEGRATION.md §3). Review columns are each reviewer's verdict for the claim's paper section;
+      Lean is derived from the build: planned, partial, stated (direct sorry), proved modulo sorry, proved or defined.</p><div class="wrap"><table><tr><th>ID</th><th>Unit</th><th>Kind</th><th>Location</th><th>Claim</th><th>Fidelity</th><th>Size</th><th>Gaps</th><th>Claude</th><th>Codex</th><th>Lean</th></tr>${
+      L.nodes.map(n => `<tr><td class="mono">${esc(n.id)}</td><td>${esc(n.unit)}</td><td>${esc(n.kind)}</td><td class="mono">${esc(n.loc)}</td><td>${esc(n.title)}</td>
+        <td>${esc(n.fidelity)}</td><td>${esc(n.difficulty)}</td><td class="mono">${esc((n.gaps||[]).join(' '))}</td><td>${esc(n.review?.claude)}</td><td>${esc(n.review?.codex)}</td><td>${esc(S.lean.claims[n.id])}</td></tr>`).join('')}</table></div>`;
+  },
+  Plan() {
+    const P = S.plan;
+    if (!P) return `<div class="empty">No node graph yet.</div>`;
+    const by = Object.fromEntries(L.nodes.map(n => [n.id, n]));
+    const row = i => `<tr><td class="mono">${esc(i)}</td><td>${esc(by[i].unit)}</td><td>${esc(by[i].title)}</td><td>${esc(by[i].difficulty)}</td><td>${esc(S.lean.claims[i])}</td></tr>`;
+    const head = `<tr><th>Node</th><th>Unit</th><th>Title</th><th>Size</th><th>Lean</th></tr>`;
+    return `<p class="muted">Derived from the node graph and the last Lean build. Size weights: S 1, M 2, L 4, XL 8 (total ${P.total_weight}).
+      ${P.known ? '' : '<b style="color:var(--blocked)">Lean status not current, so progress is unknown.</b>'}</p>
+      <div class="wrap"><table><tr><th>Unit</th><th>Nodes</th><th>Weight</th><th>Proved</th><th>Ready now</th></tr>${
+      Object.entries(P.units).map(([u, x]) => `<tr><td>${esc(u)}</td><td>${x.nodes}</td><td>${x.weight}</td><td>${P.known ? x.done : '?'}</td><td>${P.known ? x.ready : '?'}</td></tr>`).join('')}</table></div>
+      <h3 style="margin-top:20px">Heaviest chain to the main theorem${P.remaining_path ? ` (remaining weight ${P.remaining_path[0]})` : ''}</h3>
+      <div class="wrap"><table>${head}${(P.remaining_path || P.weighted_path)[1].map(row).join('')}</table></div>
+      <h3 style="margin-top:20px">Ready to prove now (every dependency proved)</h3>
+      ${P.known ? `<div class="wrap"><table>${head}${P.ready.map(row).join('')}</table></div>` : '<div class="empty">unknown</div>'}`;
   },
   'Decisions & risks'() {
     const D = L.decisions || [], Sm = L.simplifications || [], R = L.risks || [];

@@ -29,6 +29,8 @@ GAP_STATUSES = ['suspected', 'confirmed', 'disputed', 'refuted', 'repaired', 'cl
 SEVERITIES = ['fatal', 'repairable', 'exposition', 'unknown']
 SIMPLIFICATION_STATUSES = ['proposed', 'agreed', 'rejected', 'applied']
 DECISION_STATUSES = ['open', 'decided']
+WEIGHTS = {'S': 1, 'M': 2, 'L': 4, 'XL': 8}
+DONE_STATES = {'proved', 'defined'}
 PEOPLE = {'claude', 'codex', 'user'}
 
 
@@ -62,10 +64,18 @@ def check(ledger):
             if not checker or checker == author:
                 errors.append(f"{g['id']}: closed needs a fix check by someone other than {author}")
     gap_ids = {g['id'] for g in ledger['gaps']}
+    node_ids = {n['id'] for n in ledger['nodes']}
     for n in ledger['nodes']:
         for g in n.get('gaps', []):
             if g not in gap_ids:
                 errors.append(f"{n['id']}: unknown gap {g}")
+        for u in n.get('uses', []):
+            if u not in node_ids:
+                errors.append(f"{n['id']}: uses unknown node {u}")
+        if n.get('difficulty', 'S') not in WEIGHTS:
+            errors.append(f"{n['id']}: unknown difficulty {n['difficulty']}")
+    if not errors and layers(ledger['nodes']) is None:
+        errors.append('node graph has a cycle')
     for s in ledger.get('simplifications', []):
         if s['status'] not in SIMPLIFICATION_STATUSES:
             errors.append(f"{s['id']}: unknown status {s['status']}")
@@ -133,8 +143,10 @@ def lean_stats(ledger):
             claims[n['id']] = 'not stated'
         elif problem:
             claims[n['id']] = 'unknown (status not current)'
+        elif all(x not in by_name for x in names):
+            claims[n['id']] = 'planned'
         elif any(x not in by_name for x in names):
-            claims[n['id']] = 'missing: ' + ', '.join(x for x in names if x not in by_name)
+            claims[n['id']] = f"partial ({sum(x in by_name for x in names)}/{len(names)} declared)"
         else:
             states = {by_name[x]['state'] for x in names}
             claims[n['id']] = next(s for s in LEAN_STATES if s in states)
@@ -146,6 +158,73 @@ def lean_stats(ledger):
         'sorry_decls': None if problem else sum(d['direct_sorry'] for d in decls),
         'main_axioms': main['axioms'] if main else None,
         'claims': claims,
+    }
+
+
+def layers(nodes):
+    """Layer of each node (0 = uses nothing; otherwise one more than its deepest use), or None on a cycle."""
+    uses = {n['id']: n.get('uses', []) for n in nodes}
+    layer, busy = {}, set()
+
+    def visit(i):
+        if i in layer:
+            return layer[i]
+        if i in busy:
+            raise ValueError(i)
+        busy.add(i)
+        layer[i] = 1 + max((visit(u) for u in uses[i]), default=-1)
+        busy.discard(i)
+        return layer[i]
+    try:
+        for i in uses:
+            visit(i)
+    except ValueError:
+        return None
+    return layer
+
+
+def longest_chain(nodes, target, weight):
+    """Heaviest dependency chain ending at `target`, as a list of node ids from its start."""
+    by_id = {n['id']: n for n in nodes}
+    memo = {}
+
+    def best(i):
+        if i not in memo:
+            tails = [best(u) for u in by_id[i].get('uses', [])]
+            w, chain = max(tails, key=lambda t: t[0], default=(0, []))
+            memo[i] = (w + weight(by_id[i]), chain + [i])
+        return memo[i]
+    return best(target)
+
+
+def plan_stats(ledger, claims):
+    """Progress over the lemma plan, derived from the node graph and the claims' Lean states."""
+    nodes = ledger['nodes']
+    if not nodes or 'MAIN' not in {n['id'] for n in nodes}:
+        return None
+    layer = layers(nodes)
+    known = not any(c.startswith('unknown') for c in claims.values())
+    done = {i for i, c in claims.items() if c in DONE_STATES}
+    umbrella = [n for n in nodes if not n.get('lean_decls')]  # done once everything it groups is done
+    for _ in umbrella:
+        done |= {n['id'] for n in umbrella if all(u in done for u in n.get('uses', []))}
+    ready = [n['id'] for n in nodes if known and n['id'] not in done and all(u in done for u in n.get('uses', []))]
+    units = {}
+    for n in nodes:
+        u = units.setdefault(n.get('unit', '?'), {'nodes': 0, 'weight': 0, 'done': 0, 'ready': 0})
+        u['nodes'] += 1
+        u['weight'] += WEIGHTS[n.get('difficulty', 'S')]
+        u['done'] += n['id'] in done
+        u['ready'] += n['id'] in ready
+    w = lambda n: WEIGHTS[n.get('difficulty', 'S')]
+    left = lambda n: 0 if n['id'] in done else w(n)
+    return {
+        'known': known, 'done': len(done) if known else None, 'ready': ready if known else None,
+        'layers': layer, 'units': units,
+        'critical_path': longest_chain(nodes, 'MAIN', lambda n: 1)[1],
+        'weighted_path': longest_chain(nodes, 'MAIN', w),
+        'remaining_path': longest_chain(nodes, 'MAIN', left) if known else None,
+        'total_weight': sum(w(n) for n in nodes),
     }
 
 
@@ -214,6 +293,7 @@ def main():
         'open_user_decisions': sum(d['status'] == 'open' and d['owner'] == 'user' for d in ledger.get('decisions', [])),
         'lean': lean_stats(ledger),
     }
+    stats['plan'] = plan_stats(ledger, stats['lean']['claims'])
     payload = json.dumps({'ledger': ledger, 'stats': stats}, ensure_ascii=False)
     html = (HERE / 'template.html').read_text().replace('/*DATA*/null', payload.replace('</', '<\\/'))
     (HERE / 'index.html').write_text(html)
@@ -223,7 +303,9 @@ def main():
     print(f"ok: {len(ledger['tasks'])} tasks, {len(ledger['gaps'])} gaps, {len(ledger['nodes'])} claims; "
           f"lock {'intact' if lean['lock_ok'] else 'BROKEN'}; "
           + (f"Lean status {lean['status_problem']}" if lean['status_problem']
-             else f"{lean['sorry_decls']} declarations with a direct sorry"))
+             else f"{lean['sorry_decls']} declarations with a direct sorry")
+          + (f"; plan {plan['done']}/{len(ledger['nodes'])} nodes done, {len(plan['ready'])} ready"
+             if (plan := stats['plan']) and plan['known'] else ''))
 
 
 if __name__ == '__main__':
