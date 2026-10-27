@@ -29,33 +29,59 @@ namespace Hier
 /-! ## F5.1a: limit coordinates -/
 
 /-- F5.1a: a coordinate is a successor limit. -/
-theorem IsLim.isSuccLimit {o : Ordinal.{u}} (h : IsLim o) : Order.IsSuccLimit o := by sorry
+theorem IsLim.isSuccLimit {o : Ordinal.{u}} (h : IsLim o) : Order.IsSuccLimit o := h.1
 
 /-- F5.1a: a coordinate is above `ω`. -/
-theorem IsLim.omega0_lt {o : Ordinal.{u}} (h : IsLim o) : Ordinal.omega0 < o := by sorry
+theorem IsLim.omega0_lt {o : Ordinal.{u}} (h : IsLim o) : Ordinal.omega0 < o := h.2
 
 /-- F5.1a: a coordinate is closed under successor. -/
-theorem IsLim.add_one_lt {o v : Ordinal.{u}} (h : IsLim o) (hv : v < o) : v + 1 < o := by sorry
+theorem IsLim.add_one_lt {o v : Ordinal.{u}} (h : IsLim o) (hv : v < o) : v + 1 < o := by
+  simpa [Order.succ_eq_add_one] using h.1.succ_lt hv
 
 /-- F5.1a: `o + ω` is a coordinate when `ω ≤ o` (used for `u_m = a_m + ω` in L6.7). -/
 theorem isLim_add_omega0 {o : Ordinal.{u}} (h : Ordinal.omega0 ≤ o) :
-    IsLim (o + Ordinal.omega0) := by sorry
+    IsLim (o + Ordinal.omega0) :=
+  ⟨Ordinal.isSuccLimit_add o Ordinal.isSuccLimit_omega0,
+    (lt_add_of_pos_right _ Ordinal.omega0_pos).trans_le (add_le_add_left h _)⟩
 
 /-- F5.1a: a least upper bound, not attained, of a nonempty set of coordinates is a coordinate
 (closedness half of L6.6 and N4.9). -/
 theorem isLim_of_isLUB {s : Set Ordinal.{u}} {a : Ordinal.{u}} (hs : ∀ x ∈ s, IsLim x)
-    (hne : s.Nonempty) (hlub : IsLUB s a) (hna : a ∉ s) : IsLim a := by sorry
+    (hne : s.Nonempty) (hlub : IsLUB s a) (hna : a ∉ s) : IsLim a := by
+  obtain ⟨x, hx⟩ := hne
+  exact ⟨hlub.isSuccLimit_of_notMem ⟨x, hx⟩ hna, (hs x hx).2.trans_le (hlub.1 hx)⟩
 
 /-- F5.1a: the supremum of a strictly increasing `ω`-sequence starting at or above `ω` is a
 coordinate (unboundedness half of L6.6 and N4.9). -/
 theorem isLim_iSup_nat {f : ℕ → Ordinal.{u}} (hf : StrictMono f) (h0 : Ordinal.omega0 ≤ f 0) :
-    IsLim (⨆ n, f n) := by sorry
+    IsLim (⨆ n, f n) := by
+  have hb : BddAbove (Set.range f) := Ordinal.bddAbove_of_small
+  have hlub : IsLUB (Set.range f) (⨆ n, f n) := isLUB_ciSup hb
+  have hna : (⨆ n, f n) ∉ Set.range f := by
+    rintro ⟨n, hn⟩
+    have := le_ciSup hb (n + 1)
+    rw [← hn] at this
+    exact (hf (Nat.lt_succ_self n)).not_ge this
+  exact ⟨hlub.isSuccLimit_of_notMem (Set.range_nonempty f) hna,
+    h0.trans_lt ((hf Nat.zero_lt_one).trans_le (le_ciSup hb 1))⟩
 
 -- V-U4-7
 /-- F5.1a: (8) for every nonzero limit `w`, including `w = ω` (used by L5.5b at the block
 `[ω, ω + ω)`; the spine's `add_omega_le` is the case `IsLim w`). -/
 theorem add_omega_le_of_isSuccLimit {v w : Ordinal.{u}} (hw : Order.IsSuccLimit w) (h : v < w) :
-    v + Ordinal.omega0 ≤ w := by sorry
+    v + Ordinal.omega0 ≤ w := by
+  have hn : ∀ n : ℕ, v + n < w := by
+    intro n
+    induction n with
+    | zero => simpa using h
+    | succ n ih =>
+      have := hw.succ_lt ih
+      rw [Order.succ_eq_add_one] at this
+      simpa [Nat.cast_succ, add_assoc] using this
+  rw [(Ordinal.isNormal_add_right v).le_iff_forall_le Ordinal.isSuccLimit_omega0]
+  intro b hb
+  obtain ⟨n, rfl⟩ := Ordinal.lt_omega0.1 hb
+  exact (hn n).le
 
 /-! ## D6.4: helper lemmas on the locked Mahlo predicates -/
 
@@ -63,21 +89,29 @@ end Hier
 
 /-- D6.4: every weakly `n`-Mahlo cardinal is uncountable and regular. -/
 theorem IsWeaklyMahlo.uncountable_regular {n : Nat} {κ : Cardinal.{u}} (h : IsWeaklyMahlo n κ) :
-    ℵ₀ < κ ∧ κ.IsRegular := by sorry
+    ℵ₀ < κ ∧ κ.IsRegular := by
+  cases n with
+  | zero => exact h
+  | succ n => exact h.1
 
 /-- D6.4: below a weakly `(n+1)`-Mahlo cardinal the weakly `n`-Mahlo cardinals are stationary. -/
 theorem IsWeaklyMahlo.stationary_pred {n : Nat} {κ : Cardinal.{u}}
     (h : IsWeaklyMahlo (n + 1) κ) :
-    StationaryIn κ {o | ∃ μ : Cardinal.{u}, IsWeaklyMahlo n μ ∧ μ.ord = o} := by sorry
+    StationaryIn κ {o | ∃ μ : Cardinal.{u}, IsWeaklyMahlo n μ ∧ μ.ord = o} := h.2
 
 /-- D6.4: a stationary set meets every club (unfolding `StationaryIn`). -/
 theorem StationaryIn.exists_mem_club {κ : Cardinal.{u}} {S : Set Ordinal.{u}}
     (hS : StationaryIn κ S) {C : Set (Set.Iio κ.ord)} (hC : IsClub C) :
-    ∃ x ∈ C, x.1 ∈ S := by sorry
+    ∃ x ∈ C, x.1 ∈ S := by
+  obtain ⟨x, hxS, hxC⟩ := hS hC
+  exact ⟨x, hxC, hxS⟩
 
 /-- D6.4: a club of `κ` (uncountable) is unbounded below `κ`. -/
 theorem IsClub.exists_gt_ord {κ : Cardinal.{u}} (hκ : ℵ₀ < κ) {C : Set (Set.Iio κ.ord)}
-    (hC : IsClub C) {o : Ordinal.{u}} (ho : o < κ.ord) : ∃ x ∈ C, o < x.1 := by sorry
+    (hC : IsClub C) {o : Ordinal.{u}} (ho : o < κ.ord) : ∃ x ∈ C, o < x.1 := by
+  have h1 : o + 1 < κ.ord := (Hier.isLim_ord hκ).add_one_lt ho
+  obtain ⟨x, hxC, hx⟩ := hC.isCofinal ⟨o + 1, h1⟩
+  exact ⟨x, hxC, (Order.lt_add_one_iff.2 le_rfl).trans_le (Subtype.coe_le_coe.2 hx)⟩
 
 namespace Hier
 
