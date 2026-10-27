@@ -491,14 +491,75 @@ def toGAtom (A : WordAtom) : GAtom Nat :=
     if (ofLex A).1 % 2 = 0 ∧ (ofLex (ofLex A).2).1 = 0 then (⊥ : WithBot Nat)
     else ((ofLex (ofLex A).2).2 : WithBot Nat)))
 
+mutual
+/-- N1.2 helper: `gword_map` at an arbitrary depth. -/
+theorem gwordAt_map {α β : Type} (f : α → β) :
+    (e : Nat) → (t : Tree α) → gwordAt e (t.map f) = (gwordAt e t).map (GAtom.map f)
+  | e, .node cols => by
+    simp only [Tree.map, gwordAt]; exact gwordCols_map f e cols
+theorem gwordCols_map {α β : Type} (f : α → β) :
+    (e : Nat) → (cs : List (List (α × Tree α))) →
+      gwordCols e (Tree.mapCols f cs) = (gwordCols e cs).map (GAtom.map f)
+  | _, [] => rfl
+  | e, c :: cs => by
+    simp only [Tree.mapCols, gwordCols, List.map_append]
+    rw [gwordCol_map f e c, gwordCols_map f e cs]
+theorem gwordCol_map {α β : Type} (f : α → β) :
+    (e : Nat) → (c : List (α × Tree α)) →
+      gwordCol e (Tree.mapCol f c) = (gwordCol e c).map (GAtom.map f)
+  | _, [] => rfl
+  | e, (p, h) :: es => by
+    simp only [Tree.mapCol, gwordCol, List.map_cons, List.map_append]
+    rw [gwordAt_map f (e + 1) h, gwordLater_map f e es]
+    rfl
+theorem gwordLater_map {α β : Type} (f : α → β) :
+    (e : Nat) → (c : List (α × Tree α)) →
+      gwordLater e (Tree.mapCol f c) = (gwordLater e c).map (GAtom.map f)
+  | _, [] => rfl
+  | e, (p, h) :: es => by
+    simp only [Tree.mapCol, gwordLater, List.map_cons, List.map_append]
+    rw [gwordAt_map f (e + 1) h, gwordLater_map f e es]
+    rfl
+end
+
 /-- N1.2: relabelling commutes with the generic word (positions and length are unchanged). -/
 theorem gword_map {α β : Type} (f : α → β) (t : Tree α) :
-    gword (t.map f) = (gword t).map (GAtom.map f) := by sorry
+    gword (t.map f) = (gword t).map (GAtom.map f) := gwordAt_map f 0 t
+
+mutual
+/-- N1.2 helper: `gword_eq_map_word` at an arbitrary depth. -/
+theorem gwordAt_eq_map_wordAt : (e : Nat) → (E : Forest) → gwordAt e E = (wordAt e E).map toGAtom
+  | e, .node cols => by
+    simp only [gwordAt, wordAt]; exact gwordCols_eq_map_wordCols e cols
+theorem gwordCols_eq_map_wordCols :
+    (e : Nat) → (cs : List Column) → gwordCols e cs = (wordCols e cs).map toGAtom
+  | _, [] => rfl
+  | e, c :: cs => by
+    simp only [gwordCols, wordCols, List.map_append]
+    rw [gwordCol_eq_map_wordCol e c, gwordCols_eq_map_wordCols e cs]
+theorem gwordCol_eq_map_wordCol :
+    (e : Nat) → (c : Column) → gwordCol e c = (wordCol e c).map toGAtom
+  | e, [] => by
+    simp [gwordCol, wordCol, toGAtom]
+  | e, (p, h) :: es => by
+    simp only [gwordCol, wordCol, List.map_cons, List.map_append]
+    rw [gwordAt_eq_map_wordAt (e + 1) h, gwordLater_eq_map_wordLater e es]
+    simp [toGAtom]; rfl
+theorem gwordLater_eq_map_wordLater :
+    (e : Nat) → (c : Column) → gwordLater e c = (wordLater e c).map toGAtom
+  | _, [] => rfl
+  | e, (p, h) :: es => by
+    simp only [gwordLater, wordLater, List.map_cons, List.map_append]
+    rw [gwordAt_eq_map_wordAt (e + 1) h, gwordLater_eq_map_wordLater e es]
+    simp [toGAtom, Nat.add_mod]; rfl
+end
 
 /-- N1.2: the spine's word is the generic word with the label decoration forgotten. -/
-theorem gword_eq_map_word (E : Forest) : gword E = (word E).map toGAtom := by sorry
+theorem gword_eq_map_word (E : Forest) : gword E = (word E).map toGAtom :=
+  gwordAt_eq_map_wordAt 0 E
 
-theorem mu_eq_length_gword (E : Forest) : mu E = (gword E).length := by sorry
+theorem mu_eq_length_gword (E : Forest) : mu E = (gword E).length := by
+  rw [gword_eq_map_word, List.length_map]; rfl
 
 /-- C1.8a: every atom of `gwordAt e t` has depth coordinate at least `2e`. -/
 theorem gwordAt_fst_ge {α : Type} (e : Nat) (t : Tree α) :
@@ -541,11 +602,60 @@ def WordAtom.WF (A : WordAtom) : Prop :=
       (ofLex (ofLex A).2).1 = 1)) ∨
     ((ofLex A).1 % 2 = 1 ∧ (ofLex (ofLex A).2).1 = 0)
 
+mutual
+/-- N1.2 helper: `word_wf` at an arbitrary depth. -/
+theorem wordAt_wf : (e : Nat) → (E : Forest) → ∀ A ∈ wordAt e E, A.WF
+  | e, .node cols => by
+    simp only [wordAt]; exact wordCols_wf e cols
+theorem wordCols_wf : (e : Nat) → (cs : List Column) → ∀ A ∈ wordCols e cs, A.WF
+  | _, [] => by simp [wordCols]
+  | e, c :: cs => by
+    simp only [wordCols, List.mem_append]
+    rintro A (hA | hA)
+    · exact wordCol_wf e c A hA
+    · exact wordCols_wf e cs A hA
+theorem wordCol_wf : (e : Nat) → (c : Column) → ∀ A ∈ wordCol e c, A.WF
+  | e, [] => by simp [wordCol, WordAtom.WF]
+  | e, (p, h) :: es => by
+    simp only [wordCol, List.mem_cons, List.mem_append]
+    rintro A (rfl | hA | hA)
+    · simp [WordAtom.WF]
+    · exact wordAt_wf (e + 1) h A hA
+    · exact wordLater_wf e es A hA
+theorem wordLater_wf : (e : Nat) → (c : Column) → ∀ A ∈ wordLater e c, A.WF
+  | _, [] => by simp [wordLater]
+  | e, (p, h) :: es => by
+    simp only [wordLater, List.mem_cons, List.mem_append]
+    rintro A (rfl | hA | hA)
+    · simp [WordAtom.WF, Nat.add_mod]
+    · exact wordAt_wf (e + 1) h A hA
+    · exact wordLater_wf e es A hA
+end
+
 /-- N1.2: every atom of a word is well formed. -/
-theorem word_wf (E : Forest) : ∀ A ∈ word E, A.WF := by sorry
+theorem word_wf (E : Forest) : ∀ A ∈ word E, A.WF := wordAt_wf 0 E
 
 /-- N1.2: `toGAtom` is strictly increasing on well-formed atoms. -/
-theorem toGAtom_strictMonoOn : StrictMonoOn toGAtom {A : WordAtom | A.WF} := by sorry
+theorem toGAtom_strictMonoOn : StrictMonoOn toGAtom {A : WordAtom | A.WF} := by
+  rintro ⟨a, b, c⟩ hA ⟨a', b', c'⟩ hB hlt
+  change toLex (a, toLex (b, c)) < toLex (a', toLex (b', c')) at hlt
+  change toLex (a, toLex (b, _)) < toLex (a', toLex (b', _))
+  simp only [Prod.Lex.toLex_lt_toLex] at hlt ⊢
+  rcases hlt with h | ⟨rfl, h | ⟨rfl, h⟩⟩
+  · exact Or.inl h
+  · exact Or.inr ⟨rfl, Or.inl h⟩
+  · refine Or.inr ⟨rfl, Or.inr ⟨rfl, ?_⟩⟩
+    by_cases hz : a % 2 = 0 ∧ b = 0
+    · exfalso
+      have : c = 0 ∧ c' = 0 := by
+        change (a % 2 = 0 ∧ (b = 0 ∧ c = 0 ∨ b = 1)) ∨ (a % 2 = 1 ∧ b = 0) at hA
+        change (a % 2 = 0 ∧ (b = 0 ∧ c' = 0 ∨ b = 1)) ∨ (a % 2 = 1 ∧ b = 0) at hB
+        omega
+      omega
+    · change (if a % 2 = 0 ∧ b = 0 then (⊥ : WithBot Nat) else (c : WithBot Nat)) <
+        (if a % 2 = 0 ∧ b = 0 then (⊥ : WithBot Nat) else (c' : WithBot Nat))
+      rw [if_neg hz, if_neg hz]
+      exact WithBot.coe_lt_coe.mpr h
 
 -- bridge: holds by `rfl` (SCR-2 applied)
 theorem safePrefix_eq_body (E : Forest) (k : Nat) : safePrefix E k = safePrefixBody E k := by sorry
