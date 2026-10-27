@@ -31,7 +31,7 @@ namespace Closure
 /-! ## D3.1 — profiles, tower keys, literal caps, cap positions -/
 
 /-- D3.1 bridge (`rfl` once the body replaces the spine's `sorry`). -/
-theorem profile_eq_body (H : Forest) : profile H = profileBody H := by sorry
+theorem profile_eq_body (H : Forest) : profile H = profileBody H := rfl
 
 /-- D3.1b: the pure tower key at relative level `k`: `d` further singleton levels with labels
 `(true, k), (true, k+1), …`, ending in a column of `m` entries `((true, k+d), ∅)`. -/
@@ -45,7 +45,7 @@ def towKey (d m : Nat) : Key := towKeyAt 0 d m
 
 /-- D3.1 bridge. -/
 theorem litCap_eq_body (E : Forest) (c : ColAddr) (k p : Nat) :
-    litCap E c k p = litCapBody E c k p := by sorry
+    litCap E c k p = litCapBody E c k p := rfl
 
 /-- D3.1c: depth of a column address (`0` for the outer forest). -/
 def colDepth (c : ColAddr) : Nat := c.path.length
