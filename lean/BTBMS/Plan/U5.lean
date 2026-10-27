@@ -1347,12 +1347,128 @@ def OnRoute (sd : Scan.StopData) : Role → Prop
       c.col ≤ (((sd.col.path ++ [(sd.col.col, 0)])[d]?).map Prod.fst).getD 0
   | .slot e => e.heightPath <+: sd.col.path
 
+/-- L8.2d (helper): earlier columns of a forest exist. -/
+theorem colAt_isSome_of_le {α : Type} {t : Tree α} {π : List (Nat × Nat)} {j k : Nat}
+    (hjk : j ≤ k) (hk : (t.colAt ⟨π, k⟩).isSome) : (t.colAt ⟨π, j⟩).isSome := by
+  unfold Tree.colAt at hk ⊢
+  cases hf : t.forestAt π with
+  | none => simp only [hf] at hk; simp at hk
+  | some f =>
+    simp only [hf, Option.bind_some, Option.isSome_iff_exists, List.getElem?_eq_some_iff] at hk ⊢
+    obtain ⟨_, hlt, -⟩ := hk
+    exact ⟨_, by omega, rfl⟩
+
+/-- L8.2d (helper): consecutive columns of one forest form an elementarity chain. -/
+theorem cols_chain {E : Forest} {π : List (Nat × Nat)} :
+    ∀ {j k : Nat}, j ≤ k → (E.colAt ⟨π, k⟩).isSome →
+      Relation.ReflTransGen (ElemStep (graph E)) (.ord ⟨π, j⟩) (.ord ⟨π, k⟩)
+  | j, 0, hjk, _ => by obtain rfl : j = 0 := by omega
+                       exact Relation.ReflTransGen.refl
+  | j, k + 1, hjk, hk => by
+    by_cases hj : j = k + 1
+    · subst hj; exact Relation.ReflTransGen.refl
+    · have hk' := colAt_isSome_of_le (Nat.le_succ k) hk
+      exact (cols_chain (by omega) hk').tail
+        (Or.inl (elem_col_succ ((Tree.mem_colAddrs_iff E _).2 hk') hk))
+
+/-- L8.2d (helper): an entry whose height path leads to a column has a nonempty height. -/
+theorem height_ne_empty_of_prefix {E : Forest} {e : EntryAddr} {c : ColAddr}
+    (hp : e.heightPath <+: c.path) (hc : (E.colAt c).isSome) :
+    ∃ h, E.heightAt e = some h ∧ h ≠ Tree.empty := by
+  obtain ⟨rest, hrest⟩ := hp
+  unfold Tree.colAt at hc
+  rw [← hrest, Tree.forestAt_append, Tree.forestAt_heightPath] at hc
+  cases hh : E.heightAt e with
+  | none => rw [hh] at hc; simp at hc
+  | some h =>
+    refine ⟨h, rfl, ?_⟩
+    rintro rfl
+    rw [hh] at hc
+    cases rest with
+    | nil => simp [Tree.forestAt, Tree.empty, Tree.cols] at hc
+    | cons x rest => simp [Tree.forestAt, Tree.empty, Tree.cols] at hc
+
+/-- L8.2d (helper): the route below depth `d` leads to the stopping column. -/
+theorem route_steps {H : Forest} (hV : Scan.CondV H) (hI : Scan.CondI H) {T : ColAddr}
+    (hT : (H.colAt T).isSome) : ∀ (n d : Nat), T.path.length - d = n → ∀ c : ColAddr,
+      c.path = T.path.take d →
+      c.col ≤ (((T.path ++ [(T.col, 0)])[d]?).map Prod.fst).getD 0 →
+      Relation.ReflTransGen (ElemStep (graph H)) (.ord c) (.ord T) := by
+  intro n
+  induction n with
+  | zero =>
+    intro d hd c hcp hcc
+    have hlen : T.path.length ≤ d := by omega
+    rw [List.take_of_length_le hlen] at hcp
+    have hcol : c.col ≤ T.col := by
+      rcases Nat.lt_or_ge T.path.length d with hlt | hge
+      · rw [List.getElem?_eq_none (by simp; omega)] at hcc
+        simp at hcc; omega
+      · obtain rfl : d = T.path.length := by omega
+        rw [List.getElem?_append_right le_rfl] at hcc
+        simpa using hcc
+    obtain ⟨cp, cc⟩ := c
+    obtain ⟨tp, tc⟩ := T
+    simp only at hcp hcol
+    subst hcp
+    exact cols_chain hcol hT
+  | succ n ih =>
+    intro d hd c hcp hcc
+    have hlt : d < T.path.length := by omega
+    obtain ⟨⟨ck, ik⟩, hk⟩ : ∃ x, T.path[d]? = some x :=
+      ⟨_, List.getElem?_eq_getElem hlt⟩
+    rw [List.getElem?_append_left hlt, hk] at hcc
+    simp only [Option.map_some, Option.getD_some] at hcc
+    let ed : EntryAddr := ⟨⟨T.path.take d, ck⟩, ik⟩
+    have hhp : ed.heightPath = T.path.take (d + 1) := by
+      simp [ed, EntryAddr.heightPath, List.take_add_one, hk]
+    have hpre : ed.heightPath <+: T.path := by rw [hhp]; exact List.take_prefix _ _
+    obtain ⟨h, hh, hne⟩ := height_ne_empty_of_prefix hpre hT
+    have hedx : (H.entryAt ed).isSome := by
+      unfold Tree.heightAt at hh
+      cases hx : H.entryAt ed with
+      | none => rw [hx] at hh; simp at hh
+      | some _ => rfl
+    have hed : ed ∈ H.entryAddrs := (Tree.mem_entryAddrs_iff H ed).2 hedx
+    have hcolk : (H.colAt ⟨T.path.take d, ck⟩).isSome := by
+      obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 hedx
+      obtain ⟨col, hcol, -⟩ := Tree.colAt_of_entryAt hx
+      show (H.colAt ed.col).isSome
+      rw [hcol]; rfl
+    obtain ⟨cp, cc⟩ := c
+    simp only at hcp hcc
+    subst hcp
+    have h1 := cols_chain (E := H) hcc hcolk
+    obtain ⟨o, ho⟩ := step_col_slot hV hed
+    have h2 : ElemStep (graph H) (.ord ed.col) (.slot ed) := Or.inr (Or.inl ⟨o, ho⟩)
+    have h3 : ElemStep (graph H) (.slot ed) (.ord ⟨ed.heightPath, 0⟩) :=
+      Or.inr (Or.inr ⟨_, step_slot_child hV hI hed hh hne⟩)
+    have h4 := ih (d + 1) (by omega) ⟨ed.heightPath, 0⟩ hhp (Nat.zero_le _)
+    exact ((h1.tail h2).tail h3).trans h4
+
 /-- L8.2d: route elementarity (txt:1289-1291): `J_{α v} ≺_{Σ1} J_{α T}` for `v` on the route. -/
 theorem route_chain (I : Interface.{u}) {H : Forest} (hV : Scan.CondV H) (hI : Scan.CondI H)
     {sd : Scan.StopData} (hsd : Scan.stopData H = some sd) {α : Role → Ordinal.{u}}
     (hα : IsConfig I.toPrims H α) {v : Role} (hv : v ∈ H.roles) (hr : OnRoute sd v) :
     I.Elem (α v) (α (.ord sd.col)) := by
-  sorry
+  have hT : (H.colAt sd.col).isSome :=
+    (Tree.mem_roles_iff H (.ord sd.col)).1 (Scan.stopData_col_mem hsd)
+  refine elem_of_steps I hα (config_lim hα hv) ?_
+  cases v with
+  | ord c =>
+    obtain ⟨d, hcp, hcc⟩ := hr
+    exact route_steps hV hI hT _ d rfl c hcp hcc
+  | slot e =>
+    have hpre : e.heightPath <+: sd.col.path := hr
+    have hx : (H.entryAt e).isSome := (Tree.mem_roles_iff H (.slot e)).1 hv
+    have he : e ∈ H.entryAddrs := (Tree.mem_entryAddrs_iff H e).2 hx
+    obtain ⟨h, hh, hne⟩ := height_ne_empty_of_prefix hpre hT
+    have h1 : ElemStep (graph H) (.slot e) (.ord ⟨e.heightPath, 0⟩) :=
+      Or.inr (Or.inr ⟨_, step_slot_child hV hI he hh hne⟩)
+    have hhp : e.heightPath = sd.col.path.take e.heightPath.length :=
+      List.prefix_iff_eq_take.1 hpre
+    exact Relation.ReflTransGen.head h1
+      (route_steps hV hI hT _ e.heightPath.length rfl ⟨e.heightPath, 0⟩ hhp (Nat.zero_le _))
 
 /-- L8.3: a realization of the free block problem of `K` at frame `fr` above floor `L`. -/
 def IsFreeReal (P : Prims.{u}) (K : Key) (fr : BlkVar → Option Ordinal.{u}) (L : Ordinal.{u})
