@@ -5244,7 +5244,55 @@ theorem special_copies (I : Interface.{u}) {W : Type} {D : List (BaseAtom W)}
         ∀ x ∈ baseVars D, fr x = none → L < βs i x ∧ βs i x < s) ∧
       ∀ i j, i < j → j < N → ∀ x ∈ baseVars D, fr x = none → ∀ y ∈ baseVars D,
         fr y = none → βs i x < βs j y := by
-  sorry
+  obtain ⟨β₀, hfix₀, hhold₀, hnew₀⟩ := h0
+  have hsWv : s ≤ Wv := I.elem_le hsW
+  have step : ∀ L', L' < s → ∃ β : W → Ordinal.{u}, (∀ x o, fr x = some o → β x = o) ∧
+      BaseHolds I.toPrims D β ∧ (∀ x ∈ baseVars D, fr x = none → L' < β x) ∧
+      ∀ x ∈ baseVars D, β x < s := by
+    intro L' hL'
+    have hB : BlockAbove I.toPrims D fr L' Wv := by
+      refine ⟨β₀, hfix₀, fun x hx hn => hL'.trans_le (hnew₀ x hx hn).1, fun x hx => ?_, hhold₀⟩
+      cases hfx : fr x with
+      | none => exact (hnew₀ x hx hfx).2
+      | some o => rw [hfix₀ x o hfx]; exact (hfr x hx o hfx).trans_le hsWv
+    obtain ⟨β, h1, h2, h3, h4⟩ := blockAbove_capture I hsW hL' hfr hB
+    exact ⟨β, h1, h4, h2, h3⟩
+  have key : ∀ N, ∃ βs : Nat → W → Ordinal.{u}, ∃ Lf, L ≤ Lf ∧ Lf < s ∧
+      (∀ i < N, (∀ x o, fr x = some o → βs i x = o) ∧ BaseHolds I.toPrims D (βs i) ∧
+        ∀ x ∈ baseVars D, fr x = none → L < βs i x ∧ βs i x < s) ∧
+      (∀ i < N, ∀ x ∈ baseVars D, βs i x ≤ Lf) ∧
+      ∀ i j, i < j → j < N → ∀ x ∈ baseVars D, fr x = none → ∀ y ∈ baseVars D,
+        fr y = none → βs i x < βs j y := by
+    intro N
+    induction N with
+    | zero =>
+      exact ⟨fun _ => β₀, L, le_rfl, hL, fun i hi => absurd hi (Nat.not_lt_zero _),
+        fun i hi => absurd hi (Nat.not_lt_zero _), fun i j _ hj => absurd hj (Nat.not_lt_zero _)⟩
+    | succ N ih =>
+      obtain ⟨βs, Lf, hLLf, hLfs, hcopies, hbound, hord⟩ := ih
+      obtain ⟨β, h1, h2, h3, h4⟩ := step Lf hLfs
+      refine ⟨fun i => if i < N then βs i else β, ((baseVars D).map β).foldr max Lf,
+        hLLf.trans (le_foldr_max_init_D4 _ _), ?_, ?_, ?_, ?_⟩
+      · refine foldr_max_lt_iff_D4.2 ⟨hLfs, fun z hz => ?_⟩
+        obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hz
+        exact h4 x hx
+      · intro i hi
+        by_cases hiN : i < N
+        · simp only [hiN, if_true]; exact hcopies i hiN
+        · simp only [hiN, if_false]
+          exact ⟨h1, h2, fun x hx hn => ⟨hLLf.trans_lt (h3 x hx hn), h4 x hx⟩⟩
+      · intro i _ x hx
+        by_cases hiN : i < N
+        · simp only [hiN, if_true]; exact (hbound i hiN x hx).trans (le_foldr_max_init_D4 _ _)
+        · simp only [hiN, if_false]; exact le_foldr_max_mem_D4 (List.mem_map_of_mem hx)
+      · intro i j hij hj x hx hxn y hy hyn
+        have hiN : i < N := by omega
+        simp only [hiN, if_true]
+        by_cases hjN : j < N
+        · simp only [hjN, if_true]; exact hord i j hij hjN x hx hxn y hy hyn
+        · simp only [hjN, if_false]; exact (hbound i hiN x hx).trans_lt (h3 y hy hyn)
+  obtain ⟨βs, -, -, -, h1, -, h2⟩ := key N
+  exact ⟨βs, h1, h2⟩
 
 -- L8.7 itself is the spine contract `Descent.specialDesc` (txt:1325-1346); its proof plan is in
 -- the unit doc and uses `special_copies`, `Packet.special_graph` (U3 L6.2f), `Packet.posBlock_heads_graph`
