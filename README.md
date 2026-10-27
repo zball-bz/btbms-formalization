@@ -5,6 +5,8 @@ expressions are well-ordered by the syntax order: the main theorem of
 `paper/BTBMS_Independent_Reconstruction_20261027.pdf` (§9), formalized as `BTBMS.mainTheorem`.
 The paper's form, with n-Mahlo cardinals over inaccessibles, follows as `BTBMS.paperTheorem`.
 
+The paper is by **test_alpha0** (known as measurable_cardinal on Discord).
+
 **Status (2026-10-28): proved.** No `sorry` anywhere in the project (4,027 declarations); the
 main theorem depends only on the axioms `propext`, `Classical.choice` and `Quot.sound`.
 
