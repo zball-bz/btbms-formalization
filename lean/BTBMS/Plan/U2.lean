@@ -1394,7 +1394,14 @@ theorem diamond_lt_iff {Q : Column} (hQ : Q ≠ []) {X X' : Forest} (hX : X ≠ 
 
 -- L3.5c (txt:476-478, 579-580): root restriction preserves proper word extension when the cut of
 -- the shorter filling lies after the start of the retained root entry
+-- C5 (statement change): `hidx : rd.idx = rd.col.col` added. `rootTail` drops the columns up to
+-- `rd.idx`, so for an arbitrary `rd` the later columns of the root forest can be lost and the
+-- inequality fails. Counterexample (checked by `#eval`): `D₂ = [[],[],[]]`,
+-- `rd.col = ⟨[], 0⟩`, `rd.idx = 5`, `γ = 0`, `π = 2`: `capPos D₂ rd.col 0 = 0 < 2 < 3 = µ(D₂)`,
+-- `hlast` holds (depth `0`), and both root tails are `[[]]`. Every `rd` from `rootData` has
+-- `rd.idx = rd.col.col` (`rootData_spec`).
 theorem rootTail_extension {D₁ D₂ : Forest} {rd : RootData} {γ π : Nat}
+    (hidx : rd.idx = rd.col.col)
     (hD : D₁ = safePrefix D₂ π) (hπ : π < mu D₂) (hcol : rd.col ∈ D₂.colAddrs)
     (hγ : capPos D₂ rd.col γ < π)
     (hlast : ∀ y ∈ (word D₂).drop (capPos D₂ rd.col γ), 2 * colDepth rd.col ≤ (ofLex y).1)
