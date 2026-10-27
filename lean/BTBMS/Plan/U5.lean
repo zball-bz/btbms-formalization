@@ -5954,6 +5954,26 @@ theorem readmit_capture (I : Interface.{u}) (pk : SourcePacket.{u}) (hv : pk.Val
     have hB2 := (blockAbove_congr_frame _ _ _ _ _ _ hfeq).1 hB
     exact h23 (blockAbove_mono le_rfl haown.le hB2)
 
+/-- L8.8d (helper): `takeWhile (· != T)` stops inside a block containing `T`. -/
+theorem takeWhile_ne_append_mem_F4 {A B : List Role} {T : Role} (h : T ∈ A) :
+    (A ++ B).takeWhile (· != T) = A.takeWhile (· != T) := by
+  induction A with
+  | nil => simp at h
+  | cons a A ih =>
+    by_cases ha : a = T
+    · subst ha; simp
+    · have hT : T ∈ A := (List.mem_cons.1 h).resolve_left (Ne.symm ha)
+      simp only [List.cons_append, List.takeWhile_cons, bne_iff_ne, ne_eq, ha,
+        not_false_eq_true, if_true, ih hT]
+
+/-- L8.8d (helper): along a role prefix, the roles before a role of the prefix are the same. -/
+theorem rolesBefore_prefix_F4 {E F : Forest} (h : F.roles <+: E.roles) {z : Role}
+    (hz : z ∈ F.roles) : rolesBefore F z = rolesBefore E z := by
+  obtain ⟨X, hX⟩ := h
+  unfold rolesBefore
+  rw [← hX]
+  exact (takeWhile_ne_append_mem_F4 hz).symm
+
 /-- L8.8d: Case 2, a proper child forest ends first: a smaller failure (txt:1364-1381). -/
 theorem case_childEnds (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n)
     (hSp : SpecialDesc I.toPrims) (pk : SourcePacket.{u}) (hadm : pk.rk.Admitted)
@@ -5963,7 +5983,148 @@ theorem case_childEnds (I : Interface.{u}) {n : Nat} (hD : DLab I.toPrims n)
       (fun w => (pk.tgtFrame.toFr w).map pk.asg) Ls (pk.asg pk.owner))
     {π : List (Nat × Nat)} (hfd : pk.rk.firstDiff = .childEnds π) :
     ∃ pk', Fails I.toPrims n pk' Ls ∧ failPair pk' < failPair pk := by
-  sorry
+  classical
+  obtain ⟨cd⟩ := childEnds_package pk hadm hfd
+  have ha : pk.rk.a ∈ pk.rk.F.entryAddrs := hadm.2.2.1
+  obtain ⟨hV, hI, -⟩ := hadm.2.2.2.1
+  have hα := valid_src_config pk hv
+  have hα₁ : IsConfig I.toPrims cd.F₁ (pk.asg ∘ pk.srcChart) := config_of_sub cd.graph_sub hα
+  have hz₁ : Role.ord cd.sd₁.col ∈ cd.F₁.roles := Scan.stopData_col_mem cd.stop
+  have hzF : Role.ord cd.sd₁.col ∈ pk.rk.F.roles := cd.roles_pre.subset hz₁
+  have hW : I.Elem (pk.asg pk.owner) ((pk.asg ∘ pk.srcChart) (.ord cd.sd₁.col)) :=
+    owner_path_elem_config I hV hI hα ha hzF cd.stop_inside
+  -- a configuration of `F₂` below `W` keeping `P(F, a)` and the slot of `a`
+  obtain ⟨γ, hγ, hγpre, hγown, hγW⟩ : ∃ γ : Role → Ordinal.{u}, IsConfig I.toPrims cd.F₂ γ ∧
+      (∀ x ∈ prefixRoles pk.rk.F pk.rk.a, γ x = (pk.asg ∘ pk.srcChart) x) ∧
+      γ (.slot pk.rk.a) = pk.asg pk.owner ∧
+      ∀ x ∈ cd.F₂.roles, γ x < (pk.asg ∘ pk.srcChart) (.ord cd.sd₁.col) := by
+    rcases cd.branch with ⟨hord, hQ, rd₁, hrd, hRin⟩ | ⟨hsp, e, he, hein, hne⟩
+    · have hRF₁ : Role.ord rd₁.col ∈ cd.F₁.roles :=
+        (List.takeWhile_sublist _).subset (root_before_stop_D4 cd.stop hrd)
+      have hRF : Role.ord rd₁.col ∈ pk.rk.F.roles := cd.roles_pre.subset hRF₁
+      have hbefore := Tree.prefix_slot_before_inEntry ha hRF hRin (by intro h; cases h)
+      have hrb : rolesBefore cd.F₁ (.ord rd₁.col) = rolesBefore pk.rk.F (.ord rd₁.col) :=
+        rolesBefore_prefix_F4 cd.roles_pre hRF₁
+      have hmapid : ∀ a : BaseAtom Role, a.map id = a := fun a => by cases a <;> rfl
+      obtain ⟨γ, -, hγ, hlt, -, -, -, -, hroot, -⟩ := hD cd.F₁ none (pk.asg ∘ pk.srcChart) cd.sd₁
+        rd₁ cd.inL hord cd.stop hrd hα₁ (Or.inl hQ) Role
+        (Diagram.ofBase (restrictTo (graph cd.F₁) (rolesBefore cd.F₁ (.ord cd.sd₁.col)))) id id
+        (pk.asg ∘ pk.srcChart) (fun _ => False)
+        (fun _ _ => rfl)
+        (fun x _ y hy => by
+          have : some x = some y := hy
+          cases this; rfl)
+        (fun T' a hT' ha => by
+          have : some (Role.ord cd.sd₁.col) = some T' := hT'
+          cases this
+          rw [hmapid]
+          exact List.mem_map_of_mem ha)
+        ((holds_ofBase _ _).2 fun a ha => hα₁ a (List.mem_filter.1 ha).1)
+        (fun v hv => by
+          rw [ofBase_vars] at hv
+          obtain ⟨a, ha, hva⟩ := List.mem_flatMap.1 hv
+          exact config_lt_of_before hα₁ hz₁ (mem_of_restrictTo_D4 ha hva))
+        (fun _ _ h => h.elim) cd.k cd.F₂ cd.step
+      refine ⟨γ, hγ, fun x hx => hroot x ?_, hroot _ ?_, hlt⟩
+      · show x ∈ rolesBefore cd.F₁ _
+        rw [hrb]; exact hbefore.subset (List.mem_append_left _ hx)
+      · show _ ∈ rolesBefore cd.F₁ _
+        rw [hrb]; exact hbefore.subset (List.mem_append_right _ (List.mem_singleton_self _))
+    · obtain ⟨heF₁, hzin_e, -⟩ := Scan.ownerEntry_mem hsp cd.stop he
+      have hse₁ : Role.slot e ∈ cd.F₁.roles := slot_mem_roles heF₁
+      have hseF : Role.slot e ∈ pk.rk.F.roles := cd.roles_pre.subset hse₁
+      have hbefore := Tree.prefix_slot_before_inEntry ha hseF hein
+        (by intro h; cases h; exact hne rfl)
+      have hpe : prefixRoles cd.F₁ e = prefixRoles pk.rk.F e :=
+        rolesBefore_prefix_F4 cd.roles_pre hse₁
+      have hL₁ : ∀ x ∈ prefixRoles cd.F₁ e, (pk.asg ∘ pk.srcChart) x ≤
+          ((prefixRoles cd.F₁ e).map (pk.asg ∘ pk.srcChart)).foldr max 0 :=
+        fun x hx => le_foldr_max_mem_D4 (List.mem_map_of_mem hx)
+      have hcol : Role.ord e.col ∈ prefixRoles cd.F₁ e := (frameOf_mem_prefix heF₁).1
+      have hL₁s : ((prefixRoles cd.F₁ e).map (pk.asg ∘ pk.srcChart)).foldr max 0 <
+          (pk.asg ∘ pk.srcChart) (.slot e) := by
+        refine foldr_max_lt_iff_D4.2 ⟨zero_le.trans_lt (config_lt_of_before hα₁ hse₁ hcol),
+          fun y hy => ?_⟩
+        obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hy
+        exact config_lt_of_before hα₁ hse₁ hx
+      obtain ⟨γ, hγ, hγp, hγn⟩ := hSp cd.F₁ cd.F₂ cd.k (pk.asg ∘ pk.srcChart) cd.sd₁ e _ cd.inL hsp
+        cd.stop he hα₁ cd.step hL₁ hL₁s
+      have hsz : (pk.asg ∘ pk.srcChart) (.slot e) <
+          (pk.asg ∘ pk.srcChart) (.ord cd.sd₁.col) := by
+        have hb2 := Tree.prefix_slot_before_inEntry heF₁ hz₁ hzin_e (by intro h; cases h)
+        exact config_lt_of_before hα₁ hz₁
+          (hb2.subset (List.mem_append_right _ (List.mem_singleton_self _)))
+      refine ⟨γ, hγ, fun x hx => hγp x ?_, hγp _ ?_, fun x hx => ?_⟩
+      · rw [hpe]; exact hbefore.subset (List.mem_append_left _ hx)
+      · rw [hpe]; exact hbefore.subset (List.mem_append_right _ (List.mem_singleton_self _))
+      · by_cases hxp : x ∈ prefixRoles cd.F₁ e
+        · rw [hγp x hxp]; exact (config_lt_of_before hα₁ hse₁ hxp).trans hsz
+        · exact (hγn x hx hxp).2.trans hsz
+  -- the chart of the readmitted source context
+  have hfreshN : ∀ x, Name.role (tagBound (pk.lowNames ++ [pk.owner])) x ∉ pk.lowNames ∧
+      Name.role (tagBound (pk.lowNames ++ [pk.owner])) x ≠ pk.owner := by
+    intro x
+    have h := tagBound_fresh (pk.lowNames ++ [pk.owner]) x
+    simp only [List.mem_append, List.mem_singleton, not_or] at h
+    exact h
+  let srcChart' : Role → Name := fun x =>
+    if x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a then pk.srcChart x
+    else Name.role (tagBound (pk.lowNames ++ [pk.owner])) x
+  have hold : ∀ x, x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a →
+      srcChart' x = pk.srcChart x := fun x hx => if_pos hx
+  have hnew : ∀ x, ¬ (x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a) →
+      srcChart' x = Name.role (tagBound (pk.lowNames ++ [pk.owner])) x := fun x hx => if_neg hx
+  have hSlow : ∀ x ∈ prefixRoles pk.rk.F pk.rk.a, pk.srcChart x ∈ pk.lowNames := fun x hx =>
+    List.mem_append.2 (Or.inl (List.mem_append.2 (Or.inr (List.mem_map_of_mem hx))))
+  have hmemF : ∀ x, x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a → x ∈ pk.rk.F.roles := by
+    rintro x (hx | rfl)
+    · exact prefixRoles_sub hx
+    · exact slot_mem_roles ha
+  have hlowown : ∀ x, x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a →
+      ∀ y, pk.srcChart x ≠ Name.role (tagBound (pk.lowNames ++ [pk.owner])) y := by
+    rintro x (hx | rfl) y h
+    · exact (hfreshN y).1 (h ▸ hSlow x hx)
+    · exact (hfreshN y).2 h.symm
+  have hinj : Set.InjOn srcChart' {x | x ∈ cd.F₂.roles} := by
+    intro x _ y _ hxy
+    by_cases hxo : x ∈ prefixRoles pk.rk.F pk.rk.a ∨ x = .slot pk.rk.a <;>
+      by_cases hyo : y ∈ prefixRoles pk.rk.F pk.rk.a ∨ y = .slot pk.rk.a
+    · rw [hold x hxo, hold y hyo] at hxy
+      exact hv.2.1 (hmemF x hxo) (hmemF y hyo) hxy
+    · rw [hold x hxo, hnew y hyo] at hxy; exact absurd hxy (hlowown x hxo y)
+    · rw [hnew x hxo, hold y hyo] at hxy; exact absurd hxy.symm (hlowown y hyo x)
+    · rw [hnew x hxo, hnew y hyo] at hxy; exact (Name.role.inj hxy).2
+  have hframe : ((frameOf pk.rk.a).map srcChart').reps.take (pk.rk.a.col.num 0) =
+      pk.tgtFrame.reps.take (pk.rk.a.col.num 0) := by
+    rw [← hv.2.2.2.1]
+    congr 1
+    simp only [Frame.map, frameOf, SourcePacket.srcFrame]
+    refine List.map_congr_left fun ov hov => ?_
+    obtain ⟨h1, h2⟩ := (frameOf_mem_prefix ha).2 ov hov
+    rw [hold _ (Or.inl h1), hold _ (Or.inl h2)]
+  have hpersist := cd.persist
+  obtain ⟨pk', hrk, hv', hhost', hLs', hlt', hT'⟩ := readmit_capture I pk hv hLs hlow h23
+    { E := pk.rk.E, b := pk.rk.b, F := cd.F₂, a := pk.rk.a, kind := cd.kind' } cd.admitted rfl rfl
+    srcChart' hinj (hold _ (Or.inl (frameOf_mem_prefix ha).1)) (hold _ (Or.inr rfl)) hframe
+    (fun x hx => by
+      change x ∈ prefixRoles cd.F₂ pk.rk.a at hx
+      rw [hpersist] at hx
+      rw [hold x (Or.inl hx)]; exact hSlow x hx)
+    (fun x _ hxp hxs => by
+      change x ∉ prefixRoles cd.F₂ pk.rk.a at hxp
+      rw [hpersist] at hxp
+      rw [hnew x (by rintro (h | h); exact hxp h; exact hxs h)]
+      exact hfreshN x)
+    hγ
+    (fun x hx => by
+      change x ∈ prefixRoles cd.F₂ pk.rk.a at hx
+      rw [hpersist] at hx
+      rw [hγpre x hx, hold x (Or.inl hx)]; rfl)
+    hγown hW hγW
+  refine ⟨pk', ⟨hrk ▸ cd.admitted, hv', by rw [hrk]; exact hsize, hLs', hT'⟩, ?_⟩
+  show toLex (pk'.asg pk'.host, pk'.asg pk'.owner) < toLex (pk.asg pk.host, pk.asg pk.owner)
+  rw [Prod.Lex.toLex_lt_toLex]
+  exact Or.inr ⟨hhost', hlt'⟩
 
 /-- L8.8e: position of the root of an anchored step relative to a containing marked entry `e`:
 strictly inside `e`, or at or before the host column `A_{e.col}` in reading order
