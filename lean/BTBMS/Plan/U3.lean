@@ -8904,6 +8904,446 @@ theorem query_size_bound {rk : SrcRecord} (h : rk.Admitted) {c : ColAddr} {k p :
     have := size_entry_E1 hent'
     simpa [SrcRecord.tgtHeight, hB] using this
 
+/-! ### L4.3 `reduce_childEnds` helpers (F1) -/
+
+/-- L4.3 helper: replace the columns from `j` on of the forest at path `ρ` by `Zc`, removing all
+later context along `ρ` (the output shape of a confined step). -/
+def putAt_F1 {α : Type} (j : Nat) (Zc : List (List (α × Tree α))) :
+    List (Nat × Nat) → Tree α → Tree α
+  | [], .node cols => .node (cols.take j ++ Zc)
+  | (ci, ei) :: rest, .node cols =>
+    match (cols.getD ci [])[ei]? with
+    | some (q, h) => .node (cols.take ci ++ [(cols.getD ci []).take ei ++ [(q, putAt_F1 j Zc rest h)]])
+    | none => .node cols
+
+theorem litCapAux_putAt_F1 (p j : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (X : Forest),
+      Closure.litCapAux 0 p ρ j X = putAt_F1 j [[(p, Tree.empty)]] ρ X
+  | [], .node cols => by simp [Closure.litCapAux, putAt_F1]
+  | (ci, ei) :: rest, .node cols => by
+    simp only [Closure.litCapAux, putAt_F1]
+    cases (cols.getD ci [])[ei]? with
+    | none => rfl
+    | some x => obtain ⟨q, h⟩ := x; simp only [litCapAux_putAt_F1 p j rest h]
+
+theorem putAt_map_F1 {α β : Type} (f : α → β) (j : Nat) (Zc : List (List (α × Tree α))) :
+    ∀ (ρ : List (Nat × Nat)) (X : Tree α),
+      Tree.map f (putAt_F1 j Zc ρ X) = putAt_F1 j (Zc.map (Tree.mapCol f)) ρ (Tree.map f X)
+  | [], .node cols => by
+    simp [putAt_F1, Tree.map, Scan.treeMapCols_eq_map, List.map_take]
+  | (ci, ei) :: rest, .node cols => by
+    simp only [putAt_F1, Tree.map, Scan.treeMapCols_eq_map, List.getD_eq_getElem?_getD,
+      List.getElem?_map]
+    cases hc : cols[ci]? with
+    | none =>
+      simp only [Option.map_none, Option.getD_none, List.getElem?_nil]
+      simp [Tree.map, Scan.treeMapCols_eq_map]
+    | some col =>
+      simp only [Option.map_some, Option.getD_some, Scan.treeMapCol_eq_map, List.getElem?_map]
+      cases he : col[ei]? with
+      | none => simp [Tree.map, Scan.treeMapCols_eq_map]
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        simp only [Option.map_some, Tree.map, Scan.treeMapCols_eq_map, List.map_append,
+          List.map_take, List.map_cons, List.map_nil, Scan.treeMapCol_eq_map,
+          putAt_map_F1 f j Zc rest h]
+
+theorem forestAt_putAt_F1 {α : Type} (j : Nat) (Zc : List (List (α × Tree α))) (P' : List (Nat × Nat)) :
+    ∀ (P : List (Nat × Nat)) (T : Tree α), (T.forestAt P).isSome →
+      (putAt_F1 j Zc (P ++ P') T).forestAt P = (T.forestAt P).map (putAt_F1 j Zc P')
+  | [], T, _ => rfl
+  | (ci, ei) :: rest, .node cols, hs => by
+    rw [Tree.forestAt_cons] at hs
+    simp only [Tree.cols] at hs
+    cases hc : cols[ci]? with
+    | none => rw [hc] at hs; simp at hs
+    | some col =>
+      cases he : col[ei]? with
+      | none => rw [hc, Option.bind_some, he] at hs; simp at hs
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [hc, Option.bind_some, he, Option.bind_some] at hs
+        have hcl : ci < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+        have hel : ei < col.length := (List.getElem?_eq_some_iff.1 he).1
+        have hput : putAt_F1 j Zc ((ci, ei) :: rest ++ P') (Tree.node cols) =
+            Tree.node (cols.take ci ++ [col.take ei ++ [(q, putAt_F1 j Zc (rest ++ P') h)]]) := by
+          simp only [List.cons_append, putAt_F1, List.getD_eq_getElem?_getD, hc, Option.getD_some, he]
+        rw [hput, Tree.forestAt_cons, Tree.forestAt_cons]
+        simp only [Tree.cols, hc, he, Option.bind_some]
+        rw [List.getElem?_append_right (by simp)]
+        simp only [List.length_take, Nat.min_eq_left hcl.le, Nat.sub_self, List.getElem?_cons_zero,
+          Option.bind_some]
+        rw [List.getElem?_append_right (by simp)]
+        simp only [List.length_take, Nat.min_eq_left hel.le, Nat.sub_self, List.getElem?_cons_zero,
+          Option.bind_some]
+        exact forestAt_putAt_F1 j Zc P' rest h hs
+
+theorem cutBefore_putAt_F1 {α : Type} (j : Nat) (Zc : List (List (α × Tree α))) :
+    ∀ (ρ : List (Nat × Nat)) (T Y : Tree α), T.forestAt ρ = some Y → j ≤ Y.cols.length →
+      cutBefore ρ j none (putAt_F1 j Zc ρ T) = cutBefore ρ j none T
+  | [], .node cols, Y, hY, hj => by
+    simp only [Tree.forestAt, Option.some.injEq] at hY
+    subst hY
+    simp only [Tree.cols] at hj
+    simp only [putAt_F1, cutBefore]
+    rw [List.take_append_of_le_length (by simp; omega), List.take_take, Nat.min_self]
+  | (ci, ei) :: rest, .node cols, Y, hY, hj => by
+    rw [Tree.forestAt_cons] at hY
+    simp only [Tree.cols] at hY
+    cases hc : cols[ci]? with
+    | none => rw [hc] at hY; simp at hY
+    | some col =>
+      rw [hc, Option.bind_some] at hY
+      cases he : col[ei]? with
+      | none => rw [he] at hY; simp at hY
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [he, Option.bind_some] at hY
+        have hcl : ci < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+        have hel : ei < col.length := (List.getElem?_eq_some_iff.1 he).1
+        simp only [putAt_F1, List.getD_eq_getElem?_getD, hc, Option.getD_some, he]
+        simp only [cutBefore, hc, he]
+        rw [List.getElem?_append_right (by simp)]
+        simp only [List.length_take, Nat.min_eq_left hcl.le, Nat.sub_self, List.getElem?_cons_zero]
+        rw [List.getElem?_append_right (by simp)]
+        simp only [List.length_take, Nat.min_eq_left hel.le, Nat.sub_self, List.getElem?_cons_zero,
+          cutBefore_putAt_F1 j Zc rest h Y hY hj]
+        simp [hcl.le, hel.le]
+
+
+/-- L4.3 helper: placing `Z` along a literal cap path is `putAt` there (the bottom is given). -/
+theorem replaceAt_litCapAux_F1 (Z : Forest) (k p j jc : Nat) (R : List (Nat × Nat)) :
+    ∀ (P : List (Nat × Nat)) (X : Forest), (X.forestAt P).isSome →
+      (∀ Y, X.forestAt P = some Y →
+        replaceAt 0 0 Z 0 (Closure.litCapAux k p R j Y) = putAt_F1 jc Z.cols [] Y) →
+      replaceAt 0 0 Z P.length (Closure.litCapAux k p (P ++ R) j X) = putAt_F1 jc Z.cols P X
+  | [], X, _, hb => hb X rfl
+  | (ci, ei) :: P, .node cols, hs, hb => by
+    rw [Tree.forestAt_cons] at hs hb
+    simp only [Tree.cols] at hs hb
+    cases hc : cols[ci]? with
+    | none => rw [hc] at hs; simp at hs
+    | some col =>
+      cases he : col[ei]? with
+      | none => rw [hc, Option.bind_some, he] at hs; simp at hs
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [hc, Option.bind_some, he, Option.bind_some] at hs hb
+        have hgd : cols.getD ci [] = col := by simp [List.getD, hc]
+        have ih := replaceAt_litCapAux_F1 Z k p j jc R P h hs hb
+        simp only [List.cons_append, Closure.litCapAux, hgd, he, putAt_F1, List.length_cons,
+          replaceAt]
+        simp only [Scan.mapLast_eq, List.dropLast_concat, List.getLast?_concat, Option.map_some,
+          Option.toList_some, Scan.shiftVal_zero_fun, Scan.treeMap_id, Scan.treeMapCol_id_fun,
+          List.map_id, id, ih]
+        simp
+
+theorem replaceAt_bottom_end_F1 (Z : Forest) (k p j : Nat) (Y : Forest) :
+    replaceAt 0 0 Z 0 (Closure.litCapAux k p [] j Y) = putAt_F1 j Z.cols [] Y := by
+  obtain ⟨cols⟩ := Y
+  simp only [Closure.litCapAux, replaceAt, putAt_F1]
+  split
+  · rename_i h; simp at h
+  · simp [Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun]
+
+theorem replaceAt_bottom_cont_F1 (Z : Forest) (k p j c₀ i₀ : Nat) (Y : Forest)
+    (hY : ((Y.cols[c₀]?).bind (·[i₀]?)).isSome) :
+    replaceAt 0 0 Z 0 (Closure.litCapAux k p [(c₀, i₀)] j Y) = putAt_F1 c₀ Z.cols [] Y := by
+  obtain ⟨cols⟩ := Y
+  simp only [Tree.cols] at hY
+  cases hc : cols[c₀]? with
+  | none => rw [hc] at hY; simp at hY
+  | some col =>
+    cases he : col[i₀]? with
+    | none => rw [hc, Option.bind_some, he] at hY; simp at hY
+    | some x =>
+      obtain ⟨q, h⟩ := x
+      have hgd : cols.getD c₀ [] = col := by simp [List.getD, hc]
+      simp only [Closure.litCapAux, hgd, he, replaceAt, putAt_F1]
+      split
+      · rename_i h; simp at h
+      · simp [Scan.shiftVal_zero_fun, Scan.treeMapCol_id_fun]
+
+section CmpF1
+variable {α : Type} (c : α → α → Ordering) [Std.ReflCmp c]
+
+theorem cmpCols_append_left_F1 :
+    ∀ (P a b : List (List (α × Tree α))), Tree.cmpCols c (P ++ a) (P ++ b) = Tree.cmpCols c a b
+  | [], a, b => rfl
+  | x :: P, a, b => by
+    rw [List.cons_append, List.cons_append, Tree.cmpCols, Tree.cmpCol_self c x,
+      cmpCols_append_left_F1 P a b]; rfl
+
+theorem cmpCol_append_left_F1 :
+    ∀ (P a b : List (α × Tree α)), Tree.cmpCol c (P ++ a) (P ++ b) = Tree.cmpCol c a b
+  | [], a, b => rfl
+  | (p, h) :: P, a, b => by
+    rw [List.cons_append, List.cons_append, Tree.cmpCol, Std.ReflCmp.compare_self (cmp := c),
+      Tree.cmp_self c h, cmpCol_append_left_F1 P a b]; rfl
+
+/-- L4.3 helper: a tree is smaller when it agrees up to the forest at `ρ` and that forest is
+smaller from column `j` on. -/
+theorem cmp_path_F1 (j : Nat) :
+    ∀ (ρ : List (Nat × Nat)) (T U X Y : Tree α), cutBefore ρ j none T = cutBefore ρ j none U →
+      T.forestAt ρ = some X → U.forestAt ρ = some Y → j ≤ X.cols.length → j ≤ Y.cols.length →
+      Tree.cmpCols c (X.cols.drop j) (Y.cols.drop j) = .lt → Tree.cmp c T U = .lt
+  | [], .node xs, .node ys, X, Y, hcut, hX, hY, hjx, hjy, hlt => by
+    simp only [Tree.forestAt, Option.some.injEq] at hX hY
+    subst hX hY
+    simp only [cutBefore, Tree.node.injEq] at hcut
+    simp only [Tree.cols] at hjx hjy hlt
+    rw [Tree.cmp, ← List.take_append_drop j xs, ← List.take_append_drop j ys, hcut,
+      cmpCols_append_left_F1]
+    exact hlt
+  | (ci, ii) :: rest, .node xs, .node ys, X, Y, hcut, hX, hY, hjx, hjy, hlt => by
+    rw [Tree.forestAt_cons] at hX hY
+    simp only [Tree.cols] at hX hY
+    cases hxc : xs[ci]? with
+    | none => rw [hxc] at hX; simp at hX
+    | some colx =>
+      cases hyc : ys[ci]? with
+      | none => rw [hyc] at hY; simp at hY
+      | some coly =>
+        cases hxe : colx[ii]? with
+        | none => rw [hxc, Option.bind_some, hxe] at hX; simp at hX
+        | some ex =>
+          cases hye : coly[ii]? with
+          | none => rw [hyc, Option.bind_some, hye] at hY; simp at hY
+          | some ey =>
+            obtain ⟨lx, hx⟩ := ex
+            obtain ⟨ly, hy⟩ := ey
+            rw [hxc, Option.bind_some, hxe, Option.bind_some] at hX
+            rw [hyc, Option.bind_some, hye, Option.bind_some] at hY
+            simp only [cutBefore, hxc, hyc, hxe, hye, Tree.node.injEq] at hcut
+            have hcx : ci < xs.length := (List.getElem?_eq_some_iff.1 hxc).1
+            have hcy : ci < ys.length := (List.getElem?_eq_some_iff.1 hyc).1
+            have hex : ii < colx.length := (List.getElem?_eq_some_iff.1 hxe).1
+            have hey : ii < coly.length := (List.getElem?_eq_some_iff.1 hye).1
+            obtain ⟨h1, h2⟩ := List.append_inj hcut (by simp; omega)
+            simp only [List.cons.injEq, and_true] at h2
+            obtain ⟨h3, h4⟩ := List.append_inj h2 (by simp; omega)
+            simp only [List.cons.injEq, and_true, Prod.mk.injEq] at h4
+            obtain ⟨rfl, h5⟩ := h4
+            have ih := cmp_path_F1 j rest hx hy X Y h5 hX hY hjx hjy hlt
+            obtain ⟨xs₁, xs₂, hxs, hxl⟩ := Tree.exists_split_of_getElem? hxc
+            obtain ⟨ys₁, ys₂, hys, hyl⟩ := Tree.exists_split_of_getElem? hyc
+            obtain ⟨cx₁, cx₂, hcxs, hcxl⟩ := Tree.exists_split_of_getElem? hxe
+            obtain ⟨cy₁, cy₂, hcys, hcyl⟩ := Tree.exists_split_of_getElem? hye
+            have e1 : xs₁ = ys₁ := by
+              rw [hxs, hys, List.take_left' hxl, List.take_left' hyl] at h1; exact h1
+            have e2 : cx₁ = cy₁ := by
+              rw [hcxs, hcys, List.take_left' hcxl, List.take_left' hcyl] at h3; exact h3
+            rw [hxs, hys, Tree.cmp, e1, cmpCols_append_left_F1, Tree.cmpCols, hcxs, hcys, e2,
+              cmpCol_append_left_F1, Tree.cmpCol, Std.ReflCmp.compare_self (cmp := c), ih]
+            rfl
+
+omit [Std.ReflCmp c] in
+theorem cmpCol_replicate_F1 (e : α × Tree α) :
+    ∀ (L : List (α × Tree α)) (N : Nat), (∀ x ∈ L, (c x.1 e.1).then (Tree.cmp c x.2 e.2) ≠ .gt) →
+      L.length < N → Tree.cmpCol c L (List.replicate N e) = .lt
+  | [], N, _, hN => by
+    obtain ⟨N', rfl⟩ : ∃ N', N = N' + 1 := ⟨N - 1, by simp at hN; omega⟩
+    rw [List.replicate_succ]; rfl
+  | x :: L, N, hx, hN => by
+    obtain ⟨N', rfl⟩ : ∃ N', N = N' + 1 := ⟨N - 1, by simp at hN; omega⟩
+    rw [List.replicate_succ]
+    obtain ⟨p, h⟩ := x
+    rw [Tree.cmpCol]
+    have h0 := hx (p, h) (by simp)
+    have ih := cmpCol_replicate_F1 e L N' (fun y hy => hx y (by simp [hy])) (by simp at hN; omega)
+    simp only at h0
+    revert h0
+    cases (c p e.1).then (Tree.cmp c h e.2) <;> simp [ih]
+
+end CmpF1
+
+theorem cutBefore_split_F1 {α : Type} (c₀ i₀ m : Nat) :
+    ∀ (ρ₀ : List (Nat × Nat)) (T U : Tree α),
+      cutBefore (ρ₀ ++ [(c₀, i₀)]) m none T = cutBefore (ρ₀ ++ [(c₀, i₀)]) m none U →
+      (T.forestAt (ρ₀ ++ [(c₀, i₀)])).isSome → (U.forestAt (ρ₀ ++ [(c₀, i₀)])).isSome →
+      cutBefore ρ₀ c₀ none T = cutBefore ρ₀ c₀ none U ∧
+      ∃ tc uc lt ht lu hu, T.colAt ⟨ρ₀, c₀⟩ = some tc ∧ U.colAt ⟨ρ₀, c₀⟩ = some uc ∧
+        tc[i₀]? = some (lt, ht) ∧ uc[i₀]? = some (lu, hu) ∧ tc.take i₀ = uc.take i₀ ∧ lt = lu ∧
+        ht.cols.take m = hu.cols.take m
+  | [], .node xs, .node ys, hcut, hX, hY => by
+    simp only [List.nil_append] at hcut hX hY
+    rw [Tree.forestAt_cons] at hX hY
+    simp only [Tree.cols] at hX hY
+    cases hxc : xs[c₀]? with
+    | none => rw [hxc] at hX; simp at hX
+    | some colx =>
+      cases hyc : ys[c₀]? with
+      | none => rw [hyc] at hY; simp at hY
+      | some coly =>
+        cases hxe : colx[i₀]? with
+        | none => rw [hxc, Option.bind_some, hxe] at hX; simp at hX
+        | some ex =>
+          cases hye : coly[i₀]? with
+          | none => rw [hyc, Option.bind_some, hye] at hY; simp at hY
+          | some ey =>
+            obtain ⟨lx, hx⟩ := ex
+            obtain ⟨ly, hy⟩ := ey
+            simp only [cutBefore, hxc, hyc, hxe, hye, Tree.node.injEq] at hcut
+            have hcx : c₀ < xs.length := (List.getElem?_eq_some_iff.1 hxc).1
+            have hcy : c₀ < ys.length := (List.getElem?_eq_some_iff.1 hyc).1
+            have hex : i₀ < colx.length := (List.getElem?_eq_some_iff.1 hxe).1
+            have hey : i₀ < coly.length := (List.getElem?_eq_some_iff.1 hye).1
+            obtain ⟨h1, h2⟩ := List.append_inj hcut (by simp; omega)
+            simp only [List.cons.injEq, and_true] at h2
+            obtain ⟨h3, h4⟩ := List.append_inj h2 (by simp; omega)
+            simp only [List.cons.injEq, and_true, Prod.mk.injEq] at h4
+            obtain ⟨rfl, h5⟩ := h4
+            obtain ⟨hxc'⟩ := hx
+            obtain ⟨hyc'⟩ := hy
+            simp only [cutBefore, Tree.node.injEq] at h5
+            refine ⟨by simp only [cutBefore, h1], colx, coly, lx, _, lx, _, ?_, ?_, hxe, hye, h3, rfl,
+              by simpa [Tree.cols] using h5⟩
+            · simp [Tree.colAt, Tree.forestAt, Tree.cols, hxc]
+            · simp [Tree.colAt, Tree.forestAt, Tree.cols, hyc]
+  | (ci, ii) :: rest, .node xs, .node ys, hcut, hX, hY => by
+    simp only [List.cons_append] at hcut hX hY
+    rw [Tree.forestAt_cons] at hX hY
+    simp only [Tree.cols] at hX hY
+    cases hxc : xs[ci]? with
+    | none => rw [hxc] at hX; simp at hX
+    | some colx =>
+      cases hyc : ys[ci]? with
+      | none => rw [hyc] at hY; simp at hY
+      | some coly =>
+        cases hxe : colx[ii]? with
+        | none => rw [hxc, Option.bind_some, hxe] at hX; simp at hX
+        | some ex =>
+          cases hye : coly[ii]? with
+          | none => rw [hyc, Option.bind_some, hye] at hY; simp at hY
+          | some ey =>
+            obtain ⟨lx, hx⟩ := ex
+            obtain ⟨ly, hy⟩ := ey
+            rw [hxc, Option.bind_some, hxe, Option.bind_some] at hX
+            rw [hyc, Option.bind_some, hye, Option.bind_some] at hY
+            simp only [cutBefore, hxc, hyc, hxe, hye, Tree.node.injEq] at hcut
+            have hcx : ci < xs.length := (List.getElem?_eq_some_iff.1 hxc).1
+            have hcy : ci < ys.length := (List.getElem?_eq_some_iff.1 hyc).1
+            have hex : ii < colx.length := (List.getElem?_eq_some_iff.1 hxe).1
+            have hey : ii < coly.length := (List.getElem?_eq_some_iff.1 hye).1
+            obtain ⟨h1, h2⟩ := List.append_inj hcut (by simp; omega)
+            simp only [List.cons.injEq, and_true] at h2
+            obtain ⟨h3, h4⟩ := List.append_inj h2 (by simp; omega)
+            simp only [List.cons.injEq, and_true, Prod.mk.injEq] at h4
+            obtain ⟨rfl, h5⟩ := h4
+            obtain ⟨ih1, tc, uc, lt, ht, lu, hu, ih2⟩ := cutBefore_split_F1 c₀ i₀ m rest hx hy h5 hX hY
+            refine ⟨?_, tc, uc, lt, ht, lu, hu, ?_⟩
+            · simp only [cutBefore, hxc, hyc, hxe, hye, h1, h3, ih1]
+            · simpa [Tree.colAt_cons, Tree.cols, hxc, hyc, hxe, hye] using ih2
+
+/-- L4.3 helper: a literal cap re-using the parent of the existing entry `k` is the truncation
+after that entry with its height cleared. -/
+theorem litCapAux_truncSet_F1 (k p j : Nat) :
+    ∀ (P : List (Nat × Nat)) (X : Forest) (col : Column) (hs : Forest),
+      X.colAt ⟨P, j⟩ = some col → col[k]? = some (p, hs) →
+      Closure.litCapAux k p P j X = Tree.setAux Tree.empty P j k (Tree.truncAux P j k X)
+  | [], .node cols, col, hs, hc, hk => by
+    have hc' : cols[j]? = some col := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using hc
+    have hgd : cols.getD j [] = col := by simp [List.getD, hc']
+    simp only [Closure.litCapAux, Tree.truncAux, Tree.setAux, hgd, take_succ_of_getElem?_E1 hk]
+    rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hc'),
+      Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hk)]
+  | (ci, ei) :: rest, .node cols, col, hs, hc, hk => by
+    rw [Tree.colAt_cons] at hc
+    simp only [Tree.cols] at hc
+    cases hcc : cols[ci]? with
+    | none => rw [hcc] at hc; simp at hc
+    | some colc =>
+      cases he : colc[ei]? with
+      | none => rw [hcc, Option.bind_some, he] at hc; simp at hc
+      | some x =>
+        obtain ⟨q, h⟩ := x
+        rw [hcc, Option.bind_some, he, Option.bind_some] at hc
+        have hgd : cols.getD ci [] = colc := by simp [List.getD, hcc]
+        have ih := litCapAux_truncSet_F1 k p j rest h col hs hc hk
+        simp only [Closure.litCapAux, Tree.truncAux, Tree.setAux, hgd, he, Option.map_some,
+          Option.toList_some]
+        rw [Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 hcc),
+          Tree.list_modify_append_singleton _ _ _ (length_take_of_getElem?_E1 he), ih]
+
+theorem litCap_truncClear_F1 {F : Forest} {c : ColAddr} {col : Column} {k p : Nat} {hs : Forest}
+    (hcol : F.colAt c = some col) (hk : col[k]? = some (p, hs)) :
+    Closure.litCap F c k p = (F.truncAfter ⟨c, k⟩).setHeight ⟨c, k⟩ Tree.empty := by
+  have hent : (F.entryAt ⟨c, k⟩).isSome := by simp [Tree.entryAt, hcol, hk]
+  have he : (⟨c, k⟩ : EntryAddr) ∈ F.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 hent
+  have htrE : (⟨c, k⟩ : EntryAddr) ∈ (F.truncAfter ⟨c, k⟩).entryAddrs :=
+    (Tree.truncAfter_spec F _ he).2.1
+  have hent' := (Tree.mem_entryAddrs_iff _ _).1 htrE
+  have hcs : (F.colAt c).isSome := by rw [hcol]; rfl
+  rw [Tree.setHeight, Tree.setHeightBody, if_pos hent', Tree.truncAfter_eq_body,
+    Tree.truncAfterBody, if_pos hent, Closure.litCap, Closure.litCapBody, if_pos hcs]
+  exact litCapAux_truncSet_F1 k p c.col c.path F col hs hcol hk
+
+/-- L4.3 helper: the roles of a truncate-and-clear are a prefix of the roles. -/
+theorem truncClear_roles_F1 (t : Forest) (e : EntryAddr) (he : e ∈ t.entryAddrs) :
+    ((t.truncAfter e).setHeight e Tree.empty).roles <+: t.roles := by
+  have hx' := he
+  rw [Tree.mem_entryAddrs_iff] at hx'
+  obtain ⟨⟨p, H⟩, hx⟩ := Option.isSome_iff_exists.1 hx'
+  have hFe : (t.truncAfter e).entryAt e = some (p, H) := by rw [Tree.entryAt_truncAfter he, hx]
+  obtain ⟨post, hr, hs, -⟩ := setHeight_decomp (t.truncAfter e) e Tree.empty hFe
+  have hF := Tree.truncAfter_roles_under he
+  have hpF : prefixRoles (t.truncAfter e) e = prefixRoles t e := (Tree.truncAfter_spec t e he).2.2.2.2.2
+  rw [hpF] at hr hs
+  have hpost : post = [] := by
+    rw [hF, show t.heightAt e = some H by simp [Tree.heightAt, hx], Option.getD_some] at hr
+    have := congrArg List.length hr
+    simp only [List.length_append, List.length_cons, List.length_map] at this
+    exact List.eq_nil_of_length_eq_zero (by omega)
+  subst hpost
+  have hroles : ((t.truncAfter e).setHeight e Tree.empty).roles = prefixRoles t e ++ [Role.slot e] := by
+    rw [hs]; rfl
+  obtain ⟨post', hr', -⟩ := Tree.roles_entry he
+  rw [hroles, hr']
+  exact ⟨((t.heightAt e).getD Tree.empty).roles.map (Role.under e.heightPath) ++ post', by simp⟩
+
+theorem truncClear_graph_F1 (t : Forest) (e : EntryAddr) (he : e ∈ t.entryAddrs) :
+    ∀ x ∈ graph ((t.truncAfter e).setHeight e Tree.empty), x ∈ graph t := by
+  intro x hx
+  have := (graph_truncClear t e he x).1 hx
+  unfold restrictTo at this
+  exact (List.mem_filter.1 this).1
+
+/-- L4.3 helper: under H every later entry of a column is at most an earlier one. -/
+theorem entryLe_chain_F1 {E : Forest} (hH : Scan.CondH E) {d : ColAddr} {col : Column}
+    (hd : E.colAt d = some col) {i : Nat} {x : Nat × Forest} (hx : col[i]? = some x) :
+    ∀ n y, col[i + n]? = some y → Scan.EntryLe y x
+  | 0, y, hy => by
+    rw [Nat.add_zero, hx] at hy; cases hy
+    right; exact ⟨rfl, le_rfl⟩
+  | n + 1, y, hy => by
+    have hl : i + n < col.length := by
+      have := (List.getElem?_eq_some_iff.1 hy).1; omega
+    have hz : col[i + n]? = some col[i + n] := List.getElem?_eq_getElem hl
+    have h1 := entryLe_chain_F1 hH hd hx n _ hz
+    have hdE : d ∈ E.colAddrs := (Tree.mem_colAddrs_iff _ _).2 (by rw [hd]; rfl)
+    have h2 := hH d hdE (i + n) _ y (by rw [hd]; exact hz) (by rw [hd]; exact hy)
+    unfold Scan.EntryLe at h1 h2 ⊢
+    rcases h1 with h1 | ⟨h1, h1'⟩ <;> rcases h2 with h2 | ⟨h2, h2'⟩
+    · left; omega
+    · left; omega
+    · left; omega
+    · right; exact ⟨h2.trans h1, h2'.trans h1'⟩
+
+theorem colAt_split_F1 {α : Type} {T : Tree α} {P : List (Nat × Nat)} {c : Nat}
+    {col : List (α × Tree α)} (hc : T.colAt ⟨P, c⟩ = some col) :
+    ∃ T0, T.forestAt P = some T0 ∧ T0.cols[c]? = some col := by
+  unfold Tree.colAt at hc
+  cases hf : T.forestAt P with
+  | none => rw [hf] at hc; simp at hc
+  | some T0 => rw [hf] at hc; exact ⟨T0, rfl, hc⟩
+
+theorem forestAt_snoc_F1 {α : Type} {T : Tree α} {P : List (Nat × Nat)} {c i : Nat}
+    {col : List (α × Tree α)} {l : α} {h : Tree α} (hc : T.colAt ⟨P, c⟩ = some col)
+    (hi : col[i]? = some (l, h)) : T.forestAt (P ++ [(c, i)]) = some h := by
+  obtain ⟨T0, hT0, hcol⟩ := colAt_split_F1 hc
+  rw [Tree.forestAt_append, hT0, Option.bind_some, Tree.forestAt_cons, hcol, Option.bind_some, hi]
+  rfl
+
 -- provides: U3, L4.3 (the spine's `reduce_childEnds`†; consumer: U5 L8.8 Case 2)
 theorem reduce_childEnds {rk : SrcRecord} (h : rk.Admitted) {π : List (Nat × Nat)}
     (hfd : rk.firstDiff = .childEnds π) :
@@ -8920,7 +9360,378 @@ theorem reduce_childEnds {rk : SrcRecord} (h : rk.Admitted) {π : List (Nat × N
         expand (rk.F.setHeight rk.a A₁) k = some (rk.F.setHeight rk.a A₂) ∧
         rk.tgtKey < relKey (rk.a.col.num 0) A₂ ∧ A₂ < rk.srcHeight ∧
         ({ rk with F := rk.F.setHeight rk.a A₂, kind := rk.kind.toDesc } : SrcRecord).Admitted := by
-  sorry
+  obtain ⟨-, hce, -⟩ := firstDiff_spec h
+  obtain ⟨ρ, X, Y, -, hρne, hX, hY, hm, hcut⟩ := hce π hfd
+  set m := X.cols.length with hmdef
+  set t := rk.b.col.num 0 with ht
+  set r := rk.a.col.num 0 with hr
+  have hEL : Scan.InL rk.E := Closure.std_inL h.1
+  have hb : rk.E.heightAt rk.b = some rk.tgtHeight := by
+    have hb := h.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at hb
+    obtain ⟨x, hx⟩ := hb
+    simp [SrcRecord.tgtHeight, Tree.heightAt, hx]
+  have ha : rk.F.heightAt rk.a = some rk.srcHeight := by
+    have ha := h.2.2.1
+    rw [Tree.mem_entryAddrs_iff, Option.isSome_iff_exists] at ha
+    obtain ⟨x, hx⟩ := ha
+    simp [SrcRecord.srcHeight, Tree.heightAt, hx]
+  have haE : rk.a ∈ rk.F.entryAddrs := h.2.2.1
+  have hFL : Scan.InL rk.F := h.2.2.2.1
+  have htr : rk.F.truncAfter rk.a = rk.F := h.2.2.2.2.1
+  have hsk : rk.srcKey = relKey r rk.srcHeight := rfl
+  have htk : rk.tgtKey = relKey t rk.tgtHeight := rfl
+  -- the source forest `G` at `ρ`
+  obtain ⟨G, hG, hYG⟩ : ∃ G, rk.srcHeight.forestAt ρ = some G ∧ Y = Tree.map (relLabel r) G := by
+    rw [hsk, relKey_eq_map, forestAt_map_D8] at hY
+    obtain ⟨G, hG, hYG⟩ := Option.map_eq_some_iff.1 hY
+    exact ⟨G, hG, hYG.symm⟩
+  have hGlen : G.cols.length = Y.cols.length := by rw [hYG, Tree.cols_map, List.length_map]
+  -- `ρ = ρ₀ ++ [(c₀, i₀)]`; the entry `e₀` of `F` whose height is `G`
+  obtain ⟨ρ₀, ⟨c₀, i₀⟩, hρ⟩ : ∃ ρ₀ x, ρ = ρ₀ ++ [x] :=
+    ⟨ρ.dropLast, ρ.getLast hρne, (List.dropLast_append_getLast hρne).symm⟩
+  set e₀ : EntryAddr := ⟨⟨rk.a.heightPath ++ ρ₀, c₀⟩, i₀⟩ with he₀
+  have he₀hp : e₀.heightPath = rk.a.heightPath ++ ρ := by
+    simp [he₀, EntryAddr.heightPath, hρ]
+  have hFe₀ : rk.F.heightAt e₀ = some G := by
+    rw [← Tree.forestAt_heightPath, he₀hp, Tree.forestAt_append, Tree.forestAt_heightPath, ha,
+      Option.bind_some, hG]
+  obtain ⟨q₀, hent₀⟩ : ∃ q₀, rk.F.entryAt e₀ = some (q₀, G) := by
+    unfold Tree.heightAt at hFe₀
+    obtain ⟨⟨q₀, G'⟩, h1, h2⟩ := Option.map_eq_some_iff.1 hFe₀
+    simp only at h2; subst h2
+    exact ⟨q₀, h1⟩
+  have he₀E : e₀ ∈ rk.F.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent₀]; rfl)
+  -- column `m` of `G`: its first entry `(p₀, h₀)` with `p₀` at least the host `a₀` of `e₀`
+  obtain ⟨colm, hcolmG⟩ : ∃ colm, G.cols[m]? = some colm :=
+    ⟨_, List.getElem?_eq_getElem (by omega)⟩
+  set cm : ColAddr := ⟨e₀.heightPath, m⟩ with hcm
+  have hcolm : rk.F.colAt cm = some colm := by
+    rw [hcm, ← List.append_nil e₀.heightPath, colAt_heightPath_D8 hFe₀]
+    simpa [Tree.colAt, Tree.forestAt] using hcolmG
+  have hGne : G ≠ Tree.empty := by
+    intro h0; rw [h0] at hcolmG; simp [Tree.empty, Tree.cols] at hcolmG
+  obtain ⟨p₀, h₀, rest₀, hcolm_eq, ha₀⟩ :=
+    hFL.2.1 e₀ he₀E q₀ G hent₀ hGne colm (List.mem_of_getElem? hcolmG)
+  set a₀ := e₀.col.num 0 with ha₀def
+  have hk0 : colm[0]? = some (p₀, h₀) := by rw [hcolm_eq]; rfl
+  -- the reduced source `A₁` and `F₁`
+  set A₁ := Closure.litCapAux 0 p₀ ρ m rk.srcHeight with hA₁
+  have hcmF : cm ∈ rk.F.colAddrs := (Tree.mem_colAddrs_iff _ _).2 (by rw [hcolm]; rfl)
+  have hacm : rk.a.heightPath <+: cm.path := by rw [hcm, he₀hp]; exact List.prefix_append _ _
+  have hF₁ : Closure.litCap rk.F cm 0 p₀ = rk.F.setHeight rk.a A₁ := by
+    rw [litCap_eq_setHeight_E1 hcmF hacm 0 p₀, htr, ha, Option.getD_some]
+    congr 2
+    rw [hcm, he₀hp]; simp
+  set F₁ := rk.F.setHeight rk.a A₁ with hF₁def
+  obtain ⟨n, hn⟩ := litCap_safePrefix_F1 hcolm hk0
+  have hF₁L : Scan.InL F₁ := by rw [← hF₁, hn]; exact Closure.inL_safePrefix hFL n
+  have hSB := Tree.setHeight_basic rk.F rk.a A₁ haE
+  have haF₁ : rk.a ∈ F₁.entryAddrs := hSB.1
+  have hF₁a : F₁.heightAt rk.a = some A₁ := hSB.2.1
+  have htr₁ : F₁.truncAfter rk.a = F₁ := hSB.2.2.2.2.1 htr
+  have hidem : ∀ Z, F₁.setHeight rk.a Z = rk.F.setHeight rk.a Z := hSB.2.2.1
+  have hFF : rk.F.setHeight rk.a rk.srcHeight = rk.F := (Tree.setHeight_basic _ _ _ haE).2.2.2.1 ha
+  -- `A₁ ≤ A'`
+  have hA₁le : A₁ ≤ rk.srcHeight := by
+    have h1 : F₁ ≤ rk.F := by rw [← hF₁, hn]; exact Scan.safePrefix_le _ _
+    by_contra hc
+    have h2 := (setHeight_lt_iff_E1 haE htr rk.srcHeight A₁).2 (lt_of_not_ge hc)
+    rw [hFF] at h2
+    exact absurd h1 (not_le.2 h2)
+  -- the target ends at column `m` of the forest at `ρ`: any source with a column there is larger
+  have hcmpEnd : ∀ Zc : List Column, Zc ≠ [] →
+      rk.tgtKey < relKey r (putAt_F1 m Zc ρ rk.srcHeight) := by
+    intro Zc hZ
+    rw [relKey_eq_map, putAt_map_F1, ← relKey_eq_map, ← hsk, Key.lt_iff_keyCmp]
+    set Zc' := Zc.map (Tree.mapCol (relLabel r))
+    have hZ' : Zc' ≠ [] := by simpa [Zc'] using hZ
+    have hfa : (putAt_F1 m Zc' ρ rk.srcKey).forestAt ρ = some (Tree.node (Y.cols.take m ++ Zc')) := by
+      have := forestAt_putAt_F1 m Zc' [] ρ rk.srcKey (by rw [hY]; rfl)
+      rw [List.append_nil] at this
+      rw [this, hY]
+      obtain ⟨ycols⟩ := Y
+      rfl
+    refine cmp_path_F1 keyLabelCmp m ρ _ _ X _ ?_ hX hfa le_rfl
+      (by show m ≤ (Y.cols.take m ++ Zc').length; simp; omega) ?_
+    · rw [cutBefore_putAt_F1 m _ ρ _ Y hY hm.le]; exact hcut
+    · show Tree.cmpCols _ (X.cols.drop m) ((Y.cols.take m ++ Zc').drop m) = _
+      rw [List.drop_eq_nil_of_le (by omega), List.drop_append_of_le_length (by simp; omega),
+        List.drop_eq_nil_of_le (by simp), List.nil_append]
+      obtain ⟨z, zs, hzz⟩ := List.exists_cons_of_ne_nil hZ'
+      rw [hzz]; rfl
+  have hA₁key : rk.tgtKey < relKey r A₁ := by
+    rw [hA₁, litCapAux_putAt_F1]; exact hcmpEnd _ (by simp)
+  -- roles and graph: `F₁` truncates after the first entry of column `m` and clears its height
+  have he₁ : (⟨cm, 0⟩ : EntryAddr) ∈ rk.F.entryAddrs :=
+    (Tree.mem_entryAddrs_iff _ _).2 (by simp [Tree.entryAt, hcolm, hk0])
+  have hF₁tc : F₁ = (rk.F.truncAfter ⟨cm, 0⟩).setHeight ⟨cm, 0⟩ Tree.empty := by
+    rw [← hF₁]; exact litCap_truncClear_F1 hcolm hk0
+  -- the stop of `F₁`
+  have hsd₁ : Scan.stopData F₁ = some ⟨cm.path.length, cm, cm.num 0, p₀, []⟩ := by
+    have hc : (rk.F.colAt cm).isSome := by rw [hcolm]; rfl
+    rw [← hF₁]
+    unfold Scan.stopData Scan.stopDataBody Closure.litCap Closure.litCapBody
+    rw [if_pos hc, Closure.ker_stopF_litCapAux 0 p₀ cm.path cm.col rk.F [] hc]
+    simp
+  set sd₁ : Scan.StopData := ⟨cm.path.length, cm, cm.num 0, p₀, []⟩ with hsd₁def
+  have hcmpath : cm.path = (rk.a.heightPath ++ ρ₀) ++ [(c₀, i₀)] := by
+    rw [hcm, he₀hp, hρ, List.append_assoc]
+  have hoe : sd₁.ownerEntry = some e₀ := by
+    simp only [hsd₁def, Scan.StopData.ownerEntry, hcmpath, List.getLast?_append,
+      List.getLast?_singleton, Option.some_or, Option.map_some, List.dropLast_concat, he₀]
+  have hconf : Confined F₁ rk.a :=
+    ⟨sd₁, hsd₁, hacm, fun _ => ⟨e₀, hoe, by rw [he₀]; exact List.prefix_append _ _⟩⟩
+  have hF₁ne : F₁ ≠ Tree.empty := by
+    intro h0
+    obtain ⟨x, xs, hx⟩ := Scan.lastCol_of_stopData hsd₁
+    rw [h0] at hx
+    simp [Tree.empty, Tree.cols] at hx
+  have hkind : Scan.stepKind F₁ = some .special ∨ Scan.stepKind F₁ = some .ordinary := by
+    obtain ⟨kd, hkd⟩ := Option.isSome_iff_exists.1 (Scan.stepKind_isSome hF₁ne hF₁L.1 hF₁L.2.1)
+    cases kd with
+    | deletion =>
+      exfalso
+      obtain ⟨x, xs, hx⟩ := Scan.lastCol_of_stopData hsd₁
+      rw [(Scan.stepKind_deletion_iff F₁).1 hkd] at hx
+      simp at hx
+    | special => exact Or.inl hkd
+    | ordinary => exact Or.inr hkd
+  have hexpP : ∀ k, expand F₁ k = Scan.paperOp F₁ k :=
+    Scan.expand_eq_paperOp hF₁ne hF₁L.1 hF₁L.2.1
+  have hF₁lit : F₁ = Closure.litCapAux 0 p₀ cm.path m rk.F := by
+    rw [← hF₁]; exact litCap_eq_D8 hcmF 0 p₀
+  -- the common end: the output replaces inside the marked height and the record is admitted
+  have finish : ∀ (k j : Nat) (ρ' : List (Nat × Nat)) (Zc : List Column),
+      expand F₁ k = some (putAt_F1 j Zc (rk.a.heightPath ++ ρ') rk.F) →
+      rk.tgtKey < relKey r (putAt_F1 j Zc ρ' rk.srcHeight) →
+      ∃ (k : Nat) (A₂ : Forest), expand F₁ k = some (rk.F.setHeight rk.a A₂) ∧
+        rk.tgtKey < relKey r A₂ ∧ A₂ < rk.srcHeight ∧
+        ({ rk with F := rk.F.setHeight rk.a A₂, kind := rk.kind.toDesc } : SrcRecord).Admitted := by
+    intro k j ρ' Zc hexp hlt
+    obtain ⟨A'', hF₂, hA''⟩ := expand_confined hF₁L haF₁ htr₁ hconf hexp
+    rw [hidem] at hF₂
+    rw [hF₁a, Option.getD_some] at hA''
+    have hA2 : (putAt_F1 j Zc (rk.a.heightPath ++ ρ') rk.F).heightAt rk.a =
+        some (putAt_F1 j Zc ρ' rk.srcHeight) := by
+      rw [← Tree.forestAt_heightPath, forestAt_putAt_F1 j Zc ρ' rk.a.heightPath rk.F
+        (by rw [Tree.forestAt_heightPath, ha]; rfl), Tree.forestAt_heightPath, ha]
+      rfl
+    rw [hF₂, (Tree.setHeight_basic _ _ _ haE).2.1] at hA2
+    have hAeq : A'' = putAt_F1 j Zc ρ' rk.srcHeight := Option.some.inj hA2
+    rw [← hAeq] at hlt
+    have hlt' : A'' < rk.srcHeight := lt_of_lt_of_le hA'' hA₁le
+    refine ⟨k, A'', by rw [hexp, hF₂], hlt, hlt', ?_⟩
+    exact reduce_confined h hlt'.le (by rw [← hF₂]; exact Closure.inL_expand hF₁L hexp) hlt
+  refine ⟨A₁, hF₁L, hA₁le, hA₁key, ?_, ?_, hconf, ?_⟩
+  · change F₁.roles <+: _
+    rw [hF₁tc]; exact truncClear_roles_F1 _ _ he₁
+  · change ∀ x ∈ graph F₁, _
+    rw [hF₁tc]; exact truncClear_graph_F1 _ _ he₁
+  have hvF : (rk.F.forestAt cm.path).isSome := by
+    rw [hcm, he₀hp, Tree.forestAt_append, Tree.forestAt_heightPath, ha, Option.bind_some, hG]; rfl
+  rcases hkind with hk | hk
+  · -- special: the owner column of the stop is repeated
+    refine ⟨Or.inl hk, ?_⟩
+    obtain ⟨colX, q, hh, hcolX, hqX, hcol₁⟩ := colAt_litCapAux_container_D8 0 p₀ m cm.path rk.F hvF
+      (d := e₀.col) (i := i₀) (List.prefix_refl _)
+    have hqh : q = q₀ ∧ hh = G := by
+      have : rk.F.entryAt e₀ = some (q, hh) := by
+        simp only [Tree.entryAt, hcolX, Option.bind_some]; exact hqX
+      rw [hent₀] at this
+      simp only [Option.some.injEq, Prod.mk.injEq] at this
+      exact ⟨this.1.symm, this.2.symm⟩
+    obtain ⟨rfl, rfl⟩ := hqh
+    have hdrop : cm.path.drop (e₀.col.path.length + 1) = [] := by
+      rw [hcmpath]; simp [he₀]; omega
+    rw [hdrop] at hcol₁
+    have hcapG : Closure.litCapAux 0 p₀ [] m hh = Tree.node (hh.cols.take m ++ [[(p₀, Tree.empty)]]) := by
+      obtain ⟨gcols⟩ := hh; simp [Closure.litCapAux, Tree.cols]
+    rw [hcapG, ← hF₁lit] at hcol₁
+    set col₁ := colX.take i₀ ++ [(q, Tree.node (hh.cols.take m ++ [[(p₀, Tree.empty)]]))] with hcol₁def
+    have hlast : col₁.getLast? = some (q, Tree.node (hh.cols.take m ++ [[(p₀, Tree.empty)]])) := by
+      simp [hcol₁def]
+    set ε := if (colX.take i₀).isEmpty then 1 else 0 with hε
+    set C' : Nat → Column := fun k =>
+      colX.take i₀ ++ List.replicate (k + ε) (q, Tree.node (hh.cols.take m)) with hC'
+    have hexpS : ∀ k, expand F₁ k = some (putAt_F1 c₀ [C' k] (rk.a.heightPath ++ ρ₀) rk.F) := by
+      intro k
+      rw [hexpP, Scan.paperOp_special hk hsd₁ hoe hcol₁ hlast k]
+      have hd1 : col₁.dropLast = colX.take i₀ := by simp [hcol₁def]
+      have hd2 : (Tree.node (hh.cols.take m ++ [[(p₀, Tree.empty)]])).cols.dropLast = hh.cols.take m := by
+        simp [Tree.cols]
+      rw [hd1, hd2]
+      show some (replaceAt 0 0 (Tree.node [C' k]) (sd₁.depth - 1) F₁) = _
+      have hdep : sd₁.depth - 1 = (rk.a.heightPath ++ ρ₀).length := by
+        simp only [hsd₁def, hcmpath, List.length_append, List.length_singleton]; omega
+      have hv0 : (rk.F.forestAt (rk.a.heightPath ++ ρ₀)).isSome := by
+        rw [hcmpath, Tree.forestAt_append] at hvF
+        cases hf : rk.F.forestAt (rk.a.heightPath ++ ρ₀) with
+        | none => rw [hf] at hvF; simp at hvF
+        | some _ => rfl
+      have hbot : ∀ Y', rk.F.forestAt (rk.a.heightPath ++ ρ₀) = some Y' →
+          replaceAt 0 0 (Tree.node [C' k]) 0 (Closure.litCapAux 0 p₀ [(c₀, i₀)] m Y') =
+            putAt_F1 c₀ (Tree.node [C' k]).cols [] Y' := by
+        intro Y' hY'
+        apply replaceAt_bottom_cont_F1
+        rw [hcmpath, Tree.forestAt_append, hY', Option.bind_some, Tree.forestAt_cons] at hvF
+        cases hb : (Y'.cols[c₀]?.bind fun x => x[i₀]?) with
+        | none => rw [hb] at hvF; simp at hvF
+        | some _ => rfl
+      rw [hdep, hF₁lit, hcmpath, replaceAt_litCapAux_F1 _ 0 p₀ m c₀ [(c₀, i₀)] _ rk.F hv0 hbot]
+      rfl
+    -- the target and source columns at the owner column
+    have hXs : (rk.tgtKey.forestAt (ρ₀ ++ [(c₀, i₀)])).isSome := by rw [← hρ, hX]; rfl
+    have hYs : (rk.srcKey.forestAt (ρ₀ ++ [(c₀, i₀)])).isSome := by rw [← hρ, hY]; rfl
+    obtain ⟨hcut0, tc, uc, lt, ht', lu, hu, htc, huc, htci, huci, htake, hl, hhm⟩ :=
+      cutBefore_split_F1 c₀ i₀ m ρ₀ rk.tgtKey rk.srcKey (by rw [← hρ]; exact hcut) hXs hYs
+    have hXht : X = ht' := by
+      have := forestAt_snoc_F1 htc htci; rw [← hρ, hX] at this; exact Option.some.inj this
+    have hcolA0 : rk.srcHeight.colAt ⟨ρ₀, c₀⟩ = some colX := by
+      rw [← colAt_heightPath_D8 ha]; exact hcolX
+    have huc' : uc = Tree.mapCol (relLabel r) colX := by
+      rw [hsk, relKey_eq_map, colAt_map_D8, hcolA0] at huc; exact (Option.some.inj huc).symm
+    have hlu : lu = relLabel r q ∧ hu = relKey r hh := by
+      have h1 := huci
+      rw [huc', Scan.treeMapCol_eq_map, List.getElem?_map, hqX] at h1
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h1
+      exact ⟨h1.1.symm, h1.2.symm⟩
+    obtain ⟨Bcol, hBcol, htcB⟩ : ∃ Bcol, rk.tgtHeight.colAt ⟨ρ₀, c₀⟩ = some Bcol ∧
+        tc = Tree.mapCol (relLabel t) Bcol := by
+      have h1 := htc
+      rw [htk, relKey_eq_map, colAt_map_D8] at h1
+      obtain ⟨Bcol, h2, h3⟩ := Option.map_eq_some_iff.1 h1
+      exact ⟨Bcol, h2, h3.symm⟩
+    have hBcolE : rk.E.colAt ⟨rk.b.heightPath ++ ρ₀, c₀⟩ = some Bcol := by
+      rw [colAt_heightPath_D8 hb]; exact hBcol
+    -- every later target entry is at most the target entry `(lt, ht')`
+    have hall : ∀ x ∈ tc.drop i₀, (keyLabelCmp x.1 lt).then (Tree.cmp keyLabelCmp x.2 ht') ≠ .gt := by
+      intro x hx
+      obtain ⟨n, hn⟩ := List.mem_iff_getElem?.1 hx
+      rw [List.getElem?_drop, htcB, Scan.treeMapCol_eq_map, List.getElem?_map] at hn
+      have h1 := htci
+      rw [htcB, Scan.treeMapCol_eq_map, List.getElem?_map] at h1
+      obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hn
+      obtain ⟨z, hz, hzeq⟩ := Option.map_eq_some_iff.1 h1
+      simp only [Prod.mk.injEq] at hzeq
+      rw [← hzeq.1, ← hzeq.2]
+      have hle := entryLe_chain_F1 hEL.2.2.1 hBcolE hz n y hy
+      simp only
+      rw [keyLabelCmp_relLabel]
+      change (compare y.1 z.1).then (keyCmp (relKey t y.2) (relKey t z.2)) ≠ _
+      rw [keyCmp_relKey]
+      unfold Scan.EntryLe at hle
+      rcases hle with h2 | ⟨h2, h3⟩
+      · rw [Nat.compare_eq_lt.2 h2]; simp
+      · rw [h2, Nat.compare_eq_eq.2 rfl]
+        simpa using (Forest.le_iff_cmp _ _).1 h3
+    set k := tc.length - i₀ + 1 with hkdef
+    have hkey : rk.tgtKey < relKey r (putAt_F1 c₀ [C' k] ρ₀ rk.srcHeight) := by
+      rw [relKey_eq_map, putAt_map_F1, ← relKey_eq_map, ← hsk, Key.lt_iff_keyCmp]
+      simp only [List.map_cons, List.map_nil]
+      set Ck := Tree.mapCol (relLabel r) (C' k) with hCkdef
+      obtain ⟨X0, hX0, hX0c⟩ := colAt_split_F1 htc
+      obtain ⟨Y0, hY0, hY0c⟩ := colAt_split_F1 huc
+      have hc0X : c₀ < X0.cols.length := (List.getElem?_eq_some_iff.1 hX0c).1
+      have hc0Y : c₀ < Y0.cols.length := (List.getElem?_eq_some_iff.1 hY0c).1
+      have hfa : (putAt_F1 c₀ [Ck] ρ₀ rk.srcKey).forestAt ρ₀ =
+          some (Tree.node (Y0.cols.take c₀ ++ [Ck])) := by
+        have := forestAt_putAt_F1 c₀ [Ck] [] ρ₀ rk.srcKey (by rw [hY0]; rfl)
+        rw [List.append_nil] at this
+        rw [this, hY0]; obtain ⟨ycols⟩ := Y0; rfl
+      refine cmp_path_F1 keyLabelCmp c₀ ρ₀ _ _ X0 _ ?_ hX0 hfa hc0X.le
+        (by show c₀ ≤ (Y0.cols.take c₀ ++ [Ck]).length; simp; omega) ?_
+      · rw [cutBefore_putAt_F1 c₀ _ ρ₀ _ Y0 hY0 hc0Y.le]; exact hcut0
+      · show Tree.cmpCols _ (X0.cols.drop c₀) ((Y0.cols.take c₀ ++ [Ck]).drop c₀) = _
+        rw [List.drop_eq_getElem_cons hc0X, List.drop_append_of_le_length (by simp; omega),
+          show (Y0.cols.take c₀).drop c₀ = [] from List.drop_eq_nil_of_le (by simp), List.nil_append]
+        have hX0tc : X0.cols[c₀] = tc := by
+          rw [List.getElem?_eq_getElem hc0X] at hX0c; exact Option.some.inj hX0c
+        rw [hX0tc, Tree.cmpCols]
+        have hg : Tree.map (relLabel r) (Tree.node (hh.cols.take m)) = ht' := by
+          have e1 : Tree.map (relLabel r) (Tree.node (hh.cols.take m)) = Tree.node (hu.cols.take m) := by
+            rw [hlu.2, relKey_eq_map]
+            obtain ⟨hcs⟩ := hh
+            simp [Tree.map, Scan.treeMapCols_eq_map, Tree.cols, List.map_take]
+          rw [e1, ← hhm, ← hXht, List.take_of_length_le (le_of_eq hmdef.symm)]
+          obtain ⟨xcs⟩ := X; rfl
+        have hCk : Ck = tc.take i₀ ++ List.replicate (k + ε) (lt, ht') := by
+          rw [hCkdef, hC']
+          simp only [Scan.treeMapCol_eq_map, List.map_append, List.map_replicate]
+          rw [hg, hl, hlu.1, htake, huc', Scan.treeMapCol_eq_map, List.map_take]
+        have hcc : Tree.cmpCol keyLabelCmp tc Ck = .lt := by
+          have e := cmpCol_append_left_F1 keyLabelCmp (tc.take i₀) (tc.drop i₀)
+            (List.replicate (k + ε) (lt, ht'))
+          rw [List.take_append_drop] at e
+          rw [hCk, e]
+          exact cmpCol_replicate_F1 keyLabelCmp (lt, ht') (tc.drop i₀) (k + ε) hall
+            (by simp; omega)
+        rw [hcc]; rfl
+    exact finish k c₀ ρ₀ [C' k] (hexpS k) hkey
+  · -- ordinary: the root lies in the stop forest, strictly before the stopping column
+    obtain ⟨rd, hrd⟩ := Option.isSome_iff_exists.1 (Scan.rootData_of_ordinary hk)
+    obtain ⟨hres, -, -, -, -, -, -, howner⟩ := Scan.rootData_spec hsd₁ hrd
+    have hns : Scan.specialStop sd₁ = false := by
+      obtain ⟨sd, o, hsd, hsp, -⟩ := (Scan.stepKind_ordinary_iff F₁).1 hk
+      rw [hsd₁] at hsd; cases hsd; exact hsp
+    have hnum : cm.num 0 = a₀ + 1 + m := by
+      have := num_heightPath_D8 e₀ [] m
+      rw [List.append_nil] at this
+      have h1 : ColAddr.num 1 ⟨[], m⟩ = 1 + m := by simp [ColAddr.num]
+      rw [hcm, this, h1]; omega
+    have hp₀ : a₀ < p₀ := by
+      simp only [hsd₁def, Scan.specialStop, Bool.and_eq_false_iff, decide_eq_false_iff_not,
+        List.isEmpty_nil, beq_eq_false_iff_ne, ne_eq] at hns
+      have hdep : 0 < cm.path.length := by rw [hcmpath]; simp
+      have hcmc : cm.col = m := rfl
+      rcases hns with (hns | hns) | hns
+      · omega
+      · exact absurd hns (by decide)
+      · rw [hnum, hcmc] at hns; omega
+    set w := p₀ - a₀ with hw
+    have hres' := resolve_heightPath_D8 e₀ [] m w (by omega)
+    rw [List.append_nil, show e₀.col.num 0 + w = p₀ by omega] at hres'
+    have hres2 : cm.resolve 0 p₀ = some rd.col := hres
+    rw [hcm, hres'] at hres2
+    have hcond : 1 ≤ w ∧ w < 1 + m := by
+      by_contra hc
+      simp [ColAddr.resolve, ColAddr.resolveAux, hc] at hres2
+    have hrdcol : rd.col = ⟨e₀.heightPath, w - 1⟩ := by
+      simp [ColAddr.resolve, ColAddr.resolveAux, hcond, shiftCol_D8] at hres2
+      rw [← hres2]
+    have hown : rd.owner = false := by
+      cases ho : rd.owner
+      · rfl
+      · obtain ⟨F', hF', hlen'⟩ := howner.1 ho
+        obtain ⟨hcc, -⟩ := Scan.stopData_core hsd₁
+        have hfp := Scan.forestAt_stopPath hsd₁
+        rw [hrdcol] at hF'
+        simp only [hsd₁def] at hfp hcc
+        rw [hcm] at hfp
+        rw [hF'] at hfp
+        obtain rfl := Option.some.inj hfp
+        rw [hrdcol] at hlen'
+        simp only at hlen' hcc
+        have hcmc : cm.col = m := rfl
+        have hcmp : cm.path = e₀.heightPath := rfl
+        rw [hcmc, hcmp] at hcc
+        omega
+    have hpo := Scan.paperOp_ordinary hk hsd₁ hrd 1
+    rw [hown] at hpo
+    simp only [Bool.false_and, Bool.false_eq_true, if_false] at hpo
+    set Z := Scan.ordZ F₁ sd₁ rd 1 with hZdef
+    have hZ : Z.cols ≠ [] := by
+      simp [hZdef, Scan.ordZ, Scan.ordLoop, Scan.ordStep, hown, Tree.cols]
+    have hfill : Scan.Hole.fill ⟨F₁, sd₁.depth⟩ 0 0 Z = putAt_F1 m Z.cols (rk.a.heightPath ++ ρ) rk.F := by
+      show replaceAt 0 0 Z cm.path.length F₁ = _
+      have := replaceAt_litCapAux_F1 Z 0 p₀ m m [] cm.path rk.F hvF
+        (fun Y' _ => replaceAt_bottom_end_F1 Z 0 p₀ m Y')
+      rw [List.append_nil] at this
+      rw [hF₁lit, this, hcm, he₀hp]
+    have hexp : expand F₁ 1 = some (putAt_F1 m Z.cols (rk.a.heightPath ++ ρ) rk.F) := by
+      rw [hexpP, hpo, hfill]
+    refine ⟨Or.inr ⟨hk, sd₁, rd, hsd₁, rfl, hrd, ?_⟩, finish 1 m ρ Z.cols hexp (hcmpEnd _ hZ)⟩
+    rw [hrdcol, he₀hp]; exact List.prefix_append _ _
 
 /-! ## D7.2c  Fresh names -/
 
