@@ -404,26 +404,26 @@ theorem under_mem_roles {t : Tree α} {e : EntryAddr} {B : Tree α} (hB : t.heig
 
 mutual
 /-- L6.2a helper: roles never read labels. -/
-theorem rolesF_map (f : α → β) (π : List (Nat × Nat)) :
+theorem rolesF_map {β : Type} (f : α → β) (π : List (Nat × Nat)) :
     ∀ t : Tree α, rolesF π (t.map f) = rolesF π t
   | .node cols => by rw [Tree.map, rolesF, rolesF]; exact rolesCols_map f π 0 cols
-theorem rolesCols_map (f : α → β) (π : List (Nat × Nat)) :
+theorem rolesCols_map {β : Type} (f : α → β) (π : List (Nat × Nat)) :
     ∀ (c : Nat) (cols : List (List (α × Tree α))), rolesCols π c (mapCols f cols) = rolesCols π c cols
   | _, [] => rfl
   | c, col :: rest => by
     rw [mapCols, rolesCols, rolesCols, rolesCol_map f π c 0 col, rolesCols_map f π (c + 1) rest]
-theorem rolesCol_map (f : α → β) (π : List (Nat × Nat)) (c : Nat) :
+theorem rolesCol_map {β : Type} (f : α → β) (π : List (Nat × Nat)) (c : Nat) :
     ∀ (i : Nat) (col : List (α × Tree α)), rolesCol π c i (mapCol f col) = rolesCol π c i col
   | _, [] => rfl
   | i, (p, h) :: rest => by
     rw [mapCol, rolesCol, rolesCol, rolesF_map f _ h, rolesCol_map f π c (i + 1) rest]
 end
 
-theorem rolesCols_map' (f : α → β) (π : List (Nat × Nat)) (c : Nat) (cols : List (List (α × Tree α))) :
+theorem rolesCols_map' {β : Type} (f : α → β) (π : List (Nat × Nat)) (c : Nat) (cols : List (List (α × Tree α))) :
     rolesCols π c (cols.map (mapCol f)) = rolesCols π c cols := by
   rw [← Scan.treeMapCols_eq_map, rolesCols_map]
 
-theorem rolesCol_map' (f : α → β) (π : List (Nat × Nat)) (c i : Nat) (col : List (α × Tree α)) :
+theorem rolesCol_map' {β : Type} (f : α → β) (π : List (Nat × Nat)) (c i : Nat) (col : List (α × Tree α)) :
     rolesCol π c i (col.map fun x => (f x.1, x.2.map f)) = rolesCol π c i col := by
   rw [← Scan.treeMapCol_eq_map, rolesCol_map]
 
