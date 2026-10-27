@@ -1957,6 +1957,395 @@ theorem valid_iff {P : Prims.{u}} (S : ScanSetup.{u}) : S.Valid P ↔ SetupClaus
       (hq x hx).1, (hq x hx).2.1⟩, fun x hx => ⟨fun y hy h => (hb x hx).2.2 y hy h.symm,
       (hb x hx).1, (hb x hx).2.1⟩⟩
 
+/-! ### L8.5 helpers (D4): lists, maxima and reading order around a column -/
+
+/-- L8.5 (helper): consecutive pairs of a list are exactly its adjacent sublists. -/
+theorem mem_zip_tail_iff_D4 {β : Type} {l : List β} {a b : β} :
+    (a, b) ∈ l.zip l.tail ↔ ∃ s t, l = s ++ a :: b :: t := by
+  induction l with
+  | nil => simp
+  | cons x l ih =>
+    cases l with
+    | nil =>
+      simp only [List.tail_cons, List.zip_nil_right, List.not_mem_nil, false_iff, not_exists]
+      intro s t h
+      have := congrArg List.length h
+      simp at this
+      omega
+    | cons y l =>
+      simp only [List.tail_cons, List.zip_cons_cons, List.mem_cons, Prod.mk.injEq] at ih ⊢
+      rw [ih]
+      constructor
+      · rintro (⟨rfl, rfl⟩ | ⟨s, t, h⟩)
+        · exact ⟨[], l, rfl⟩
+        · exact ⟨x :: s, t, by rw [h]; rfl⟩
+      · rintro ⟨s, t, h⟩
+        cases s with
+        | nil =>
+          simp only [List.nil_append, List.cons.injEq] at h
+          exact Or.inl ⟨h.1.symm, h.2.1.symm⟩
+        | cons z s =>
+          simp only [List.cons_append, List.cons.injEq] at h
+          exact Or.inr ⟨s, t, h.2⟩
+
+/-- L8.5 (helper): the `lt` chain of a block of consecutive roles lies in `Γ(E)`. -/
+theorem lt_chain_graph_D4 {E : Forest} {pre l post : List Role}
+    (h : E.roles = pre ++ l ++ post) :
+    ∀ xy ∈ l.zip l.tail, BaseAtom.lt xy.1 xy.2 ∈ graph E := by
+  rintro ⟨a, b⟩ hab
+  obtain ⟨s, t, rfl⟩ := mem_zip_tail_iff_D4.1 hab
+  simp only [graph, List.mem_append]
+  refine Or.inl (Or.inl (Or.inr (List.mem_map.2 ⟨(a, b), ?_, rfl⟩)))
+  exact mem_zip_tail_iff_D4.2 ⟨pre ++ s, t ++ post, by rw [h]; simp⟩
+
+/-- L8.5 (helper): `takeWhile (· != y)` of a list through its first `y`. -/
+theorem takeWhile_ne_D4 {A B : List Role} {y : Role} (hy : y ∉ A) :
+    (A ++ y :: B).takeWhile (· != y) = A := by
+  induction A with
+  | nil => simp
+  | cons a A ih =>
+    have ha : a ≠ y := fun h => hy (h ▸ List.mem_cons_self)
+    simp only [List.cons_append, List.takeWhile_cons, bne_iff_ne, ne_eq, ha, not_false_eq_true,
+      if_true, ih (fun h => hy (List.mem_cons_of_mem _ h))]
+
+/-- L8.5 (helper): `dropWhile (· != y)` of a list through its first `y`. -/
+theorem dropWhile_ne_D4 {A B : List Role} {y : Role} (hy : y ∉ A) :
+    (A ++ y :: B).dropWhile (· != y) = y :: B := by
+  induction A with
+  | nil => simp
+  | cons a A ih =>
+    have ha : a ≠ y := fun h => hy (h ▸ List.mem_cons_self)
+    simp only [List.cons_append, List.dropWhile_cons, bne_iff_ne, ne_eq, ha, not_false_eq_true,
+      if_true, ih (fun h => hy (List.mem_cons_of_mem _ h))]
+
+/-- L8.5 (helper): the roles before a role, from any decomposition of the roles at it. -/
+theorem rolesBefore_of_decomp_D4 {E : Forest} {x : Role} {pre rest : List Role}
+    (hr : E.roles = pre ++ x :: rest) : rolesBefore E x = pre := by
+  have hnd := Tree.roles_nodup E
+  rw [hr, List.nodup_append] at hnd
+  have hne : x ∉ pre := fun hm => hnd.2.2 _ hm _ List.mem_cons_self rfl
+  unfold rolesBefore
+  rw [hr, takeWhile_ne_D4 hne]
+
+/-- L8.5 (helper): the initial value of a `foldr max` is below it. -/
+theorem le_foldr_max_init_D4 (l : List Ordinal.{u}) (a : Ordinal.{u}) : a ≤ l.foldr max a := by
+  induction l with
+  | nil => exact le_rfl
+  | cons y l ih => exact ih.trans (le_max_right _ _)
+
+/-- L8.5 (helper): the members of the list are below its `foldr max`. -/
+theorem le_foldr_max_mem_D4 {l : List Ordinal.{u}} {a x : Ordinal.{u}} (hx : x ∈ l) :
+    x ≤ l.foldr max a := by
+  induction l with
+  | nil => simp at hx
+  | cons y l ih =>
+    rw [List.foldr_cons]
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact le_max_left _ _
+    · exact (ih hx).trans (le_max_right _ _)
+
+/-- L8.5 (helper): upper bounds of a `foldr max`. -/
+theorem foldr_max_le_iff_D4 {l : List Ordinal.{u}} {a c : Ordinal.{u}} :
+    l.foldr max a ≤ c ↔ a ≤ c ∧ ∀ x ∈ l, x ≤ c := by
+  induction l with
+  | nil => simp
+  | cons y l ih =>
+    rw [List.foldr_cons, max_le_iff, ih]
+    simp only [List.mem_cons, forall_eq_or_imp]
+    tauto
+
+/-- L8.5 (helper): strict upper bounds of a `foldr max`. -/
+theorem foldr_max_lt_iff_D4 {l : List Ordinal.{u}} {a c : Ordinal.{u}} :
+    l.foldr max a < c ↔ a < c ∧ ∀ x ∈ l, x < c := by
+  induction l with
+  | nil => simp
+  | cons y l ih =>
+    rw [List.foldr_cons, max_lt_iff, ih]
+    simp only [List.mem_cons, forall_eq_or_imp]
+    tauto
+
+/-- L8.5 (helper): the roles of a tree around a column `c`: earlier roles, `A_c`, the roles of its
+entries (`rolesCol`), later roles. -/
+theorem roles_col_D4 {α : Type} : ∀ (P : List (Nat × Nat)) (t : Tree α) (j : Nat)
+    (col : List (α × Tree α)), t.colAt ⟨P, j⟩ = some col →
+    ∃ pre post, t.roles = pre ++ Role.ord ⟨P, j⟩ :: (Tree.rolesCol P j 0 col ++ post)
+  | [], ⟨cols⟩, j, col, h => by
+    have hc : cols[j]? = some col := by simpa [Tree.colAt, Tree.forestAt, Tree.cols] using h
+    have hj : j < cols.length := (List.getElem?_eq_some_iff.1 hc).1
+    refine ⟨Tree.rolesCols [] 0 (cols.take j), Tree.rolesCols [] (j + 1) (cols.drop (j + 1)), ?_⟩
+    show Tree.rolesCols [] 0 cols = _
+    conv_lhs => rw [Tree.list_split_of_getElem? hc]
+    rw [Tree.rolesCols_append]
+    simp [Tree.rolesCols, List.length_take, Nat.min_eq_left hj.le]
+  | (c, i₀) :: rest, ⟨cols⟩, j, col, h => by
+    rw [Tree.colAt_cons] at h
+    cases he : ((Tree.node cols).cols[c]?.bind (·[i₀]?)) with
+    | none => rw [he] at h; simp at h
+    | some ph =>
+      obtain ⟨p₀, h₀⟩ := ph
+      rw [he] at h
+      have h' : h₀.colAt ⟨rest, j⟩ = some col := by simpa using h
+      obtain ⟨pre', post', hr'⟩ := roles_col_D4 rest h₀ j col h'
+      have hent : (Tree.node cols).entryAt ⟨⟨[], c⟩, i₀⟩ = some (p₀, h₀) := by
+        simpa [Tree.entryAt, Tree.colAt, Tree.forestAt] using he
+      obtain ⟨pre, post, hr, -⟩ := Tree.roles_decomp [] (Tree.node cols) c i₀ p₀ h₀ hent
+      refine ⟨pre ++ Role.slot ⟨⟨[], c⟩, i₀⟩ :: pre'.map (Role.under [(c, i₀)]),
+        post'.map (Role.under [(c, i₀)]) ++ post, ?_⟩
+      rw [hr, hr']
+      have := Tree.rolesCol_append_under [(c, i₀)] rest j 0 col
+      simp only [List.nil_append, List.cons_append] at this
+      simp [this, Role.under]
+
+/-- L8.5 (helper): a role lies inside at most one entry of a column. -/
+theorem inEntry_unique_D4 {x : Role} {c : ColAddr} {j k : Nat}
+    (hj : x.inEntry ⟨c, j⟩ = true) (hk : x.inEntry ⟨c, k⟩ = true) : j = k := by
+  rcases (inEntry_iff _ _).1 hj with rfl | hj <;> rcases (inEntry_iff _ _).1 hk with h | hk
+  · cases h; rfl
+  · have := hk.length_le; simp [EntryAddr.heightPath, Role.path] at this
+  · cases h; have := hj.length_le; simp [EntryAddr.heightPath, Role.path] at this
+  · have := Tree.prefix_step_eq hj hk
+    simp only [Prod.mk.injEq] at this
+    exact this.2
+
+/-- L8.5 (helper): the roles inside entry `i` of a column lie in the column's `rolesCol`. -/
+theorem mem_rolesCol_of_inEntry_D4 {t : Forest} {c : ColAddr} {col : Column}
+    (hc : t.colAt c = some col) {i : Nat} (hi : i < col.length) {x : Role} (hx : x ∈ t.roles)
+    (hin : x.inEntry ⟨c, i⟩ = true) : x ∈ Tree.rolesCol c.path c.col 0 col := by
+  obtain ⟨⟨p, h⟩, hpi⟩ : ∃ y, col[i]? = some y := ⟨_, List.getElem?_eq_getElem hi⟩
+  have hent : t.entryAt ⟨c, i⟩ = some (p, h) := by simp [Tree.entryAt, hc, hpi]
+  have he : (⟨c, i⟩ : EntryAddr) ∈ t.entryAddrs := (Tree.mem_entryAddrs_iff _ _).2 (by rw [hent]; rfl)
+  refine Tree.mem_rolesCol_iff.2 ⟨i, p, h, hpi, ?_⟩
+  rcases (inEntry_iff _ _).1 hin with rfl | hp
+  · exact Or.inl (by simp)
+  · right
+    have := Tree.mem_under_of_inEntry he hx hp
+    rw [Tree.heightAt, hent] at this
+    simp only [Option.map_some, Option.getD_some] at this
+    rw [Tree.rolesF_eq_map_under]
+    simpa [EntryAddr.heightPath] using this
+
+/-- L8.5 (helper): the entry index of a role in a column's `rolesCol` is below the column length. -/
+theorem inEntry_lt_of_mem_rolesCol_D4 {π : List (Nat × Nat)} {c i k : Nat} {col : Column}
+    {x : Role} (hx : x ∈ Tree.rolesCol π c i col) (hk : x.inEntry ⟨⟨π, c⟩, k⟩ = true) :
+    i ≤ k ∧ k < i + col.length := by
+  obtain ⟨k', h1, h2, h3⟩ := Scan.rolesCol_inEntry π c col i x hx
+  obtain rfl := inEntry_unique_D4 h3 hk
+  exact ⟨h1, h2⟩
+
+/-- L8.5 (helper): a role of an entry `k < m` lies in the roles of the first `m` entries. -/
+theorem mem_rolesCol_take_D4 {π : List (Nat × Nat)} {c : Nat} {col : Column} {x : Role}
+    (hx : x ∈ Tree.rolesCol π c 0 col) {k m : Nat} (hk : x.inEntry ⟨⟨π, c⟩, k⟩ = true)
+    (hkm : k < m) : x ∈ Tree.rolesCol π c 0 (col.take m) := by
+  have hklen := (inEntry_lt_of_mem_rolesCol_D4 hx hk).2
+  rw [← List.take_append_drop m col, Tree.rolesCol_append] at hx
+  rcases List.mem_append.1 hx with h | h
+  · exact h
+  · have := (inEntry_lt_of_mem_rolesCol_D4 h hk).1
+    simp only [List.length_take, Nat.zero_add] at this
+    omega
+
+/-- L8.5 (helper): a role of an entry `k ≥ m` lies in the roles of the entries from `m` on. -/
+theorem mem_rolesCol_drop_D4 {π : List (Nat × Nat)} {c : Nat} {col : Column} {x : Role}
+    (hx : x ∈ Tree.rolesCol π c 0 col) {k m : Nat} (hk : x.inEntry ⟨⟨π, c⟩, k⟩ = true)
+    (hkm : m ≤ k) : x ∈ Tree.rolesCol π c (col.take m).length (col.drop m) := by
+  rw [← List.take_append_drop m col, Tree.rolesCol_append] at hx
+  rcases List.mem_append.1 hx with h | h
+  · have := (inEntry_lt_of_mem_rolesCol_D4 h hk).2
+    simp only [List.length_take, Nat.zero_add] at this
+    omega
+  · simpa using h
+
+/-- L8.5 (helper): the two parts of a column's roles at entry `m` are in order under a chain. -/
+theorem rolesCol_split_lt_D4 {π : List (Nat × Nat)} {c : Nat} {col : Column} {f : Role → Ordinal.{u}}
+    (hpw : (Tree.rolesCol π c 0 col).Pairwise fun a b => f a < f b) {x y : Role} {k l : Nat}
+    (hx : x ∈ Tree.rolesCol π c 0 col) (hxk : x.inEntry ⟨⟨π, c⟩, k⟩ = true)
+    (hy : y ∈ Tree.rolesCol π c 0 col) (hyl : y.inEntry ⟨⟨π, c⟩, l⟩ = true) (hkl : k < l) :
+    f x < f y := by
+  have hx' := mem_rolesCol_take_D4 hx hxk hkl
+  have hy' := mem_rolesCol_drop_D4 hy hyl le_rfl
+  rw [← List.take_append_drop l col, Tree.rolesCol_append, List.pairwise_append] at hpw
+  exact hpw.2.2 x hx' y (by simpa using hy')
+
+/-- L8.5 (helper): the stopping column in reading order: `P⁻`, `T`, the query, the closing slot,
+later roles; the query is the `rolesCol` of `Q`. -/
+theorem stop_roles_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) :
+    ∃ post, S.H.roles = S.preStop ++ Role.ord S.sd.col ::
+      (S.queryRoles ++ Role.slot (Scan.closingSlot S.sd) :: post) ∧
+      S.queryRoles = Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q := by
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  obtain ⟨pre, post, hr⟩ := roles_col_D4 S.sd.col.path S.H S.sd.col.col _ hcol
+  have hrc : Tree.rolesCol S.sd.col.path S.sd.col.col 0 (S.sd.Q ++ [(S.sd.r, Tree.empty)]) =
+      Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q ++ [Role.slot (Scan.closingSlot S.sd)] := by
+    rw [Tree.rolesCol_append]
+    simp [Tree.rolesCol, Scan.closingSlot, Tree.empty, Tree.rolesF, Tree.rolesCols]
+  have hr' : S.H.roles = pre ++ Role.ord S.sd.col ::
+      (Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q ++
+        Role.slot (Scan.closingSlot S.sd) :: post) := by
+    rw [hr, hrc]; simp
+  have hpre : S.preStop = pre := rolesBefore_of_decomp_D4 hr'
+  have hnd := Tree.roles_nodup S.H
+  rw [hr', List.nodup_append, List.nodup_cons, List.nodup_append] at hnd
+  have hTpre : Role.ord S.sd.col ∉ pre := fun hm => hnd.2.2 _ hm _ List.mem_cons_self rfl
+  have hNQ : Role.slot (Scan.closingSlot S.sd) ∉
+      Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q :=
+    fun hm => hnd.2.1.2.2.2 _ hm _ List.mem_cons_self rfl
+  have hQ : S.queryRoles = Tree.rolesCol S.sd.col.path S.sd.col.col 0 S.sd.Q := by
+    unfold ScanSetup.queryRoles
+    rw [hr', dropWhile_ne_D4 hTpre]
+    simp only [List.drop_succ_cons, List.drop_zero]
+    rw [takeWhile_ne_D4 hNQ]
+  refine ⟨post, ?_, hQ⟩
+  rw [hpre, hQ]; exact hr'
+
+/-- L8.5 (helper): query roles are the roles of `H` inside a query entry. -/
+theorem mem_queryRoles_iff_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    {x : Role} : x ∈ S.queryRoles ↔
+      x ∈ S.H.roles ∧ ∃ j < S.sd.Q.length, x.inEntry ⟨S.sd.col, j⟩ = true := by
+  obtain ⟨post, hr, hQ⟩ := stop_roles_D4 hsd
+  obtain ⟨hcol, -⟩ := Scan.stopData_spec hsd
+  constructor
+  · intro hx
+    refine ⟨by rw [hr]; simp [hx], ?_⟩
+    rw [hQ] at hx
+    obtain ⟨j, -, hj, hin⟩ := Scan.rolesCol_inEntry _ _ S.sd.Q 0 x hx
+    exact ⟨j, by omega, hin⟩
+  · rintro ⟨hx, j, hj, hin⟩
+    have h := mem_rolesCol_of_inEntry_D4 hcol (by simp; omega) hx hin
+    rw [Tree.rolesCol_append] at h
+    rcases List.mem_append.1 h with h | h
+    · rw [hQ]; exact h
+    · simp only [Tree.rolesCol, List.mem_cons, Tree.rolesF, Tree.rolesCols, Tree.empty,
+        List.append_nil, List.mem_nil_iff, or_false, Nat.zero_add] at h
+      subst h
+      have h2 : (Role.slot ⟨⟨S.sd.col.path, S.sd.col.col⟩, S.sd.Q.length⟩).inEntry
+          ⟨S.sd.col, S.sd.Q.length⟩ = true := by simp [Role.inEntry]
+      have := inEntry_unique_D4 hin h2
+      omega
+
+/-- L8.5 (helper): `P⁻` and `T` are not query roles. -/
+theorem not_query_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd) {x : Role}
+    (hx : x ∈ S.preStop ∨ x = .ord S.sd.col) : x ∉ S.queryRoles := by
+  obtain ⟨post, hr, -⟩ := stop_roles_D4 hsd
+  have hnd := Tree.roles_nodup S.H
+  rw [hr, List.nodup_append, List.nodup_cons] at hnd
+  intro hq
+  rcases hx with hx | rfl
+  · exact hnd.2.2 _ hx _ (List.mem_cons_of_mem _ (List.mem_append_left _ hq)) rfl
+  · exact hnd.2.1.1 (List.mem_append_left _ hq)
+
+/-- L8.5 (helper): the root column in reading order: pre-root roles, `R`, the roles of its
+entries, later roles. -/
+theorem root_roles_D4 {S : ScanSetup.{u}} (hsd : Scan.stopData S.H = some S.sd)
+    (hrd : Scan.rootData S.H = some S.rd) :
+    ∃ colR post, S.H.colAt S.rd.col = some colR ∧ S.H.roles = setupPreRoot S ++
+      Role.ord S.rd.col :: (Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR ++ post) := by
+  obtain ⟨-, -, -, -, -, hmem, -⟩ := Scan.rootData_spec hsd hrd
+  obtain ⟨colR, hcolR⟩ := Option.isSome_iff_exists.1 ((Tree.mem_colAddrs_iff _ _).1 hmem)
+  obtain ⟨pre, post, hr⟩ := roles_col_D4 S.rd.col.path S.H S.rd.col.col colR hcolR
+  exact ⟨colR, post, hcolR, by rw [setupPreRoot, rolesBefore_of_decomp_D4 hr]; exact hr⟩
+
+/-- L8.5 (helper): bank roles are the roles of `H` inside root entries `0, …, c`. -/
+theorem mem_bank_iff_D4 (S : ScanSetup.{u}) {x : Role} : x ∈ setupBank S ↔
+    x ∈ S.H.roles ∧ ∃ i ≤ S.rd.cursor, x.inEntry ⟨S.rd.col, i⟩ = true := by
+  simp only [setupBank, List.mem_filter, List.any_eq_true, List.mem_range]
+  constructor
+  · rintro ⟨h1, i, hi, h2⟩; exact ⟨h1, i, by omega, h2⟩
+  · rintro ⟨h1, i, hi, h2⟩; exact ⟨h1, i, by omega, h2⟩
+
+/-- L8.5 (helper): `R` followed by the bank is an `lt` chain of the bank graph, hence strictly
+increasing at the bank values (S5). -/
+theorem bank_pairwise_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) :
+    ∃ colR, S.H.colAt S.rd.col = some colR ∧ S.rd.cursor < colR.length ∧
+      (Role.ord S.rd.col :: Tree.rolesCol S.rd.col.path S.rd.col.col 0
+        (colR.take (S.rd.cursor + 1))).Pairwise fun a b => setupBankVal S a < setupBankVal S b := by
+  obtain ⟨⟨-, -, -, hsd, hrd, hcur, -⟩, -, -, -, h5, -⟩ := hS
+  obtain ⟨colR, post, hcolR, hr⟩ := root_roles_D4 hsd hrd
+  rw [hcolR, Option.getD_some] at hcur
+  refine ⟨colR, hcolR, hcur, ?_⟩
+  set BK := Tree.rolesCol S.rd.col.path S.rd.col.col 0 (colR.take (S.rd.cursor + 1)) with hBK
+  have hsplit : Tree.rolesCol S.rd.col.path S.rd.col.col 0 colR =
+      BK ++ Tree.rolesCol S.rd.col.path S.rd.col.col (colR.take (S.rd.cursor + 1)).length
+        (colR.drop (S.rd.cursor + 1)) := by
+    conv_lhs => rw [← List.take_append_drop (S.rd.cursor + 1) colR]
+    rw [Tree.rolesCol_append, Nat.zero_add]
+  have hr' : S.H.roles = setupPreRoot S ++ (Role.ord S.rd.col :: BK) ++
+      (Tree.rolesCol S.rd.col.path S.rd.col.col (colR.take (S.rd.cursor + 1)).length
+        (colR.drop (S.rd.cursor + 1)) ++ post) := by
+    rw [hr, hsplit]; simp
+  have hbank : ∀ x ∈ BK, x ∈ setupBank S := by
+    intro x hx
+    refine (mem_bank_iff_D4 S).2 ⟨by rw [hr']; simp [hx], ?_⟩
+    obtain ⟨i, -, hi, hin⟩ := Scan.rolesCol_inEntry _ _ _ 0 x hx
+    simp only [List.length_take] at hi
+    exact ⟨i, by omega, hin⟩
+  refine chain_pairwise (D := setupBankGraph S) (fun xy hxy => ?_) h5
+  have hlt := lt_chain_graph_D4 hr' xy hxy
+  obtain ⟨a, b⟩ := xy
+  obtain ⟨s, t, hst⟩ := mem_zip_tail_iff_D4.1 hxy
+  have hb : b ∈ BK := by
+    cases s with
+    | nil => simp only [List.nil_append, List.cons.injEq] at hst; rw [hst.2]; simp
+    | cons z s =>
+      simp only [List.cons_append, List.cons.injEq] at hst
+      rw [hst.2]; simp
+  have ha : a = .ord S.rd.col ∨ a ∈ BK := by
+    have : a ∈ Role.ord S.rd.col :: BK := by rw [hst]; simp
+    simpa using this
+  refine List.mem_filter.2 ⟨List.mem_filter.2 ⟨hlt, ?_⟩, ?_⟩
+  · simp only [BaseAtom.vars, List.all_cons, List.all_nil, Bool.and_true, Bool.and_eq_true,
+      decide_eq_true_eq, List.mem_append, List.mem_singleton]
+    refine ⟨?_, Or.inr (hbank b hb)⟩
+    rcases ha with rfl | ha
+    · exact Or.inl (Or.inr rfl)
+    · exact Or.inr (hbank a ha)
+  · simp only [BaseAtom.vars, List.any_cons, List.any_nil, Bool.or_false, Bool.or_eq_true,
+      decide_eq_true_eq]
+    exact Or.inr (Or.inr (hbank b hb))
+
+/-- L8.5 (helper): the bank value of `R` is `ρ`. -/
+theorem setupBankVal_root_D4 (S : ScanSetup.{u}) :
+    setupBankVal S (.ord S.rd.col) = S.asg S.stopNm := by
+  simp [setupBankVal, root_not_mem_bank_D4 S]
+
+/-- L8.5 (helper): the slot of root entry `i ≤ c` is a role of `H`. -/
+theorem slot_root_mem_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) {i : Nat}
+    (hi : i ≤ S.rd.cursor) : Role.slot ⟨S.rd.col, i⟩ ∈ S.H.roles := by
+  obtain ⟨colR, hcolR, hcur, -⟩ := bank_pairwise_D4 S hS
+  refine (Tree.mem_roles_iff _ _).2 ?_
+  show (S.H.entryAt ⟨S.rd.col, i⟩).isSome
+  simp [Tree.entryAt, hcolR, List.getElem?_eq_getElem (show i < colR.length by omega)]
+
+/-- L8.5 (helper): the slot of root entry `i ≤ c` is a bank role. -/
+theorem slot_mem_bank_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) {i : Nat}
+    (hi : i ≤ S.rd.cursor) : Role.slot ⟨S.rd.col, i⟩ ∈ setupBank S :=
+  (mem_bank_iff_D4 S).2 ⟨slot_root_mem_D4 S hS hi, i, hi, by simp [Role.inEntry]⟩
+
+/-- L8.5 (helper): the bank value of the slot of root entry `i ≤ c` is `u_i`. -/
+theorem setupBankVal_slot_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) {i : Nat}
+    (hi : i ≤ S.rd.cursor) : setupBankVal S (.slot ⟨S.rd.col, i⟩) = S.ownerVal i := by
+  simp [setupBankVal, slot_mem_bank_D4 S hS hi, ScanSetup.ownerVal]
+
+/-- L8.5 (helper): `R` is below every role of a bank entry (S5). -/
+theorem bank_root_lt_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) {y : Role}
+    {l : Nat} (hy : y ∈ S.H.roles) (hyl : y.inEntry ⟨S.rd.col, l⟩ = true) (hl : l ≤ S.rd.cursor) :
+    setupBankVal S (.ord S.rd.col) < setupBankVal S y := by
+  obtain ⟨colR, hcolR, hcur, hpw⟩ := bank_pairwise_D4 S hS
+  have hy1 := mem_rolesCol_of_inEntry_D4 hcolR (by omega) hy hyl
+  have hy2 := mem_rolesCol_take_D4 (k := l) (m := S.rd.cursor + 1) hy1 hyl (by omega)
+  exact List.rel_of_pairwise_cons hpw hy2
+
+/-- L8.5 (helper): roles of an earlier bank entry are below the roles of a later one (S5). -/
+theorem bank_entry_lt_D4 {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S)
+    {x y : Role} {k l : Nat} (hx : x ∈ S.H.roles) (hxk : x.inEntry ⟨S.rd.col, k⟩ = true)
+    (hy : y ∈ S.H.roles) (hyl : y.inEntry ⟨S.rd.col, l⟩ = true) (hkl : k < l)
+    (hl : l ≤ S.rd.cursor) : setupBankVal S x < setupBankVal S y := by
+  obtain ⟨colR, hcolR, hcur, hpw⟩ := bank_pairwise_D4 S hS
+  have hx1 := mem_rolesCol_of_inEntry_D4 hcolR (by omega) hx hxk
+  have hx2 := mem_rolesCol_take_D4 (m := S.rd.cursor + 1) hx1 hxk (by omega)
+  have hy1 := mem_rolesCol_of_inEntry_D4 hcolR (by omega) hy hyl
+  have hy2 := mem_rolesCol_take_D4 (m := S.rd.cursor + 1) hy1 hyl (by omega)
+  exact rolesCol_split_lt_D4 (List.pairwise_cons.1 hpw).2 hx2 hxk hy2 hyl hkl
+
 /-- L8.5b: the scan invariant (17) at state `(i, j)`. -/
 def ScanInv (P : Prims.{u}) (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordinal.{u}) : Prop :=
   S.Fitted P j β ∧ S.Lmax j β < S.ownerVal i ∧ S.Lmax j β ≤ S.Cmax j
@@ -1964,13 +2353,30 @@ def ScanInv (P : Prims.{u}) (S : ScanSetup.{u}) (i j : Nat) (β : Role → Ordin
 /-- L8.5b: (17) holds initially: `L_0 = C_0 = ρ < u_0` (txt:1220-1221). -/
 theorem scan_init {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S)
     (β : Role → Ordinal.{u}) : ScanInv P S 0 0 β := by
-  sorry
+  have hsd := hS.1.2.2.2.1
+  have hf0 : S.fittedRoles 0 = [] := by simp [ScanSetup.fittedRoles]
+  refine ⟨fun a ha => ?_, ?_, ?_⟩
+  · rw [hf0, List.append_nil] at ha
+    obtain ⟨haq, hav⟩ := List.mem_filter.1 ha
+    refine (BaseAtom.holds_congr P a _ _ fun x hx => ?_).1 (hS.2.2.2.1 a haq)
+    have hx' : x ∈ S.preStop ++ [.ord S.sd.col] := by
+      simpa using List.all_eq_true.1 hav x hx
+    have hnq : x ∉ S.queryRoles := not_query_D4 hsd (by simpa using hx')
+    simp [setupPosVal, ScanSetup.fitVal, hnq]
+  · rw [ScanSetup.Lmax, hf0, List.map_nil, List.foldr_nil, ← setupBankVal_root_D4 S,
+      ← setupBankVal_slot_D4 S hS (Nat.zero_le _)]
+    exact bank_root_lt_D4 S hS (slot_root_mem_D4 S hS (Nat.zero_le _)) (by simp [Role.inEntry])
+      (Nat.zero_le _)
+  · simp [ScanSetup.Lmax, ScanSetup.Cmax, hf0]
 
 /-- L8.5c: `x_i < y_j`: advance the source cursor (txt:1222-1224). -/
 theorem scan_lt {P : Prims.{u}} (S : ScanSetup.{u}) (hS : SetupClauses P S) {i j : Nat}
     {β : Role → Ordinal.{u}} (hinv : ScanInv P S i j β) (hi : i < S.rd.cursor) :
     ScanInv P S (i + 1) j β := by
-  sorry
+  refine ⟨hinv.1, hinv.2.1.trans ?_, hinv.2.2⟩
+  rw [← setupBankVal_slot_D4 S hS hi.le, ← setupBankVal_slot_D4 S hS hi]
+  exact bank_entry_lt_D4 S hS (slot_root_mem_D4 S hS hi.le) (by simp [Role.inEntry])
+    (slot_root_mem_D4 S hS hi) (by simp [Role.inEntry]) (Nat.lt_succ_self i) hi
 
 /-- L8.5d: both target heads at `u_i` from the positive heads at `h`: restriction if `h ≥ u_i`,
 extension through (19) and intermediate elementarity if `h < u_i ≤ c_0` (txt:1228-1231). -/
