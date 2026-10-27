@@ -29,33 +29,59 @@ namespace Hier
 /-! ## F5.1a: limit coordinates -/
 
 /-- F5.1a: a coordinate is a successor limit. -/
-theorem IsLim.isSuccLimit {o : Ordinal.{u}} (h : IsLim o) : Order.IsSuccLimit o := by sorry
+theorem IsLim.isSuccLimit {o : Ordinal.{u}} (h : IsLim o) : Order.IsSuccLimit o := h.1
 
 /-- F5.1a: a coordinate is above `ω`. -/
-theorem IsLim.omega0_lt {o : Ordinal.{u}} (h : IsLim o) : Ordinal.omega0 < o := by sorry
+theorem IsLim.omega0_lt {o : Ordinal.{u}} (h : IsLim o) : Ordinal.omega0 < o := h.2
 
 /-- F5.1a: a coordinate is closed under successor. -/
-theorem IsLim.add_one_lt {o v : Ordinal.{u}} (h : IsLim o) (hv : v < o) : v + 1 < o := by sorry
+theorem IsLim.add_one_lt {o v : Ordinal.{u}} (h : IsLim o) (hv : v < o) : v + 1 < o := by
+  simpa [Order.succ_eq_add_one] using h.1.succ_lt hv
 
 /-- F5.1a: `o + ω` is a coordinate when `ω ≤ o` (used for `u_m = a_m + ω` in L6.7). -/
 theorem isLim_add_omega0 {o : Ordinal.{u}} (h : Ordinal.omega0 ≤ o) :
-    IsLim (o + Ordinal.omega0) := by sorry
+    IsLim (o + Ordinal.omega0) :=
+  ⟨Ordinal.isSuccLimit_add o Ordinal.isSuccLimit_omega0,
+    (lt_add_of_pos_right _ Ordinal.omega0_pos).trans_le (add_le_add_left h _)⟩
 
 /-- F5.1a: a least upper bound, not attained, of a nonempty set of coordinates is a coordinate
 (closedness half of L6.6 and N4.9). -/
 theorem isLim_of_isLUB {s : Set Ordinal.{u}} {a : Ordinal.{u}} (hs : ∀ x ∈ s, IsLim x)
-    (hne : s.Nonempty) (hlub : IsLUB s a) (hna : a ∉ s) : IsLim a := by sorry
+    (hne : s.Nonempty) (hlub : IsLUB s a) (hna : a ∉ s) : IsLim a := by
+  obtain ⟨x, hx⟩ := hne
+  exact ⟨hlub.isSuccLimit_of_notMem ⟨x, hx⟩ hna, (hs x hx).2.trans_le (hlub.1 hx)⟩
 
 /-- F5.1a: the supremum of a strictly increasing `ω`-sequence starting at or above `ω` is a
 coordinate (unboundedness half of L6.6 and N4.9). -/
 theorem isLim_iSup_nat {f : ℕ → Ordinal.{u}} (hf : StrictMono f) (h0 : Ordinal.omega0 ≤ f 0) :
-    IsLim (⨆ n, f n) := by sorry
+    IsLim (⨆ n, f n) := by
+  have hb : BddAbove (Set.range f) := Ordinal.bddAbove_of_small
+  have hlub : IsLUB (Set.range f) (⨆ n, f n) := isLUB_ciSup hb
+  have hna : (⨆ n, f n) ∉ Set.range f := by
+    rintro ⟨n, hn⟩
+    have := le_ciSup hb (n + 1)
+    rw [← hn] at this
+    exact (hf (Nat.lt_succ_self n)).not_ge this
+  exact ⟨hlub.isSuccLimit_of_notMem (Set.range_nonempty f) hna,
+    h0.trans_lt ((hf Nat.zero_lt_one).trans_le (le_ciSup hb 1))⟩
 
 -- V-U4-7
 /-- F5.1a: (8) for every nonzero limit `w`, including `w = ω` (used by L5.5b at the block
 `[ω, ω + ω)`; the spine's `add_omega_le` is the case `IsLim w`). -/
 theorem add_omega_le_of_isSuccLimit {v w : Ordinal.{u}} (hw : Order.IsSuccLimit w) (h : v < w) :
-    v + Ordinal.omega0 ≤ w := by sorry
+    v + Ordinal.omega0 ≤ w := by
+  have hn : ∀ n : ℕ, v + n < w := by
+    intro n
+    induction n with
+    | zero => simpa using h
+    | succ n ih =>
+      have := hw.succ_lt ih
+      rw [Order.succ_eq_add_one] at this
+      simpa [Nat.cast_succ, add_assoc] using this
+  rw [(Ordinal.isNormal_add_right v).le_iff_forall_le Ordinal.isSuccLimit_omega0]
+  intro b hb
+  obtain ⟨n, rfl⟩ := Ordinal.lt_omega0.1 hb
+  exact (hn n).le
 
 /-! ## D6.4: helper lemmas on the locked Mahlo predicates -/
 
@@ -63,21 +89,29 @@ end Hier
 
 /-- D6.4: every weakly `n`-Mahlo cardinal is uncountable and regular. -/
 theorem IsWeaklyMahlo.uncountable_regular {n : Nat} {κ : Cardinal.{u}} (h : IsWeaklyMahlo n κ) :
-    ℵ₀ < κ ∧ κ.IsRegular := by sorry
+    ℵ₀ < κ ∧ κ.IsRegular := by
+  cases n with
+  | zero => exact h
+  | succ n => exact h.1
 
 /-- D6.4: below a weakly `(n+1)`-Mahlo cardinal the weakly `n`-Mahlo cardinals are stationary. -/
 theorem IsWeaklyMahlo.stationary_pred {n : Nat} {κ : Cardinal.{u}}
     (h : IsWeaklyMahlo (n + 1) κ) :
-    StationaryIn κ {o | ∃ μ : Cardinal.{u}, IsWeaklyMahlo n μ ∧ μ.ord = o} := by sorry
+    StationaryIn κ {o | ∃ μ : Cardinal.{u}, IsWeaklyMahlo n μ ∧ μ.ord = o} := h.2
 
 /-- D6.4: a stationary set meets every club (unfolding `StationaryIn`). -/
 theorem StationaryIn.exists_mem_club {κ : Cardinal.{u}} {S : Set Ordinal.{u}}
     (hS : StationaryIn κ S) {C : Set (Set.Iio κ.ord)} (hC : IsClub C) :
-    ∃ x ∈ C, x.1 ∈ S := by sorry
+    ∃ x ∈ C, x.1 ∈ S := by
+  obtain ⟨x, hxS, hxC⟩ := hS hC
+  exact ⟨x, hxC, hxS⟩
 
 /-- D6.4: a club of `κ` (uncountable) is unbounded below `κ`. -/
 theorem IsClub.exists_gt_ord {κ : Cardinal.{u}} (hκ : ℵ₀ < κ) {C : Set (Set.Iio κ.ord)}
-    (hC : IsClub C) {o : Ordinal.{u}} (ho : o < κ.ord) : ∃ x ∈ C, o < x.1 := by sorry
+    (hC : IsClub C) {o : Ordinal.{u}} (ho : o < κ.ord) : ∃ x ∈ C, o < x.1 := by
+  have h1 : o + 1 < κ.ord := (Hier.isLim_ord hκ).add_one_lt ho
+  obtain ⟨x, hxC, hx⟩ := hC.isCofinal ⟨o + 1, h1⟩
+  exact ⟨x, hxC, (Order.lt_add_one_iff.2 le_rfl).trans_le (Subtype.coe_le_coe.2 hx)⟩
 
 namespace Hier
 
@@ -88,43 +122,138 @@ def AgreeBelow (Q Q' : Prims.{u}) (z : Ordinal.{u}) : Prop :=
   (∀ x y, x < z → y < z → (Q.Elem x y ↔ Q'.Elem x y)) ∧
     (∀ c b a, c < z → b < z → a < z → (Q.Edge c b a ↔ Q'.Edge c b a))
 
+/-- N4.1b (helper): a base atom reads the assignment only at its variables. -/
+theorem BaseAtom.holds_congr {W : Type} (P : Prims.{u}) (b : BaseAtom W)
+    (a a' : W → Ordinal.{u}) (h : ∀ x ∈ b.vars, a x = a' x) :
+    b.Holds P a ↔ b.Holds P a' := by
+  cases b <;> simp_all [BaseAtom.vars, BaseAtom.Holds]
+
 /-- N4.1b: truth of a base diagram depends only on the values of its variables. -/
 theorem baseHolds_congr {W : Type} (P : Prims.{u}) (D : List (BaseAtom W))
     (a a' : W → Ordinal.{u}) (h : ∀ x ∈ baseVars D, a x = a' x) :
-    BaseHolds P D a ↔ BaseHolds P D a' := by sorry
+    BaseHolds P D a ↔ BaseHolds P D a' :=
+  forall₂_congr fun b hb => BaseAtom.holds_congr P b a a' fun x hx =>
+    h x (List.mem_flatMap.2 ⟨b, hb, hx⟩)
 
-/-- N4.1a: truth of a diagram depends only on the values of its variables. -/
-theorem Diagram.holds_congr {V : Type} (P : Prims.{u}) (D : Diagram V) (a a' : V → Ordinal.{u})
-    (h : ∀ x ∈ D.vars, a x = a' x) : D.Holds P a ↔ D.Holds P a' := by sorry
-
-/-- N4.1a (locality): a diagram whose variables are all below `z` reads the primitives only
-below `z`. -/
-theorem Diagram.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
-    (hQ : AgreeBelow Q Q' z) (D : Diagram V) (a : V → Ordinal.{u}) (ha : ∀ x ∈ D.vars, a x < z) :
-    D.Holds Q a ↔ D.Holds Q' a := by sorry
-
-/-- N4.1a: realizability below `w` is monotone in `w`. -/
-theorem Diagram.realizableBelow_mono {V : Type} (P : Prims.{u}) (D : Diagram V) (F : V → Prop)
-    (σ : V → Ordinal.{u}) {w w' : Ordinal.{u}} (hw : w ≤ w') :
-    D.RealizableBelow P F σ w → D.RealizableBelow P F σ w' := by sorry
-
-/-- N4.1a (locality of realizability). -/
-theorem Diagram.realizableBelow_congr_below {V : Type} {Q Q' : Prims.{u}} {z w : Ordinal.{u}}
-    (hQ : AgreeBelow Q Q' z) (hw : w ≤ z) (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u}) :
-    D.RealizableBelow Q F σ w ↔ D.RealizableBelow Q' F σ w := by sorry
-
-/-- N4.1a: only fixed variables that occur in `D` matter. -/
-theorem Diagram.realizableBelow_congr_fixed {V : Type} (P : Prims.{u}) (D : Diagram V)
-    (F : V → Prop) (σ σ' : V → Ordinal.{u}) (w : Ordinal.{u})
-    (h : ∀ x ∈ D.vars, F x → σ x = σ' x) :
-    D.RealizableBelow P F σ w ↔ D.RealizableBelow P F σ' w := by sorry
-
+-- Moved up from the end of this section (unchanged): `Atom.holds_congr` uses it.
 /-- N4.1b: `BlockAbove` only reads the frame on the base variables (used by the translation
 N4.4 and by L5.8c). -/
 theorem blockAbove_congr_frame {W : Type} (P : Prims.{u}) (D : List (BaseAtom W))
     (fr fr' : W → Option Ordinal.{u}) (L w : Ordinal.{u})
     (h : ∀ x ∈ baseVars D, fr x = fr' x) :
-    BlockAbove P D fr L w ↔ BlockAbove P D fr' L w := by sorry
+    BlockAbove P D fr L w ↔ BlockAbove P D fr' L w := by
+  have key : ∀ fr fr' : W → Option Ordinal.{u}, (∀ x ∈ baseVars D, fr x = fr' x) →
+      BlockAbove P D fr L w → BlockAbove P D fr' L w := by
+    rintro fr fr' h ⟨β, hfix, hnew, hlt, hhold⟩
+    have hβ : ∀ x ∈ baseVars D, (fr' x).getD (β x) = β x := by
+      intro x hx
+      cases hx' : fr' x with
+      | none => rfl
+      | some o => exact (hfix x o ((h x hx).trans hx')).symm
+    refine ⟨fun x => (fr' x).getD (β x), fun x o hx => by simp [hx], fun x hx hn => ?_,
+      fun x hx => (hβ x hx).trans_lt (hlt x hx),
+      (baseHolds_congr P D _ _ hβ).2 hhold⟩
+    simp only [hn, Option.getD_none]
+    exact hnew x hx ((h x hx).trans hn)
+  exact ⟨key fr fr' h, key fr' fr fun x hx => (h x hx).symm⟩
+
+/-- N4.1a (helper): an atom reads the assignment only at its variables. -/
+theorem Atom.holds_congr {V : Type} (P : Prims.{u}) (A : Atom V) (a a' : V → Ordinal.{u})
+    (h : ∀ x ∈ A.vars, a x = a' x) : A.Holds P a ↔ A.Holds P a' := by
+  cases A with
+  | base b => exact BaseAtom.holds_congr P b a a' h
+  | noReal D fr u L =>
+    simp only [Atom.vars, List.mem_cons, List.mem_filterMap] at h
+    simp only [Atom.Holds]
+    rw [h u (Or.inl rfl), h L (Or.inr (Or.inl rfl))]
+    refine not_congr (blockAbove_congr_frame P D _ _ _ _ fun x hx => ?_)
+    cases hfx : fr x with
+    | none => rfl
+    | some y => simp [h y (Or.inr (Or.inr ⟨x, hx, hfx⟩))]
+
+/-- N4.1a: truth of a diagram depends only on the values of its variables. -/
+theorem Diagram.holds_congr {V : Type} (P : Prims.{u}) (D : Diagram V) (a a' : V → Ordinal.{u})
+    (h : ∀ x ∈ D.vars, a x = a' x) : D.Holds P a ↔ D.Holds P a' :=
+  forall₂_congr fun A hA => Atom.holds_congr P A a a' fun x hx =>
+    h x (List.mem_flatMap.2 ⟨A, hA, hx⟩)
+
+/-- N4.1a (helper): a base atom whose variables are below `z` reads the primitives only below
+`z`. -/
+theorem BaseAtom.holds_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (b : BaseAtom W) (a : W → Ordinal.{u})
+    (ha : ∀ x ∈ b.vars, a x < z) : b.Holds Q a ↔ b.Holds Q' a := by
+  cases b with
+  | elem x y =>
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at ha
+    exact hQ.1 _ _ (ha x (Or.inl rfl)) (ha y (Or.inr rfl))
+  | edge c b a' =>
+    simp only [BaseAtom.vars, List.mem_cons, List.mem_nil_iff, or_false] at ha
+    exact hQ.2 _ _ _ (ha c (Or.inl rfl)) (ha b (Or.inr (Or.inl rfl))) (ha a' (Or.inr (Or.inr rfl)))
+  | _ => exact Iff.rfl
+
+/-- N4.1a (helper): a base diagram whose variables are below `z` reads the primitives only
+below `z`. -/
+theorem baseHolds_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : List (BaseAtom W)) (a : W → Ordinal.{u})
+    (ha : ∀ x ∈ baseVars D, a x < z) : BaseHolds Q D a ↔ BaseHolds Q' D a :=
+  forall₂_congr fun b hb => BaseAtom.holds_congr_below hQ b a fun x hx =>
+    ha x (List.mem_flatMap.2 ⟨b, hb, hx⟩)
+
+/-- N4.1a (helper): `BlockAbove` with bound `w ≤ z` reads the primitives only below `z`. -/
+theorem blockAbove_congr_below {W : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : List (BaseAtom W)) (fr : W → Option Ordinal.{u})
+    {L w : Ordinal.{u}} (hw : w ≤ z) : BlockAbove Q D fr L w ↔ BlockAbove Q' D fr L w :=
+  exists_congr fun β => and_congr_right fun _ => and_congr_right fun _ => and_congr_right
+    fun hlt => baseHolds_congr_below hQ D β fun x hx => (hlt x hx).trans_le hw
+
+/-- N4.1a (helper): an atom whose variables are below `z` reads the primitives only below `z`. -/
+theorem Atom.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (A : Atom V) (a : V → Ordinal.{u})
+    (ha : ∀ x ∈ A.vars, a x < z) : A.Holds Q a ↔ A.Holds Q' a := by
+  cases A with
+  | base b => exact BaseAtom.holds_congr_below hQ b a ha
+  | noReal D fr u L =>
+    exact not_congr (blockAbove_congr_below hQ D _ (ha u List.mem_cons_self).le)
+
+/-- N4.1a (locality): a diagram whose variables are all below `z` reads the primitives only
+below `z`. -/
+theorem Diagram.holds_congr_below {V : Type} {Q Q' : Prims.{u}} {z : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (D : Diagram V) (a : V → Ordinal.{u}) (ha : ∀ x ∈ D.vars, a x < z) :
+    D.Holds Q a ↔ D.Holds Q' a :=
+  forall₂_congr fun A hA => Atom.holds_congr_below hQ A a fun x hx =>
+    ha x (List.mem_flatMap.2 ⟨A, hA, hx⟩)
+
+/-- N4.1a: realizability below `w` is monotone in `w`. -/
+theorem Diagram.realizableBelow_mono {V : Type} (P : Prims.{u}) (D : Diagram V) (F : V → Prop)
+    (σ : V → Ordinal.{u}) {w w' : Ordinal.{u}} (hw : w ≤ w') :
+    D.RealizableBelow P F σ w → D.RealizableBelow P F σ w' := by
+  rintro ⟨a, hfix, hlt, hD⟩
+  exact ⟨a, hfix, fun x hx => (hlt x hx).trans_le hw, hD⟩
+
+/-- N4.1a (locality of realizability). -/
+theorem Diagram.realizableBelow_congr_below {V : Type} {Q Q' : Prims.{u}} {z w : Ordinal.{u}}
+    (hQ : AgreeBelow Q Q' z) (hw : w ≤ z) (D : Diagram V) (F : V → Prop) (σ : V → Ordinal.{u}) :
+    D.RealizableBelow Q F σ w ↔ D.RealizableBelow Q' F σ w :=
+  exists_congr fun a => and_congr_right fun _ => and_congr_right fun hlt =>
+    D.holds_congr_below hQ a fun x hx => (hlt x hx).trans_le hw
+
+/-- N4.1a: only fixed variables that occur in `D` matter. -/
+theorem Diagram.realizableBelow_congr_fixed {V : Type} (P : Prims.{u}) (D : Diagram V)
+    (F : V → Prop) (σ σ' : V → Ordinal.{u}) (w : Ordinal.{u})
+    (h : ∀ x ∈ D.vars, F x → σ x = σ' x) :
+    D.RealizableBelow P F σ w ↔ D.RealizableBelow P F σ' w := by
+  classical
+  have key : ∀ σ σ' : V → Ordinal.{u}, (∀ x ∈ D.vars, F x → σ x = σ' x) →
+      D.RealizableBelow P F σ w → D.RealizableBelow P F σ' w := by
+    rintro σ σ' h ⟨a, hfix, hlt, hD⟩
+    have ha : ∀ x ∈ D.vars, (if x ∈ D.vars then a x else σ' x) = a x := fun x hx => if_pos hx
+    refine ⟨fun x => if x ∈ D.vars then a x else σ' x, fun x hF => ?_,
+      fun x hx => (ha x hx).trans_lt (hlt x hx), (D.holds_congr P _ _ ha).2 hD⟩
+    by_cases hx : x ∈ D.vars
+    · simp only [if_pos hx]
+      exact (hfix x hF).trans (h x hx hF)
+    · simp only [if_neg hx]
+  exact ⟨key σ σ' h, key σ' σ fun x hx hF => (h x hx hF).symm⟩
 
 /-! Part B (the J-hierarchy route of paper §5) is dropped: decision D-4. -/
 

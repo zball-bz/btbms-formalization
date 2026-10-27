@@ -1150,10 +1150,22 @@ structure Interface extends Prims.{u} where
 
 -- provides: U4, F5.1 ((8))
 theorem add_omega_le {v w : Ordinal.{u}} (hw : IsLim w) (h : v < w) : v + Ordinal.omega0 ≤ w := by
-  sorry
+  have hn : ∀ n : ℕ, v + n < w := by
+    intro n
+    induction n with
+    | zero => simpa using h
+    | succ n ih =>
+      have := hw.1.succ_lt ih
+      rw [Order.succ_eq_add_one] at this
+      simpa [Nat.cast_succ, add_assoc] using this
+  rw [(Ordinal.isNormal_add_right v).le_iff_forall_le Ordinal.isSuccLimit_omega0]
+  intro b hb
+  obtain ⟨n, rfl⟩ := Ordinal.lt_omega0.1 hb
+  exact (hn n).le
 
 -- provides: U4, D6.4 (initial ordinals of uncountable cardinals are coordinates)
-theorem isLim_ord {κ : Cardinal.{u}} (h : ℵ₀ < κ) : IsLim κ.ord := by sorry
+theorem isLim_ord {κ : Cardinal.{u}} (h : ℵ₀ < κ) : IsLim κ.ord :=
+  ⟨Cardinal.isSuccLimit_ord h.le, Cardinal.omega0_lt_ord.2 h⟩
 
 end Hier
 
