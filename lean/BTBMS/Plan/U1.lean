@@ -1384,9 +1384,37 @@ theorem firstParent_host {E : Forest} (hV : CondV E) (hI : CondI E) {e : EntryAd
     (he : e ∈ E.entryAddrs) {h : Forest} (hh : E.heightAt e = some h) (hne : h ≠ Tree.empty) :
     ∃ H₀ rest, h.cols.head? = some ((e.col.num 0, H₀) :: rest) := by sorry
 
+/-- D1.5b helper: a `map` after `mapLast`. -/
+theorem map_mapLast {γ δ ε : Type} (f g : γ → δ) (h : δ → ε) (l : List γ) :
+    (mapLast f g l).map h = mapLast (h ∘ f) (h ∘ g) l := by
+  rw [mapLast_eq, mapLast_eq]; cases l.getLast? <;> simp
+
 /-- D1.5b (requested by U2 REQ-U1-7, second form): a shift commutes with an unshifted placement. -/
 theorem shift_replaceAt (r a δ : Nat) (Z G : Forest) :
-    shift r a (replaceAt 0 0 Z δ G) = replaceAt r a (shift r a Z) δ G := by sorry
+    shift r a (replaceAt 0 0 Z δ G) = replaceAt r a (shift r a Z) δ G := by
+  induction δ generalizing G with
+  | zero =>
+    obtain ⟨cols⟩ := G
+    obtain ⟨zc⟩ := Z
+    cases cols with
+    | nil => simp [replaceAt, shift, Tree.map, Tree.mapCols]
+    | cons c cs =>
+      simp only [replaceAt, shift, Tree.map, Tree.cols]
+      rw [shiftVal_zero_fun 0, treeMapCol_id_fun, List.map_id, treeMapCols_eq_map,
+        treeMapCols_eq_map, List.map_append]
+  | succ k ih =>
+    obtain ⟨cols⟩ := G
+    simp only [replaceAt, shift, Tree.map]
+    rw [shiftVal_zero_fun 0, treeMapCol_id_fun, treeMapCols_eq_map, map_mapLast]
+    congr 1
+    congr 1
+    funext c
+    rw [Function.comp, treeMapCol_eq_map, map_mapLast]
+    congr 1
+    · funext x; simp only [Function.comp, id, treeMap_id]
+    · funext x
+      simp only [Function.comp, id]
+      exact Prod.ext rfl (ih x.2)
 
 /-- D1.6d (requested by U5 R3): the closing slot reads the root column and is an entry
 `(r, ∅)`. -/
